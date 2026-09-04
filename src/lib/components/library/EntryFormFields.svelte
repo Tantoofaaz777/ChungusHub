@@ -21,6 +21,7 @@
 	} from '$lib/types/library';
 	import { presetService } from '$lib/services/presets.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
+	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import { spriteSortPref, SPRITE_SORT_OPTIONS } from '$lib/stores/spriteSort.svelte';
 	import type { SpriteSort } from '$lib/utils/sprites';
 	import { extractMacroNames } from '$lib/macros';
@@ -403,7 +404,7 @@
 />
 
 <!-- One always-open field card per permanent field. -->
-{#snippet fieldCard(field: TraitField, headerExtra?: Snippet)}
+{#snippet fieldCard(field: TraitField, headerExtra?: Snippet, expandable = false)}
 	<div
 		class="group/field rounded-[var(--radius-lg)] border border-border-subtle bg-bg-secondary/40 transition-colors hover:border-border"
 	>
@@ -434,16 +435,32 @@
 			{/if}
 		</div>
 		<div class="px-3 pb-3 pt-1">
-			<textarea
-				use:autoResize={{ maxHeight: 220, value: field.value }}
-				id="{field.key}-{entityId}"
-				value={field.value}
-				oninput={(e) => onTraitChange(field.key, (e.target as HTMLTextAreaElement).value)}
-				placeholder={field.placeholder}
-				class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted resize-none min-h-[3rem] {field.notSent
-					? 'opacity-60'
-					: ''}"
-			></textarea>
+			{#if expandable}
+				<ExpandableTextarea
+					id="{field.key}-{entityId}"
+					value={field.value}
+					onValueChange={(value) => onTraitChange(field.key, value)}
+					dialogTitle={field.label}
+					expandLabel={`Expand ${field.label}`}
+					placeholder={field.placeholder}
+					maxHeight={220}
+					class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted resize-none min-h-[3rem] {field.notSent
+						? 'opacity-60'
+						: ''}"
+					expandedClass="font-ui text-sm text-text-primary placeholder:text-text-muted"
+				/>
+			{:else}
+				<textarea
+					use:autoResize={{ maxHeight: 220, value: field.value }}
+					id="{field.key}-{entityId}"
+					value={field.value}
+					oninput={(e) => onTraitChange(field.key, (e.target as HTMLTextAreaElement).value)}
+					placeholder={field.placeholder}
+					class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted resize-none min-h-[3rem] {field.notSent
+						? 'opacity-60'
+						: ''}"
+				></textarea>
+			{/if}
 			{#if field.hint}
 				<p class="mt-1.5 text-xs font-ui text-text-muted">{field.hint}</p>
 			{/if}
@@ -654,8 +671,8 @@
 			{#if cardOpen}
 				{@const description = pf('description')}
 				{@const firstMessage = pf('firstMessage')}
-				{#if description}{@render fieldCard(description)}{/if}
-				{#if firstMessage}{@render fieldCard(firstMessage, greetingsButton)}{/if}
+				{#if description}{@render fieldCard(description, undefined, true)}{/if}
+				{#if firstMessage}{@render fieldCard(firstMessage, greetingsButton, true)}{/if}
 			{/if}
 		</div>
 
@@ -671,18 +688,18 @@
 				{@const characterVersion = pf('characterVersion')}
 				{@const creator = pf('creator')}
 				{@const creatorNotes = pf('creatorNotes')}
-				{#if personality}{@render fieldCard(personality)}{/if}
-				{#if scenario}{@render fieldCard(scenario)}{/if}
-				{#if examples}{@render fieldCard(examples)}{/if}
-				{#if systemPrompt}{@render fieldCard(systemPrompt)}{/if}
-				{#if postHistory}{@render fieldCard(postHistory)}{/if}
+				{#if personality}{@render fieldCard(personality, undefined, true)}{/if}
+				{#if scenario}{@render fieldCard(scenario, undefined, true)}{/if}
+				{#if examples}{@render fieldCard(examples, undefined, true)}{/if}
+				{#if systemPrompt}{@render fieldCard(systemPrompt, undefined, true)}{/if}
+				{#if postHistory}{@render fieldCard(postHistory, undefined, true)}{/if}
 				{#if creator || characterVersion}
 					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 						{#if creator}{@render fieldCard(creator)}{/if}
 						{#if characterVersion}{@render fieldCard(characterVersion)}{/if}
 					</div>
 				{/if}
-				{#if creatorNotes}{@render fieldCard(creatorNotes)}{/if}
+				{#if creatorNotes}{@render fieldCard(creatorNotes, undefined, true)}{/if}
 			{/if}
 		</div>
 

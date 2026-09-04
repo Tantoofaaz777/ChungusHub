@@ -41,6 +41,7 @@
 		| 'folder'
 		| 'minimize'
 		| 'maximize'
+		| 'expand'
 		| 'restore'
 		| 'sparkles'
 		| 'pin'
@@ -266,6 +267,9 @@
 		},
 		maximize: {
 			paths: ['M4 4h16v16H4z']
+		},
+		expand: {
+			paths: ['M15 3h6v6', 'M9 21H3v-6', 'M21 3l-7 7', 'M3 21l7-7']
 		},
 		restore: {
 			paths: ['M8 4h12v12M4 8h12v12H4z']

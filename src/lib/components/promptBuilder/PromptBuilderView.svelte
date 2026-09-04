@@ -16,6 +16,7 @@
 	import PruneEmptyBlocksMockup from '$lib/components/mockups/PruneEmptyBlocksMockup.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import MacroReference from '$lib/components/ui/MacroReference.svelte';
+	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import PresetManager from '$lib/components/presets/PresetManager.svelte';
 	import ChatOverrideNotice from '$lib/components/ui/ChatOverrideNotice.svelte';
 	import {
@@ -764,14 +765,17 @@
 
 								<div class="pb-field">
 									<label for="item-content-{item.id}" class="pb-label">Prompt content</label>
-									<textarea
+									<ExpandableTextarea
 										id="item-content-{item.id}"
 										value={item.content}
-										oninput={(e) => handleItemFieldChange(item.id, 'content', (e.target as HTMLTextAreaElement).value)}
-										use:autoResize={400}
+										onValueChange={(value) => handleItemFieldChange(item.id, 'content', value)}
+										dialogTitle={`Prompt content: ${item.name || 'Untitled item'}`}
+										expandLabel={`Expand prompt content for ${item.name || 'Untitled item'}`}
 										placeholder="Enter the prompt content…"
+										maxHeight={400}
 										class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm resize-none"
-									></textarea>
+										expandedClass="font-ui text-sm text-text-primary placeholder:text-text-muted"
+									/>
 									{#if unboundMacros.length > 0}
 										<div class="pb-lint">
 											<Icon name="warning" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
@@ -791,14 +795,17 @@
 										Author's note
 										<span class="pb-label-aside">never sent</span>
 									</label>
-									<textarea
+									<ExpandableTextarea
 										id="item-note-{item.id}"
 										value={item.note ?? ''}
-										oninput={(e) => handleItemFieldChange(item.id, 'note', (e.target as HTMLTextAreaElement).value)}
-										use:autoResize={160}
+										onValueChange={(value) => handleItemFieldChange(item.id, 'note', value)}
+										dialogTitle={`Author's note: ${item.name || 'Untitled item'}`}
+										expandLabel={`Expand author's note for ${item.name || 'Untitled item'}`}
 										placeholder="What this item is for, what breaks if it's edited, who should leave it alone…"
+										maxHeight={160}
 										class="input-base w-full px-3 py-2 text-text-secondary font-ui text-sm resize-none"
-									></textarea>
+										expandedClass="font-ui text-sm text-text-secondary placeholder:text-text-muted"
+									/>
 								</div>
 							</div>
 						{/if}

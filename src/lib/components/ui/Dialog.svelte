@@ -20,6 +20,7 @@
 		onClose: () => void;
 		title?: string;
 		size?: DialogSize;
+		titleAlign?: 'center' | 'left';
 		/** A dialog that must be answered rather than escaped: no close X, and Escape
 		 *  and the backdrop stop dismissing. All three go together on purpose. Leaving
 		 *  the X while blocking the key would leave a button on screen that does
@@ -35,6 +36,9 @@
 		 *  to work rather than something to read: one that resized itself per request would
 		 *  move its own controls under the pointer between one opening and the next. */
 		fill?: boolean;
+		/** Remove the dialog inset and fill the dynamic viewport on a phone. Opt-in because a
+		 *  short confirmation still benefits from reading as a panel rather than a new page. */
+		mobileFullscreen?: boolean;
 		children: Snippet;
 	}
 
@@ -43,9 +47,11 @@
 		onClose,
 		title,
 		size = 'md',
+		titleAlign = 'center',
 		dismissible = true,
 		bare = false,
 		fill = false,
+		mobileFullscreen = false,
 		children
 	}: Props = $props();
 
@@ -97,7 +103,10 @@
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
 					const focusable = getFocusableElements();
-					if (focusable.length > 0) {
+					const preferred = dialogEl?.querySelector<HTMLElement>('[data-dialog-initial-focus]');
+					if (preferred && focusable.includes(preferred)) {
+						preferred.focus();
+					} else if (focusable.length > 0) {
 						focusable[0].focus();
 					} else {
 						dialogEl?.focus();
@@ -131,8 +140,15 @@
 		}
 	}
 
+	/** Nested dialogs share the window listener. Only the portal painted last may respond,
+	 *  otherwise one Escape press dismisses every open layer at once. */
+	function isTopmostDialog(): boolean {
+		const portals = document.body.querySelectorAll('.dialog-portal');
+		return portals[portals.length - 1] === portalEl;
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
-		if (!open) return;
+		if (!open || !isTopmostDialog()) return;
 		if (e.key === 'Escape') {
 			requestClose();
 		}
@@ -146,7 +162,9 @@
 <div bind:this={portalEl} class="dialog-portal">
 	<!-- Backdrop -->
 	<div
-		class="dialog-scrim fixed inset-0 z-[300] flex items-start justify-center px-3 panel-scroll"
+		class="dialog-scrim fixed inset-0 z-[300] flex items-start justify-center px-3 panel-scroll {mobileFullscreen
+			? 'dialog-scrim--mobile-fullscreen'
+			: ''}"
 		style="background: var(--color-overlay); backdrop-filter: var(--backdrop-blur);"
 		onclick={handleBackdropClick}
 		onkeydown={handleBackdropKeydown}
@@ -160,7 +178,9 @@
 		<div
 			class="dialog-panel surface-float relative w-full {sizeClasses[size]} mb-8 rounded-[var(--radius-xl)] {bare
 				? 'flex flex-col overflow-hidden'
-				: ''} {fill ? 'dialog-panel--fill' : ''}"
+				: ''} {fill ? 'dialog-panel--fill' : ''} {mobileFullscreen
+				? 'dialog-panel--mobile-fullscreen'
+				: ''}"
 			style="box-shadow: var(--shadow-lg);"
 			transition:fly={{ y: 20, duration: 200 }}
 		>
@@ -183,8 +203,13 @@
 				class="dialog-body {bare ? 'flex flex-col min-h-0 flex-1' : 'panel-scroll overscroll-contain'}"
 			>
 				{#if title}
-					<div class="px-5 py-3 border-b border-border-subtle">
-						<h2 id={titleId} class="text-lg font-ui font-semibold text-text-primary text-center">
+					<div class="dialog-heading px-5 py-3 border-b border-border-subtle">
+						<h2
+							id={titleId}
+							class="dialog-title text-lg font-ui font-semibold text-text-primary"
+							class:text-left={titleAlign === 'left'}
+							class:text-center={titleAlign === 'center'}
+						>
 							{title}
 						</h2>
 					</div>
@@ -230,11 +255,30 @@
 		max-height: var(--dialog-max-h);
 	}
 
+	.dialog-heading {
+		flex-shrink: 0;
+	}
+
 	@media (max-width: 700px) {
 		.dialog-panel {
 			--dialog-max-h: 94vh;
 			max-width: 100% !important;
 			border-radius: var(--radius-lg);
+		}
+
+		.dialog-scrim--mobile-fullscreen {
+			--dialog-inset: 0px;
+			padding: 0;
+			overflow: hidden;
+		}
+
+		.dialog-panel--mobile-fullscreen {
+			--dialog-max-h: 100dvh;
+			height: 100dvh;
+			max-height: 100dvh;
+			margin-bottom: 0;
+			border: 0;
+			border-radius: 0;
 		}
 	}
 </style>

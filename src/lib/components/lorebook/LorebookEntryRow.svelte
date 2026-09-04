@@ -27,12 +27,12 @@
 		type LorebookWokenBy,
 		type ResolvedRecursion
 	} from '$lib/lorebook/types';
-	import { autoResize } from '$lib/actions/autoResize';
 	import { countTokens } from '$lib/tokenizer';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
+	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import KeyChipInput from './KeyChipInput.svelte';
 	import OverrideMark from '$lib/components/ui/OverrideMark.svelte';
 
@@ -548,14 +548,17 @@
 						<label for="entry-content-{entryId}" class="ed-label section-label !mb-0">Content</label>
 						<span class="font-mono text-[0.65rem] text-text-muted tabular-nums">~{contentTokens} tokens</span>
 					</div>
-					<textarea
+					<ExpandableTextarea
 						id="entry-content-{entryId}"
-						use:autoResize={{ maxHeight: 560, value: entry.content }}
 						value={entry.content}
-						oninput={(e) => update({ content: (e.target as HTMLTextAreaElement).value })}
+						onValueChange={(value) => update({ content: value })}
+						dialogTitle="Content"
+						expandLabel="Expand lorebook content"
+						maxHeight={560}
 						placeholder="The text woven into context when this entry fires…"
 						class="input-base w-full px-3.5 py-2.5 font-body text-[0.95rem] leading-relaxed text-text-primary placeholder:text-text-muted placeholder:italic resize-none min-h-[9rem]"
-					></textarea>
+						expandedClass="font-body text-[0.95rem] text-text-primary placeholder:text-text-muted placeholder:italic"
+					/>
 					<p class="mt-1.5 text-xs font-ui text-text-muted">
 						Macros like <code class="ed-macro">{'{{char}}'}</code> and
 						<code class="ed-macro">{'{{user}}'}</code> are expanded here.

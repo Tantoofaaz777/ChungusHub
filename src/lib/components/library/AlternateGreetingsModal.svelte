@@ -2,7 +2,7 @@
 	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
+	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
 
 	interface Props {
@@ -92,13 +92,16 @@
 						</button>
 					</div>
 					<div class="px-3 pb-3 pt-1">
-						<textarea
-							use:autoResize={{ maxHeight: 260, value: greeting }}
+						<ExpandableTextarea
 							value={greeting}
-							oninput={(e) => updateGreeting(i, (e.target as HTMLTextAreaElement).value)}
+							onValueChange={(value) => updateGreeting(i, value)}
+							dialogTitle={`Greeting ${i + 1}`}
+							expandLabel={`Expand greeting ${i + 1}`}
 							placeholder="An alternate opening message…"
+							maxHeight={260}
 							class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted resize-none min-h-[4rem]"
-						></textarea>
+							expandedClass="font-ui text-sm text-text-primary placeholder:text-text-muted"
+						/>
 					</div>
 				</div>
 			{/each}

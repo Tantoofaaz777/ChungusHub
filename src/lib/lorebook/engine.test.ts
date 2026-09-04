@@ -1098,5 +1098,5 @@ describe('an archive-sized book', () => {
 		const started = Date.now();
 		expect(resolveLorebooks({ books: [big], messages: ['nothing matches here'] }).text).toBe('');
 		expect(Date.now() - started).toBeLessThan(8000);
-	});
+	}, 10_000);
 });

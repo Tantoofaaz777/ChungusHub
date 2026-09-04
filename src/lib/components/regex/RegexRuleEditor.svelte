@@ -19,6 +19,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import {
 		depthInverted,
 		depthSentence,
@@ -214,20 +215,25 @@
 			{/if}
 		</div>
 
-		<label class="rx-field rx-span">
-			<span class="section-label">Replace with</span>
+		<div class="rx-field rx-span">
+			<label for="regex-replacement-{rule.id}" class="section-label">Replace with</label>
 			<!-- A textarea, not an <input>: replacements may contain real line breaks (the
 			     blank-line default does), which a single-line input silently mangles on edit. -->
-			<textarea
-				class="rx-input rx-mono rx-repl"
-				rows="1"
+			<ExpandableTextarea
+				id="regex-replacement-{rule.id}"
+				value={rule.replacement}
+				onValueChange={(value) => onPatch?.({ replacement: value })}
+				dialogTitle="Replace with"
+				expandLabel="Expand replacement text"
 				placeholder="$& = whole match, $1 = first group, empty removes the match"
 				{readonly}
-				spellcheck="false"
-				value={rule.replacement}
-				oninput={(e) => onPatch?.({ replacement: e.currentTarget.value })}
-			></textarea>
-		</label>
+				spellcheck={false}
+				rows={1}
+				maxHeight={300}
+				class="w-full px-[0.6rem] py-[0.45rem] rounded-[var(--radius-md)] border border-border bg-bg-secondary text-text-primary font-mono text-[0.76rem] min-h-[2.15rem] focus:outline-none focus:border-accent"
+				expandedClass="font-mono text-[0.76rem] text-text-primary placeholder:text-text-muted"
+			/>
+		</div>
 
 		<div class="rx-field">
 			<span class="section-label">Apply to</span>
@@ -417,16 +423,6 @@
 	.rx-input:focus {
 		outline: none;
 		border-color: var(--color-accent);
-	}
-
-	.rx-mono {
-		font-family: var(--font-mono, monospace);
-		font-size: 0.76rem;
-	}
-
-	.rx-repl {
-		resize: vertical;
-		min-height: 2.15rem;
 	}
 
 	/* Pattern field framed as /pattern/flags: the slashes and flag letters live inside one

@@ -12,7 +12,7 @@
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
 	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
-	import { autoResize } from '$lib/actions/autoResize';
+	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import { BLOB_MACRO } from '$lib/types/library';
 	import { presetService } from '$lib/services/presets.svelte';
 	import { extractMacroNames } from '$lib/macros';
@@ -383,16 +383,19 @@
 								{/if}
 							</div>
 							<div class="px-3 pb-3 pt-1">
-								<textarea
-									use:autoResize={{ maxHeight: 480, value: snapshot.traits.description ?? '' }}
+								<ExpandableTextarea
 									id="persona-description-{entry.id}"
 									value={snapshot.traits.description ?? ''}
-									oninput={(e) => handleDescriptionChange((e.target as HTMLTextAreaElement).value)}
+									onValueChange={handleDescriptionChange}
+									dialogTitle="Persona Description"
+									expandLabel="Expand Persona Description"
 									placeholder="Who you are: appearance, presence, how you carry yourself, how you speak…"
+									maxHeight={480}
 									class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted resize-none min-h-[12rem] {personaSent
 										? ''
 										: 'opacity-60'}"
-								></textarea>
+									expandedClass="font-ui text-sm text-text-primary placeholder:text-text-muted"
+								/>
 							</div>
 						</div>
 					</div>
