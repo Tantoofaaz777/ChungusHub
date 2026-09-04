@@ -42,6 +42,7 @@
 		entry
 			? {
 					name: entry.identity.name,
+					alias: entry.identity.alias,
 					imageUrl: entry.identity.imageUrl,
 					portraitFocus: entry.identity.portraitFocus,
 					tags: entry.identity.tags,
@@ -149,7 +150,7 @@
 	const typeLabelLower = 'character';
 
 	// Typing is debounced; everything below it is a discrete action and writes at once.
-	function handleFieldChange(field: 'name', value: string) {
+	function handleFieldChange(field: 'name' | 'alias', value: string) {
 		if (!entry) return;
 		characterLibraryStore.scheduleIdentityEdit(entry.id, { [field]: value });
 	}
@@ -393,6 +394,7 @@
 		<div class="flex-1 panel-scroll">
 			<EntryFormFields
 					name={data.name}
+					alias={data.alias}
 					imageUrl={data.imageUrl}
 				portraitFocus={data.portraitFocus}
 					tags={data.tags}

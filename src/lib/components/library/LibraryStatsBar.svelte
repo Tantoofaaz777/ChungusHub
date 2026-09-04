@@ -25,7 +25,12 @@
 	import { countTokens } from '$lib/tokenizer/count';
 	import { chatPersonaClaim, personaEntryFor } from '$lib/utils/chat-setup';
 	import { extractMacroNames, resolveMacroValues, type MacroContext } from '$lib/macros';
-	import { PERMANENT_TRAITS, BLOB_MACRO, type LibraryEntry } from '$lib/types/library';
+	import {
+		PERMANENT_TRAITS,
+		BLOB_MACRO,
+		characterRoleName,
+		type LibraryEntry
+	} from '$lib/types/library';
 	import type { ChatListStats } from '$lib/types/chat';
 
 	let { entry }: { entry: LibraryEntry } = $props();
@@ -127,7 +132,10 @@
 		// lorebook is selected and no chat history is walked to price a card. A persona is
 		// priced as ITSELF rather than as whichever persona the app is currently set to, or the
 		// figure would answer for somebody else the moment the default moves.
-		const self = { name: entry.identity.name, traits: entry.data.traits };
+		const self = {
+			name: isPersona ? entry.identity.name : characterRoleName(entry.identity),
+			traits: entry.data.traits
+		};
 		const context: MacroContext = {
 			resolvedCharacters: isPersona ? [] : [self],
 			resolvedPersona: isPersona ? self : personaStore.activeResolved,

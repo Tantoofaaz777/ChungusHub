@@ -26,7 +26,8 @@ import { lorebookHistory, lorebookScanFields } from '$lib/lorebook/types';
 import { presetControlsStore } from '$lib/stores/presetControls.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { findActivePath } from '$lib/utils/message-tree';
-import { expandMacros, resolveMacroValues, type MacroContext, type PromptCharacter } from '$lib/macros';
+import { expandMacros, resolveMacroValues, type MacroContext } from '$lib/macros';
+import { characterRoleName } from '$lib/types/library';
 
 import { createMemoryDb } from './db-adapter';
 import {
@@ -441,13 +442,7 @@ class MemoryStore {
 		// The chat's pinned variant, same rule as the generation path and the meters:
 		// card sheet AND linked lorebooks both come from it.
 		const data = entry ? characterLibraryStore.dataForVersion(entry, ctx.characterVersionId) : null;
-		const character: PromptCharacter | null = entry && data
-			? {
-					name: entry.identity.name,
-					traits: data.traits,
-					storyNotes: ''
-				}
-			: null;
+		const character = toPromptCharacter(entry, data);
 		const chatMessages = ctx.leafId ? findActivePath(ctx.allMessages, ctx.leafId) : [];
 		// The persona this chat plays as, same rule and same resolver as the prompt.
 		const persona = personaEntryFor(ctx.personaId);
@@ -838,9 +833,10 @@ class MemoryStore {
 
 	/** Project app messages onto the engine's slice, resolving speaker names. */
 	private toMemory(ctx: ChatCtx): MemoryMessage[] {
-		const charName =
-			(ctx.characterId && characterLibraryStore.entries.find((e) => e.id === ctx.characterId)?.identity.name?.trim()) ||
-			'Narrator';
+		const character = ctx.characterId
+			? characterLibraryStore.entries.find((e) => e.id === ctx.characterId && e.type === 'character')
+			: null;
+		const charName = character ? characterRoleName(character.identity).trim() || 'Narrator' : 'Narrator';
 		// Who an unstamped user turn belongs to: the persona this chat plays as. Imported and
 		// pre-feature rows carry no persona of their own, so they read as whoever the story
 		// is being played by rather than as whoever the app happens to be.

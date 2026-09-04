@@ -11,7 +11,7 @@
  */
 
 import type { Message } from '$lib/types/chat';
-import { expandMacros, type MacroContext, type PromptCharacter } from '$lib/macros';
+import { expandMacros, type MacroContext } from '$lib/macros';
 import { resolveLorebooks } from '$lib/lorebook/engine';
 import { lorebookHistory, lorebookScanFields, type LorebookTrigger } from '$lib/lorebook/types';
 import { chatStore } from '$lib/stores/chat.svelte';
@@ -50,13 +50,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 	const characterData = characterEntry
 		? characterLibraryStore.dataForVersion(characterEntry, chatStore.activeChat?.characterVersionId ?? null)
 		: null;
-	const character: PromptCharacter | null = characterEntry && characterData
-		? {
-				name: characterEntry.identity.name,
-				traits: characterData.traits,
-				storyNotes: ''
-			}
-		: null;
+	const character = toPromptCharacter(characterEntry, characterData);
 	const chatMessages = opts.chatMessages ?? chatStore.currentChatState?.activePath ?? [];
 	const preset = chatPreset(chatStore.activeChat);
 	// Same budget derivation as buildMacroContext (share of the prompt budget, counted with

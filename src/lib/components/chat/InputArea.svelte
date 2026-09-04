@@ -260,12 +260,7 @@
 					preset: currentPreset,
 					resolvedPersona: toPromptCharacter(chatPersona),
 					resolvedCharacters: activeCharacterEntry && activeCharacterData
-						? [
-								{
-									name: activeCharacterEntry.identity.name,
-									traits: activeCharacterData.traits
-								}
-							]
+						? [toPromptCharacter(activeCharacterEntry, activeCharacterData)!]
 						: [],
 					lorebooks: lorebookStore.booksForChat({
 						cards: [

@@ -32,6 +32,7 @@
 	import ImageLightbox from '$lib/components/ui/ImageLightbox.svelte';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import LorebookTraceList from '$lib/components/lorebook/LorebookTraceList.svelte';
+	import { characterRoleName } from '$lib/types/library';
 
 	/** Position in `imageAttachments` open in the full-size viewer; null = closed. */
 	let viewerIndex = $state<number | null>(null);
@@ -136,10 +137,12 @@
 	// {{char}}/{{user}} resolve live at display against the active persona + bound character.
 	// Greetings store their macros raw, so changing persona reflows them on screen without
 	// touching the row (matches the generation path in prompt-assembly.toInjectedMessage).
-	const selfRefChar = $derived(
-		characterLibraryStore.entries.find((e) => e.id === chatStore.activeChat?.characterId)?.identity
-			.name || 'Character'
-	);
+	const selfRefChar = $derived.by(() => {
+		const entry = characterLibraryStore.entries.find(
+			(e) => e.id === chatStore.activeChat?.characterId && e.type === 'character'
+		);
+		return entry ? characterRoleName(entry.identity) || 'Character' : 'Character';
+	});
 	// Both come off the open chat's ONE resolution rather than this turn's own: the claims
 	// belong to the chat, so a per-message copy parsed the same blob and walked the same
 	// library once per turn on screen. Also keeps them out of `bodyHtml`, which recomputes
@@ -381,7 +384,7 @@
 		const entry = characterLibraryStore.entries.find((e) => e.id === cid);
 		return entry
 			? {
-					name: entry.identity.name,
+					name: characterRoleName(entry.identity),
 					imageUrl: entry.identity.imageUrl ?? null,
 					portraitFocus: entry.identity.portraitFocus
 				}

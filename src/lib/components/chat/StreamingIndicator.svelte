@@ -10,6 +10,7 @@
 	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
+	import { characterRoleName } from '$lib/types/library';
 
 	interface Props {
 		content: string;
@@ -25,7 +26,7 @@
 		const entry = characterLibraryStore.entries.find((e) => e.id === cid);
 		return entry
 			? {
-					name: entry.identity.name,
+					name: characterRoleName(entry.identity),
 					imageUrl: entry.identity.imageUrl ?? null,
 					portraitFocus: entry.identity.portraitFocus
 				}

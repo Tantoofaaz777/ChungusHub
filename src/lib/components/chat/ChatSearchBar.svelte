@@ -37,6 +37,7 @@
 		MAX_MATCHES
 	} from '$lib/utils/chat-search';
 	import type { Message } from '$lib/types/chat';
+	import { characterRoleName } from '$lib/types/library';
 
 	interface Props {
 		/** The message-list scroller: both the search root and what we scroll to a hit. */
@@ -70,10 +71,12 @@
 	// ===== Off-path branches =====
 	// Same live expansion Message.svelte does, so a greeting's raw {{char}}/{{user}} is
 	// searchable by the name actually on screen (architecture/chat-sessions.md coupling 6).
-	let selfRefChar = $derived(
-		characterLibraryStore.entries.find((e) => e.id === chatStore.activeChat?.characterId)?.identity
-			.name || 'Character'
-	);
+	let selfRefChar = $derived.by(() => {
+		const entry = characterLibraryStore.entries.find(
+			(e) => e.id === chatStore.activeChat?.characterId && e.type === 'character'
+		);
+		return entry ? characterRoleName(entry.identity) || 'Character' : 'Character';
+	});
 	let selfRefUser = $derived(openChatSetup.persona?.identity.name || 'You');
 
 	let branchHits = $derived.by(() => {

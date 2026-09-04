@@ -29,6 +29,7 @@
 	interface Props {
 		// Data
 		name: string;
+		alias: string | undefined;
 		imageUrl: string | undefined;
 		/** Where every avatar box aims inside the portrait; undefined is the centred cover. */
 		portraitFocus: PortraitFocus | undefined;
@@ -51,7 +52,7 @@
 		identityExtra?: Snippet;
 
 		// Callbacks
-		onFieldChange: (field: 'name', value: string) => void;
+		onFieldChange: (field: 'name' | 'alias', value: string) => void;
 		onTraitChange: (traitKey: keyof CharacterTraits, value: string) => void;
 		onImageSelect: (file: File) => Promise<void>;
 		onImageRemove: () => Promise<void>;
@@ -68,6 +69,7 @@
 
 	let {
 		name,
+		alias,
 		imageUrl,
 		portraitFocus,
 		tags,
@@ -596,6 +598,24 @@
 				placeholder={namePlaceholder}
 				class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted"
 			/>
+		</div>
+
+		<!-- Alias: local to Chungus, used by the prompt and story-facing chat chrome. -->
+		<div>
+			<label for="alias-{entityId}" class="block text-sm font-ui font-medium text-text-primary mb-1.5">
+				Alias
+			</label>
+			<input
+				id="alias-{entityId}"
+				type="text"
+				value={alias ?? ''}
+				oninput={(e) => onFieldChange('alias', (e.target as HTMLInputElement).value)}
+				placeholder={name || 'Character name'}
+				class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted"
+			/>
+			<p class="mt-1.5 text-xs font-ui text-text-muted">
+				Used for {'{{char}}'} and as the name shown in chats. Leave blank to use Name.
+			</p>
 		</div>
 
 		<!-- Tags -->

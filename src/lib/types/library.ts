@@ -14,6 +14,11 @@ export interface CharacterSprite {
 /** Identity fields used by character/persona library entries */
 export interface LibraryEntryIdentity {
 	name: string;
+	/**
+	 * Chungus-only in-story name for characters. The library and card exports keep using
+	 * `name`; prompt macros and chat speaker labels use this when it is non-blank.
+	 */
+	alias?: string;
 	/** Path to image stored in app data folder */
 	imageUrl?: string;
 	/** User-defined tags for organization */
@@ -41,6 +46,13 @@ export interface LibraryEntryIdentity {
 	 * portrait is replaced, and is NOT versioned for the same reason the portrait isn't.
 	 */
 	portraitFocus?: PortraitFocus;
+}
+
+/** The character name used inside a story. Titles may be long organizational labels, while
+ * this stays short enough for dialogue and speaker chrome. Blank aliases deliberately fall
+ * back to the existing name so every pre-alias entry behaves exactly as before. */
+export function characterRoleName(identity: Pick<LibraryEntryIdentity, 'name' | 'alias'>): string {
+	return identity.alias?.trim() || identity.name;
 }
 
 /** Data payload for a library entry */

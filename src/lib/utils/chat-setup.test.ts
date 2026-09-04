@@ -18,6 +18,7 @@ import type { Chat } from '$lib/types/chat';
 import type { PromptPreset } from '$lib/types/database';
 import type { LibraryEntry } from '$lib/types/library';
 import { DEFAULT_GENERATION_SETTINGS, type Connection } from '$lib/types/llm';
+import { expandMacros } from '$lib/macros';
 
 (globalThis as unknown as { $state: <T>(v?: T) => T | undefined }).$state = (v) => v;
 
@@ -55,7 +56,8 @@ const {
 	chatPresetId,
 	presetForClaim,
 	resolvePersonaId,
-	resolvePromptTarget
+	resolvePromptTarget,
+	toPromptCharacter
 } = await import('./chat-setup');
 
 function connection(id: string, model: string, contextSize: number): Connection {
@@ -117,6 +119,46 @@ const OWN = connection('own', 'anthropic/own-model', 200_000);
 beforeEach(() => {
 	connectionStore.connections = [APP, OWN];
 	connectionStore.assignments = { primary: APP.id, assistant: APP.id };
+});
+
+describe('prompt character names', () => {
+	function entry(type: 'character' | 'persona', alias?: string): LibraryEntry {
+		return {
+			id: `${type}-1`,
+			type,
+			identity: { name: 'A Very Long Library Title', alias },
+			data: { traits: { description: '{{char}} keeps watch.' } },
+			isFavorite: false,
+			createdAt: 0,
+			updatedAt: 0
+		};
+	}
+
+	test('a character alias is the one name every macro-facing field sees', () => {
+		const character = toPromptCharacter(entry('character', '  Lila  '));
+		expect(character?.name).toBe('Lila');
+		expect(
+			expandMacros('{{char}}\n{{character}}', { resolvedCharacters: character ? [character] : [] })
+		).toContain('Lila\n**Name:** Lila\n**Description:** Lila keeps watch.');
+	});
+
+	test('a blank alias preserves the existing title behavior', () => {
+		expect(toPromptCharacter(entry('character', '   '))?.name).toBe('A Very Long Library Title');
+		expect(toPromptCharacter(entry('character'))?.name).toBe('A Very Long Library Title');
+	});
+
+	test('personas keep their name even if malformed data carries an alias', () => {
+		expect(toPromptCharacter(entry('persona', 'Not the user name'))?.name).toBe(
+			'A Very Long Library Title'
+		);
+	});
+
+	test('a pinned version can replace the traits without changing alias resolution', () => {
+		const character = toPromptCharacter(entry('character', 'Lila'), {
+			traits: { description: 'Pinned version' }
+		});
+		expect(character).toMatchObject({ name: 'Lila', traits: { description: 'Pinned version' } });
+	});
 });
 
 describe('chatConnectionId', () => {

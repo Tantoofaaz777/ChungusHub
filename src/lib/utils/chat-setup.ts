@@ -16,7 +16,7 @@
 import type { Chat } from '$lib/types/chat';
 import { normalizeChatFeatureState } from '$lib/types/chat';
 import type { PromptPreset } from '$lib/types/database';
-import type { LibraryEntry } from '$lib/types/library';
+import { characterRoleName, type LibraryEntry, type LibraryEntryData } from '$lib/types/library';
 import type { CallTarget, PromptPostProcessingMode } from '$lib/types/llm';
 import type { PromptCharacter } from '$lib/macros';
 import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
@@ -170,9 +170,17 @@ export function chatPersonaEntry(chat: Chat | null): LibraryEntry | null {
 	return personaEntryFor(chatPersonaClaim(chat));
 }
 
-/** A library entry as prompt assembly sees it. One spelling, so the meters and the send
- *  cannot describe the same persona differently. */
-export function toPromptCharacter(entry: LibraryEntry | null | undefined): PromptCharacter | null {
+/** A library entry as prompt assembly sees it. Character aliases become the in-story name;
+ *  personas keep their ordinary name. `data` lets a pinned character version use the same
+ *  identity resolution without replacing the entry itself. */
+export function toPromptCharacter(
+	entry: LibraryEntry | null | undefined,
+	data?: LibraryEntryData | null
+): PromptCharacter | null {
 	if (!entry) return null;
-	return { name: entry.identity.name, traits: entry.data.traits, storyNotes: '' };
+	return {
+		name: entry.type === 'character' ? characterRoleName(entry.identity) : entry.identity.name,
+		traits: (data ?? entry.data).traits,
+		storyNotes: ''
+	};
 }
