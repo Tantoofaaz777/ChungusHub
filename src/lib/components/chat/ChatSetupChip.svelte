@@ -34,6 +34,7 @@
 	import { foldForSearch } from '$lib/components/library/browse';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
 	import { sortLorebooks } from '$lib/lorebook/types';
+	import { storyRoleName } from '$lib/types/library';
 	import { lorebookViewPrefs } from '$lib/stores/lorebookViewPrefs.svelte';
 	import {
 		chatConnectionClaim,
@@ -222,7 +223,7 @@
 				// library, so the two lists cannot read as two different things.
 				label: 'Persona',
 				noun: 'personas',
-				value: persona?.identity.name?.trim() || 'No persona',
+				value: persona ? storyRoleName(persona.identity).trim() || 'No persona' : 'No persona',
 				diverged: !!persona && persona.id !== appPersona?.id,
 				lost:
 					claimedPersona !== null && !personas.some((p) => p.id === claimedPersona)
@@ -236,7 +237,10 @@
 				})),
 				picked: only(personas.some((p) => p.id === claimedPersona) ? claimedPersona : null),
 				multi: false,
-				app: { label: 'Default', detail: appPersona?.identity.name?.trim() || 'No persona' },
+				app: {
+					label: 'Default',
+					detail: appPersona ? storyRoleName(appPersona.identity).trim() || 'No persona' : 'No persona'
+				},
 				faces: true,
 				pick: pickPersona
 			},
@@ -366,7 +370,7 @@
 	// The chip's own label names the two things a reader tracks turn to turn. It is
 	// deliberately NOT derived from `categories`: a label that grew a segment per category
 	// would push the composer's own controls off a narrow screen the moment one landed.
-	let personaName = $derived(persona?.identity.name?.trim() || 'You');
+	let personaName = $derived(persona ? storyRoleName(persona.identity).trim() || 'You' : 'You');
 	let modelName = $derived(connection?.model.split('/').pop() || 'No model');
 	// The face, not a settings glyph: who the story is played by is what a reader tracks
 	// turn to turn, and a portrait says it before the name beside it is read.

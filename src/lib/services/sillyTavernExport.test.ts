@@ -120,18 +120,21 @@ describe('SillyTavern card export', () => {
 		expect(card.first_mes).toBe('Ahoy.');
 	});
 
-	test('keeps the Chungus-only alias out of every character-card JSON layer', () => {
-		const entry = makeEntry({
-			identity: { name: 'Redbeard - Extended Library Title', alias: 'Redbeard', tags: ['pirate'] }
-		});
-		const card = buildSillyTavernCard(entry, [], 'all');
-		expect(card.name).toBe('Redbeard - Extended Library Title');
-		expect(card.data.name).toBe('Redbeard - Extended Library Title');
-		expect(card.data.extensions.chungushub.identity).toEqual({
-			name: 'Redbeard - Extended Library Title',
-			tags: ['pirate']
-		});
-		expect(JSON.stringify(card)).not.toContain('"alias"');
+	test('keeps character and persona aliases out of every card JSON layer', () => {
+		for (const type of ['character', 'persona'] as const) {
+			const entry = makeEntry({
+				type,
+				identity: { name: 'Redbeard - Extended Library Title', alias: 'Redbeard', tags: ['pirate'] }
+			});
+			const card = buildSillyTavernCard(entry, [], 'all');
+			expect(card.name).toBe('Redbeard - Extended Library Title');
+			expect(card.data.name).toBe('Redbeard - Extended Library Title');
+			expect(card.data.extensions.chungushub.identity).toEqual({
+				name: 'Redbeard - Extended Library Title',
+				tags: ['pirate']
+			});
+			expect(JSON.stringify(card)).not.toContain('"alias"');
+		}
 	});
 
 	test('unversioned export embeds data but no versions array', () => {

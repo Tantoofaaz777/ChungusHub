@@ -19,7 +19,7 @@ import { toastStore } from '$lib/stores/toast.svelte';
 import { readSprite } from '$lib/services/spriteService';
 import { spriteForLabel } from '$lib/utils/sprites';
 import type { Message } from '$lib/types/chat';
-import { characterRoleName, type LibraryEntry } from '$lib/types/library';
+import { storyRoleName, type LibraryEntry } from '$lib/types/library';
 
 /** What the engine is doing about the newest reply, which is what the layer's dot reports. */
 export type SpriteStatus = 'read' | 'reading' | 'failed' | 'idle';
@@ -86,7 +86,7 @@ class SpriteStore {
 		return identity.defaultSprite ?? null;
 	});
 
-	characterName = $derived(this.character ? characterRoleName(this.character.identity) : null);
+	characterName = $derived(this.character ? storyRoleName(this.character.identity) : null);
 
 	/**
 	 * The engine's state on the newest reply, in one word.

@@ -25,6 +25,7 @@
 	import { triggerDownload, sanitizeFilename } from '$lib/services/libraryExport';
 	import { drawPoster, posterCards, POSTER_WIDTH, POSTER_HEIGHT, type PosterCardId } from '$lib/stats/poster';
 	import type { StatsSnapshot } from '$lib/stores/stats.svelte';
+	import { storyRoleName } from '$lib/types/library';
 
 	let { open = $bindable(), snapshot }: { open: boolean; snapshot: StatsSnapshot | null } = $props();
 
@@ -49,7 +50,7 @@
 			if (found >= 5) break;
 			const entry = characterLibraryStore.characters.find((c) => c.id === member.characterId);
 			if (!entry) continue;
-			names[member.characterId] = entry.identity.name;
+			names[member.characterId] = storyRoleName(entry.identity);
 			found += 1;
 		}
 		return names;

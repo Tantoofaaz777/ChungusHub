@@ -28,7 +28,7 @@
 	import {
 		PERMANENT_TRAITS,
 		BLOB_MACRO,
-		characterRoleName,
+		storyRoleName,
 		type LibraryEntry
 	} from '$lib/types/library';
 	import type { ChatListStats } from '$lib/types/chat';
@@ -133,7 +133,7 @@
 		// priced as ITSELF rather than as whichever persona the app is currently set to, or the
 		// figure would answer for somebody else the moment the default moves.
 		const self = {
-			name: isPersona ? entry.identity.name : characterRoleName(entry.identity),
+			name: storyRoleName(entry.identity),
 			traits: entry.data.traits
 		};
 		const context: MacroContext = {

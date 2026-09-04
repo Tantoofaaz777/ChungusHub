@@ -37,6 +37,7 @@
 	import { countMessages, tokenCalibration } from '$lib/tokenizer';
 	import { diffWords } from '$lib/utils/text-diff';
 	import type { ImpersonatePerspective, Message } from '$lib/types/chat';
+	import { storyRoleName } from '$lib/types/library';
 
 	interface Props {
 		kind: 'spellcheck' | 'impersonate';
@@ -74,7 +75,9 @@
 
 	// Written as the reader would meet it: the same sentence in each person, with the
 	// active persona's own name in the third, so the pick needs no explaining.
-	let speaker = $derived(openChatSetup.persona?.identity.name?.trim() ?? '');
+	let speaker = $derived(
+		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity).trim() : ''
+	);
 	let perspectiveOptions = $derived([
 		{ value: 'first', label: 'First person', title: 'Written as "I reach for the letter"' },
 		{ value: 'second', label: 'Second person', title: 'Written as "You reach for the letter"' },

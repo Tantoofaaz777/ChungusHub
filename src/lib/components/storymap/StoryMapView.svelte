@@ -20,6 +20,7 @@
 	import { findDeepestLeafFromNode } from '$lib/utils/message-tree';
 	import { branchColorHex } from '$lib/utils/branch-labels';
 	import type { BranchLabel } from '$lib/types/chat';
+	import { storyRoleName } from '$lib/types/library';
 
 	// ===== Geometry =====
 	const PAD = 46;
@@ -93,13 +94,18 @@
 
 	// {{char}}/{{user}} resolve live for every preview surface, same as the chat renders
 	// them (coupling #6 in architecture/chat-sessions.md). Rows stay raw.
-	let selfRefChar = $derived(
-		characterLibraryStore.entries.find((e) => e.id === chat?.characterId)?.identity.name || 'Story'
+	let selfRefChar = $derived.by(() => {
+		const entry = characterLibraryStore.entries.find(
+			(e) => e.id === chat?.characterId && e.type === 'character'
+		);
+		return entry ? storyRoleName(entry.identity) || 'Story' : 'Story';
+	});
+	let selfRefUser = $derived(
+		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
 	);
-	let selfRefUser = $derived(openChatSetup.persona?.identity.name || 'You');
 
 	function roleLabel(role: StoryMapNode['role']): string {
-		return role === 'user' ? 'You' : role === 'assistant' ? selfRefChar : 'System';
+		return role === 'user' ? selfRefUser : role === 'assistant' ? selfRefChar : 'System';
 	}
 
 	function expandText(text: string, cap: number): string {

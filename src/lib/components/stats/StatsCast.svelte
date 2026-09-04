@@ -16,6 +16,7 @@
 	import { portraitFocusAim } from '$lib/utils/portrait-focus';
 	import { count, plural, monthYearLabel } from '$lib/stats/format';
 	import type { StatsCastMember } from '$lib/types/stats';
+	import { storyRoleName } from '$lib/types/library';
 
 	let { cast, limit = 6, anonymous = false }: { cast: StatsCastMember[]; limit?: number; anonymous?: boolean } =
 		$props();
@@ -54,7 +55,7 @@
 <ol class="cast">
 	{#each rows as row, index (row.member.characterId)}
 		{@const entry = row.entry!}
-		{@const name = nameFor(index, entry.identity.name)}
+		{@const name = nameFor(index, storyRoleName(entry.identity))}
 		<li class="member">
 			<span class="rank" aria-hidden="true">{index + 1}</span>
 			<div class="face" aria-hidden="true">

@@ -7,7 +7,7 @@
  */
 import { db } from '$lib/services/database';
 import { characterLibraryStore } from './characterLibrary.svelte';
-import type { LibraryEntry } from '$lib/types/library';
+import { storyRoleName, type LibraryEntry } from '$lib/types/library';
 import type { PromptCharacter } from '$lib/macros';
 
 const ACTIVE_PERSONA_KEY = 'activePersonaId';
@@ -60,7 +60,7 @@ class PersonaStore {
 		const entry = this.activeEntry;
 		if (!entry) return null;
 		return {
-			name: entry.identity.name,
+			name: storyRoleName(entry.identity),
 			traits: entry.data.traits,
 			storyNotes: ''
 		};

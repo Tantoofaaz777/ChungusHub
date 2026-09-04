@@ -27,7 +27,7 @@ import { presetControlsStore } from '$lib/stores/presetControls.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { findActivePath } from '$lib/utils/message-tree';
 import { expandMacros, resolveMacroValues, type MacroContext } from '$lib/macros';
-import { characterRoleName } from '$lib/types/library';
+import { storyRoleName } from '$lib/types/library';
 
 import { createMemoryDb } from './db-adapter';
 import {
@@ -836,11 +836,12 @@ class MemoryStore {
 		const character = ctx.characterId
 			? characterLibraryStore.entries.find((e) => e.id === ctx.characterId && e.type === 'character')
 			: null;
-		const charName = character ? characterRoleName(character.identity).trim() || 'Narrator' : 'Narrator';
+		const charName = character ? storyRoleName(character.identity).trim() || 'Narrator' : 'Narrator';
 		// Who an unstamped user turn belongs to: the persona this chat plays as. Imported and
 		// pre-feature rows carry no persona of their own, so they read as whoever the story
 		// is being played by rather than as whoever the app happens to be.
-		const userName = personaEntryFor(ctx.personaId)?.identity.name?.trim() || 'User';
+		const persona = personaEntryFor(ctx.personaId);
+		const userName = persona ? storyRoleName(persona.identity).trim() || 'User' : 'User';
 		return ctx.allMessages.map((m) => ({
 			id: m.id,
 			parentId: m.parentId,
@@ -856,7 +857,8 @@ class MemoryStore {
 		if (m.role === 'system') return 'System';
 		if (m.personaId) {
 			const p = characterLibraryStore.entries.find((e) => e.id === m.personaId && e.type === 'persona');
-			if (p?.identity.name?.trim()) return p.identity.name.trim();
+			const name = p ? storyRoleName(p.identity).trim() : '';
+			if (name) return name;
 		}
 		return userName;
 	}

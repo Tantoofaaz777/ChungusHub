@@ -37,7 +37,7 @@
 		MAX_MATCHES
 	} from '$lib/utils/chat-search';
 	import type { Message } from '$lib/types/chat';
-	import { characterRoleName } from '$lib/types/library';
+	import { storyRoleName } from '$lib/types/library';
 
 	interface Props {
 		/** The message-list scroller: both the search root and what we scroll to a hit. */
@@ -75,9 +75,11 @@
 		const entry = characterLibraryStore.entries.find(
 			(e) => e.id === chatStore.activeChat?.characterId && e.type === 'character'
 		);
-		return entry ? characterRoleName(entry.identity) || 'Character' : 'Character';
+		return entry ? storyRoleName(entry.identity) || 'Character' : 'Character';
 	});
-	let selfRefUser = $derived(openChatSetup.persona?.identity.name || 'You');
+	let selfRefUser = $derived(
+		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
+	);
 
 	let branchHits = $derived.by(() => {
 		const regex = buildSearchRegex(chatSearch.query, {

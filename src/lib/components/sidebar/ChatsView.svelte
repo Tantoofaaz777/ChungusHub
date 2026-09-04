@@ -37,6 +37,7 @@
 	import type { Chat, ChatListStats, ChatMemoryFootprint } from '$lib/types/chat';
 	import { db } from '$lib/services/database';
 	import { expandSelfRefs } from '$lib/macros';
+	import { storyRoleName } from '$lib/types/library';
 	import { buildSearchRegex } from '$lib/utils/chat-search';
 	import { dayBucket } from '$lib/utils/date';
 	import { chatStore } from '$lib/stores/chat.svelte';
@@ -102,7 +103,7 @@
 		if (!entry) return null;
 		return {
 			libraryEntryId: entry.id,
-			name: entry.identity.name,
+			name: storyRoleName(entry.identity),
 			imageUrl: entry.identity.imageUrl ?? null,
 			portraitFocus: entry.identity.portraitFocus
 		};

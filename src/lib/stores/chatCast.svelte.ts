@@ -11,7 +11,7 @@
 import { db } from '$lib/services/database';
 import { characterLibraryStore } from './characterLibrary.svelte';
 import type { PortraitFocus } from '$lib/utils/portrait-focus';
-import { characterRoleName } from '$lib/types/library';
+import { storyRoleName } from '$lib/types/library';
 
 export interface ChatCastMember {
 	libraryEntryId: string;
@@ -110,7 +110,7 @@ class ChatCastStore {
 		if (!entry) return null;
 		return {
 			libraryEntryId: entry.id,
-			name: characterRoleName(entry.identity),
+			name: storyRoleName(entry.identity),
 			imageUrl: entry.identity.imageUrl ?? null,
 			portraitFocus: entry.identity.portraitFocus
 		};
@@ -124,7 +124,7 @@ class ChatCastStore {
 		if (!entry) return null;
 		return {
 			libraryEntryId: entry.id,
-			name: entry.identity.name,
+			name: storyRoleName(entry.identity),
 			imageUrl: entry.identity.imageUrl ?? null,
 			portraitFocus: entry.identity.portraitFocus
 		};

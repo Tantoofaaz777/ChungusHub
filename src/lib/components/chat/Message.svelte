@@ -32,7 +32,7 @@
 	import ImageLightbox from '$lib/components/ui/ImageLightbox.svelte';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import LorebookTraceList from '$lib/components/lorebook/LorebookTraceList.svelte';
-	import { characterRoleName } from '$lib/types/library';
+	import { storyRoleName } from '$lib/types/library';
 
 	/** Position in `imageAttachments` open in the full-size viewer; null = closed. */
 	let viewerIndex = $state<number | null>(null);
@@ -141,13 +141,15 @@
 		const entry = characterLibraryStore.entries.find(
 			(e) => e.id === chatStore.activeChat?.characterId && e.type === 'character'
 		);
-		return entry ? characterRoleName(entry.identity) || 'Character' : 'Character';
+		return entry ? storyRoleName(entry.identity) || 'Character' : 'Character';
 	});
 	// Both come off the open chat's ONE resolution rather than this turn's own: the claims
 	// belong to the chat, so a per-message copy parsed the same blob and walked the same
 	// library once per turn on screen. Also keeps them out of `bodyHtml`, which recomputes
 	// per streamed token.
-	const selfRefUser = $derived(openChatSetup.persona?.identity.name || 'You');
+	const selfRefUser = $derived(
+		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
+	);
 	const displayPreset = $derived(openChatSetup.preset);
 
 	$effect(() => {
@@ -372,7 +374,7 @@
 		const entry = characterLibraryStore.entries.find((e) => e.id === pid && e.type === 'persona');
 		return entry
 			? {
-					name: entry.identity.name,
+					name: storyRoleName(entry.identity),
 					imageUrl: entry.identity.imageUrl ?? null,
 					portraitFocus: entry.identity.portraitFocus
 				}
@@ -384,7 +386,7 @@
 		const entry = characterLibraryStore.entries.find((e) => e.id === cid);
 		return entry
 			? {
-					name: characterRoleName(entry.identity),
+					name: storyRoleName(entry.identity),
 					imageUrl: entry.identity.imageUrl ?? null,
 					portraitFocus: entry.identity.portraitFocus
 				}

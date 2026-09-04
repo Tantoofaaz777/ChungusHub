@@ -737,6 +737,7 @@ class CharacterLibraryStore {
 			type,
 			identity: {
 				name: source.identity.name,
+				alias: source.identity.alias,
 				imageUrl,
 				tags: [],
 				// The framing belongs to the picture, and this is the same picture.

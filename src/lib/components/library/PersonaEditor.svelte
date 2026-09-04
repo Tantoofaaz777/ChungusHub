@@ -39,6 +39,7 @@
 		entry
 			? {
 					name: entry.identity.name,
+					alias: entry.identity.alias,
 					imageUrl: entry.identity.imageUrl,
 					portraitFocus: entry.identity.portraitFocus,
 					traits: entry.data.traits,
@@ -66,9 +67,9 @@
 	}
 
 	// Typing is debounced; the lorebook links are a discrete pick and write at once.
-	function handleNameChange(value: string) {
+	function handleIdentityChange(field: 'name' | 'alias', value: string) {
 		if (!entry) return;
-		characterLibraryStore.scheduleIdentityEdit(entry.id, { name: value });
+		characterLibraryStore.scheduleIdentityEdit(entry.id, { [field]: value });
 	}
 
 	function handleDescriptionChange(value: string) {
@@ -291,7 +292,7 @@
 
 		<div class="flex-1 panel-scroll">
 			<div class="grid grid-cols-1 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] gap-6 p-6">
-				<!-- Identity pane: portrait + name, matching the character editor's layout. -->
+				<!-- Identity pane: portrait + names, matching the character editor's layout. -->
 				<div class="space-y-4 lg:sticky lg:top-6 lg:self-start">
 					<div
 						class="portrait-frame relative w-full max-w-[15rem] lg:max-w-none mx-auto lg:mx-0 aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
@@ -349,10 +350,27 @@
 							id="persona-name-{entry.id}"
 							type="text"
 							value={snapshot.name}
-							oninput={(e) => handleNameChange((e.target as HTMLInputElement).value)}
-							placeholder="What should characters call you?"
+							oninput={(e) => handleIdentityChange('name', (e.target as HTMLInputElement).value)}
+							placeholder="Persona title"
 							class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted"
 						/>
+					</div>
+
+					<div>
+						<label for="persona-alias-{entry.id}" class="block text-sm font-ui font-medium text-text-primary mb-1.5">
+							Alias
+						</label>
+						<input
+							id="persona-alias-{entry.id}"
+							type="text"
+							value={snapshot.alias ?? ''}
+							oninput={(e) => handleIdentityChange('alias', (e.target as HTMLInputElement).value)}
+							placeholder={snapshot.name || 'Persona name'}
+							class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted"
+						/>
+						<p class="mt-1.5 text-xs font-ui text-text-muted">
+							Used for {'{{user}}'} and as the name shown in chats. Leave blank to use Name.
+						</p>
 					</div>
 				</div>
 

@@ -121,13 +121,15 @@ beforeEach(() => {
 	connectionStore.assignments = { primary: APP.id, assistant: APP.id };
 });
 
-describe('prompt character names', () => {
+describe('prompt role names', () => {
 	function entry(type: 'character' | 'persona', alias?: string): LibraryEntry {
 		return {
 			id: `${type}-1`,
 			type,
 			identity: { name: 'A Very Long Library Title', alias },
-			data: { traits: { description: '{{char}} keeps watch.' } },
+			data: {
+				traits: { description: type === 'character' ? '{{char}} keeps watch.' : '{{user}} keeps watch.' }
+			},
 			isFavorite: false,
 			createdAt: 0,
 			updatedAt: 0
@@ -142,15 +144,18 @@ describe('prompt character names', () => {
 		).toContain('Lila\n**Name:** Lila\n**Description:** Lila keeps watch.');
 	});
 
-	test('a blank alias preserves the existing title behavior', () => {
+	test('a blank alias preserves the existing title behavior for both roles', () => {
 		expect(toPromptCharacter(entry('character', '   '))?.name).toBe('A Very Long Library Title');
 		expect(toPromptCharacter(entry('character'))?.name).toBe('A Very Long Library Title');
+		expect(toPromptCharacter(entry('persona', '   '))?.name).toBe('A Very Long Library Title');
+		expect(toPromptCharacter(entry('persona'))?.name).toBe('A Very Long Library Title');
 	});
 
-	test('personas keep their name even if malformed data carries an alias', () => {
-		expect(toPromptCharacter(entry('persona', 'Not the user name'))?.name).toBe(
-			'A Very Long Library Title'
-		);
+	test('a persona alias is the one name every macro-facing field sees', () => {
+		const persona = toPromptCharacter(entry('persona', '  Mara  '));
+		expect(persona?.name).toBe('Mara');
+		expect(expandMacros('{{user}}', { resolvedPersona: persona })).toBe('Mara');
+		expect(expandMacros('{{persona}}', { resolvedPersona: persona })).toBe('Mara keeps watch.');
 	});
 
 	test('a pinned version can replace the traits without changing alias resolution', () => {
