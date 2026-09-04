@@ -626,7 +626,24 @@ function lastTurnText(context: MacroContext, role?: 'user' | 'assistant'): strin
 function resolveCustomControl(name: string, context: MacroContext): string | undefined {
 	const control = context.controls?.find((c) => c.macro === name);
 	if (!control) return undefined;
-	return formatControlForPrompt(control, context.customFields?.[name]);
+	const formatted = formatControlForPrompt(control, context.customFields?.[name]);
+	if (!formatted) return formatted;
+
+	// A control's injected text is author-owned prompt text, so engine macros inside it should
+	// behave like the same macros written directly in the surrounding item. Resolve exactly one
+	// nested engine layer here. Other control names and unknown macros deliberately stay literal:
+	// following those would make control-to-control cycles possible and turn substitution into
+	// unbounded recursion. Structural macros resolve through their existing empty fallback rather
+	// than smuggling native-role chat messages into an inline control value.
+	const engineValues: Record<string, string> = {};
+	for (const nestedName of extractMacroNames(formatted)) {
+		if (!SYSTEM_MACROS.includes(nestedName) && cappedHistoryTurns(nestedName) === undefined) {
+			continue;
+		}
+		const value = resolveMacro(nestedName, context);
+		if (value !== undefined) engineValues[nestedName] = value;
+	}
+	return substitute(formatted, engineValues);
 }
 
 /**

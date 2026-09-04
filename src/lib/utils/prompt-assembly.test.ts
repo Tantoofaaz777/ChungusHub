@@ -103,6 +103,66 @@ describe('assemblePrompt: basic attribution', () => {
 	});
 });
 
+describe('assemblePrompt: macros inside preset-control text', () => {
+	test('engine identity macros resolve inside an injected control block', () => {
+		const noEcho = {
+			id: 'ctrl-no-echo',
+			macro: 'no_echo',
+			label: 'No echo',
+			type: 'toggle',
+			defaultOn: true,
+			onText: '<no_echo>React to {{user}} without repeating {{poss}} words.</no_echo>',
+			offText: ''
+		} as any;
+		const a = assemblePrompt(
+			input(preset([item('{{no_echo}}')], { controls: [noEcho] }), {
+				controls: [noEcho],
+				resolvedPersona: {
+					name: 'Mara',
+					traits: {},
+					pronouns: { possessive: 'her' }
+				} as any
+			})
+		);
+
+		expect(a.messages).toEqual([
+			{
+				role: 'system',
+				content: '<no_echo>React to Mara without repeating her words.</no_echo>'
+			}
+		]);
+	});
+
+	test('another control macro stays literal instead of recursing', () => {
+		const outer = {
+			id: 'ctrl-outer',
+			macro: 'outer',
+			label: 'Outer',
+			type: 'toggle',
+			defaultOn: true,
+			onText: '{{inner}} belongs to {{user}}.',
+			offText: ''
+		} as any;
+		const inner = {
+			id: 'ctrl-inner',
+			macro: 'inner',
+			label: 'Inner',
+			type: 'toggle',
+			defaultOn: true,
+			onText: 'This must not expand',
+			offText: ''
+		} as any;
+		const a = assemblePrompt(
+			input(preset([item('{{outer}}')], { controls: [outer, inner] }), {
+				controls: [outer, inner],
+				resolvedPersona: { name: 'Mara', traits: {} } as any
+			})
+		);
+
+		expect(a.messages[0].content).toBe('{{inner}} belongs to Mara.');
+	});
+});
+
 describe('assemblePrompt: memory recall is its own bucket', () => {
 	test('{{memory}} recall lands in Memory, not Context or Chat', () => {
 		const recallText = 'Established facts: Kael owes the Iron Cartel 4000 marks by midwinter. Mara distrusts Kael.';
