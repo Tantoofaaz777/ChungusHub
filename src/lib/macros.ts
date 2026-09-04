@@ -16,6 +16,7 @@
 import type {
 	CharacterTraits,
 	PermanentTraitDef,
+	PersonaPronouns,
 	TraitKey
 } from '$lib/types/library';
 import { PERMANENT_TRAITS } from '$lib/types/library';
@@ -23,17 +24,19 @@ import type { Message } from '$lib/types/chat';
 import type { PromptControl } from '$lib/types/database';
 import type { LorebookPlacedGroup, LorebookTrace } from '$lib/lorebook/types';
 import { formatControlForPrompt } from '$lib/utils/prompt-controls';
+import { personaPronouns } from '$lib/utils/persona-pronouns';
 
 // ============================================================================
 // Registry: definitions + the shared substitution primitive
 // ============================================================================
 
 /** Display buckets for the macro reference, in the order the reference panel shows them. */
-export type MacroGroup = 'names' | 'context' | 'time' | 'character-field' | 'memory';
+export type MacroGroup = 'names' | 'persona-pronoun' | 'context' | 'time' | 'character-field' | 'memory';
 
 /** Ordered group metadata for the macro reference UIs. */
 export const MACRO_GROUPS: readonly { id: MacroGroup; label: string; hint: string }[] = [
 	{ id: 'names', label: 'Names', hint: 'inline name references' },
+	{ id: 'persona-pronoun', label: 'Persona pronouns', hint: "the active protagonist's grammatical forms" },
 	{ id: 'context', label: 'Story & context', hint: 'profiles, world info, history, memory' },
 	{ id: 'time', label: 'Date & time', hint: "the reader's own clock, read as the prompt is built" },
 	{ id: 'character-field', label: 'Character fields', hint: 'one card field at a time' },
@@ -79,6 +82,11 @@ export const MACROS: readonly MacroDef[] = [
 	// ----- Engine-owned (resolved from real story + chat state, everywhere) -----
 	{ name: 'user', description: 'Persona / protagonist name.', engine: true, group: 'names' },
 	{ name: 'char', description: 'Character name (resolved per-character inside their own fields).', engine: true, group: 'names' },
+	{ name: 'sub', description: 'Persona subjective pronoun, such as she.', engine: true, group: 'persona-pronoun' },
+	{ name: 'obj', description: 'Persona objective pronoun, such as her.', engine: true, group: 'persona-pronoun' },
+	{ name: 'poss', description: 'Persona possessive determiner, such as her in “her book”.', engine: true, group: 'persona-pronoun' },
+	{ name: 'ref', description: 'Persona reflexive pronoun, such as herself.', engine: true, group: 'persona-pronoun' },
+	{ name: 'poss_p', description: 'Persona possessive pronoun, such as hers.', engine: true, group: 'persona-pronoun' },
 	{ name: 'persona', description: "The active persona's description.", engine: true, group: 'context' },
 	{ name: 'character', description: "The active character's full profile (the whole-sheet blob).", engine: true, group: 'context' },
 	{ name: 'lorebook', description: 'Lorebook entries, keyword-matched against recent messages.', engine: true, group: 'context' },
@@ -169,11 +177,20 @@ export function cappedHistoryTurns(name: string): number | undefined {
 /** Plain-text transcript, "Name: content" per turn: the inline-text form of chat history.
  *  `lastN` keeps only the newest N turns; omitted means ALL turns. Backs
  *  {{chatHistoryLastN}} so the format can't drift. */
-function renderTranscript(messages: Message[], user: string, char: string, lastN?: number): string {
+function renderTranscript(
+	messages: Message[],
+	user: string,
+	char: string,
+	lastN?: number,
+	userPronouns?: Partial<PersonaPronouns>
+): string {
 	const turns = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
 	const kept = lastN === undefined ? turns : lastN > 0 ? turns.slice(-lastN) : [];
 	return kept
-		.map((m) => `${m.role === 'user' ? user : char}: ${expandSelfRefs(m.content, char, user)}`)
+		.map(
+			(m) =>
+				`${m.role === 'user' ? user : char}: ${expandSelfRefs(m.content, char, user, userPronouns)}`
+		)
 		.join('\n\n');
 }
 
@@ -390,6 +407,8 @@ function formatIsoDate(): string {
 export interface PromptCharacter {
 	name: string;
 	traits: CharacterTraits;
+	/** Present for personas; absent data resolves through the neutral pronoun defaults. */
+	pronouns?: Partial<PersonaPronouns>;
 	storyNotes?: string;
 }
 
@@ -467,7 +486,8 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 			context.chatMessages ?? [],
 			resolvedPersona?.name || 'User',
 			resolvedCharacters?.[0]?.name || 'Narrator',
-			lastN
+			lastN,
+			resolvedPersona ? resolvedPersona.pronouns ?? {} : undefined
 		);
 	}
 
@@ -478,6 +498,18 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 		case 'char':
 			// The character the chat is bound to.
 			return resolvedCharacters?.[0]?.name || '';
+		case 'sub':
+			return resolvedPersona ? personaPronouns(resolvedPersona.pronouns).subjective.trim() : '';
+		case 'obj':
+			return resolvedPersona ? personaPronouns(resolvedPersona.pronouns).objective.trim() : '';
+		case 'poss':
+			return resolvedPersona ? personaPronouns(resolvedPersona.pronouns).possessive.trim() : '';
+		case 'ref':
+			return resolvedPersona ? personaPronouns(resolvedPersona.pronouns).reflexive.trim() : '';
+		case 'poss_p':
+			return resolvedPersona
+				? personaPronouns(resolvedPersona.pronouns).possessivePronoun.trim()
+				: '';
 		case 'lastMessage':
 			return lastTurnText(context);
 		case 'lastUserMessage':
@@ -490,7 +522,8 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 			return formatCharacters(
 				resolvedCharacters ?? [],
 				resolvedPersona?.name || 'User',
-				context.exampleSeparator ?? DEFAULT_EXAMPLE_SEPARATOR
+				context.exampleSeparator ?? DEFAULT_EXAMPLE_SEPARATOR,
+				resolvedPersona ? resolvedPersona.pronouns ?? {} : undefined
 			);
 		case 'lorebook':
 			// Scanned and rendered ONCE, when the context was built, so every re-resolve inside
@@ -528,12 +561,14 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 		const raw = char?.traits.exampleDialogue;
 		if (!char || !raw) return '';
 		const personaName = resolvedPersona?.name || 'User';
-		if (name === 'mesExamplesRaw') return expandSelfRefs(raw, char.name, personaName);
+		const pronouns = resolvedPersona ? resolvedPersona.pronouns ?? {} : undefined;
+		if (name === 'mesExamplesRaw') return expandSelfRefs(raw, char.name, personaName, pronouns);
 		return formatExampleDialogue(raw, {
 			separator: context.exampleSeparator ?? DEFAULT_EXAMPLE_SEPARATOR,
 			dropOldest: context.droppedExampleBlocks ?? 0,
 			charName: char.name,
-			personaName
+			personaName,
+			personaPronouns: pronouns
 		});
 	}
 
@@ -546,7 +581,12 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 		if (!char) return '';
 		const raw = char.traits[fieldKey];
 		if (!raw) return '';
-		return expandSelfRefs(raw, char.name, resolvedPersona?.name || 'User');
+		return expandSelfRefs(
+			raw,
+			char.name,
+			resolvedPersona?.name || 'User',
+			resolvedPersona ? resolvedPersona.pronouns ?? {} : undefined
+		);
 	}
 
 	// Everything else is a preset macro: pov, genre, content_rating and anything an author
@@ -572,7 +612,8 @@ function lastTurnText(context: MacroContext, role?: 'user' | 'assistant'): strin
 		return expandSelfRefs(
 			msgs[i].content,
 			context.resolvedCharacters?.[0]?.name || 'Narrator',
-			context.resolvedPersona?.name || 'User'
+			context.resolvedPersona?.name || 'User',
+			context.resolvedPersona ? context.resolvedPersona.pronouns ?? {} : undefined
 		);
 	}
 	return '';
@@ -589,16 +630,29 @@ function resolveCustomControl(name: string, context: MacroContext): string | und
 }
 
 /**
- * Expand the self-referential macros that live inside a character's own field values.
- * {{char}} becomes the character's name and {{user}} the persona's, done per-character
- * rather than in the global macro pass so imported cards keep their macros and a rename just
- * works. Case- and whitespace-tolerant to match the variants cards use.
+ * Expand the live identity macros stored inside character fields and chat rows. The optional
+ * pronoun object distinguishes "an old persona with no stored values" (pass {}) from "there
+ * is no persona" (omit it). Case- and whitespace-tolerant to match imported-card variants.
  */
-export function expandSelfRefs(text: string, charName: string, userName: string): string {
+export function expandSelfRefs(
+	text: string,
+	charName: string,
+	userName: string,
+	userPronouns?: Partial<PersonaPronouns>
+): string {
 	if (!text) return text;
-	return text
+	let expanded = text
 		.replace(/\{\{\s*char\s*\}\}/gi, charName)
 		.replace(/\{\{\s*user\s*\}\}/gi, userName);
+	if (userPronouns === undefined) return expanded;
+	const pronouns = personaPronouns(userPronouns);
+	expanded = expanded
+		.replace(/\{\{\s*sub\s*\}\}/gi, pronouns.subjective.trim())
+		.replace(/\{\{\s*obj\s*\}\}/gi, pronouns.objective.trim())
+		.replace(/\{\{\s*poss\s*\}\}/gi, pronouns.possessive.trim())
+		.replace(/\{\{\s*ref\s*\}\}/gi, pronouns.reflexive.trim())
+		.replace(/\{\{\s*poss_p\s*\}\}/gi, pronouns.possessivePronoun.trim());
+	return expanded;
 }
 
 /** Split a raw example-dialogue field into individual blocks on <START> markers
@@ -621,13 +675,24 @@ export function splitExampleBlocks(raw: string): string[] {
  */
 function formatExampleDialogue(
 	raw: string,
-	opts: { separator: string; dropOldest?: number; charName: string; personaName: string }
+	opts: {
+		separator: string;
+		dropOldest?: number;
+		charName: string;
+		personaName: string;
+		personaPronouns?: Partial<PersonaPronouns>;
+	}
 ): string {
 	let blocks = splitExampleBlocks(raw);
 	if (opts.dropOldest && opts.dropOldest > 0) blocks = blocks.slice(opts.dropOldest);
 	if (blocks.length === 0) return '';
 	const formatted = opts.separator ? blocks.map((block) => `${opts.separator}\n${block}`) : blocks;
-	return expandSelfRefs(formatted.join('\n\n'), opts.charName, opts.personaName);
+	return expandSelfRefs(
+		formatted.join('\n\n'),
+		opts.charName,
+		opts.personaName,
+		opts.personaPronouns
+	);
 }
 
 /**
@@ -642,6 +707,7 @@ function formatSingleCharacter(
 	charName: string,
 	userName: string,
 	exampleSeparator: string,
+	userPronouns?: Partial<PersonaPronouns>,
 	storyNotes?: string
 ): string[] {
 	const lines: string[] = [`**Name:** ${name}`];
@@ -656,14 +722,21 @@ function formatSingleCharacter(
 		// <START> markers become the same separator-headed blocks the {{mesExamples}} macro emits.
 		const value =
 			key === 'exampleDialogue'
-				? formatExampleDialogue(raw, { separator: exampleSeparator, charName, personaName: userName })
-				: expandSelfRefs(raw, charName, userName);
+				? formatExampleDialogue(raw, {
+						separator: exampleSeparator,
+						charName,
+						personaName: userName,
+						personaPronouns: userPronouns
+					})
+				: expandSelfRefs(raw, charName, userName, userPronouns);
 		if (!value) continue;
 		lines.push(`**${label}:** ${value}`);
 	}
 
 	if (storyNotes?.trim()) {
-		lines.push(`**Story Notes:** ${expandSelfRefs(storyNotes.trim(), charName, userName)}`);
+		lines.push(
+			`**Story Notes:** ${expandSelfRefs(storyNotes.trim(), charName, userName, userPronouns)}`
+		);
 	}
 
 	return lines;
@@ -678,7 +751,12 @@ function formatSingleCharacter(
 function formatPersona(activePersona: PromptCharacter | null): string {
 	const description = activePersona?.traits.description;
 	if (!description) return '';
-	return expandSelfRefs(description, activePersona.name, activePersona.name);
+	return expandSelfRefs(
+		description,
+		activePersona.name,
+		activePersona.name,
+		activePersona.pronouns ?? {}
+	);
 }
 
 /**
@@ -686,7 +764,12 @@ function formatPersona(activePersona: PromptCharacter | null): string {
  * this resolves to a single sheet; the array is walked defensively and would stack multiple
  * name-led sheets rather than lose any.
  */
-function formatCharacters(characters: PromptCharacter[], userName: string, exampleSeparator: string): string {
+function formatCharacters(
+	characters: PromptCharacter[],
+	userName: string,
+	exampleSeparator: string,
+	userPronouns?: Partial<PersonaPronouns>
+): string {
 	return characters
 		.filter((char) => char.name)
 		.map((char) =>
@@ -697,6 +780,7 @@ function formatCharacters(characters: PromptCharacter[], userName: string, examp
 				char.name,
 				userName,
 				exampleSeparator,
+				userPronouns,
 				char.storyNotes
 			).join('\n')
 		)

@@ -11,6 +11,15 @@ export interface CharacterSprite {
 	label: string;
 }
 
+/** The five grammatical forms exposed by the persona pronoun macros. */
+export interface PersonaPronouns {
+	subjective: string;
+	objective: string;
+	possessive: string;
+	reflexive: string;
+	possessivePronoun: string;
+}
+
 /** Identity fields used by character/persona library entries */
 export interface LibraryEntryIdentity {
 	name: string;
@@ -19,6 +28,8 @@ export interface LibraryEntryIdentity {
 	 * `name`; prompt macros and chat speaker labels use this when it is non-blank.
 	 */
 	alias?: string;
+	/** Chungus-only persona pronouns. Absent personas read as the neutral defaults. */
+	pronouns?: Partial<PersonaPronouns>;
 	/** Path to image stored in app data folder */
 	imageUrl?: string;
 	/** User-defined tags for organization */

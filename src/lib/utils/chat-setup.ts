@@ -181,6 +181,7 @@ export function toPromptCharacter(
 	return {
 		name: storyRoleName(entry.identity),
 		traits: (data ?? entry.data).traits,
+		pronouns: entry.type === 'persona' ? entry.identity.pronouns : undefined,
 		storyNotes: ''
 	};
 }

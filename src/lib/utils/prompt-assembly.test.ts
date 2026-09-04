@@ -283,6 +283,26 @@ describe('assemblePrompt: {{chatHistory}} carries the whole path', () => {
 		expect(a.messages.filter((m) => m.content === 'Latest user turn.').length).toBe(1);
 	});
 
+	test('persona pronouns stored in a turn resolve when history is injected', () => {
+		const a = assemblePrompt(
+			input(preset([item('{{chatHistory}}')]), {
+				chatMessages: [msg('m1', 'assistant', '{{sub}} kept {{poss}} promise to {{ref}}.')],
+				resolvedPersona: {
+					name: 'Mara',
+					traits: {},
+					pronouns: {
+						subjective: 'she',
+						objective: 'her',
+						possessive: 'her',
+						reflexive: 'herself',
+						possessivePronoun: 'hers'
+					}
+				}
+			})
+		);
+		expect(a.messages[0].content).toBe('she kept her promise to herself.');
+	});
+
 	test('turns after the last user turn survive', () => {
 		// The composer's dummy assistant turn, and every path Continue builds.
 		const chat = [...CHAT, msg('m6', 'assistant', 'A dummy turn to steer from.')];

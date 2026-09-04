@@ -92,7 +92,7 @@
 	// and only ever covers the active path, so no other branch can read as folded.
 	let archivedIds = $derived(memoryStore.archivedMessageIds);
 
-	// {{char}}/{{user}} resolve live for every preview surface, same as the chat renders
+	// Names and persona pronouns resolve live for every preview surface, same as the chat renders
 	// them (coupling #6 in architecture/chat-sessions.md). Rows stay raw.
 	let selfRefChar = $derived.by(() => {
 		const entry = characterLibraryStore.entries.find(
@@ -103,13 +103,16 @@
 	let selfRefUser = $derived(
 		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
 	);
+	let selfRefPronouns = $derived(
+		openChatSetup.persona ? openChatSetup.persona.identity.pronouns ?? {} : undefined
+	);
 
 	function roleLabel(role: StoryMapNode['role']): string {
 		return role === 'user' ? selfRefUser : role === 'assistant' ? selfRefChar : 'System';
 	}
 
 	function expandText(text: string, cap: number): string {
-		const t = expandSelfRefs(text, selfRefChar, selfRefUser);
+		const t = expandSelfRefs(text, selfRefChar, selfRefUser, selfRefPronouns);
 		return t.length > cap ? t.slice(0, cap) + '…' : t || '(empty)';
 	}
 
@@ -654,7 +657,9 @@
 		if (!q) return [];
 		return graph.nodes.filter(
 			(n) =>
-				expandSelfRefs(n.content, selfRefChar, selfRefUser).toLowerCase().includes(q) ||
+				expandSelfRefs(n.content, selfRefChar, selfRefUser, selfRefPronouns)
+					.toLowerCase()
+					.includes(q) ||
 				(n.label?.name.toLowerCase().includes(q) ?? false)
 		);
 	});

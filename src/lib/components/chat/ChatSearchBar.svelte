@@ -69,7 +69,7 @@
 	let branchListOpen = $state(false);
 
 	// ===== Off-path branches =====
-	// Same live expansion Message.svelte does, so a greeting's raw {{char}}/{{user}} is
+	// Same live expansion Message.svelte does, so a greeting's raw identity macros are
 	// searchable by the name actually on screen (architecture/chat-sessions.md coupling 6).
 	let selfRefChar = $derived.by(() => {
 		const entry = characterLibraryStore.entries.find(
@@ -79,6 +79,9 @@
 	});
 	let selfRefUser = $derived(
 		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
+	);
+	let selfRefPronouns = $derived(
+		openChatSetup.persona ? openChatSetup.persona.identity.pronouns ?? {} : undefined
 	);
 
 	let branchHits = $derived.by(() => {
@@ -94,7 +97,7 @@
 			.map((m) => ({
 				id: m.id,
 				role: m.role,
-				text: expandSelfRefs(m.content, selfRefChar, selfRefUser)
+				text: expandSelfRefs(m.content, selfRefChar, selfRefUser, selfRefPronouns)
 			}));
 		return findBranchHits(offPath, regex, MAX_BRANCH_HITS);
 	});
@@ -138,6 +141,7 @@
 		const path = messages;
 		const char = selfRefChar;
 		const user = selfRefUser;
+		const pronouns = selfRefPronouns;
 		const regex = buildSearchRegex(chatSearch.query, {
 			matchCase: chatSearch.matchCase,
 			wholeWord: chatSearch.wholeWord
@@ -151,7 +155,7 @@
 			for (let i = 0; i < hidden; i++) {
 				// Global regex: its cursor has to be rewound per turn.
 				regex.lastIndex = 0;
-				if (regex.test(expandSelfRefs(path[i].content, char, user))) {
+				if (regex.test(expandSelfRefs(path[i].content, char, user, pronouns))) {
 					pendingGrowth = true;
 					loadThrough(i);
 					return;

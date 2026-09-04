@@ -64,6 +64,7 @@ export function buildComposerTransformPrompt(params: ComposerTransformParams): L
 		chatMessages,
 		charName: ctx.resolvedCharacters?.[0]?.name || 'Narrator',
 		userName: ctx.resolvedPersona?.name || 'User',
+		userPronouns: ctx.resolvedPersona ? ctx.resolvedPersona.pronouns ?? {} : undefined,
 		postProcessing: {
 			mode: llmService.getPromptPostProcessing({ engine: kind }),
 			placeholder: llmService.getPromptPlaceholder({ engine: kind })

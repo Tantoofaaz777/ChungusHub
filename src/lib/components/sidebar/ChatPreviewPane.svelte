@@ -154,7 +154,15 @@
 			.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
 			.replace(/\n+/g, ' ')
 			.trim();
-		return truncate(expandSelfRefs(stripped, selfRefChar, selfRefUser), 260);
+		return truncate(
+			expandSelfRefs(
+				stripped,
+				selfRefChar,
+				selfRefUser,
+				persona ? persona.pronouns ?? {} : undefined
+			),
+			260
+		);
 	}
 
 	let pathCount = $derived(stats?.path ?? 0);

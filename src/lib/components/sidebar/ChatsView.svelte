@@ -332,8 +332,14 @@
 		const charName = chatCastStore.charactersForChat(chat.id)[0]?.name?.trim() || 'Story';
 		// The CHAT's persona, falling back to a neutral "You": the same pair the preview
 		// pane resolves with, so one chat can't read two different names in one panel.
-		const userName = chatCastStore.personaForChat(chat.id)?.name?.trim() || 'You';
-		return expandSelfRefs(raw.replace(/\s+/g, ' ').trim(), charName, userName);
+		const persona = chatCastStore.personaForChat(chat.id);
+		const userName = persona?.name?.trim() || 'You';
+		return expandSelfRefs(
+			raw.replace(/\s+/g, ' ').trim(),
+			charName,
+			userName,
+			persona ? persona.pronouns ?? {} : undefined
+		);
 	}
 
 	// ===== Selection =====

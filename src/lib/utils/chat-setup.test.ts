@@ -152,10 +152,25 @@ describe('prompt role names', () => {
 	});
 
 	test('a persona alias is the one name every macro-facing field sees', () => {
-		const persona = toPromptCharacter(entry('persona', '  Mara  '));
+		const source = entry('persona', '  Mara  ');
+		source.identity.pronouns = {
+			subjective: 'she',
+			objective: 'her',
+			possessive: 'her',
+			reflexive: 'herself',
+			possessivePronoun: 'hers'
+		};
+		const persona = toPromptCharacter(source);
 		expect(persona?.name).toBe('Mara');
+		expect(persona?.pronouns).toEqual(source.identity.pronouns);
 		expect(expandMacros('{{user}}', { resolvedPersona: persona })).toBe('Mara');
 		expect(expandMacros('{{persona}}', { resolvedPersona: persona })).toBe('Mara keeps watch.');
+	});
+
+	test('character prompt data never carries persona-only pronouns', () => {
+		const source = entry('character', 'Lila');
+		source.identity.pronouns = { subjective: 'wrong' };
+		expect(toPromptCharacter(source)?.pronouns).toBeUndefined();
 	});
 
 	test('a pinned version can replace the traits without changing alias resolution', () => {

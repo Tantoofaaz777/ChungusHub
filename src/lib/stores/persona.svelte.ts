@@ -62,6 +62,7 @@ class PersonaStore {
 		return {
 			name: storyRoleName(entry.identity),
 			traits: entry.data.traits,
+			pronouns: entry.identity.pronouns,
 			storyNotes: ''
 		};
 	}

@@ -120,11 +120,22 @@ describe('SillyTavern card export', () => {
 		expect(card.first_mes).toBe('Ahoy.');
 	});
 
-	test('keeps character and persona aliases out of every card JSON layer', () => {
+	test('keeps Chungus-only identity fields out of every card JSON layer', () => {
 		for (const type of ['character', 'persona'] as const) {
 			const entry = makeEntry({
 				type,
-				identity: { name: 'Redbeard - Extended Library Title', alias: 'Redbeard', tags: ['pirate'] }
+				identity: {
+					name: 'Redbeard - Extended Library Title',
+					alias: 'Redbeard',
+					pronouns: {
+						subjective: 'they',
+						objective: 'them',
+						possessive: 'their',
+						reflexive: 'themself',
+						possessivePronoun: 'theirs'
+					},
+					tags: ['pirate']
+				}
 			});
 			const card = buildSillyTavernCard(entry, [], 'all');
 			expect(card.name).toBe('Redbeard - Extended Library Title');
@@ -134,6 +145,7 @@ describe('SillyTavern card export', () => {
 				tags: ['pirate']
 			});
 			expect(JSON.stringify(card)).not.toContain('"alias"');
+			expect(JSON.stringify(card)).not.toContain('"pronouns"');
 		}
 	});
 

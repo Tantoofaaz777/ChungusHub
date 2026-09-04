@@ -11,12 +11,14 @@
 import { db } from '$lib/services/database';
 import { characterLibraryStore } from './characterLibrary.svelte';
 import type { PortraitFocus } from '$lib/utils/portrait-focus';
-import { storyRoleName } from '$lib/types/library';
+import { storyRoleName, type PersonaPronouns } from '$lib/types/library';
 
 export interface ChatCastMember {
 	libraryEntryId: string;
 	name: string;
 	imageUrl: string | null;
+	/** Present only for persona cast members; an empty object means the neutral defaults. */
+	pronouns?: Partial<PersonaPronouns>;
 	/** Travels with the art, so every list that draws this face aims it the same way. */
 	portraitFocus?: PortraitFocus;
 }
@@ -126,6 +128,7 @@ class ChatCastStore {
 			libraryEntryId: entry.id,
 			name: storyRoleName(entry.identity),
 			imageUrl: entry.identity.imageUrl ?? null,
+			pronouns: entry.identity.pronouns ?? {},
 			portraitFocus: entry.identity.portraitFocus
 		};
 	}

@@ -2,6 +2,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { personaStore, LAST_PERSONA_REASON } from '$lib/stores/persona.svelte';
@@ -13,9 +14,15 @@
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
 	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import { BLOB_MACRO } from '$lib/types/library';
+	import { BLOB_MACRO, type PersonaPronouns } from '$lib/types/library';
 	import { presetService } from '$lib/services/presets.svelte';
 	import { extractMacroNames } from '$lib/macros';
+	import {
+		PERSONA_PRONOUN_PRESETS,
+		personaPronouns,
+		personaPronounPreset,
+		personaPronounPresetId
+	} from '$lib/utils/persona-pronouns';
 
 	interface Props {
 		entryId: string;
@@ -23,6 +30,28 @@
 	}
 
 	let { entryId, onClose }: Props = $props();
+	const PRONOUN_FIELDS: readonly {
+		key: keyof PersonaPronouns;
+		label: string;
+		macro: string;
+		placeholder: string;
+	}[] = [
+		{ key: 'subjective', label: 'Subjective', macro: 'sub', placeholder: 'she / he / they' },
+		{ key: 'objective', label: 'Objective', macro: 'obj', placeholder: 'her / him / them' },
+		{ key: 'possessive', label: 'Possessive', macro: 'poss', placeholder: 'her / his / their' },
+		{
+			key: 'reflexive',
+			label: 'Reflexive',
+			macro: 'ref',
+			placeholder: 'herself / himself / themself'
+		},
+		{
+			key: 'possessivePronoun',
+			label: 'Possessive pronoun',
+			macro: 'poss_p',
+			placeholder: 'hers / his / theirs'
+		}
+	];
 
 	let entry = $derived(characterLibraryStore.entries.find((e) => e.id === entryId));
 	// Brand-new personas get explicit Save/Discard; confirmed ones autosave silently.
@@ -40,6 +69,7 @@
 			? {
 					name: entry.identity.name,
 					alias: entry.identity.alias,
+					pronouns: entry.identity.pronouns,
 					imageUrl: entry.identity.imageUrl,
 					portraitFocus: entry.identity.portraitFocus,
 					traits: entry.data.traits,
@@ -47,6 +77,17 @@
 				}
 			: null
 	);
+	let pronouns = $derived(personaPronouns(snapshot?.pronouns));
+	let pronounPresetId = $derived(personaPronounPresetId(snapshot?.pronouns));
+	// Key the explicit Custom selection to the entry so it cannot follow the editor to another
+	// persona while the newly cleared fields are being written.
+	let customPronounEntryId = $state<string | null>(null);
+	let pronounSelection = $derived(
+		pronounPresetId === 'custom' || customPronounEntryId === entry?.id
+			? 'custom'
+			: pronounPresetId
+	);
+	let showPronounFields = $derived(pronounSelection === 'custom');
 
 	// "Not sent to AI" mirrors the character editor: the description reaches the AI
 	// only when the active preset places the {{persona}} macro somewhere.
@@ -75,6 +116,33 @@
 	function handleDescriptionChange(value: string) {
 		if (!entry) return;
 		characterLibraryStore.scheduleDataEdit(entry.id, { traits: { description: value } });
+	}
+
+	function handlePronounChange(field: keyof PersonaPronouns, value: string) {
+		if (!entry) return;
+		characterLibraryStore.scheduleIdentityEdit(entry.id, {
+			pronouns: { ...personaPronouns(entry.identity.pronouns), [field]: value }
+		});
+	}
+
+	function handlePronounPresetChange(id: string) {
+		if (!entry) return;
+		if (id === 'custom') {
+			customPronounEntryId = entry.id;
+			void characterLibraryStore.updateIdentity(entry.id, {
+				pronouns: {
+					subjective: '',
+					objective: '',
+					possessive: '',
+					reflexive: '',
+					possessivePronoun: ''
+				}
+			});
+			return;
+		}
+		customPronounEntryId = null;
+		const values = personaPronounPreset(id);
+		if (values) void characterLibraryStore.updateIdentity(entry.id, { pronouns: values });
 	}
 
 	function handleLorebookLinksChange(ids: string[]) {
@@ -385,6 +453,56 @@
 							<span class="text-xs font-ui font-semibold uppercase tracking-wide text-accent">Persona</span>
 							<span class="flex-1 border-t border-border-subtle/70 ml-1"></span>
 						</div>
+
+						<div class="rounded-[var(--radius-lg)] border border-border-subtle bg-bg-secondary/40 p-3 space-y-3">
+							<div>
+								<div class="text-sm font-ui font-medium text-text-primary">Pronouns</div>
+								<div class="text-xs font-ui text-text-muted">Used by persona macros</div>
+							</div>
+
+							<div class="w-full">
+								<label for="persona-pronoun-preset-{entry.id}" class="block text-xs font-ui font-medium text-text-secondary mb-1">
+									Preset
+								</label>
+								<Select
+									id="persona-pronoun-preset-{entry.id}"
+									value={pronounSelection}
+									onchange={(e) => handlePronounPresetChange((e.target as HTMLSelectElement).value)}
+									class="w-full"
+								>
+									{#each PERSONA_PRONOUN_PRESETS as preset (preset.id)}
+										<option value={preset.id}>{preset.label}</option>
+									{/each}
+									<option value="custom">Custom</option>
+								</Select>
+							</div>
+
+							{#if showPronounFields}
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+									{#each PRONOUN_FIELDS as field (field.key)}
+										<div>
+											<label
+												for="persona-pronoun-{field.key}-{entry.id}"
+												class="flex items-center justify-between gap-2 text-xs font-ui font-medium text-text-secondary mb-1"
+											>
+												<span>{field.label}</span>
+												<code class="font-mono text-accent">{`{{${field.macro}}}`}</code>
+											</label>
+											<input
+												id="persona-pronoun-{field.key}-{entry.id}"
+												type="text"
+												value={pronouns[field.key]}
+												placeholder={field.placeholder}
+												oninput={(e) =>
+													handlePronounChange(field.key, (e.target as HTMLInputElement).value)}
+												class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted"
+											/>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
 						<div class="rounded-[var(--radius-lg)] border border-border-subtle bg-bg-secondary/40 transition-colors hover:border-border">
 							<div class="flex items-center gap-2 px-3 pt-2.5 pb-1">
 								<span class="flex-1 min-w-0 truncate text-sm font-ui font-medium text-text-primary">

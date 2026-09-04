@@ -8,6 +8,7 @@
 
 import type { LLMMessage, PromptPostProcessingMode } from '$lib/types/llm';
 import type { Message } from '$lib/types/chat';
+import type { PersonaPronouns } from '$lib/types/library';
 import { expandSelfRefs } from '$lib/macros';
 import { applyPostProcessing } from './prompt-assembly';
 
@@ -19,6 +20,7 @@ export interface TransformShapeInput {
 	/** Live names for self-ref expansion, same fallbacks as prompt-assembly.toInjectedMessage. */
 	charName: string;
 	userName: string;
+	userPronouns?: Partial<PersonaPronouns>;
 	/** The engine connection's own reshaping, the same one assembly applies for the story
 	 *  prompt: Impersonate is the one engine sending a multi-turn history, so a connection
 	 *  declared strict or single-user must get the shape it declared. */
@@ -26,7 +28,7 @@ export interface TransformShapeInput {
 }
 
 export function shapeComposerTransform(input: TransformShapeInput): LLMMessage[] {
-	const { kind, filled, chatMessages, charName, userName, postProcessing } = input;
+	const { kind, filled, chatMessages, charName, userName, userPronouns, postProcessing } = input;
 	const postProcess = (messages: LLMMessage[]) =>
 		applyPostProcessing(messages, postProcessing.mode, postProcessing.placeholder);
 
@@ -46,7 +48,7 @@ export function shapeComposerTransform(input: TransformShapeInput): LLMMessage[]
 		.filter((m) => m.role === 'user' || m.role === 'assistant')
 		.map((m) => ({
 			role: m.role === 'user' ? ('assistant' as const) : ('user' as const),
-			content: expandSelfRefs(m.content, charName, userName)
+			content: expandSelfRefs(m.content, charName, userName, userPronouns)
 		}));
 
 	return postProcess([...history, { role: 'user', content: filled }]);

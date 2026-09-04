@@ -273,14 +273,15 @@ const STRUCTURAL_ALTERNATION = STRUCTURAL_MACROS.join('|');
 const STRUCTURAL_TAG_RE = new RegExp(`\\{\\{(?:${STRUCTURAL_ALTERNATION})\\}\\}`);
 
 /** A chat Message as an injected LLM turn: native role + attachment images.
- *  Self-refs ({{char}}/{{user}}) are resolved live against the active persona/character
+ *  Identity refs (names and persona pronouns) are resolved live against the active persona/character
  *  here, never baked into the stored row, so changing persona reflows old turns too. */
 function toInjectedMessage(m: Message, ctx: MacroContext): LLMMessage {
 	const images = m.attachments?.filter((a) => a.kind === 'image').map((a) => a.path);
 	const content = expandSelfRefs(
 		m.content,
 		ctx.resolvedCharacters?.[0]?.name || 'Narrator',
-		ctx.resolvedPersona?.name || 'User'
+		ctx.resolvedPersona?.name || 'User',
+		ctx.resolvedPersona ? ctx.resolvedPersona.pronouns ?? {} : undefined
 	);
 	return { role: m.role, content, ...(images?.length ? { images } : {}) };
 }

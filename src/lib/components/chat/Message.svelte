@@ -134,7 +134,7 @@
 	);
 	const editLines = $derived(describeMemoryImpact(editImpact, { mode: 'edit', auto: memoryStore.autoExtract }));
 
-	// {{char}}/{{user}} resolve live at display against the active persona + bound character.
+	// Names and persona pronouns resolve live at display against the active persona + bound character.
 	// Greetings store their macros raw, so changing persona reflows them on screen without
 	// touching the row (matches the generation path in prompt-assembly.toInjectedMessage).
 	const selfRefChar = $derived.by(() => {
@@ -149,6 +149,9 @@
 	// per streamed token.
 	const selfRefUser = $derived(
 		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
+	);
+	const selfRefPronouns = $derived(
+		openChatSetup.persona ? openChatSetup.persona.identity.pronouns ?? {} : undefined
 	);
 	const displayPreset = $derived(openChatSetup.preset);
 
@@ -465,7 +468,11 @@
 	// not the stored macros. Any new reasoning streams in after the stored block.
 	const displayedContent = $derived(
 		streamTail != null
-			? previewContinuation(message.content, streamTail, expandSelfRefs(message.content, selfRefChar, selfRefUser))
+			? previewContinuation(
+					message.content,
+					streamTail,
+					expandSelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns)
+				)
 			: message.content
 	);
 	const liveThinking = $derived(
@@ -479,15 +486,16 @@
 	// renderer, so a whitespace-only reasoning string never mounts an empty shell.
 	const hasReasoning = $derived(Boolean(liveThinking?.trim()));
 	// The story text as it reaches the page: display-scope regex rules (measured against this
-	// turn's depth), then live {{char}}/{{user}}, then markdown. Derived rather than inlined
+	// turn's depth), then live identity macros, then markdown. Derived rather than inlined
 	// so the action below re-runs on exactly these inputs and nothing else.
 	const bodyHtml = $derived(
 		renderMarkdown(
-			expandSelfRefs(
-				regexRulesStore.forDisplay(displayedContent, message.role, depth, displayPreset),
-				selfRefChar,
-				selfRefUser
-			)
+				expandSelfRefs(
+					regexRulesStore.forDisplay(displayedContent, message.role, depth, displayPreset),
+					selfRefChar,
+					selfRefUser,
+					selfRefPronouns
+				)
 		)
 	);
 	// Portraits style renders the portrait INSIDE the card (floated top-left),
