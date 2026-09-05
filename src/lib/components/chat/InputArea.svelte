@@ -2,6 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import { countTokens, tokenCalibration } from '$lib/tokenizer';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import ChatSetupChip from './ChatSetupChip.svelte';
 	import ChatPersonaDialog from './ChatPersonaDialog.svelte';
 	import TransformPanel from './TransformPanel.svelte';
@@ -698,15 +699,6 @@
 
 	let pendingImages = $state<{ path: string; url: string }[]>([]);
 	let uploadingImages = $state(0);
-	let fileInput: HTMLInputElement | undefined = $state();
-	/** The attach menu. One row today; the button is a menu because the next attachable
-	 *  kind shouldn't have to re-teach the composer's toolbar what that button does. */
-	let attachOpen = $state(false);
-
-	function pickImage() {
-		attachOpen = false;
-		fileInput?.click();
-	}
 
 	async function attachImageFiles(files: File[]): Promise<void> {
 		const images: File[] = [];
@@ -744,12 +736,6 @@
 			e.preventDefault();
 			void attachImageFiles(files);
 		}
-	}
-
-	function handleFilePick(e: Event) {
-		const input = e.currentTarget as HTMLInputElement;
-		void attachImageFiles(Array.from(input.files ?? []));
-		input.value = '';
 	}
 
 	// ===== Dropping a picture on the composer =====
@@ -1142,27 +1128,34 @@
 							onclick={() => (menuOpen = !menuOpen)}
 							class="composer-icon-btn"
 							class:composer-icon-btn--active={menuOpen}
-							aria-label="Insert options"
-							title="Insert options"
+							aria-label="Chat actions"
+							title="Chat actions"
+							aria-haspopup="dialog"
+							aria-expanded={menuOpen}
 						>
 							<Icon name="menu" class="w-4 h-4" />
 						</button>
 
-						{#if menuOpen}
-							<!-- Backdrop to close menu -->
-							<button
-								type="button"
-								class="fixed inset-0 z-10"
-								onclick={() => (menuOpen = false)}
-								aria-label="Close menu"
-							></button>
-
-							<!-- Dropdown menu. The engine entries wear their engine's own registry
-							     icon (feather / checkCircle / mask) and the two Insert rows wear the
+						<Dialog
+							open={menuOpen}
+							onClose={() => (menuOpen = false)}
+							title="Chat actions"
+							titleAlign="left"
+							size="sm"
+							placement="center"
+							bare
+						>
+							<!-- The engine entries wear their engine's own registry icon
+							     (feather / checkCircle / mask) and the two Insert rows wear the
 							     role glyphs MessageAvatar draws, so a row reads the same here as it
 							     does in the transcript. -->
-							<div class="composer-dropdown absolute bottom-full left-0 mb-2 z-20 surface-float rounded-lg shadow-md py-1 min-w-[210px]">
-								<button type="button" class="composer-menu-item" onclick={handleGoHome}>
+							<div class="composer-dialog-menu py-1">
+								<button
+									type="button"
+									class="composer-menu-item"
+									onclick={handleGoHome}
+									data-dialog-initial-focus
+								>
 									<Icon name="home" class="w-4 h-4" />
 									Home
 								</button>
@@ -1271,59 +1264,8 @@
 									Relabel your messages…
 								</button>
 							</div>
-						{/if}
+						</Dialog>
 					</div>
-
-					<div class="composer-menu-wrap relative">
-						<button
-							type="button"
-							onclick={() => (attachOpen = !attachOpen)}
-							class="composer-icon-btn"
-							class:composer-icon-btn--active={attachOpen}
-							disabled={isStreaming}
-							aria-label="Attach"
-							title="Attach"
-							aria-haspopup="menu"
-							aria-expanded={attachOpen}
-						>
-							<Icon name="paperclip" class="w-4 h-4" />
-						</button>
-
-						{#if attachOpen}
-							<!-- Backdrop to close menu -->
-							<button
-								type="button"
-								class="fixed inset-0 z-10"
-								onclick={() => (attachOpen = false)}
-								aria-label="Close menu"
-							></button>
-
-							<!-- The Insert menu's recipe, down to the width: the two triggers sit side
-							     by side, so two dropdowns of different builds would read as an accident.
-							     One row for now: images are simply the only kind we take yet. -->
-							<div class="composer-dropdown absolute bottom-full left-0 mb-2 z-20 surface-float rounded-lg shadow-md py-1 min-w-[210px]">
-								<button
-									type="button"
-									class="composer-menu-item"
-									title="PNG, JPEG, WebP or GIF"
-									onclick={pickImage}
-								>
-									<Icon name="image" class="w-4 h-4" />
-									Image…
-								</button>
-							</div>
-						{/if}
-					</div>
-					<!-- Outside the menu on purpose: picking a row closes it, and an input that
-					     unmounts in the same tick never gets to open its file dialog. -->
-					<input
-						bind:this={fileInput}
-						type="file"
-						accept="image/png,image/jpeg,image/webp,image/gif"
-						multiple
-						class="hidden"
-						onchange={handleFilePick}
-					/>
 
 					{#if featurePromptsStore.steeringEnabled && chatStore.activeChatId}
 						<div class="composer-menu-wrap relative">
@@ -1335,6 +1277,7 @@
 								class="composer-icon-btn steering-trigger"
 								class:steering-trigger--active={steeringActive}
 								aria-label="Steering"
+								aria-haspopup="dialog"
 								aria-expanded={steeringOpen}
 								title={steeringTitle}
 							>
@@ -1344,20 +1287,19 @@
 								{/if}
 							</button>
 
-							{#if steeringOpen}
-								<!-- Backdrop: any outside click closes AND flushes the pending note
-								     write, so no interaction can build a prompt against a stale edit. -->
-								<button
-									type="button"
-									class="fixed inset-0 z-10"
-									onclick={closeSteering}
-									aria-label="Close steering"
-								></button>
-
-								<div class="absolute bottom-full left-0 mb-2 z-20">
-									<SteeringPopover bind:this={steeringPopover} />
-								</div>
-							{/if}
+							<!-- Every dismissal route reaches closeSteering, which commits quick text
+							     and flushes pending note edits before the surface unmounts. -->
+							<Dialog
+								open={steeringOpen}
+								onClose={closeSteering}
+								title="Steering"
+								titleAlign="left"
+								size="sm"
+								placement="center"
+								bare
+							>
+								<SteeringPopover bind:this={steeringPopover} />
+							</Dialog>
 						</div>
 					{/if}
 
@@ -1681,14 +1623,14 @@
 		flex-wrap: wrap;
 	}
 
-	/* The dropdown anchor must be a flex box: a block wrapper around an inline-flex
+	/* The button wrapper must be a flex box: a block wrapper around an inline-flex
 	   button reserves baseline descender space below it, which is exactly the
 	   "one button sits lower" misalignment the old layout had. */
 	.composer-menu-wrap {
 		display: flex;
 	}
 
-	/* Compact tool buttons (insert menu, attach) sized to the meta-row chips so the
+	/* Compact tool buttons (chat actions, steering) sized to the meta-row chips so the
 	   whole bottom row reads as one aligned strip. */
 	.composer-icon-btn {
 		display: inline-flex;
@@ -1742,8 +1684,13 @@
 		flex-shrink: 0;
 	}
 
-	.composer-dropdown {
-		max-width: min(16rem, calc(100vw - 1rem));
+	/* A short screen may not have room for every optional action. The Dialog owns the
+	   fixed head; this list owns the remaining vertical space and its one scrollbar. */
+	.composer-dialog-menu {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 
 	/* Menu rows: a fixed icon column then the label, in the same font-ui/secondary →

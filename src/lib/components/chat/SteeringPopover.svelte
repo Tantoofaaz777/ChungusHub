@@ -9,9 +9,8 @@
 	 * a name) belongs to the editor, which is one click away, so the box carries no controls
 	 * of its own at all.
 	 *
-	 * It renders the panel only; the trigger button, its active dot and the click-away
-	 * backdrop stay in InputArea, which owns the open state and the composer's own button
-	 * recipe.
+	 * It renders the dialog body only; InputArea owns the shared Dialog, open state, close
+	 * commit, trigger button and its active dot.
 	 */
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
@@ -87,7 +86,7 @@
 	}
 </script>
 
-<div class="steering-popover surface-float">
+<div class="steering-popover">
 	{#if editing}
 		<div class="pop-body panel-scroll">
 			<SteeringNoteEditor
@@ -99,8 +98,7 @@
 			/>
 		</div>
 	{:else}
-		<div class="pop-head">
-			<span class="pop-title font-ui">Steering</span>
+		<div class="pop-status">
 			<span class="pop-count font-ui">
 				{#if scoped.length}
 					{activeCount} of {scoped.length} on
@@ -184,14 +182,10 @@
 
 <style>
 	.steering-popover {
-		/* Anchored to the trigger's left edge, which sits ~6rem into the viewport on
-		   phones (menu + attach buttons before it), so the clamp keeps the right edge
-		   on-screen there instead of assuming the anchor is at the viewport's left. */
-		width: min(23rem, calc(100vw - 6.5rem));
-		/* It grows upward from the composer, so without a ceiling its own head leaves the
-		   top of the screen and the stack goes with it. dvh rather than vh: a static one
-		   over-measures under mobile browser chrome. */
-		max-height: min(26rem, 60dvh);
+		width: 100%;
+		/* The dialog supplies the outer ceiling; this keeps a long note stack compact and
+		   leaves room for its fixed title bar on short screens. */
+		max-height: min(26rem, 70dvh);
 		padding: 0.65rem;
 		display: flex;
 		flex-direction: column;
@@ -208,23 +202,17 @@
 		overscroll-behavior: contain;
 	}
 
-	.pop-head,
+	.pop-status,
 	.quick,
 	.foot {
 		flex: none;
 	}
 
-	.pop-head {
+	.pop-status {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: flex-end;
 		gap: 0.5rem;
-	}
-
-	.pop-title {
-		font-size: 0.76rem;
-		font-weight: 640;
-		color: var(--color-text-primary);
 	}
 
 	.pop-count,

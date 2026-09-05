@@ -4,6 +4,7 @@
 	import Icon from './Icon.svelte';
 
 	type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+	type DialogPlacement = 'top' | 'center';
 
 	const sizeClasses: Record<DialogSize, string> = {
 		sm: 'max-w-sm',
@@ -21,6 +22,9 @@
 		title?: string;
 		size?: DialogSize;
 		titleAlign?: 'center' | 'left';
+		/** Keep the established near-top position by default, while allowing compact
+		 *  action pickers to read as a popup in the middle of the screen. */
+		placement?: DialogPlacement;
 		/** A dialog that must be answered rather than escaped: no close X, and Escape
 		 *  and the backdrop stop dismissing. All three go together on purpose. Leaving
 		 *  the X while blocking the key would leave a button on screen that does
@@ -48,6 +52,7 @@
 		title,
 		size = 'md',
 		titleAlign = 'center',
+		placement = 'top',
 		dismissible = true,
 		bare = false,
 		fill = false,
@@ -162,9 +167,10 @@
 <div bind:this={portalEl} class="dialog-portal">
 	<!-- Backdrop -->
 	<div
-		class="dialog-scrim fixed inset-0 z-[300] flex items-start justify-center px-3 panel-scroll {mobileFullscreen
+		class="dialog-scrim fixed inset-0 z-[300] flex justify-center px-3 panel-scroll {mobileFullscreen
 			? 'dialog-scrim--mobile-fullscreen'
 			: ''}"
+		class:dialog-scrim--centered={placement === 'center'}
 		style="background: var(--color-overlay); backdrop-filter: var(--backdrop-blur);"
 		onclick={handleBackdropClick}
 		onkeydown={handleBackdropKeydown}
@@ -181,6 +187,7 @@
 				: ''} {fill ? 'dialog-panel--fill' : ''} {mobileFullscreen
 				? 'dialog-panel--mobile-fullscreen'
 				: ''}"
+			class:dialog-panel--centered={placement === 'center'}
 			style="box-shadow: var(--shadow-lg);"
 			transition:fly={{ y: 20, duration: 200 }}
 		>
@@ -233,7 +240,12 @@
 	   restate it: this padding, top and bottom, and the panel between them. */
 	.dialog-scrim {
 		--dialog-inset: 4dvh;
+		align-items: flex-start;
 		padding-block: var(--dialog-inset);
+	}
+
+	.dialog-scrim--centered {
+		align-items: center;
 	}
 
 	/* The ceiling every dialog stands under, declared once so `fill` can reach for exactly it
@@ -248,6 +260,10 @@
 	   backdrop a scrollbar of its own, which is a second scroller over one surface. */
 	.dialog-panel--fill {
 		height: min(var(--dialog-max-h), calc(100dvh - 2 * var(--dialog-inset)));
+		margin-bottom: 0;
+	}
+
+	.dialog-panel--centered {
 		margin-bottom: 0;
 	}
 
