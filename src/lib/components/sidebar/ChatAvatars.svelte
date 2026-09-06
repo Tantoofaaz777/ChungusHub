@@ -17,32 +17,20 @@
 	let shown = $derived(members.slice(0, max));
 	let overflow = $derived(Math.max(0, members.length - max));
 
-	// Resolve thumbnail URLs per entry. getThumbnailUrl just derives a static URL,
-	// so this is cheap; we cache by libraryEntryId to avoid re-deriving.
-	let urls = $state<Record<string, string | null>>({});
-	$effect(() => {
-		for (const member of shown) {
-			if (!member.imageUrl) continue;
-			if (member.libraryEntryId in urls) continue;
-			imageService.getThumbnailUrl(member.imageUrl).then((url) => {
-				urls = { ...urls, [member.libraryEntryId]: url };
-			});
-		}
-	});
-
 </script>
 
 <div class="chat-avatars" style="--avatar-size: {size}px;">
 	{#each shown as member (member.libraryEntryId)}
+		{@const url = imageService.thumbnailUrl(member.imageUrl ?? undefined)}
 		<div
 			class="chat-avatar"
 			title={member.name || 'Unnamed'}
 			role="img"
 			aria-label={member.name || 'Unnamed'}
 		>
-			{#if urls[member.libraryEntryId]}
+			{#if url}
 				<img
-					src={urls[member.libraryEntryId]}
+					src={url}
 					alt={member.name}
 					style={portraitFocusStyle(member.portraitFocus)}
 				/>

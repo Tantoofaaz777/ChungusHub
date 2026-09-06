@@ -43,41 +43,7 @@
 		onConvert
 	}: Props = $props();
 
-	let resolvedImageUrl = $state<string | null>(null);
-	let isVisible = $state(false);
-	let cardRef = $state<HTMLDivElement | null>(null);
-
-	// Lazy loading: only resolve image when card becomes visible
-	$effect(() => {
-		if (!cardRef) return;
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (entries[0].isIntersecting) {
-					isVisible = true;
-					observer.disconnect();
-				}
-			},
-			{ rootMargin: '100px' } // Start loading 100px before entering viewport
-		);
-
-		observer.observe(cardRef);
-		return () => observer.disconnect();
-	});
-
-	// Only load thumbnail once visible
-	$effect(() => {
-		if (!isVisible) return;
-
-		const imageUrl = entry.identity.imageUrl;
-		if (imageUrl) {
-			imageService.getThumbnailUrl(imageUrl).then((url) => {
-				resolvedImageUrl = url;
-			});
-		} else {
-			resolvedImageUrl = null;
-		}
-	});
+	let resolvedImageUrl = $derived(imageService.thumbnailUrl(entry.identity.imageUrl));
 
 	function getName(): string {
 		return entry.identity.name || (entry.type === 'character' ? 'Unnamed Character' : 'Unnamed Persona');
@@ -95,7 +61,6 @@
 </script>
 
 <div
-	bind:this={cardRef}
 	role="button"
 	tabindex="0"
 	onclick={handleCardClick}
@@ -118,6 +83,7 @@
 			<img
 				src={resolvedImageUrl}
 				alt={getName()}
+				loading="lazy"
 				class="browse-card-portrait w-full h-full object-cover"
 				style={portraitFocusAim(entry.identity.portraitFocus)}
 			/>

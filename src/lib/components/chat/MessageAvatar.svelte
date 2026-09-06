@@ -26,27 +26,8 @@
 
 	const durationLabel = $derived(durationMs != null ? formatDuration(durationMs) : null);
 
-	let portraitUrl = $state<string | null>(null);
+	let portraitUrl = $derived(imageService.thumbnailUrl(imagePath ?? undefined));
 	const isUser = $derived(role === 'user');
-
-	$effect(() => {
-		const path = imagePath;
-		portraitUrl = null;
-		if (!path) return;
-
-		let cancelled = false;
-		imageService.getThumbnailUrl(path)
-			.then((resolved) => {
-				if (!cancelled) portraitUrl = resolved;
-			})
-			.catch(() => {
-				if (!cancelled) portraitUrl = null;
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	});
 
 	function handleClick() {
 		if (clickable && imagePath) portraitViewerStore.toggle(imagePath, name);

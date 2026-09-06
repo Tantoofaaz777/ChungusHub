@@ -378,10 +378,10 @@ function requestedFilePath(pathname: string, prefix: string): string {
  * to be one with no origin, no script and nothing to reach, and CORP keeps another site from
  * reading these at all. The type itself is whitelisted upstream (`imageContentType`).
  */
-function imageHeaders(type: string): Record<string, string> {
+function imageHeaders(type: string, cacheControl = 'no-cache'): Record<string, string> {
 	return {
 		'content-type': type,
-		'cache-control': 'no-cache',
+		'cache-control': cacheControl,
 		'x-content-type-options': 'nosniff',
 		'content-security-policy': "default-src 'none'; sandbox",
 		'cross-origin-resource-policy': 'same-origin'
@@ -410,7 +410,12 @@ function serveImage(pathname: string): Response {
 	// a stored file becomes a page on this origin.
 	const type = filePath && imageContentType(filePath);
 	if (filePath && type) {
-		return new Response(Bun.file(filePath), { headers: imageHeaders(type) });
+		// Stored pictures receive a new path whenever their contents change, so their URL is
+		// immutable. Keep them in the browser's private cache: a phone should not fetch the
+		// same portrait again on every view, while a shared proxy must never retain user art.
+		return new Response(Bun.file(filePath), {
+			headers: imageHeaders(type, 'private, max-age=31536000, immutable')
+		});
 	}
 	return new Response('Not found', { status: 404 });
 }

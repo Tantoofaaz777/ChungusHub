@@ -173,7 +173,7 @@
 
 	// Image handling state
 	let fileInputRef = $state<HTMLInputElement | null>(null);
-	let resolvedImageUrl = $state<string | null>(null);
+	let resolvedImageUrl = $derived(imageService.imageUrl(imageUrl));
 	let imageLoading = $state(false);
 
 	// Tags handling state
@@ -183,17 +183,6 @@
 	let editingTagIndex = $state<number | null>(null);
 	let editingTagValue = $state('');
 	let editTagInputRef = $state<HTMLInputElement | null>(null);
-
-	// Resolve image URL when imageUrl prop changes
-	$effect(() => {
-		if (imageUrl) {
-			imageService.getImageUrl(imageUrl).then((url) => {
-				resolvedImageUrl = url;
-			});
-		} else {
-			resolvedImageUrl = null;
-		}
-	});
 
 	// Placeholders for the permanent character-card fields.
 	const namePlaceholder = 'Character name';

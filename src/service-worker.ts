@@ -3,8 +3,8 @@
 
 /**
  * Minimal app-shell service worker: it makes the PWA installable and lets the
- * static assets load offline. API/WS/file requests always go to the network;
- * those are live data and must never be served stale.
+ * static assets load offline. API/WS/file requests stay outside the app-shell cache;
+ * their own response headers decide whether the browser may reuse them.
  */
 import { build, files, version } from '$service-worker';
 
@@ -30,7 +30,8 @@ sw.addEventListener('fetch', (event) => {
 	if (request.method !== 'GET') return;
 
 	const url = new URL(request.url);
-	// Never cache live data. Let it hit the network and fail loud if offline.
+	// Never put live data or user files in the app-shell cache. A stored image's own immutable,
+	// private HTTP cache policy may still let the browser reuse it without a network trip.
 	if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/') || url.pathname === '/ws') {
 		return;
 	}

@@ -33,20 +33,6 @@
 
 	let top = $derived(rows[0]?.member.messages ?? 1);
 
-	// Portraits resolve through the image service, so they are fetched once per id rather
-	// than per render. A character with no portrait simply keeps its initial.
-	let portraits = $state<Record<string, string>>({});
-	$effect(() => {
-		for (const row of rows) {
-			const path = row.entry?.identity.imageUrl;
-			const id = row.member.characterId;
-			if (!path || portraits[id]) continue;
-			imageService.getImageUrl(path).then((url) => {
-				if (url) portraits = { ...portraits, [id]: url };
-			});
-		}
-	});
-
 	function nameFor(index: number, real: string): string {
 		return anonymous ? `Character ${index + 1}` : real;
 	}
@@ -56,11 +42,12 @@
 	{#each rows as row, index (row.member.characterId)}
 		{@const entry = row.entry!}
 		{@const name = nameFor(index, storyRoleName(entry.identity))}
+		{@const portrait = imageService.imageUrl(entry.identity.imageUrl)}
 		<li class="member">
 			<span class="rank" aria-hidden="true">{index + 1}</span>
 			<div class="face" aria-hidden="true">
-				{#if portraits[row.member.characterId] && !anonymous}
-					<img src={portraits[row.member.characterId]} alt="" style={portraitFocusAim(entry.identity.portraitFocus)} />
+				{#if portrait && !anonymous}
+					<img src={portrait} alt="" style={portraitFocusAim(entry.identity.portraitFocus)} />
 				{:else}
 					<span class="initial">{name.trim()[0]?.toUpperCase() ?? '?'}</span>
 				{/if}

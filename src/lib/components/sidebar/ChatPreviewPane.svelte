@@ -129,16 +129,6 @@
 	let selfRefChar = $derived(character?.name?.trim() || 'Story');
 	let selfRefUser = $derived(persona?.name?.trim() || 'You');
 
-	let speakerUrls = $state<Record<string, string | null>>({});
-	$effect(() => {
-		for (const member of [persona, character]) {
-			if (!member?.imageUrl || member.libraryEntryId in speakerUrls) continue;
-			imageService.getThumbnailUrl(member.imageUrl).then((url) => {
-				speakerUrls = { ...speakerUrls, [member.libraryEntryId]: url };
-			});
-		}
-	});
-
 	function speakerFor(message: Message): ChatCastMember | null {
 		return message.role === 'user' ? persona : character;
 	}
@@ -209,7 +199,7 @@
 				{/if}
 				{#each shown as message (message.id)}
 					{@const speaker = speakerFor(message)}
-					{@const speakerUrl = speaker?.imageUrl ? (speakerUrls[speaker.libraryEntryId] ?? null) : null}
+					{@const speakerUrl = imageService.thumbnailUrl(speaker?.imageUrl ?? undefined)}
 					<div class="preview-turn">
 						<div class="preview-face" class:is-user={message.role === 'user'}>
 							{#if speakerUrl}

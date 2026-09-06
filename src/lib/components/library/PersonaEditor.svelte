@@ -152,17 +152,8 @@
 
 	// ---- Portrait ----
 	let fileInputRef = $state<HTMLInputElement | null>(null);
-	let resolvedImageUrl = $state<string | null>(null);
+	let resolvedImageUrl = $derived(imageService.imageUrl(snapshot?.imageUrl));
 	let imageLoading = $state(false);
-
-	$effect(() => {
-		const path = snapshot?.imageUrl;
-		if (path) {
-			imageService.getImageUrl(path).then((url) => (resolvedImageUrl = url));
-		} else {
-			resolvedImageUrl = null;
-		}
-	});
 
 	let showFraming = $state(false);
 

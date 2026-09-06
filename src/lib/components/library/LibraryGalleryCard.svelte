@@ -49,36 +49,7 @@
 		else onSelect(entry.id);
 	}
 
-	let resolvedImageUrl = $state<string | null>(null);
-	let isVisible = $state(false);
-	let cardRef = $state<HTMLDivElement | null>(null);
-
-	$effect(() => {
-		if (!cardRef) return;
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (entries[0].isIntersecting) {
-					isVisible = true;
-					observer.disconnect();
-				}
-			},
-			{ rootMargin: '150px' }
-		);
-		observer.observe(cardRef);
-		return () => observer.disconnect();
-	});
-
-	$effect(() => {
-		if (!isVisible) return;
-		const imageUrl = entry.identity.imageUrl;
-		if (imageUrl) {
-			imageService.getThumbnailUrl(imageUrl).then((url) => {
-				resolvedImageUrl = url;
-			});
-		} else {
-			resolvedImageUrl = null;
-		}
-	});
+	let resolvedImageUrl = $derived(imageService.thumbnailUrl(entry.identity.imageUrl));
 
 	let name = $derived(
 		entry.identity.name || (entry.type === 'character' ? 'Unnamed Character' : 'Unnamed Persona')
@@ -98,7 +69,6 @@
 </script>
 
 <div
-	bind:this={cardRef}
 	role="button"
 	tabindex="0"
 	onclick={handleCardClick}
@@ -120,6 +90,7 @@
 		<img
 			src={resolvedImageUrl}
 			alt={name}
+			loading="lazy"
 			class="browse-card-portrait absolute inset-0 w-full h-full object-cover"
 			style={portraitFocusAim(entry.identity.portraitFocus)}
 		/>

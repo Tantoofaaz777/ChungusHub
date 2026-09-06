@@ -59,36 +59,9 @@
 		else onSelect(entry.id);
 	}
 
-	let resolvedImageUrl = $state<string | null>(null);
-	let isVisible = $state(false);
-	let rowRef = $state<HTMLDivElement | null>(null);
-
-	$effect(() => {
-		if (!rowRef) return;
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (entries[0].isIntersecting) {
-					isVisible = true;
-					observer.disconnect();
-				}
-			},
-			{ rootMargin: '100px' }
-		);
-		observer.observe(rowRef);
-		return () => observer.disconnect();
-	});
-
-	$effect(() => {
-		if (!isVisible || !showPortrait) return;
-		const imageUrl = entry.identity.imageUrl;
-		if (imageUrl) {
-			imageService.getThumbnailUrl(imageUrl).then((url) => {
-				resolvedImageUrl = url;
-			});
-		} else {
-			resolvedImageUrl = null;
-		}
-	});
+	let resolvedImageUrl = $derived(
+		showPortrait ? imageService.thumbnailUrl(entry.identity.imageUrl) : null
+	);
 
 	let name = $derived(
 		entry.identity.name || (entry.type === 'character' ? 'Unnamed Character' : 'Unnamed Persona')
@@ -120,7 +93,6 @@
 </script>
 
 <div
-	bind:this={rowRef}
 	role="button"
 	tabindex="0"
 	onclick={handleRowClick}
@@ -136,6 +108,7 @@
 				<img
 					src={resolvedImageUrl}
 					alt={name}
+					loading="lazy"
 					class="w-full h-full object-cover"
 					style={portraitFocusStyle(entry.identity.portraitFocus)}
 				/>

@@ -218,6 +218,7 @@ describe('/files/', () => {
 		expect(picture.headers['x-content-type-options']).toBe('nosniff');
 		expect(picture.headers['content-security-policy']).toBe("default-src 'none'; sandbox");
 		expect(picture.headers['cross-origin-resource-policy']).toBe('same-origin');
+		expect(picture.headers['cache-control']).toBe('private, max-age=31536000, immutable');
 		expect((await exchange('GET', '/files/images/characters/gate.html', ours())).status).toBe(404);
 		// A thumbnail nobody wrote is answered with the original beside it, typed as what answered.
 		// Its own name is lowercase because every writer into the store lowercases one, and the
@@ -238,5 +239,6 @@ describe('/files/', () => {
 		expect(bundled.headers['content-type']).toMatch(/^image\//);
 		expect(bundled.headers['content-security-policy']).toBe("default-src 'none'; sandbox");
 		expect(bundled.headers['cross-origin-resource-policy']).toBe('same-origin');
+		expect(bundled.headers['cache-control']).toBe('no-cache');
 	});
 });
