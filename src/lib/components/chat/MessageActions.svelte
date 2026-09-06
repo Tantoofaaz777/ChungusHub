@@ -130,7 +130,7 @@
 		align-items: center;
 		gap: 0.2rem;
 		padding: 0.16rem;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-lg);
 		border: 1px solid color-mix(in srgb, var(--color-border-subtle) 92%, transparent);
 		background: color-mix(in srgb, var(--color-bg-secondary) 76%, transparent);
 	}
@@ -143,7 +143,7 @@
 		min-width: 1.6rem;
 		padding: var(--msg-action-pad, 0 0.5rem);
 		border: 1px solid transparent;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-md);
 		background: transparent;
 		color: var(--color-text-secondary);
 		display: inline-flex;
@@ -192,12 +192,29 @@
 		}
 	}
 
-	/* 26px buttons are unhittable with a thumb, so grow to ~40px on touch. The bar
-	   is already icon-only there (rule above), so the wider row still fits. */
+	/* Keep every touch target taller than desktop, including on a touch laptop. */
 	@media (pointer: coarse) {
 		.action-btn {
-			height: 2.4rem;
-			min-width: 2.4rem;
+			height: 2.1rem;
+			min-width: 2.1rem;
+		}
+	}
+
+	/* On a narrow touch screen the labels are hidden by the width rule above, so
+	   equal square buttons can align the icons without clipping desktop labels. */
+	@media (pointer: coarse) and (max-width: 900px) {
+		.message-actions {
+			gap: 0.08rem;
+			padding: 0.1rem;
+		}
+
+		.action-btn {
+			box-sizing: border-box;
+			flex: 0 0 2.1rem;
+			width: 2.1rem;
+			height: 2.1rem;
+			padding: 0;
+			justify-content: center;
 		}
 	}
 </style>

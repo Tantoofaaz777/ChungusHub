@@ -109,7 +109,12 @@
 		width: max-content;
 		max-width: min(240px, calc(100vw - 2rem));
 		padding: 0.5rem 0.65rem;
-		/* Surface comes from .surface-float; radius and shadow stay here. */
+		/* Mobile compositors do not always re-blur a portalled surface above an
+		   already frosted dialog. Keep the shared glass treatment, but give tips a
+		   denser fallback so the UI beneath cannot remain sharp through the copy. */
+		background: color-mix(in srgb, var(--color-float-bg) 70%, var(--color-bg-primary) 30%);
+		backdrop-filter: var(--backdrop-blur) saturate(160%);
+		-webkit-backdrop-filter: var(--backdrop-blur) saturate(160%);
 		border-radius: var(--radius-lg);
 		box-shadow: var(--shadow-md);
 		color: var(--color-text-secondary);

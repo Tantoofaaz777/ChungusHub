@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import { themeStore } from '$lib/stores/theme.svelte';
 	import { formatDuration, formatMessageTime, relativeClock } from '$lib/utils/time-format.svelte';
@@ -14,7 +15,7 @@
 		provider?: string | null;
 		edited?: boolean;
 		streaming?: boolean;
-		/** Preformatted token count, shown in the info icon's tooltip. */
+		/** Preformatted token count, shown directly in the metadata row. */
 		tokens?: string | null;
 		/** Turn folded into chat memory: shows the "In memory" pill at the line's end. */
 		archived?: boolean;
@@ -71,16 +72,13 @@
 			? llmService.getProviderMeta(provider as ProviderName)?.displayName ?? provider
 			: null
 	);
-	// Provider/model exist on assistant turns only; tokens on both, so user
-	// messages get the info icon too, carrying just the token count.
-	const generationTitle = $derived.by(() => {
-		const parts: string[] = [];
-		if (provider || model) {
-			parts.push(`${providerLabel ?? 'unknown provider'}${model ? ` · ${model}` : ''}`);
-		}
-		if (tokens) parts.push(tokens);
-		return parts.length > 0 ? parts.join(' · ') : null;
-	});
+	// Provider/model exist on assistant turns only. Keep them behind the shared
+	// hover-or-tap explanation while the useful token count remains visible.
+	const generationTitle = $derived(
+		provider || model
+			? `${providerLabel ?? 'unknown provider'}${model ? ` · ${model}` : ''}`
+			: null
+	);
 
 	// Turn enough off and the row has nothing left to say, so render nothing at all
 	// rather than a bare strip of padding above the prose.
@@ -88,6 +86,7 @@
 		appearance.showSpeakerName ||
 			formattedDate !== null ||
 			generationTitle !== null ||
+			tokens !== null ||
 			durationLabel !== null ||
 			ordinal !== null ||
 			edited ||
@@ -117,10 +116,12 @@
 		<span class="message-date" title="Generation time">{durationLabel}</span>
 	{/if}
 
+	{#if tokens}
+		<span class="message-generation message-generation-count">{tokens}</span>
+	{/if}
+
 	{#if generationTitle}
-		<span class="message-generation" title={generationTitle} aria-label={generationTitle}>
-			<Icon name="info" class="w-3.5 h-3.5" strokeWidth={1.8} />
-		</span>
+		<InfoTip text={generationTitle} />
 	{/if}
 
 	{#if edited}
@@ -225,6 +226,14 @@
 	.message-generation:hover {
 		opacity: 1;
 		color: var(--color-text-secondary);
+	}
+
+	.message-generation-count {
+		font-size: 0.66rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
 	.message-edited {

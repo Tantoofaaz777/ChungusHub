@@ -97,7 +97,6 @@
 	// a confirm that shows how many messages will go.
 	let confirmingReplace = $state(false);
 	let deleteMenuElement = $state<HTMLDivElement | undefined>(undefined);
-	let regenerateMenuElement = $state<HTMLDivElement | undefined>(undefined);
 
 	// Blast radius of the destructive actions on this message, since the confirmations always
 	// state the real numbers. (Lazy deriveds: only computed while a menu/editor shows them.)
@@ -158,12 +157,6 @@
 	$effect(() => {
 		if (showDeleteMenu && deleteMenuElement) {
 			deleteMenuElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-		}
-	});
-
-	$effect(() => {
-		if (showRegenerateMenu && regenerateMenuElement) {
-			regenerateMenuElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 		}
 	});
 
@@ -455,11 +448,11 @@
 	const actualTokens = $derived(
 		message.role === 'assistant' && message.tokensCompletion ? message.tokensCompletion : null
 	);
-	// Shown in the meta info icon's tooltip; "~" marks a local estimate.
+	// Shown directly in the meta row; "~" marks a local estimate.
 	const tokenLabel = $derived(
 		actualTokens !== null
-			? `${actualTokens.toLocaleString()} tokens`
-			: `~${messageTokens} tokens`
+			? `${actualTokens.toLocaleString()} tok`
+			: `~${messageTokens} tok`
 	);
 	// Continue flow: the live tail joins the stored content through the preview rule (the
 	// final write's seam rule, plus a hold on tails that are still pure restatement, so a
@@ -510,8 +503,8 @@
 	const avatarsHidden = $derived(
 		!themeStore.appearance.showAvatars || themeStore.appearance.chatStyle === 'manuscript'
 	);
-	// Meta-row visibility knobs (Settings → Layout): a null prop drops the piece, and
-	// MessageMeta hides the info icon entirely once model and tokens are both gone.
+	// Meta-row visibility knobs (Settings → Layout): a null prop drops that piece.
+	// Tokens render directly; provider/model use the hover-or-tap info hint.
 	// Gating tokens here also skips the countTokens estimate while it's off ($derived is lazy).
 	const showTimestamps = $derived(themeStore.appearance.showTimestamps);
 	const showModelName = $derived(themeStore.appearance.showModelName);
@@ -797,25 +790,14 @@
 								{/if}
 
 								{#if showRegenerateMenu}
-									<div
-										class="fixed inset-0 z-10"
-										onclick={cancelRegenerate}
-										onkeydown={(e) => {
-											if (e.key === 'Escape') {
-												// Consume the press so the workspace's global Esc stands down.
-												e.preventDefault();
-												e.stopPropagation();
-												cancelRegenerate();
-											}
-										}}
-										role="button"
-										tabindex="-1"
-										aria-label="Close menu"
-									></div>
-									<div
-										bind:this={regenerateMenuElement}
-										class="message-menu absolute top-full mt-2 w-72 surface-float rounded-[var(--radius-lg)] overflow-hidden z-20 slide-up"
-										style="box-shadow: var(--shadow-md);"
+									<Dialog
+										open={showRegenerateMenu}
+										onClose={cancelRegenerate}
+										title={message.role === 'user' ? 'Regenerate reply' : 'Regenerate response'}
+										titleAlign="left"
+										size="sm"
+										placement="center"
+										bare
 									>
 										{#if confirmingReplace}
 											<div class="p-3 border-b border-border-subtle bg-error/10">
@@ -841,47 +823,37 @@
 												</button>
 											</div>
 										{:else}
-										<div class="p-3 border-b border-border-subtle bg-bg-secondary">
-											<p class="text-sm font-ui font-medium text-text-primary">
-												{message.role === 'user' ? 'Regenerate reply' : 'Regenerate response'}
-											</p>
-										</div>
-										<div class="p-1.5">
-											<button
-												class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
-												onclick={() => handleRegenerateAction('replace')}
-											>
-												<span class="font-medium text-text-primary">
-													{message.role === 'user' ? 'Replace reply' : 'Replace current'}
-												</span>
-												<p class="text-text-muted text-xs mt-0.5">
-													{message.role === 'user'
-														? 'Delete the replies below and generate a fresh one'
-														: 'Delete this response and generate a new one'}
-												</p>
-											</button>
-											<button
-												class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
-												onclick={() => handleRegenerateAction('branch')}
-											>
-												<span class="font-medium text-text-primary">
-													{message.role === 'user' ? 'Add alternate reply' : 'Create alternate'}
-												</span>
-												<p class="text-text-muted text-xs mt-0.5">
-													{message.role === 'user'
-														? 'Keep the current reply and generate another to swipe between'
-														: 'Keep this response and generate a new branch'}
-												</p>
-											</button>
-											<button
-												class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui text-text-muted transition-all duration-150"
-												onclick={cancelRegenerate}
-											>
-												Cancel
-											</button>
-										</div>
+											<div class="p-1.5">
+												<button
+													class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
+													onclick={() => handleRegenerateAction('replace')}
+													data-dialog-initial-focus
+												>
+													<span class="font-medium text-text-primary">
+														{message.role === 'user' ? 'Replace reply' : 'Replace current'}
+													</span>
+													<p class="text-text-muted text-xs mt-0.5">
+														{message.role === 'user'
+															? 'Delete the replies below and generate a fresh one'
+															: 'Delete this response and generate a new one'}
+													</p>
+												</button>
+												<button
+													class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
+													onclick={() => handleRegenerateAction('branch')}
+												>
+													<span class="font-medium text-text-primary">
+														{message.role === 'user' ? 'Add alternate reply' : 'Create alternate'}
+													</span>
+													<p class="text-text-muted text-xs mt-0.5">
+														{message.role === 'user'
+															? 'Keep the current reply and generate another to swipe between'
+															: 'Keep this response and generate a new branch'}
+													</p>
+												</button>
+											</div>
 										{/if}
-									</div>
+									</Dialog>
 								{/if}
 							</div>
 							{#if siblingCount > 1 || canWriteOpening}
@@ -1292,7 +1264,7 @@
 		align-items: center;
 		justify-content: center;
 		border: 1px solid color-mix(in srgb, var(--color-border-subtle) 92%, transparent);
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-lg);
 		background: color-mix(in srgb, var(--color-bg-secondary) 76%, transparent);
 		color: var(--color-text-secondary);
 		cursor: pointer;
@@ -1317,8 +1289,16 @@
 
 	@media (pointer: coarse) {
 		.opening-btn {
-			width: 2.85rem;
-			height: 2.85rem;
+			width: 2.42rem;
+			height: 2.42rem;
+		}
+
+		.message-toolbar {
+			gap: 0.35rem;
+		}
+
+		.message-pager-slot {
+			gap: 0.18rem;
 		}
 	}
 

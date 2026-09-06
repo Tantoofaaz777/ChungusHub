@@ -42,7 +42,7 @@
 		align-items: center;
 		gap: 0.14rem;
 		padding: 0.16rem;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-lg);
 		border: 1px solid color-mix(in srgb, var(--color-border-subtle) 92%, transparent);
 		background: color-mix(in srgb, var(--color-bg-secondary) 76%, transparent);
 	}
@@ -52,7 +52,7 @@
 		height: 1.6rem;
 		padding: 0;
 		border: 1px solid transparent;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-md);
 		background: transparent;
 		color: var(--color-text-secondary);
 		display: inline-flex;
@@ -79,11 +79,21 @@
 		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent-muted) 70%, transparent);
 	}
 
-	/* Thumb-sized prev/next on touch. */
+	/* A compact mobile pager still leaves a larger target than the desktop control. */
 	@media (pointer: coarse) {
+		.branch-nav {
+			gap: 0.08rem;
+			padding: 0.1rem;
+		}
+
 		.branch-btn {
-			width: 2.4rem;
-			height: 2.4rem;
+			width: 2.1rem;
+			height: 2.1rem;
+		}
+
+		.branch-count {
+			min-width: 2rem;
+			padding-inline: 0.1rem;
 		}
 	}
 

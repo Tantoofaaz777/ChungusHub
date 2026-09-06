@@ -21,6 +21,8 @@
 	 * readout of the story's setup first and a control second, and a control that shows up
 	 * only once something is odd is a control nobody knows exists.
 	 */
+	import { tick } from 'svelte';
+	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import OverrideMark from '$lib/components/ui/OverrideMark.svelte';
@@ -352,7 +354,7 @@
 	let open = $state(false);
 	let drilled = $state<CategoryId | null>(null);
 	let query = $state('');
-	let menuRef = $state<HTMLDivElement | null>(null);
+	let panelRef = $state<HTMLDivElement | null>(null);
 	let busy = $state(false);
 
 	let active = $derived(categories.find((c) => c.id === drilled) ?? null);
@@ -383,40 +385,31 @@
 		query = '';
 	}
 
-	function drill(id: CategoryId) {
+	async function drill(id: CategoryId) {
 		drilled = id;
 		query = '';
+		await tick();
+		panelRef?.querySelector<HTMLButtonElement>('.setup-back')?.focus();
 	}
 
-	function goBack() {
+	async function goBack() {
+		const previous = drilled;
 		drilled = null;
 		query = '';
+		await tick();
+		panelRef?.querySelector<HTMLButtonElement>(`[data-category="${previous}"]`)?.focus();
 	}
-
-	$effect(() => {
-		if (!open) return;
-		const onDown = (e: MouseEvent) => {
-			if (menuRef && !menuRef.contains(e.target as Node)) close();
-		};
-		document.addEventListener('mousedown', onDown);
-		return () => document.removeEventListener('mousedown', onDown);
-	});
 
 	// Escape steps back out of a drilled category before it closes the panel, so leaving a
 	// list the reader opened by mistake costs one press and does not throw away the panel
 	// with it. Marked consumed either way, per the shell Esc contract
 	// (architecture/ui-shell-settings.md).
-	$effect(() => {
-		if (!open) return;
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key !== 'Escape' || event.defaultPrevented) return;
-			event.preventDefault();
-			if (drilled) goBack();
-			else close();
-		};
-		window.addEventListener('keydown', onKey);
-		return () => window.removeEventListener('keydown', onKey);
-	});
+	function handleEscape(event: KeyboardEvent) {
+		if (event.defaultPrevented) return;
+		event.preventDefault();
+		if (drilled) void goBack();
+		else close();
+	}
 
 	async function pickPersona(id: string | null) {
 		if (!chat || busy) return;
@@ -504,13 +497,13 @@
 {#if chat}
 	<!-- flex, not a bare block: a block wrapper around the button would reserve baseline
 	     descender space under it and float the chip above the buttons it sits beside. -->
-	<div class="relative flex" bind:this={menuRef}>
+	<div class="flex">
 		<button
 			type="button"
 			class="setup-chip"
 			class:is-open={open}
 			onclick={() => (open ? close() : (open = true))}
-			aria-haspopup="menu"
+			aria-haspopup="dialog"
 			aria-expanded={open}
 			title={`Playing as ${personaName} on ${modelName}`}
 		>
@@ -524,8 +517,17 @@
 			<span class="setup-chip-label">{personaName} · {modelName}</span>
 		</button>
 
-		{#if open}
-			<div role="menu" class="setup-panel absolute bottom-full left-0 mb-2 z-20 surface-float rounded-lg shadow-md">
+		<Dialog
+			{open}
+			onClose={close}
+			onEscape={handleEscape}
+			title="Chat Setup"
+			titleAlign="left"
+			size="sm"
+			placement="center"
+			bare
+		>
+			<div class="setup-panel" bind:this={panelRef}>
 				<!-- One header for both levels: the panel's title, or the category drilled into
 				     and the way back out. -->
 				<div class="setup-head" class:is-root={!active}>
@@ -538,7 +540,7 @@
 						<!-- Setup, never "Overrides": most rows on most chats are following the app,
 						     and a title naming them an override describes the state the panel is
 						     usually not in. -->
-						<span class="setup-head-label">Chat Setup</span>
+						<span class="setup-head-label">Applies to this chat</span>
 						<InfoTip text="Anything set here applies to this chat only. The rest follows the app." />
 					{/if}
 				</div>
@@ -548,8 +550,9 @@
 					{#each categories as category (category.id)}
 						<button
 							type="button"
-							role="menuitem"
 							class="setup-summary"
+							data-category={category.id}
+							data-dialog-initial-focus={category.id === 'persona' ? '' : undefined}
 							disabled={busy}
 							onclick={() => drill(category.id)}
 						>
@@ -597,7 +600,6 @@
 						{@const following = active.picked.size === 0}
 						<button
 							type="button"
-							role="menuitem"
 							class="setup-row setup-app-row"
 							class:is-picked={following}
 							disabled={busy}
@@ -624,7 +626,6 @@
 									{@const isPicked = active.picked.has(option.id)}
 									<button
 										type="button"
-										role="menuitem"
 										class="setup-tile"
 										class:is-picked={isPicked}
 										title={option.name}
@@ -653,8 +654,7 @@
 								     changes, not a pick that answers the panel and dismisses it. -->
 								<button
 									type="button"
-									role={active.multi ? 'menuitemcheckbox' : 'menuitem'}
-									aria-checked={active.multi ? inPlay : undefined}
+									aria-pressed={active.multi ? inPlay : undefined}
 									class="setup-row"
 									class:is-picked={isPicked && !option.muted}
 									class:is-held={!!option.held && !isPicked && !option.muted}
@@ -689,7 +689,7 @@
 					</div>
 				{/if}
 			</div>
-		{/if}
+		</Dialog>
 	</div>
 {/if}
 
@@ -765,8 +765,10 @@
 	   --brw-h is what the shared .brw-search recipe (app.css) sizes itself from; it is
 	   declared on the browse container there, which this panel is not inside. */
 	.setup-panel {
-		width: 18.5rem;
-		max-width: calc(100vw - 1rem);
+		width: 100%;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		padding: 0.375rem 0;
 		--brw-h: 1.9rem;
 	}

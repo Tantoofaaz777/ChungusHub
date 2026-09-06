@@ -19,6 +19,9 @@
 	interface Props {
 		open: boolean;
 		onClose: () => void;
+		/** A panel with internal navigation may use Escape to go back before closing.
+		 *  The X and backdrop still use onClose. */
+		onEscape?: (event: KeyboardEvent) => void;
 		title?: string;
 		size?: DialogSize;
 		titleAlign?: 'center' | 'left';
@@ -49,6 +52,7 @@
 	let {
 		open,
 		onClose,
+		onEscape,
 		title,
 		size = 'md',
 		titleAlign = 'center',
@@ -155,7 +159,8 @@
 	function handleKeydown(e: KeyboardEvent) {
 		if (!open || !isTopmostDialog()) return;
 		if (e.key === 'Escape') {
-			requestClose();
+			if (dismissible && onEscape) onEscape(e);
+			else requestClose();
 		}
 		trapFocus(e);
 	}
