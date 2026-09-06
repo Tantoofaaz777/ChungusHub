@@ -226,6 +226,16 @@
 		color: var(--editor-syntax-macro) !important;
 	}
 
+	/* app.css raises touch form controls to 16px so iOS does not zoom the viewport on focus.
+	   The visible text here belongs to the mirror rather than the textarea, so both layers
+	   must take that same floor or the native caret wraps against different font metrics. */
+	@media (pointer: coarse) {
+		.expanded-mirror,
+		.expanded-textarea {
+			font-size: max(16px, 1em);
+		}
+	}
+
 	@media (forced-colors: active) {
 		.expanded-mirror {
 			display: none;
