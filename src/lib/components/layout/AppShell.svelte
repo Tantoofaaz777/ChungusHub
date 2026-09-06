@@ -14,7 +14,6 @@
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
 	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 	import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
-	import { ambientStore } from '$lib/stores/ambient.svelte';
 	import { backgroundStore } from '$lib/stores/background.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { libraryViewPrefs, personasViewPrefs } from '$lib/stores/browseViewPrefs.svelte';
@@ -163,7 +162,6 @@
 			await regexRulesStore.initialize();
 			// After general settings: the reload respects the configured history cap.
 			await inputHistoryStore.initialize();
-			await ambientStore.initialize();
 			await backgroundStore.initialize();
 			await featurePromptsStore.initialize();
 			await libraryViewPrefs.initialize();

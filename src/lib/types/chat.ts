@@ -1,8 +1,6 @@
 /** Domain types for chat and messages */
 
 import type { LorebookTrace } from '$lib/lorebook/types';
-import type { AmbientConfig } from '$lib/types/ambient';
-import { normalizeAmbientConfig } from '$lib/types/ambient';
 import type { BackgroundConfig } from '$lib/types/background';
 import { normalizeBackgroundConfig } from '$lib/types/background';
 
@@ -84,8 +82,7 @@ export interface ChatSettings {
 export type ImpersonatePerspective = 'first' | 'second' | 'third';
 
 /**
- * A chat's own background and ambient mix: a whole scene rather than a patch over the
- * app's, so nothing has to say which half of it is inherited.
+ * A chat's own background, kept separately from the app-wide background.
  *
  * `enabled` false keeps the scene the reader built while the app's is back in force, so
  * the Scene switch is a switch and not a way to lose an afternoon's tuning.
@@ -93,7 +90,6 @@ export type ImpersonatePerspective = 'first' | 'second' | 'third';
 export interface ChatScene {
 	enabled: boolean;
 	background: BackgroundConfig;
-	ambient: AmbientConfig;
 }
 
 /** Per-chat state for the composer's steering + impersonate features and this chat's own
@@ -182,14 +178,13 @@ function normalizeClaimedIds(raw: unknown): string[] {
 }
 
 /** A chat with no scene of its own reads as null, which is what "follows the app's" is.
- *  A stored one is coerced through the same two normalizers the settings stores use. */
+ *  A stored one is coerced through the same normalizer the background store uses. */
 export function normalizeChatScene(raw: unknown): ChatScene | null {
 	if (!raw || typeof raw !== 'object') return null;
 	const stored = raw as Partial<ChatScene>;
 	return {
 		enabled: stored.enabled === true,
-		background: normalizeBackgroundConfig(stored.background),
-		ambient: normalizeAmbientConfig(stored.ambient)
+		background: normalizeBackgroundConfig(stored.background)
 	};
 }
 

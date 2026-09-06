@@ -196,7 +196,7 @@
 		min-height: 0;
 		overscroll-behavior: contain;
 		padding: clamp(0.65rem, 0.5rem + 0.75vw, 1rem);
-		/* Transparent so the host surface (frosted dock / overlay with ambient behind)
+		/* Transparent so the host surface (frosted dock / overlay over the workspace)
 		   shows through. */
 		background: transparent;
 	}

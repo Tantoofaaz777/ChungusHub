@@ -8,7 +8,6 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { effectSetting } from './ambient';
 import {
 	DEFAULT_CHAT_FEATURE_STATE,
 	normalizeChatFeatureState,
@@ -101,19 +100,16 @@ describe('normalizeChatFeatureState: scene', () => {
 		expect(normalizeChatFeatureState({ scene: 'winter' }).scene).toBeNull();
 	});
 
-	test('a stored scene comes back through both config normalizers', () => {
+	test('a stored scene comes back through the background config normalizer', () => {
 		const scene = normalizeChatFeatureState({
 			scene: {
 				enabled: true,
-				background: { path: 'backgrounds/snow.jpg', dim: 5, blur: -2 },
-				ambient: { types: ['snow', 'nonsense'], effectSettings: { snow: { density: 99 } } }
+				background: { path: 'backgrounds/snow.jpg', dim: 5, blur: -2 }
 			}
 		}).scene;
 		expect(scene?.enabled).toBe(true);
 		// Clamped, not trusted: the blob is the same data any device may have written.
 		expect(scene?.background).toEqual({ path: 'backgrounds/snow.jpg', dim: 0.9, blur: 0 });
-		expect(scene?.ambient.types).toEqual(['snow']);
-		expect(effectSetting(scene!.ambient, 'snow', 'density')).toBe(2);
 	});
 
 	test('a scene survives the trip through the column it is stored in', () => {
@@ -125,12 +121,7 @@ describe('normalizeChatFeatureState: scene', () => {
 			impersonatePerspective: 'second',
 			scene: {
 				enabled: true,
-				background: { path: 'images/backgrounds/dusk.png', dim: 0.5, blur: 6 },
-				ambient: {
-					types: ['rain', 'fog'],
-					enabled: true,
-					effectSettings: { rain: { density: 1.25, splashes: 0 }, fog: { overMessages: 0 } }
-				}
+				background: { path: 'images/backgrounds/dusk.png', dim: 0.5, blur: 6 }
 			}
 		});
 		expect(normalizeChatFeatureState(JSON.stringify(state))).toEqual(state);
@@ -139,7 +130,7 @@ describe('normalizeChatFeatureState: scene', () => {
 	test('a scene missing its enabled flag is kept but not in force', () => {
 		// Anything but an explicit true: a chat must never end up wearing a scene
 		// because a half-written blob was read generously.
-		const scene = normalizeChatFeatureState({ scene: { background: {}, ambient: {} } }).scene;
+		const scene = normalizeChatFeatureState({ scene: { background: {} } }).scene;
 		expect(scene?.enabled).toBe(false);
 	});
 });

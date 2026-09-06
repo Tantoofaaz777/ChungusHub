@@ -1,11 +1,9 @@
 /**
  * Which scene the open chat wears.
  *
- * A chat either follows the app's background and ambient mix or carries a whole scene of
- * its own, stored on its own row (`feature_state`, architecture/chat-sessions.md). A whole
- * scene rather than a patch: with every field answered in one place nothing on screen has
- * to say which half of a picture is inherited, and flipping the switch on seeds the chat
- * from what is already on screen, so the press itself changes nothing.
+ * A chat either follows the app's background or carries one of its own, stored on its own
+ * row (`feature_state`, architecture/chat-sessions.md). Flipping the switch on seeds the
+ * chat from what is already on screen, so the press itself changes nothing.
  *
  * Switching back off KEEPS the chat's scene. The switch is a switch, not a way to lose an
  * afternoon's tuning, and it is what spares this control the destructive-act ladder.
@@ -20,7 +18,6 @@
 import { chatStore } from '$lib/stores/chat.svelte';
 import { fileUrl } from '$lib/services/transport';
 import { normalizeChatFeatureState, type ChatScene } from '$lib/types/chat';
-import type { AmbientConfig } from '$lib/types/ambient';
 import type { BackgroundConfig } from '$lib/types/background';
 
 const PERSIST_MS = 250;
@@ -85,9 +82,9 @@ class ChatSceneStore {
 
 	/** Put this chat on its own scene, seeding a chat that has never had one from what is
 	 *  already on screen. An existing scene comes back as it was left. */
-	adopt(seed: { background: BackgroundConfig; ambient: AmbientConfig }): void {
+	adopt(background: BackgroundConfig): void {
 		const existing = this.scene;
-		this.write(existing ? { ...existing, enabled: true } : { enabled: true, ...seed });
+		this.write(existing ? { ...existing, enabled: true } : { enabled: true, background });
 	}
 
 	/** Hand the chat back to the app's scene, keeping its own for the way back. */
@@ -96,8 +93,8 @@ class ChatSceneStore {
 		if (existing) this.write({ ...existing, enabled: false });
 	}
 
-	/** Replace the open chat's scene. Called by the ambient and background stores whenever
-	 *  a control writes while a chat scene is in force. */
+	/** Replace the open chat's scene. Called by the background store whenever a control
+	 *  writes while a chat scene is in force. */
 	write(next: ChatScene): void {
 		// The chat on screen, never the one being navigated to: a write must land on the
 		// story whose scene the reader is looking at while they edit it.

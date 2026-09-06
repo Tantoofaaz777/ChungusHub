@@ -86,7 +86,7 @@ function writePaintCache(vars: Record<string, string>, attrs: Record<string, str
 const RADIUS_BASE = { sm: 0.5, md: 0.8, lg: 1.1, xl: 1.45 };
 const GLASS_BLUR: Record<GlassLevel, number> = { off: 0, subtle: 8, full: 16 };
 /* Frosted panels (Workspace overlays/docks) trade translucency for blur; with less
-   blur they must turn more opaque or the ambient layer behind turns into noise. */
+   blur they must turn more opaque or the background behind turns into noise. */
 const PANEL_ALPHA: Record<GlassLevel, number> = { off: 96, subtle: 72, full: 58 };
 /* Interior surfaces (cards, inputs, raised rows painted ON a frosted panel).
    They never carry their own backdrop-filter (the panel already blurred the
@@ -406,7 +406,7 @@ class ThemeStore {
 	/**
 	 * Put one page's knobs back to the shipped default. The other page is left alone, and
 	 * so is everything on this one that is not an appearance knob: the background image
-	 * and the ambient mix are their own stores with their own controls.
+	 * is its own store with its own controls.
 	 */
 	restoreDefaults(scope: AppearanceScope): void {
 		this.update(pickScope(DEFAULT_APPEARANCE, scope));

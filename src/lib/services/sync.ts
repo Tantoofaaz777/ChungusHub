@@ -77,7 +77,7 @@ const HANDLERS: Record<SyncScope, () => Promise<void>> = {
 		// Global active persona + preset-control values are stored as settings.
 		await personaStore.syncReload();
 		await presetControlsStore.syncReload();
-		// Every store that rides the synced-setting primitive (theme, ambient,
+		// Every store that rides the synced-setting primitive (theme,
 		// view prefs, …) re-reads here, so a setting changed on one
 		// device shows up live on the others instead of only on next boot.
 		await reloadAllSyncedSettings();

@@ -194,7 +194,7 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		/* Transparent so the workspace-level ambient layer shows through. The chat
+		/* Transparent so the workspace background shows through. The chat
 		   column's own surfaces (center shell, bubbles) provide the readable backing. */
 		background: transparent;
 	}

@@ -737,7 +737,7 @@
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
-		/* Transparent so the frosted dock / overlay with ambient behind shows through. */
+		/* Transparent so the frosted dock / overlay shows the workspace behind it. */
 		background: transparent;
 		position: relative;
 	}

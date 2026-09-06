@@ -5,7 +5,7 @@
  * workspace, plus its readability knobs (dim + blur). Two places hold one, the app-wide
  * setting and the open chat's own scene (stores/chatScene.svelte.ts), and `config` is
  * whichever is in force: the picker and the sliders on Settings → Interface edit exactly
- * what is on screen. Renders beneath the ambient layer in Workspace.svelte.
+ * what is on screen. Renders at the bottom of Workspace.svelte.
  */
 import {
 	BurstSettingWriter,

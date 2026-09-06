@@ -457,17 +457,17 @@ async function main() {
 	// is unreachable through the generic reads, not just the `navigate` tool.
 	r = await call('find_entities', { kind: 'setting' });
 	check('the settings catalog is gated with Navigation', r.msg.ok === false && /Navigation family/.test(r.msg.error ?? ''));
-	r = await call('read_entity', { kind: 'setting', id: 'ambient-effects' });
+	r = await call('read_entity', { kind: 'setting', id: 'background' });
 	check('a single setting read is gated too', r.msg.ok === false && /switched off/i.test(r.msg.error ?? ''));
-	r = await call('navigate', { target: 'setting', id: 'ambient-effects' });
+	r = await call('navigate', { target: 'setting', id: 'background' });
 	check('navigate is off by default', r.msg.ok === false && /switched off/i.test(r.msg.error ?? ''));
 	serverDb.setSetting('assistantCapabilities', JSON.stringify([...DEFAULT_ENABLED_GROUPS, 'deleting', 'navigation']));
 	r = await call('find_entities', { kind: 'setting' });
 	check('find settings returns catalog', r.msg.matched >= 10, `got ${r.msg.matched}`);
-	r = await call('find_entities', { kind: 'setting', query: 'ambient' });
+	r = await call('find_entities', { kind: 'setting', query: 'background' });
 	check('search settings by keyword', r.msg.matched >= 2);
-	r = await call('read_entity', { kind: 'setting', id: 'ambient-effects' });
-	check('read a setting describes it', typeof r.msg.fields?.description === 'string' && r.msg.fields.description.includes('atmosphere'));
+	r = await call('read_entity', { kind: 'setting', id: 'background' });
+	check('read a setting describes it', typeof r.msg.fields?.description === 'string' && r.msg.fields.description.includes('picture'));
 	check('setting carries its tab as category', r.msg.fields?.category === 'interface');
 	r = await call('set_entity', { kind: 'setting', id: 'theme', field: 'label', value: 'x' });
 	check('setting is read-only (edit rejected)', r.msg.ok === false);
@@ -526,9 +526,9 @@ async function main() {
 	check('the catalog restores the list whole', listSkills().length === listDefaultSkills().length && listSkills().every((s) => s.enabled));
 
 	console.log('===== navigate (deep-link) =====');
-	r = await call('navigate', { target: 'setting', id: 'ambient-effects' });
+	r = await call('navigate', { target: 'setting', id: 'background' });
 	check('navigate to setting ok', r.msg.ok === true);
-	check('nav setting payload', r.ui.nav?.kind === 'setting' && r.ui.nav?.tab === 'interface' && r.ui.nav?.anchor === 'ambient-effects');
+	check('nav setting payload', r.ui.nav?.kind === 'setting' && r.ui.nav?.tab === 'interface' && r.ui.nav?.anchor === 'background');
 	r = await call('navigate', { target: 'character', id: ARIA });
 	check('navigate to character ok', r.ui.nav?.kind === 'entry' && r.ui.nav?.entryType === 'character' && typeof r.ui.nav?.label === 'string');
 	r = await call('navigate', { target: 'message', id: M_U1 });

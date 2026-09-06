@@ -26,11 +26,6 @@ import { PROVIDER_NAMES } from '$lib/types/llm';
 import { REASONING_DIALECTS } from '$lib/config/sampling';
 import { PERMANENT_TRAITS } from '$lib/types/library';
 import { MACROS } from '$lib/macros';
-import {
-	AMBIENT_BASE_SETTINGS,
-	AMBIENT_EFFECTS,
-	AMBIENT_EFFECT_SETTINGS
-} from '$lib/types/ambient';
 import { STEERING_ROLES, STEERING_SCOPES } from '$lib/types/steering';
 import { palettes } from '$lib/themes/presets';
 // The app's own reading, so this contract and the palette editor's readout can never
@@ -1312,37 +1307,6 @@ describe('settings deep links (architecture/chungus-assistant.md #1, architectur
 		walk(join(ROOT, 'src', 'lib', 'components'));
 		expect(marked.size, 'found no data-setting attributes, so the scan is stale').toBeGreaterThan(0);
 		expect(anchors.filter((a) => !marked.has(a))).toEqual([]);
-	});
-});
-
-describe('ambient effects (architecture/ui-shell-settings.md #5)', () => {
-	// The union, the picker list, the labels/descriptions maps and the canvas renderer all
-	// derive from AMBIENT_EFFECTS. The compositing order cannot: it carries its own
-	// back-to-front information, and it lives inside a .svelte file.
-	test('the canvas render order covers every effect', () => {
-		const order = scan(
-			block(
-				read('src', 'lib', 'components', 'ambient', 'AmbientCanvas.svelte'),
-				/const EFFECT_RENDER_ORDER: AmbientEffect\[\] = \[[\s\S]*?\];/,
-				'EFFECT_RENDER_ORDER'
-			),
-			/'([a-z0-9-]+)'/g,
-			'render order entries'
-		);
-		expect([...AMBIENT_EFFECTS].filter((e) => !order.includes(e))).toEqual([]);
-		expect(order.filter((e) => !(AMBIENT_EFFECTS as readonly string[]).includes(e))).toEqual([]);
-	});
-
-	// Every effect's settings list is the four shared ones followed by its own, and the
-	// canvas reads density/speed/visibility/overMessages straight out of that one bag. A
-	// per-effect def reusing one of those keys would shadow the knob it names: the row
-	// would draw two sliders called the same thing and the second would decide.
-	test('no effect redefines one of the shared knobs', () => {
-		const base = new Set(AMBIENT_BASE_SETTINGS.map((def) => def.key));
-		const clashes = Object.entries(AMBIENT_EFFECT_SETTINGS).flatMap(([type, defs]) =>
-			(defs ?? []).filter((def) => base.has(def.key)).map((def) => `${type}.${def.key}`)
-		);
-		expect(clashes).toEqual([]);
 	});
 });
 

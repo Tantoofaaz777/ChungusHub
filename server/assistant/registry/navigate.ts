@@ -14,7 +14,7 @@ const NAV_TARGETS = ['setting', 'character', 'persona', 'message', 'chat'] as co
 
 export const navigate: Capability = {
 	name: 'navigate',
-	summary: 'Offer the user a button that jumps to a place in the app and highlights it: a setting (target "setting", id from find_entities kind:setting), a character/persona editor (target "character"/"persona"), a specific chat message (target "message"), or a whole chat (target "chat"). Use when the user wants to GO somewhere or change something themselves (e.g. "I want to change the ambient effect").',
+	summary: 'Offer the user a button that jumps to a place in the app and highlights it: a setting (target "setting", id from find_entities kind:setting), a character/persona editor (target "character"/"persona"), a specific chat message (target "message"), or a whole chat (target "chat"). Use when the user wants to GO somewhere or change something themselves (e.g. "I want to change the background").',
 	risk: 'read',
 	params: [
 		{ name: 'target', type: 'string', describe: 'What to navigate to.', required: true, enum: NAV_TARGETS },

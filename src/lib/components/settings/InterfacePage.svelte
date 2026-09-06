@@ -2,7 +2,7 @@
 	/**
 	 * Settings → Appearance → Interface: everything the app draws that is not the story.
 	 * The palette every surface is derived from, the accent over it, the frame's own type
-	 * and surface treatment, and the picture and weather behind the lot.
+	 * and surface treatment, and the picture behind the lot.
 	 *
 	 * Cards on one page rather than pages of two, and that is the rule: a page exists to
 	 * hold a subject, not to hold a card. The story's own face and measure are the one
@@ -11,10 +11,6 @@
 	 * shade sits with the column, over there, while the background image's dim sits here
 	 * with the image (architecture/ui-shell-settings.md, "the two workspace scrims"), and
 	 * neither offers a color to pick.
-	 *
-	 * The palette editor appends BELOW the palette grid and never above it, the same rule
-	 * the ambient mixer follows, so opening it cannot slide the card that was just tapped
-	 * out from under the pointer.
 	 *
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
 	 * foot of the page and only there while something has actually moved.
@@ -27,9 +23,7 @@
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import PaletteEditor from '$lib/components/settings/PaletteEditor.svelte';
 	import BackgroundPickerModal from '$lib/components/settings/BackgroundPickerModal.svelte';
-	import AmbientMixer from '$lib/components/ambient/AmbientMixer.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
-	import { ambientStore } from '$lib/stores/ambient.svelte';
 	import { backgroundStore } from '$lib/stores/background.svelte';
 	import { chatSceneStore } from '$lib/stores/chatScene.svelte';
 	import { DEFAULT_BACKGROUND } from '$lib/types/background';
@@ -128,10 +122,10 @@
 		}
 	}
 
-	/* --- Scene scope --- */
+	/* --- Background scope --- */
 
-	// The two cards below the Scene card edit whichever scene is in force, so nothing
-	// here reads or writes a second copy: flipping the switch is the whole control.
+	// The background controls edit whichever scope is in force, so nothing here reads or
+	// writes a second copy: flipping the switch is the whole control.
 	let ownScene = $derived(chatSceneStore.active !== null);
 	let canScope = $derived(chatSceneStore.canScope);
 	let otherScenes = $derived(chatSceneStore.otherChatsWithScene);
@@ -139,12 +133,14 @@
 	let scopeNote = $derived.by(() => {
 		// The disabled pill says why here rather than only in a title: a phone never
 		// hovers, so a tooltip is the one explanation it would never see.
-		if (!canScope) return 'Open a chat to give it a scene of its own.';
-		if (ownScene) return 'The background and effects below belong to this chat alone.';
-		if (otherScenes === 0) return 'Every chat wears the background and effects below.';
+		if (!canScope) return 'Open a chat to give it a background of its own.';
+		if (ownScene) return 'This background belongs to this chat alone.';
+		if (otherScenes === 0) return 'Every chat uses this background.';
 		const others =
-			otherScenes === 1 ? 'one with a scene of its own' : `${otherScenes} with scenes of their own`;
-		return `Every chat wears the background and effects below, except ${others}.`;
+			otherScenes === 1
+				? 'one with a background of its own'
+				: `${otherScenes} with backgrounds of their own`;
+		return `Every chat uses this background, except ${others}.`;
 	});
 
 	/* --- Background --- */
@@ -400,16 +396,15 @@
 		</div>
 	</section>
 
-	<section class="card" data-setting="chat-scene">
+	<section class="card" data-setting="background">
 		<div class="card-head">
-			<span class="card-title">Scene</span>
-			<InfoTip
-				text="A chat given its own scene keeps it: switching back to the app's leaves this one where you left it, ready to pick up again."
-			/>
+			<span class="card-title">Background</span>
+			<InfoTip text="A picture behind the whole workspace, with every panel layered on top of it." />
+			{#if ownScene}<span class="scope-chip font-ui">This chat</span>{/if}
 		</div>
 
 		<div class="card-body">
-			<div class="seg-pills" role="radiogroup" aria-label="Which scene the cards below edit">
+			<div class="seg-pills" role="radiogroup" aria-label="Background scope">
 				<button
 					type="button"
 					role="radio"
@@ -429,30 +424,14 @@
 					class:active={ownScene}
 					class:seg-lift={ownScene}
 					disabled={!canScope}
-					title={canScope ? undefined : 'Open a chat to give it a scene of its own.'}
-					onclick={() =>
-						chatSceneStore.adopt({
-							background: backgroundStore.config,
-							ambient: ambientStore.config
-						})}
+					title={canScope ? undefined : 'Open a chat to give it a background of its own.'}
+					onclick={() => chatSceneStore.adopt(backgroundStore.config)}
 				>
 					This chat
 				</button>
 			</div>
 			<p class="scope-note font-ui">{scopeNote}</p>
-		</div>
-	</section>
 
-	<section class="card" data-setting="background">
-		<div class="card-head">
-			<span class="card-title">Background</span>
-			<InfoTip
-				text="A picture behind the whole workspace, with ambient effects and every panel layered on top of it."
-			/>
-			{#if ownScene}<span class="scope-chip font-ui">This chat</span>{/if}
-		</div>
-
-		<div class="card-body">
 			<div class="bg-hero" class:bg-hero-unset={!backgroundUrl}>
 				{#if backgroundUrl}
 					<img class="bg-hero-img" src={backgroundUrl} alt="Current workspace background" />
@@ -531,22 +510,6 @@
 		</div>
 	</section>
 
-	<section class="card" data-setting="ambient-effects">
-		<div class="card-head">
-			<span class="card-title">Ambient Effects</span>
-			<InfoTip
-				text="Weather and atmosphere layered over the whole workspace. Stack as many effects as you like."
-			/>
-			{#if ownScene}<span class="scope-chip font-ui">This chat</span>{/if}
-			{#if ambientStore.config.types.length > 0}
-				<button type="button" class="link-btn clear-mix" onclick={() => ambientStore.clearAmbients()}>
-					Clear all
-				</button>
-			{/if}
-		</div>
-		<AmbientMixer />
-	</section>
-
 	{#if themeStore.isModified('interface')}
 		<div class="page-reset" data-setting="interface-defaults">
 			<button type="button" class="link-btn" onclick={() => (confirmRestore = true)}>
@@ -561,7 +524,7 @@
 <ConfirmDialog
 	open={confirmRestore}
 	title="Restore interface defaults"
-	message="Palette, accent, interface font, corners and glass all go back to the shipped default. The background, the ambient mix and every Chat setting are left alone. This cannot be undone."
+	message="Palette, accent, interface font, corners and glass all go back to the shipped default. The background and every Chat setting are left alone. This cannot be undone."
 	confirmLabel="Restore defaults"
 	variant="danger"
 	destructive
@@ -993,9 +956,4 @@
 		line-height: 1.35;
 	}
 
-	/* Right-edge placement rides the button itself, never the shared card-head. */
-	.clear-mix {
-		margin-left: auto;
-		font-size: 0.72rem;
-	}
 </style>

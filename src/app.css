@@ -266,8 +266,7 @@
 		--chat-feather-right: 5rem;
 		/* Dither for the column tint: the tint-vs-backdrop delta is only a few
 		   8-bit levels, so its alpha ramp quantizes into visible bands no matter
-		   how the gradient is eased. CSS can't dither its own gradients (see
-		   ambient/effects/dither.ts for the canvas equivalent), so a low-alpha
+		   how the gradient is eased. CSS can't dither its own gradients, so a low-alpha
 		   noise tile layered over the tint (and faded by the same mask) adds the
 		   per-pixel jitter that breaks the steps up instead.
 		   Authored for a shade at FULL strength, which is where the ramp bands

@@ -21,14 +21,6 @@ ChungusHub is under active development. So there might be some rough edges. Plea
 
 <h2 align="center">Showcase</h2>
 
-<h3 align="center">Backgrounds & Ambient Effects</h3>
-
-<div align="center">
-  <img src="images/themes.gif" alt="The welcome screen cycling through palettes, backgrounds and ambient effects">
-
-  <sub>Palettes, backgrounds and ambient effects over them. Everything is customizable.</sub>
-</div>
-
 <h3 align="center">Desktop</h3>
 
 <table>

@@ -12,7 +12,6 @@
 	import MemoryPanel from '$lib/components/memory/MemoryPanel.svelte';
 	import StatsView from '$lib/components/stats/StatsView.svelte';
 	import WelcomeView from '$lib/components/layout/WelcomeView.svelte';
-	import AmbientCanvas from '$lib/components/ambient/AmbientCanvas.svelte';
 	import PromptDebugPanel from '$lib/components/debug/PromptDebugPanel.svelte';
 	import PromptReviewDialog from '$lib/components/chat/PromptReviewDialog.svelte';
 	import { untrack } from 'svelte';
@@ -21,8 +20,6 @@
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { ambientStore } from '$lib/stores/ambient.svelte';
-	import { effectsPlaced } from '$lib/types/ambient';
 	import { backgroundStore } from '$lib/stores/background.svelte';
 	import { chatSceneStore } from '$lib/stores/chatScene.svelte';
 	import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
@@ -38,16 +35,8 @@
 	let settingsOpen = $derived(uiStore.settingsOpen);
 	let canDock = $derived(viewport.canDockSettings);
 
-	// Ambient is workspace-wide, so the chat, Settings, Library, Lorebook, Chats and
-	// Assistant all sit in the same weather. Each effect picks its own side of the
-	// story: a backdrop behind every panel, or an overlay floating above them all.
-	let ambientConfig = $derived(ambientStore.config);
-	let ambientOn = $derived(ambientConfig.enabled && ambientConfig.types.length > 0);
-	let ambientUnder = $derived(ambientOn ? effectsPlaced(ambientConfig, 'under') : []);
-	let ambientOver = $derived(ambientOn ? effectsPlaced(ambientConfig, 'over') : []);
-
-	// Background image: the workspace's bottom-most layer. Ambient particles, the
-	// chat and every panel paint over it; dim darkens it so text stays readable
+	// Background image: the workspace's bottom-most layer. The chat and every panel
+	// paint over it; dim darkens it so text stays readable
 	// on any picture (black or theme-tinted per the Shade setting).
 	let backgroundUrl = $derived(backgroundStore.url);
 	let backgroundDim = $derived(backgroundStore.config.dim);
@@ -180,7 +169,7 @@
 
 	// Full-cover overlays (chat-area panels) take over the chat column. We hide the
 	// chat beneath them instead of stacking on top, so the panel can be translucent
-	// and show the ambient behind it without the chat bleeding through. Side docks
+	// and show the background behind it without the chat bleeding through. Side docks
 	// don't cover the chat, so they don't count. The welcome landing covers the chat
 	// the same way, and any chat-area overlay covers (but never closes) the welcome.
 	let coveringOverlay = $derived(
@@ -267,8 +256,7 @@
 		data-assistant-snap-workspace
 		bind:this={workspaceEl}
 	>
-		<!-- Workspace background image: bottom of the stack, beneath the ambient layer
-		     (same z-index, earlier in the DOM). Two pictures while one is arriving: the
+		<!-- Workspace background image: bottom of the stack. Two pictures while one is arriving: the
 		     one leaving stays whole underneath, so the crossfade never dips to the bare
 		     surface between them. -->
 		{#if shownUrl || incomingUrl}
@@ -290,21 +278,6 @@
 					></div>
 				{/if}
 				<div class="background-dim" style="opacity: {backgroundDim}"></div>
-			</div>
-		{/if}
-
-		<!-- Workspace-wide ambient, in two layers because the choice is per effect: a
-		     backdrop behind every panel, and one floated above them all. Each side is
-		     mounted only when it has something to draw, so a mix that is all one way
-		     costs exactly one canvas. -->
-		{#if ambientUnder.length > 0}
-			<div class="ambient-layer">
-				<AmbientCanvas config={ambientConfig} placement="under" />
-			</div>
-		{/if}
-		{#if ambientOver.length > 0}
-			<div class="ambient-layer ambient-layer-over">
-				<AmbientCanvas config={ambientConfig} placement="over" />
 			</div>
 		{/if}
 
@@ -458,7 +431,7 @@
 		min-height: 0;
 		overflow: hidden;
 		background: var(--color-bg-primary);
-		/* Own stacking context so the ambient / chat / panel z-order below is
+		/* Own stacking context so the background / chat / panel z-order below is
 		   self-contained and deterministic. */
 		isolation: isolate;
 		/* Feather vars are @property-registered (app.css), so this retracts the
@@ -483,8 +456,7 @@
 		--chat-feather-right: 0px;
 	}
 
-	/* Background image layer: same plane as the ambient (z-index 0) but earlier in
-	   the DOM, so particles always fall in front of the picture. */
+	/* Background image layer: the workspace's bottom plane. */
 	.background-layer {
 		position: absolute;
 		inset: 0;
@@ -538,19 +510,6 @@
 		position: absolute;
 		inset: 0;
 		background: #000;
-	}
-
-	/* Single ambient layer spanning the whole workspace. Sits behind every panel by
-	   default; `-over` floats it above all of them (still click-through). */
-	.ambient-layer {
-		position: absolute;
-		inset: 0;
-		z-index: 0;
-		pointer-events: none;
-	}
-
-	.ambient-layer-over {
-		z-index: 40;
 	}
 
 	/* Chat fills the workspace as the base layer. Hidden (not unmounted) while a
@@ -665,7 +624,7 @@
 		height: 100%;
 		min-height: 0;
 		pointer-events: auto;
-		/* Translucent + frosted so the ambient layer behind reads through, just like
+		/* Translucent + frosted so the background behind reads through, just like
 		   the chat. Safe because the chat beneath is hidden while an overlay is up.
 		   --theme-panel-bg's opacity tracks the glass setting (more opaque as blur
 		   drops), and the backdrop blur is the setting itself. */

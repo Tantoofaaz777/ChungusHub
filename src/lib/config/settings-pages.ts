@@ -183,9 +183,7 @@ export const ANCHOR_PAGES: Record<string, SettingsPage> = {
 	accent: 'interface',
 	'interface-type': 'interface',
 	surfaces: 'interface',
-	'chat-scene': 'interface',
 	background: 'interface',
-	'ambient-effects': 'interface',
 	'reading-column': 'chat',
 	'story-type': 'chat',
 	'chat-style': 'chat',
@@ -237,4 +235,3 @@ export const TAB_FALLBACK_PAGE: Record<SettingsTab, SettingsPage> = {
 	regex: 'regex',
 	advanced: 'advanced'
 };
-

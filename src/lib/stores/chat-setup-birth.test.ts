@@ -639,7 +639,7 @@ describe('one blob, every feature', () => {
 		await chatStore.setImpersonatePerspective(chatId, 'second');
 		await chatStore.updateChatFeatureState(chatId, { persona: otherPersonaId });
 		await chatStore.updateChatFeatureState(chatId, {
-			scene: { enabled: true, background: { type: 'none' }, ambient: { effect: 'none' } } as never
+			scene: { enabled: true, background: { type: 'none' } } as never
 		});
 
 		const held = claims(chatId);

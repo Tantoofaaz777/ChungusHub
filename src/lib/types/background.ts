@@ -1,8 +1,8 @@
 /**
  * The workspace background picture and its two readability knobs.
  *
- * Import-free for the same reason `types/ambient.ts` is: a background is stored both as
- * the app-wide setting and inside a chat's own scene, and both readers have to agree on
+ * Import-free because a background is stored both as the app-wide setting and inside a
+ * chat's own scene, and both readers have to agree on
  * what a corrupt value degrades to.
  */
 

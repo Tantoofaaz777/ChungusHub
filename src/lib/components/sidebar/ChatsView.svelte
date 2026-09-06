@@ -1270,7 +1270,7 @@
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
-		/* Transparent so the frosted overlay surface with ambient behind shows through. */
+		/* Transparent so the frosted overlay surface with the workspace behind shows through. */
 		background: transparent;
 	}
 
