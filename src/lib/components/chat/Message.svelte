@@ -417,7 +417,7 @@
 	const canWriteOpening = $derived(
 		message.parentId === null && message.role === 'assistant' && featurePromptsStore.openingSceneEnabled
 	);
-	let openingPopoverOpen = $state(false);
+	let openingDialogOpen = $state(false);
 
 	function handleGenerateOpening(direction: string) {
 		// The store toasts its own generation failures; only its throw-guards reach here, and
@@ -859,26 +859,28 @@
 							{#if siblingCount > 1 || canWriteOpening}
 								<div
 									class="message-pager-slot"
-									class:message-actions-visible={showActions || cursored || openingPopoverOpen}
+									class:message-actions-visible={showActions || cursored || openingDialogOpen}
 								>
 									{#if siblingCount > 1}
 										<BranchNavigator current={siblingIndex} total={siblingCount} onNavigate={handleBranchNavigate} />
 									{/if}
 									{#if canWriteOpening}
-										<div class="opening-anchor">
+										<div class="opening-trigger">
 											<button
 												type="button"
 												class="opening-btn"
-												onclick={() => (openingPopoverOpen = true)}
+												onclick={() => (openingDialogOpen = true)}
 												disabled={messageStore.isStreaming}
 												aria-label="Write another opening scene"
+												aria-haspopup="dialog"
+												aria-expanded={openingDialogOpen}
 												title="Write another opening scene"
 											>
 												<Icon name="sparkles" class="w-3.5 h-3.5" strokeWidth={1.75} />
 											</button>
 											<OpeningScenePopover
-												open={openingPopoverOpen}
-												onClose={() => (openingPopoverOpen = false)}
+												open={openingDialogOpen}
+												onClose={() => (openingDialogOpen = false)}
 												onGenerate={handleGenerateOpening}
 											/>
 										</div>
@@ -1248,8 +1250,7 @@
 		transition: opacity 120ms ease;
 	}
 
-	.opening-anchor {
-		position: relative;
+	.opening-trigger {
 		display: inline-flex;
 	}
 

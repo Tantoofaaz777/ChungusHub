@@ -71,7 +71,7 @@
 		return n;
 	});
 
-	let openingPopoverOpen = $state(false);
+	let openingDialogOpen = $state(false);
 
 	// The store toasts its own generation failures; what reaches here is the guards it throws
 	// on before the try (engine off, no chat), which the trigger already prevents. Catching
@@ -478,16 +478,17 @@
 						     elsewhere would run two generations over one abort controller. -->
 						<Button
 							variant="secondary"
-							onclick={() => (openingPopoverOpen = true)}
+							onclick={() => (openingDialogOpen = true)}
 							disabled={messageStore.isStreaming}
+							aria-haspopup="dialog"
+							aria-expanded={openingDialogOpen}
 						>
 							<Icon name="bookOpen" class="w-4 h-4" />
 							Generate an opening scene
 						</Button>
 						<OpeningScenePopover
-							open={openingPopoverOpen}
-							align="center"
-							onClose={() => (openingPopoverOpen = false)}
+							open={openingDialogOpen}
+							onClose={() => (openingDialogOpen = false)}
 							onGenerate={handleGenerateOpeningScene}
 						/>
 					</div>
@@ -753,10 +754,7 @@
 		color: var(--color-text-secondary);
 	}
 
-	/* The popover positions against this, not against the centered card: anchored to the
-	   card it would hang from the card's full width instead of from the button. */
 	.message-empty-action {
-		position: relative;
 		display: inline-block;
 	}
 </style>
