@@ -58,20 +58,6 @@
 		return counts;
 	});
 
-	// Consume the one-shot deep link (an assistant chip pointing at a book), the shape the
-	// two library views use for theirs. An id naming no book is dropped once the shelf has
-	// books, rather than left armed to open an editor over a book that is gone.
-	$effect(() => {
-		const pending = uiStore.pendingLorebookId;
-		if (!pending) return;
-		if (books.some((b) => b.id === pending)) {
-			open(pending);
-			uiStore.pendingLorebookId = null;
-		} else if (books.length) {
-			uiStore.pendingLorebookId = null;
-		}
-	});
-
 	// ===== search, filter & sort =====
 
 	let search = $state('');

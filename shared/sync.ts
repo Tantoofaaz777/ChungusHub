@@ -17,7 +17,6 @@ export const SYNC_SCOPES = [
 	'lorebooks',
 	'steering',
 	'settings',
-	'assistant',
 	'drafts',
 	'inputHistory',
 	'presets',

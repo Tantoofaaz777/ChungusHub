@@ -1,33 +1,22 @@
 /**
  * Prompt-log accounting.
  *
- * The debug panel's whole claim is that it states the complete request, so these guard the
- * two ways a size can lie: a prompt priced without its tool definitions or tool-call
- * payloads (they are routinely the larger half of an assistant turn), and an estimate
- * presented as if the provider had reported it.
+ * The debug panel's whole claim is that it states the complete request, so these guard
+ * estimation, provider-reported usage, image collection, and request-field rendering.
  */
 import { describe, test, expect } from 'bun:test';
 
-import { entryImages, messageTokens, promptSize, requestChips, toolTokens } from './format';
+import { entryImages, promptSize, requestChips } from './format';
 import type { PromptLogEntry } from './types';
-
-const TOOL = {
-	type: 'function',
-	function: {
-		name: 'read_entity',
-		description: 'Read one addressable entity in full.',
-		parameters: { type: 'object', properties: { kind: { type: 'string' }, id: { type: 'string' } }, required: ['kind'] }
-	}
-};
 
 function entry(id: string, over: Partial<PromptLogEntry> = {}): PromptLogEntry {
 	return {
 		id,
-		source: 'assistant',
-		kind: 'assistant',
+		source: 'chat',
+		kind: 'completion',
 		provider: 'openrouter',
 		model: 'test/model',
-		messages: [{ role: 'system', content: 'You are a careful assistant.' }],
+		messages: [{ role: 'system', content: 'Write the next reply.' }],
 		stream: true,
 		startedAt: 1000,
 		status: 'done',
@@ -36,21 +25,6 @@ function entry(id: string, over: Partial<PromptLogEntry> = {}): PromptLogEntry {
 }
 
 describe('prompt sizing', () => {
-	test('the estimate counts tool definitions, not just messages', () => {
-		const withoutTools = promptSize(entry('a'));
-		const withTools = promptSize(entry('b', { tools: [TOOL, TOOL] }));
-		expect(withoutTools.reported).toBe(false);
-		expect(withTools.tokens).toBe(withoutTools.tokens + toolTokens([TOOL, TOOL]));
-		expect(withTools.tokens).toBeGreaterThan(withoutTools.tokens);
-	});
-
-	test('a message prices the tool calls it carries', () => {
-		const calls = [{ id: 'c1', type: 'function', function: { name: 'edit_entity', arguments: '{"text":"a long rewrite"}' } }];
-		const plain = messageTokens({ role: 'assistant', content: 'ok' });
-		const calling = messageTokens({ role: 'assistant', content: 'ok', tool_calls: calls });
-		expect(calling).toBeGreaterThan(plain);
-	});
-
 	test('provider-reported prompt tokens win, and are labelled as reported', () => {
 		const size = promptSize(entry('c', { usage: { promptTokens: 12081, completionTokens: 40, totalTokens: 12121 } }));
 		expect(size).toEqual({ tokens: 12081, reported: true });

@@ -8,7 +8,6 @@
 	import { chatCursor } from '$lib/stores/chatCursor.svelte';
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
-	import { chatSelection, MAX_SELECTION_CHARS } from '$lib/stores/chatSelection.svelte';
 	import { findSiblings } from '$lib/utils/message-tree';
 	import { flashTarget } from '$lib/utils/flash-target';
 	import { memoryStore } from '$lib/memory/store.svelte';
@@ -367,8 +366,7 @@
 	// ===== Arrival from another surface =====
 	// The story map navigates to a BRANCH and names the turn that was picked; the transcript
 	// is the only place that can show it. `flashTarget` is the app's one "look here" gesture,
-	// the same scroll and accent glow the assistant points with, so arriving from either
-	// surface reads identically and there is one recipe to change.
+	// so every surface uses the same scroll and accent glow.
 	let revealTargetId = $derived(messageStore.revealTargetId);
 
 	$effect(() => {
@@ -442,73 +440,6 @@
 		row.focus({ preventScroll: true });
 	});
 
-	// ===== Selection → Chungus Assistant context =====
-	// A highlight inside a message becomes the assistant's auto-attached "look here" pointer,
-	// exactly like an IDE feeding the editor selection to the model. Lives only while the
-	// highlight does.
-	function messageIdOf(node: Node | null): string | null {
-		const el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null);
-		const row = el?.closest?.('[id^="msg-"]') as HTMLElement | null;
-		return row?.id?.startsWith('msg-') ? row.id.slice(4) : null;
-	}
-
-	function captureSelection() {
-		const sel = window.getSelection();
-		const chatId = chatStore.activeChatId;
-		if (!sel || !chatId || !listElement) return;
-		const anchorInList = sel.anchorNode ? listElement.contains(sel.anchorNode) : false;
-		// A collapsed selection clears the context only when it collapses INSIDE the chat
-		// (a plain click in a message). Collapsing elsewhere, e.g. clicking into the assistant
-		// input to type the request, must leave the highlight context intact, IDE-style.
-		if (sel.rangeCount === 0 || sel.isCollapsed) {
-			if (anchorInList) chatSelection.clear();
-			return;
-		}
-		const range = sel.getRangeAt(0);
-		// A non-empty selection elsewhere (e.g. inside the assistant panel) doesn't touch the
-		// chat context; only highlights inside this chat's message list count.
-		if (!listElement.contains(range.commonAncestorContainer)) return;
-		const raw = sel.toString().replace(/ /g, ' ').trim();
-		const anchorMessageId = messageIdOf(range.startContainer) ?? messageIdOf(range.endContainer);
-		if (!raw || !anchorMessageId) {
-			if (anchorInList) chatSelection.clear();
-			return;
-		}
-		// How many bubbles the highlight touches: a "spans N messages" signal for the assistant.
-		let spanCount = 0;
-		for (const row of listElement.querySelectorAll('[id^="msg-"]')) {
-			if (range.intersectsNode(row)) spanCount++;
-		}
-		// Word + line counts drive the chip label, since a text preview is useless once the chip
-		// clips it. Lines are real content lines (hard breaks / paragraphs), NOT soft visual
-		// wraps, so the count doesn't change when the panel gets narrower.
-		const wordCount = (raw.match(/\S+/g) ?? []).length;
-		const lineCount = raw.split('\n').map((l) => l.trim()).filter(Boolean).length || 1;
-		const truncated = raw.length > MAX_SELECTION_CHARS;
-		chatSelection.set({
-			chatId,
-			anchorMessageId,
-			text: truncated ? raw.slice(0, MAX_SELECTION_CHARS) : raw,
-			truncated,
-			spanCount: Math.max(1, spanCount),
-			wordCount,
-			lineCount
-		});
-	}
-
-	$effect(() => {
-		let raf = 0;
-		const onChange = () => {
-			cancelAnimationFrame(raf);
-			raf = requestAnimationFrame(captureSelection);
-		};
-		document.addEventListener('selectionchange', onChange);
-		return () => {
-			cancelAnimationFrame(raf);
-			document.removeEventListener('selectionchange', onChange);
-			chatSelection.clear();
-		};
-	});
 </script>
 
 <div class="message-list-wrap">

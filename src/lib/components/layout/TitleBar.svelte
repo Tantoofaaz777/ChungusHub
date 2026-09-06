@@ -107,7 +107,7 @@
 
 <header class="title-bar">
 	<div class="nav-room-probe" aria-hidden="true" bind:this={navRoomProbe}></div>
-	<div class="title-bar-inner" data-assistant-snap-column>
+	<div class="title-bar-inner">
 		<div class="nav-group nav-group-start">
 			<div class="overlay-split" class:is-open={settingsOpen}>
 				<button
@@ -282,8 +282,8 @@
 		border-color: color-mix(in srgb, var(--color-accent) 33%, transparent);
 	}
 
-	/* Settings / Chungus Assistant are split pills: a main toggle segment plus a lock
-	   segment that pins the panel open. */
+	/* Settings and Library are split pills: each has a main toggle plus a lock segment
+	   that pins the panel open. */
 	.overlay-split {
 		display: inline-flex;
 		align-items: stretch;

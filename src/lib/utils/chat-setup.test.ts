@@ -118,7 +118,7 @@ const OWN = connection('own', 'anthropic/own-model', 200_000);
 
 beforeEach(() => {
 	connectionStore.connections = [APP, OWN];
-	connectionStore.assignments = { primary: APP.id, assistant: APP.id };
+		connectionStore.assignments = { primary: APP.id };
 });
 
 describe('prompt role names', () => {

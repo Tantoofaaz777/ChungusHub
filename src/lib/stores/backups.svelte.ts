@@ -101,8 +101,7 @@ class BackupStore {
 		this.stopPolling();
 	}
 
-	/** The `backups` sync scope. A no-op unless the page has been opened, like the skills
-	 *  reload on the assistant scope. */
+	/** The `backups` sync scope. A no-op unless the page has been opened. */
 	async syncReload(): Promise<void> {
 		if (!this.open) return;
 		await this.refresh();

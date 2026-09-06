@@ -10,8 +10,8 @@
 	 * it. Zero (the default, and everything under HOLD_THRESHOLD) stays a plain click.
 	 *
 	 * `destructive` puts the dialog on the ladder, which is what lets the reader's rung skip
-	 * it entirely. It is opt-in on purpose: this component also carries cost confirmations,
-	 * assistant approvals and discard-draft prompts, none of which are deletes, and a new one
+	 * it entirely. It is opt-in on purpose: this component also carries cost confirmations
+	 * and discard-draft prompts, neither of which is a delete, and a new one
 	 * of those must not become skippable by inheriting a default it never asked for.
 	 */
 	import { untrack } from 'svelte';

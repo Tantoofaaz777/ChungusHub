@@ -4,8 +4,8 @@ import { AnthropicNativeProvider } from '../anthropic-native';
 /**
  * Anthropic via its NATIVE Messages API (/v1/messages). See
  * AnthropicNativeProvider for the implementation. Routing it through the generic
- * OpenAI-compat shim instead silently drops thinking, prompt caching, top_k and
- * `strict` tool schemas; the native surface keeps them all.
+ * OpenAI-compat shim instead silently drops thinking, prompt caching and top_k;
+ * the native surface keeps them all.
  *
  * paramPolicy is 'reported': the provider synthesizes each model's
  * supportedParameters from the live /models `capabilities` object, so the

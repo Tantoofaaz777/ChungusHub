@@ -5,7 +5,7 @@
 	 * trade the solid accent for a faint tint and leave the reader deciding per
 	 * surface what "lit" means here.
 	 *
-	 * `md` is a settings row. `sm` is a dense list row (steering notes, skills),
+	 * `md` is a settings row. `sm` is a dense list row (steering notes, lorebook rows),
 	 * where the md track is taller than the line of text beside it.
 	 *
 	 * Not every two-state control belongs here: the lorebook row's status dot

@@ -2,7 +2,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import SettingsPageView from './SettingsPageView.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { SETTINGS_GROUPS, ANCHOR_PAGES, type SettingsPage } from '$lib/config/settings-pages';
+	import { SETTINGS_GROUPS, type SettingsPage } from '$lib/config/settings-pages';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
@@ -21,17 +21,6 @@
 	// view the drill never happens here: the list stays put and a row click hands
 	// the page to the centered panel instead.
 	const page = $derived(uiStore.settingsPage as 'root' | SettingsPage);
-
-	// Assistant deep links: navigation.ts routes `settingsPage` directly and also
-	// leaves the one-shot anchor for the case where this panel mounts afterwards.
-	$effect(() => {
-		const anchor = uiStore.pendingSettingsAnchor;
-		if (!anchor) return;
-		const target = ANCHOR_PAGES[anchor];
-		if (target === undefined) return;
-		uiStore.pendingSettingsAnchor = null;
-		if (page !== target) go(target);
-	});
 
 	let navDir = $state(1); // 1 = drilling in (slide from right), -1 = backing out
 	let shellEl = $state<HTMLElement | null>(null);

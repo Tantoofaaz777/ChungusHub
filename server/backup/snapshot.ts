@@ -23,7 +23,6 @@ import { ensurePrivacyMarkers } from '../privacy-notice';
 import { APP_VERSION } from '../version';
 import type { SnapshotKind, SnapshotManifest } from '../../shared/backups';
 import {
-	referencedAssistantFiles,
 	referencedImagePaths,
 	referencedImagePathsInText,
 	summarize
@@ -226,7 +225,6 @@ export async function createSnapshot(options: SnapshotOptions): Promise<Snapshot
 		let presetCount = 0;
 		try {
 			claimed = referencedImagePaths(snapshotDb);
-			for (const p of referencedAssistantFiles(snapshotDb)) claimed.add(p);
 			// Preset covers are named inside the preset documents rather than in any table,
 			// so they would fall outside a database-only reconcile entirely.
 			for (const rel of planned) {
@@ -290,8 +288,8 @@ export async function createSnapshot(options: SnapshotOptions): Promise<Snapshot
 		}
 
 		// ---- 4. Are the documents readable? ----------------------------------------
-		// Preset files and the skills catalog are written without a temp-and-rename, so a
-		// copy taken mid-save can catch half a file. Half a preset makes the whole preset
+		// Preset files are written without a temp-and-rename, so a copy taken mid-save can
+		// catch half a file. Half a preset makes the whole preset
 		// list fail to load after a restore, so the copy is parsed here and retried once.
 		const documents = planned.filter((p) => p.endsWith('.json'));
 		const torn: string[] = [];

@@ -31,7 +31,6 @@
 	let transcriptPageSize = $derived(generalSettingsStore.transcriptPageSize);
 	let transcriptLoadMode = $derived(generalSettingsStore.transcriptLoadMode);
 	let autoExpandReasoning = $derived(generalSettingsStore.autoExpandReasoning);
-	let assistantLauncher = $derived(generalSettingsStore.assistantLauncher);
 	let settingsSplitView = $derived(generalSettingsStore.settingsSplitView);
 	let storyMapWheelPans = $derived(generalSettingsStore.storyMapWheelPans);
 
@@ -200,23 +199,6 @@
 				</div>
 			</div>
 		{/if}
-	</section>
-
-	<section class="card" data-setting="assistant-button">
-		<div class="card-head">
-			<span class="card-title">Chungus Assistant</span>
-			<InfoTip
-				text="The floating assistant button in the corner of the workspace. Hidden, {MOD_KEY}+J still opens the panel and turn activity announces itself inside it instead."
-			/>
-		</div>
-		<div class="toggle-row" use:toggleRow>
-			<span class="slider-label">Floating assistant button</span>
-			<Toggle
-				checked={assistantLauncher}
-				onchange={(v) => generalSettingsStore.setAssistantLauncher(v)}
-				label="Floating assistant button"
-			/>
-		</div>
 	</section>
 
 	<section class="card" data-setting="story-map-scroll">

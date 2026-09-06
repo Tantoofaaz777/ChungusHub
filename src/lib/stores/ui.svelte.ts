@@ -3,25 +3,19 @@
  * and the chat search modal. Lives independently of the data stores so
  * navigation survives chat switches.
  */
-import { workspaceFocus } from '$lib/stores/workspaceFocus.svelte';
-
 /** Chat-area overlays: they cover the chat column. Settings and the merged Library
- *  are separate (settingsOpen / libraryOpen), each docking into a side margin. The
- *  Chungus Assistant is neither: it's a free-floating widget (assistantOpen). */
+ *  are separate (settingsOpen / libraryOpen), each docking into a side margin. */
 export type OverlayType = 'chats' | 'presetControls' | 'storymap' | 'memory' | 'stats';
 /** The three shelves of the merged Library, chosen by the panel's top switcher. */
 export type LibraryTab = 'characters' | 'personas' | 'lorebooks';
 /** What the Chats panel lists: the open chat's character, or every chat there is. */
 export type ChatsScope = 'character' | 'all';
-/** Transient side occupied by the snapped Assistant; null while floating/centered/closed. */
-export type AssistantSnapSide = 'left' | 'right';
-
 class UiStore {
 	// The settings panel's drill-down position: 'root' is the grouped index, any
 	// other value is a SettingsPage id (settings-pages.ts). Survives overlay
 	// switches within a session, so the panel reopens where it was left.
-	// (`SettingsTab`, the assistant deep-link contract, lives in settings-pages.ts
-	// with the rest of the settings information architecture.)
+	// Settings routing metadata lives in settings-pages.ts with the rest of the
+	// settings information architecture.
 	settingsPage = $state<string>('root');
 
 	// The connection open in the Connections-page editor: its id, or null when the
@@ -45,16 +39,6 @@ class UiStore {
 	// One-shot deep link: when set, the Library panel opens this entry's editor on
 	// mount and clears the field. Set by "Edit in Library" style buttons.
 	pendingLibraryEntryId = $state<string | null>(null);
-
-	// One-shot deep link for the Lorebooks shelf: when set, the shelf opens this book's
-	// editor and clears the field (an id that names no book is dropped once the shelf has
-	// loaded). Set by assistant chips pointing at a book (assistant-targets.ts).
-	pendingLorebookId = $state<string | null>(null);
-
-	// One-shot deep link for settings anchors: navigation.ts sets it; the
-	// SettingsPanel router consumes it to open the page hosting that
-	// `data-setting` anchor, then clears the field.
-	pendingSettingsAnchor = $state<string | null>(null);
 
 	// The chat-area overlay. Renders directly over the chat column at its exact size.
 	activeOverlay = $state<OverlayType | null>(null);
@@ -90,15 +74,6 @@ class UiStore {
 	// centered editors stands at a time (`openEditor`), or a deep link out of one
 	// would stack the other on top of it.
 	lorebookEditorId = $state<string | null>(null);
-	// The Chungus Assistant is a free-floating widget, not a docked panel: it never
-	// participates in the mutual exclusion above. `assistantOpen` toggles the panel vs.
-	// its mascot launcher button; there's no lock because it remains independently
-	// movable and minimizable.
-	assistantOpen = $state(false);
-	// A side-snapped Assistant shares the native dock seam with the chat column. Workspace
-	// reads this transient layout state to drive the same animated tint overhang as
-	// Settings/Library; it is never persisted and does not join panel choreography.
-	assistantSnapSide = $state<AssistantSnapSide | null>(null);
 	// Prompt debug panel: a chat-area cover like the overlays, but opened from its own
 	// handle. Mutually exclusive with every other panel, no lock.
 	debugPanelOpen = $state(false);
@@ -143,8 +118,7 @@ class UiStore {
 	}
 
 	// Opening any panel drops the others, except a pinned (locked) side dock. The debug
-	// panel has no lock, so it always closes when something else opens. The floating
-	// assistant is independent and never dropped here.
+	// panel has no lock, so it always closes when something else opens.
 	private dropUnlockedSidePanels() {
 		if (this.settingsOpen && !this.settingsLocked) this.closeSettings();
 		if (this.libraryOpen && !this.libraryLocked) this.closeLibrary();
@@ -219,9 +193,6 @@ class UiStore {
 		this.openEditor(null, null);
 		// The flow lives in the Library, so closing the panel abandons the wizard.
 		this.clearNewChat();
-		// The Library dock owned the auto-attach focus; releasing it on close means the
-		// assistant never sees an entry the user has navigated away from.
-		workspaceFocus.setEntry(null);
 	}
 
 	/** Begin the New chat flow: the Library opens on Characters, a character pick
@@ -310,17 +281,6 @@ class UiStore {
 		else this.openLorebooks(flushFn);
 	}
 
-	/** Open one book's editor with the shelf behind it (an assistant chip pointing at a
-	 *  book). The shelf consumes `pendingLorebookId` so an id naming nothing is dropped
-	 *  rather than opening an editor over a book that is gone. */
-	openLorebook(bookId: string, flushFn?: () => void) {
-		// Asked BEFORE the id is written, the order `openLibraryEntry` keeps: a refused request
-		// that armed it anyway would throw an editor open the next time the shelf is reached.
-		if (this.navBlocked()) return;
-		this.pendingLorebookId = bookId;
-		this.openLorebooks(flushFn);
-	}
-
 	/** Route the settings surface to a page. Every page navigation funnels through
 	 *  here so the connection editor, its routing sub-view, and the engine detail
 	 *  can't survive a page switch. */
@@ -354,26 +314,6 @@ class UiStore {
 
 	toggleSettingsLock() {
 		this.settingsLocked = !this.settingsLocked;
-	}
-
-	// The Chungus Assistant floats above everything, so opening/closing it touches no other
-	// panel and never clears the workspace focus (the Library dock owns that).
-	openAssistant() {
-		this.assistantOpen = true;
-	}
-
-	closeAssistant() {
-		this.assistantOpen = false;
-		this.assistantSnapSide = null;
-	}
-
-	toggleAssistant() {
-		if (this.assistantOpen) this.closeAssistant();
-		else this.openAssistant();
-	}
-
-	setAssistantSnapSide(side: AssistantSnapSide | null) {
-		if (this.assistantSnapSide !== side) this.assistantSnapSide = side;
 	}
 
 	openDebugPanel(flushFn?: () => void) {

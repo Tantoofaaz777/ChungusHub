@@ -9,7 +9,6 @@ import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta, 
 import type { CharacterVersion, LibraryEntry } from '$lib/types/library';
 import type { Lorebook } from '$lib/lorebook/types';
 import type { SteeringNote } from '$lib/types/steering';
-import type { AssistantSession, AssistantMessage } from '$lib/types/assistant';
 import type { BatchResult, Episode, MemoryState, PromotionResult } from '$lib/memory/types';
 import type { UserStats } from '$lib/types/stats';
 import { connectWs, dbRpc } from '$lib/services/transport';
@@ -205,20 +204,6 @@ class DatabaseService {
 	insertSteeringNote(note: SteeringNote): Promise<void> { return this.call('insertSteeringNote', note); }
 	updateSteeringNote(note: SteeringNote): Promise<void> { return this.call('updateSteeringNote', note); }
 	deleteSteeringNote(id: string): Promise<void> { return this.call('deleteSteeringNote', id); }
-
-	// ===== ASSISTANT SESSIONS =====
-	getAllAssistantSessions(): Promise<AssistantSession[]> { return this.call('getAllAssistantSessions'); }
-	insertAssistantSession(session: AssistantSession): Promise<void> { return this.call('insertAssistantSession', session); }
-	updateAssistantSession(session: { id: string; title?: string; updatedAt?: number }): Promise<void> {
-		return this.call('updateAssistantSession', session);
-	}
-	deleteAssistantSession(id: string): Promise<void> { return this.call('deleteAssistantSession', id); }
-	getAssistantMessages(sessionId: string): Promise<AssistantMessage[]> { return this.call('getAssistantMessages', sessionId); }
-	/** Appends a transcript row. The SERVER stamps its time and returns it: the transcript
-	 *  is ordered by that stamp, and this device's clock is not the one the assistant's own
-	 *  rows are written with (server/db.ts). */
-	insertAssistantMessage(message: Omit<AssistantMessage, 'createdAt'>): Promise<number> { return this.call('insertAssistantMessage', message); }
-	deleteAssistantMessage(id: string): Promise<void> { return this.call('deleteAssistantMessage', id); }
 
 	// ===== SESSION MEMORY =====
 	memGetState(chatId: string): Promise<MemoryState | null> { return this.call('memGetState', chatId); }

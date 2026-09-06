@@ -69,8 +69,7 @@ class PromptLogStore {
 				resultProvider: ev.result.provider,
 				error: ev.result.error,
 				responseContent: ev.result.responseContent,
-				responseThinking: ev.result.responseThinking,
-				responseToolCalls: ev.result.responseToolCalls
+				responseThinking: ev.result.responseThinking
 			};
 		}
 	}

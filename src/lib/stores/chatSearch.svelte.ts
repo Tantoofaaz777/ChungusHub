@@ -2,7 +2,7 @@
  * Find-in-chat: whether the search bar is up over the message list, and what it is
  * looking for.
  *
- * A chat satellite like chatSelection, deliberately NOT part of uiStore's panel
+ * A chat satellite, deliberately NOT part of uiStore's panel
  * choreography: the bar is inline chat chrome, not a workspace surface, so it must be
  * able to sit open alongside a docked Settings or Library without either closing the
  * other. The matches themselves live in the bar: they are DOM Ranges over the rendered

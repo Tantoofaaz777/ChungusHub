@@ -346,13 +346,6 @@ export const COMMANDS: CommandDef[] = [
 		run: () => uiStore.openLibrary(flush)
 	},
 	{
-		name: 'assistant',
-		group: 'open',
-		icon: 'sparkles',
-		describe: 'Open the Chungus Assistant',
-		run: () => uiStore.openAssistant()
-	},
-	{
 		name: 'settings',
 		group: 'open',
 		icon: 'settings',

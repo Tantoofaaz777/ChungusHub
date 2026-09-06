@@ -8,8 +8,6 @@
  * Nothing here touches the network at import time, so it is safe during
  * prerendering. The browser-only bits guard on `typeof window`.
  */
-import type { AssistantMessage, AssistantStep, NavTarget } from '$lib/types/assistant';
-import type { SentAttachment } from '$shared/assistant-attachments';
 import type { BackupsPayload } from '$shared/backups';
 
 /**
@@ -386,23 +384,19 @@ const pendingLlm = new Map<string, PendingLlm>();
 // only tells the server whether this device wants the feed, and the server records while
 // ANY device is listening, so a broadcast that arrives is always re-emitted.
 
-/** A faithful snapshot of one message in a logged request; assistant turns also carry
- *  tool_calls / tool_call_id / name, kept verbatim so the panel hides nothing. */
+/** A faithful snapshot of one message in a logged request. */
 export interface PromptLogMessage {
 	role: string;
 	content: string;
 	/** Chat image attachments as server-relative paths (never raw bytes). */
 	images?: string[];
-	tool_calls?: unknown;
-	tool_call_id?: string;
-	name?: string;
 }
 
 /** A snapshot of an outgoing LLM request, exactly as it goes over the wire. */
 export interface PromptLogRequest {
 	id: string;
 	source: string;
-	kind: 'completion' | 'assistant';
+	kind: 'completion';
 	provider: string;
 	model: string;
 	messages: PromptLogMessage[];
@@ -414,11 +408,6 @@ export interface PromptLogRequest {
 	tuning?: import('$lib/types/llm').GenerationTuning;
 	/** The connection's OpenRouter routing for this request (null/absent elsewhere). */
 	routing?: import('$lib/types/llm').RoutingConfig | null;
-	/** Assistant only: the tool definitions sent alongside the prompt. */
-	tools?: unknown[];
-	/** Assistant only: which step of the tool loop this prompt belongs to. */
-	iteration?: number;
-	assistantSessionId?: string;
 	startedAt: number;
 }
 
@@ -434,8 +423,6 @@ export interface PromptLogResult {
 	/** The response body the provider returned (thinking is extracted separately). */
 	responseContent?: string;
 	responseThinking?: string;
-	/** Assistant iterations: the tool calls the model issued this step, wire-shape. */
-	responseToolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
 }
 
 export type PromptLogEvent =
@@ -483,238 +470,6 @@ function emitPromptLog(ev: PromptLogEvent): void {
 function emitPromptLogClear(): void {
 	for (const handler of promptLogClearHandlers) handler();
 }
-
-// ===== Assistant streaming (Chungus Assistant) =====
-
-export interface AssistantToolResult {
-	type: string;
-	label: string;
-	error?: string;
-	id?: string;
-	name?: string;
-	/** Entity kind for generic entity ops (character/persona/message), so the UI can
-	 *  deep-link the result to the right place. */
-	kind?: string;
-	/** Before/after text for edits, so the UI can render a diff. */
-	diff?: { before: string; after: string; title?: string };
-	/** A place to jump to. Present on `navigate` results; renders a clickable chip. */
-	nav?: NavTarget;
-	[k: string]: unknown;
-}
-
-export interface AssistantDone {
-	content: string;
-	actions: AssistantToolResult[];
-	usage: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens?: number };
-	/** The last iteration's prompt+completion tokens ≈ what the tab's context now occupies. */
-	contextTokens?: number;
-	/** The turn ended at the step/action budget with work possibly unfinished (drives Continue). */
-	capped?: boolean;
-	stopped?: boolean;
-	/** The turn's persisted row. The SERVER commits it now; the store adopts this instead
-	 *  of committing anything itself. Absent only when the session vanished mid-turn. */
-	committed?: AssistantMessage;
-}
-
-export interface AssistantStreamRequest {
-	/** The connection driving the Assistant surface: the server reads its key by this id. */
-	connectionId: string;
-	provider: string;
-	model: string;
-	/** The assistant conversation (tab) id. The server replays its full context. */
-	assistantSessionId: string;
-	/** The user row this turn answers. The server writes the RESOLVED attachment modes
-	 *  back onto it and announces them with an `assistant-attachments` event. */
-	userMessageId: string;
-	/** The roleplay chat the assistant's tools act on; null if none open. */
-	chatId: string | null;
-	/** The user's new turn. */
-	userMessage: string;
-	/** Images the user attached to this turn (server-relative paths). */
-	images?: string[];
-	/** Files the user attached to this turn, as `assistant_files` ids. The rows are already
-	 *  stored, so this only binds them to the user turn: no content rides the request, and
-	 *  the assistant reads them with its file tools. */
-	files?: string[];
-	/** Whether the assistant's provider/model takes images (provider media policy + model
-	 *  modalities + the Send images setting). The server strips image paths when false. */
-	sendImages?: boolean;
-	/** Re-run of a failed turn: the server won't duplicate the user turn in context. */
-	retry?: boolean;
-	/** Workspace items attached as context; the server resolves + injects their data. */
-	attachments?: {
-		kind: string;
-		refId: string;
-		entryType?: string;
-		full?: boolean;
-		selection?: { anchorMessageId: string; text: string; truncated?: boolean; spanCount?: number };
-	}[];
-	/** Sampling knobs (top_p, penalties, service_tier, …) for the assistant model, merged into the body.
-	 *  max_tokens + temperature ride inside here. There are no separate top-level fields. */
-	params?: Record<string, string | number>;
-	/** Reasoning-effort / show-reasoning / verbosity / image-detail tuning for the assistant model. */
-	tuning?: import('$lib/types/llm').GenerationTuning;
-	/** The Assistant connection's OpenRouter routing (openrouter only; ignored elsewhere). */
-	routing?: import('$lib/types/llm').RoutingConfig | null;
-	/** The Assistant connection's declared context size (tokens). Drives the server's
-	 *  token-denominated context trim + pre-flight fit check. */
-	contextSize: number;
-	/** The Assistant connection's Stream response setting. Off = one non-streamed request
-	 *  per model step: no reply/reasoning deltas and no tool-call progress. */
-	stream: boolean;
-	/** How much this TAB wants to be asked before a call runs. Sent per request rather than
-	 *  frozen with the session: the model is never told, so changing it costs no cache. */
-	approvalMode: 'manual' | 'auto';
-	signal?: AbortSignal;
-}
-
-/**
- * One event of a turn in flight. Addressed to the SESSION, never to the request that
- * started it: a page that reloaded mid-turn never issued that request, and a second device
- * watching the same tab never issued one at all. `settled` ends the turn whether it
- * succeeded or failed: the committed row carries the error when it failed, and is absent
- * only when the session vanished mid-turn or the turn died before it had a row.
- */
-export type AssistantEvent =
-	| { kind: 'reply'; sessionId: string; delta: string }
-	| { kind: 'thinking'; sessionId: string; delta: string }
-	| { kind: 'iteration'; sessionId: string; iteration: number }
-	/** A tool call whose arguments are still streaming. `index` is its ordinal within the
-	 *  current model step (frames repeat it as the call grows) and `text` is the one
-	 *  display line the server derived from the arguments so far, or '' when there is
-	 *  nothing substantial to show. It carries no result: the call has not run yet. */
-	| { kind: 'tool-progress'; sessionId: string; index: number; name: string; text: string }
-	| { kind: 'tool-result'; sessionId: string; result: AssistantToolResult }
-	/** The turn has STOPPED and is waiting on the user: calls to approve, or questions the
-	 *  assistant asked. The one event that is not a delta: it stays true until someone
-	 *  answers or stops the turn. */
-	| { kind: 'ask'; sessionId: string; ask: AssistantPendingAsk }
-	/** Someone answered (possibly on another device), so the card comes down. */
-	| { kind: 'ask-settled'; sessionId: string; askId: string }
-	/** The server resolved what actually rode with the user turn (full / pointer / too
-	 *  long / already in context) and stamped it on that row, so the bubble's chips update
-	 *  to the truth. Fired once, at turn start; a page that missed it reads the row. */
-	| { kind: 'attachments'; sessionId: string; messageId: string; attachments: SentAttachment[] }
-	| { kind: 'settled'; sessionId: string; committed?: AssistantMessage };
-
-/** One line of context on a pending call: a memory price, a branch warning, a save mode. */
-export interface AssistantApprovalNote {
-	text: string;
-	/** Renders as a warning rather than a plain fact. */
-	warn?: boolean;
-}
-
-/**
- * A tool call the assistant is waiting to be allowed to run, exactly as the card renders it.
- * Every field is derived server-side BEFORE anything is written (`Capability.preview`), by the
- * same pure functions the result carries afterwards. Mirrors `ApprovalCall` in
- * server/assistant/types.ts, which this side never imports.
- */
-export interface AssistantApprovalCall {
-	/** The call's ordinal within its model step. An answer addresses calls by THIS number,
-	 *  so it must be echoed back untouched. It is not the card's row order. */
-	index: number;
-	tool: string;
-	/** Which one: the target in the user's words ("Turn #42 · Aria"), never an id. */
-	label: string;
-	notes: AssistantApprovalNote[];
-	/** The deed without its target ("Delete message"). Rows sharing one collapse under it. */
-	act?: string;
-	/** True of the act itself however many rows repeat it, so the card states it once. */
-	actNotes?: AssistantApprovalNote[];
-	/** What it happens inside: a chat title, a lorebook name, a character. */
-	within?: string;
-	/** Position inside `within` (a chat turn), so a run of rows reads as a range. */
-	at?: number;
-	/** Where the target lives in the app, for the look-before-you-answer jump. */
-	target?: { kind: 'character' | 'persona' | 'message' | 'lorebook' | 'chat'; id: string };
-	diff?: { before: string; after: string; title?: string };
-	/** Where this call sits on the assistant's read < write < delete ladder, once its arguments
-	 *  were read: the same number that decided the row is on this card at all. */
-	risk: 'read' | 'write' | 'delete';
-	rows?: number;
-}
-
-/**
- * One multiple-choice question the assistant put to the user, exactly as the card renders it.
- * Mirrors `AskQuestion` in server/assistant/types.ts. The free-text answer every card offers
- * is the panel's own, which is why nothing here declares it.
- */
-export interface AssistantQuestion {
-	question: string;
-	options: string[];
-	/** Several options may be picked at once. Absent = exactly one. */
-	multiple?: boolean;
-}
-
-/** One question's answer, addressed by position in the series. Mirrors `QuestionAnswer`. */
-export interface AssistantQuestionAnswer {
-	picked: string[];
-	written: string | null;
-}
-
-/**
- * What a stopped turn is waiting on, and the only thing the panel needs to know to draw it.
- * ONE slot rather than two, mirroring the server's `LiveTurn.pending`: a turn runs its calls
- * in order, so it can only ever be waiting on one of these.
- */
-export type AssistantPendingAsk =
-	| { kind: 'approval'; askId: string; calls: AssistantApprovalCall[] }
-	| { kind: 'question'; askId: string; questions: AssistantQuestion[] };
-
-/** A turn the server is running right now, with its timeline so far. */
-export interface AssistantRunningTurn {
-	sessionId: string;
-	steps: AssistantStep[];
-	iteration: number;
-	/** The card this turn is blocked on, handed to a page that joined mid-wait. */
-	ask?: AssistantPendingAsk;
-}
-
-const assistantEventHandlers = new Set<(event: AssistantEvent) => void>();
-
-/** Subscribe to every assistant turn's live events, whichever page or device started it.
- *  Returns a disposer. */
-export function onAssistantEvent(handler: (event: AssistantEvent) => void): () => void {
-	assistantEventHandlers.add(handler);
-	return () => assistantEventHandlers.delete(handler);
-}
-
-function emitAssistantEvent(event: AssistantEvent): void {
-	for (const handler of assistantEventHandlers) handler(event);
-}
-
-/**
- * The session an assistant frame belongs to, or null. Refusals that never became a turn (a
- * duplicate request id, a tab already running one) deliberately carry no session, so they
- * settle the promise that asked and never a page watching a turn that is still going.
- */
-function assistantFrameSession(msg: { [k: string]: unknown }): string | null {
-	return typeof msg.assistantSessionId === 'string' && msg.assistantSessionId ? msg.assistantSessionId : null;
-}
-
-interface PendingAssistant {
-	resolve: (result: AssistantDone) => void;
-	reject: (err: Error) => void;
-	req: AssistantStreamRequest;
-	/** Armed on abort: the grace window for the server's final (stopped) accounting. */
-	cancelTimer?: ReturnType<typeof setTimeout>;
-}
-
-/** An assistant turn failure that still carries the turn's final context accounting. */
-export interface AssistantTurnError extends Error {
-	contextTokens?: number;
-	/** The failed turn's server-committed row (partial steps + the error), when one exists. */
-	committed?: AssistantMessage;
-	/** The socket dropped while the turn KEEPS RUNNING server-side: commit nothing, retry
-	 *  nothing. The finished turn arrives through the 'assistant' sync broadcast. */
-	detached?: boolean;
-}
-
-const pendingAssistants = new Map<string, PendingAssistant>();
-
-/** In-flight assistant-status requests, resolved by the matching assistant-status-result. */
-const pendingStatus = new Map<string, { resolve: (r: AssistantRunningTurn[]) => void; reject: (e: Error) => void }>();
 
 /** A reply being written for a chat, as `llmStatus` reports it. */
 export interface LiveChatGeneration {
@@ -824,23 +579,6 @@ function handleSocketDown(socket: WebSocket): void {
 		if (pending.cancelTimer) parkLlmCancel(id, pending);
 		pending.reattached = true;
 	}
-	// Assistant turns SURVIVE a dropped socket: the server keeps running them and
-	// commits the finished turn itself, so it syncs in when the connection returns.
-	// A pending with an armed cancelTimer was deliberately stopped, so settle it as a
-	// clean abort, not a scary error.
-	for (const [, pending] of pendingAssistants) {
-		if (pending.cancelTimer) {
-			clearTimeout(pending.cancelTimer);
-			pending.reject(abortError());
-		} else {
-			const err: AssistantTurnError = new Error('Connection dropped. The turn keeps running on the server and its result will appear when the connection returns.');
-			err.detached = true;
-			pending.reject(err);
-		}
-	}
-	pendingAssistants.clear();
-	for (const [, pending] of pendingStatus) pending.reject(new Error('Connection lost'));
-	pendingStatus.clear();
 	for (const [, pending] of pendingLlmStatus) pending.reject(new Error('Connection lost'));
 	pendingLlmStatus.clear();
 	scheduleReconnect();
@@ -1230,119 +968,11 @@ function handleWsMessage(raw: unknown): void {
 		case 'prompt-log-clear':
 			emitPromptLogClear();
 			break;
-		case 'assistant-reply': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) emitAssistantEvent({ kind: 'reply', sessionId, delta: String(msg.delta) });
-			break;
-		}
-		case 'assistant-thinking': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) emitAssistantEvent({ kind: 'thinking', sessionId, delta: String(msg.delta) });
-			break;
-		}
-		case 'assistant-iteration': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) emitAssistantEvent({ kind: 'iteration', sessionId, iteration: Number(msg.iteration) });
-			break;
-		}
-		case 'assistant-approval': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) {
-				emitAssistantEvent({
-					kind: 'ask',
-					sessionId,
-					ask: { kind: 'approval', askId: String(msg.askId), calls: (msg.calls as AssistantApprovalCall[]) ?? [] }
-				});
-			}
-			break;
-		}
-		case 'assistant-question': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) {
-				emitAssistantEvent({
-					kind: 'ask',
-					sessionId,
-					ask: { kind: 'question', askId: String(msg.askId), questions: (msg.questions as AssistantQuestion[]) ?? [] }
-				});
-			}
-			break;
-		}
-		case 'assistant-ask-settled': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) emitAssistantEvent({ kind: 'ask-settled', sessionId, askId: String(msg.askId) });
-			break;
-		}
-		case 'assistant-tool-progress': {
-			const sessionId = assistantFrameSession(msg);
-			const p = msg.progress as { index?: unknown; name?: unknown; text?: unknown } | undefined;
-			if (sessionId && p && typeof p.index === 'number') {
-				emitAssistantEvent({ kind: 'tool-progress', sessionId, index: p.index, name: String(p.name ?? ''), text: String(p.text ?? '') });
-			}
-			break;
-		}
-		case 'assistant-tool-result': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) emitAssistantEvent({ kind: 'tool-result', sessionId, result: msg.result as AssistantToolResult });
-			break;
-		}
-		case 'assistant-attachments': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId && typeof msg.messageId === 'string') {
-				emitAssistantEvent({
-					kind: 'attachments',
-					sessionId,
-					messageId: msg.messageId,
-					attachments: Array.isArray(msg.attachments) ? (msg.attachments as SentAttachment[]) : []
-				});
-			}
-			break;
-		}
 		case 'llm-status-result': {
 			const pending = pendingLlmStatus.get(String(msg.id));
 			if (pending) {
 				pendingLlmStatus.delete(String(msg.id));
 				pending.resolve((msg.running as LiveChatGeneration[]) ?? []);
-			}
-			break;
-		}
-		case 'assistant-status-result': {
-			const pending = pendingStatus.get(String(msg.id));
-			if (pending) {
-				pendingStatus.delete(String(msg.id));
-				pending.resolve((msg.running as AssistantRunningTurn[]) ?? []);
-			}
-			break;
-		}
-		case 'assistant-done': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) emitAssistantEvent({ kind: 'settled', sessionId, committed: msg.committed as AssistantMessage | undefined });
-			const pending = pendingAssistants.get(String(msg.id));
-			if (pending) {
-				pendingAssistants.delete(String(msg.id));
-				if (pending.cancelTimer) clearTimeout(pending.cancelTimer);
-				pending.resolve({
-					content: String(msg.content ?? ''),
-					actions: (msg.actions as AssistantToolResult[]) ?? [],
-					usage: (msg.usage as AssistantDone['usage']) ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-					contextTokens: typeof msg.contextTokens === 'number' ? msg.contextTokens : undefined,
-					capped: !!msg.capped,
-					stopped: !!msg.stopped,
-					committed: msg.committed as AssistantMessage | undefined
-				});
-			}
-			break;
-		}
-		case 'assistant-error': {
-			const sessionId = assistantFrameSession(msg);
-			if (sessionId) emitAssistantEvent({ kind: 'settled', sessionId, committed: msg.committed as AssistantMessage | undefined });
-			const pending = pendingAssistants.get(String(msg.id));
-			if (pending) {
-				pendingAssistants.delete(String(msg.id));
-				if (pending.cancelTimer) clearTimeout(pending.cancelTimer);
-				const err: AssistantTurnError = new Error(String(msg.message));
-				if (typeof msg.contextTokens === 'number' && msg.contextTokens > 0) err.contextTokens = msg.contextTokens;
-				if (msg.committed) err.committed = msg.committed as AssistantMessage;
-				pending.reject(err);
 			}
 			break;
 		}
@@ -1457,95 +1087,6 @@ function abortError(): Error {
 }
 
 /**
- * Runs one Chungus Assistant turn over the WebSocket. Streams reply text, reasoning,
- * tool-call progress, and tool results through the request callbacks; resolves
- * with the final reply + the list of actions the assistant took.
- */
-export async function assistantStream(req: AssistantStreamRequest): Promise<AssistantDone> {
-	await connectWs();
-	if (!ws || ws.readyState !== WebSocket.OPEN) {
-		throw new Error('Not connected to server');
-	}
-
-	const id = crypto.randomUUID();
-
-	return new Promise<AssistantDone>((resolve, reject) => {
-		if (req.signal?.aborted) {
-			reject(abortError());
-			return;
-		}
-
-		pendingAssistants.set(id, { resolve, reject, req });
-
-		req.signal?.addEventListener('abort', () => {
-			const pending = pendingAssistants.get(id);
-			if (!pending) return;
-			// Don't reject yet: the server answers a cancel with a final assistant-done
-			// (stopped) carrying the turn's real usage + context accounting within
-			// moments. Rejecting immediately would throw that data away (the meter
-			// then reads stale after every Stop). The timer is the safety net for a
-			// dead server/socket only.
-			try {
-				// The session id rides along so the Stop still lands if this socket already
-				// reconnected (turns are session-keyed on the server, not socket-keyed).
-				ws?.send(JSON.stringify({ t: 'assistant-cancel', id, assistantSessionId: req.assistantSessionId }));
-			} catch {
-				/* socket already gone: the timer below settles the promise */
-			}
-			pending.cancelTimer = setTimeout(() => {
-				if (pendingAssistants.delete(id)) reject(abortError());
-			}, 5000);
-		});
-
-		// Typed against the request shape so a required field cannot silently fall off the
-		// wire: the server refuses a mode it does not recognize, and this literal is the one
-		// place a field could otherwise be forgotten.
-		const payload: Omit<AssistantStreamRequest, 'signal'> & { t: 'assistant'; id: string } = {
-			t: 'assistant',
-			id,
-			connectionId: req.connectionId,
-			provider: req.provider,
-			model: req.model,
-			assistantSessionId: req.assistantSessionId,
-			userMessageId: req.userMessageId,
-			chatId: req.chatId,
-			userMessage: req.userMessage,
-			images: req.images ?? [],
-			files: req.files ?? [],
-			sendImages: !!req.sendImages,
-			retry: !!req.retry,
-			attachments: req.attachments ?? [],
-			params: req.params,
-			tuning: req.tuning,
-			routing: req.routing,
-			contextSize: req.contextSize,
-			stream: req.stream,
-			approvalMode: req.approvalMode
-		};
-		ws!.send(JSON.stringify(payload));
-	});
-}
-
-/**
- * Asks which of these sessions have a turn running on the server right now, and hands back
- * each one's timeline so far. The answer and the deltas that follow it leave no gap (the
- * server builds the snapshot and sends it in one synchronous step), so a page can append
- * straight onto what it was given. A session missing from the answer has nothing running,
- * which is the caller's cue to re-read its transcript.
- */
-export async function assistantStatus(sessionIds: string[]): Promise<AssistantRunningTurn[]> {
-	await connectWs();
-	if (!ws || ws.readyState !== WebSocket.OPEN) {
-		throw new Error('Not connected to server');
-	}
-	const id = crypto.randomUUID();
-	return new Promise((resolve, reject) => {
-		pendingStatus.set(id, { resolve, reject });
-		ws!.send(JSON.stringify({ t: 'assistant-status', id, sessionIds }));
-	});
-}
-
-/**
  * Asks which of these chats have a reply being written for them right now, and how long each
  * one has been at it.
  *
@@ -1578,41 +1119,4 @@ export async function llmStatus(chatIds: string[]): Promise<LiveChatGeneration[]
 export function stopGeneration(id: string): void {
 	if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('Not connected to server');
 	ws.send(JSON.stringify({ t: 'llm-cancel', id }));
-}
-
-/**
- * Answers one approval card. Addressed to the SESSION and matched by ask id, never by
- * socket: every device with the tab open sees the card, and the first answer settles it.
- * Anything not in `approved` is refused, which is what makes a partial answer safe. The
- * numbers are the calls' own `index` values, echoed back exactly as they arrived.
- */
-export async function assistantApprove(sessionId: string, askId: string, approved: number[]): Promise<void> {
-	await connectWs();
-	if (!ws || ws.readyState !== WebSocket.OPEN) {
-		throw new Error('Not connected to server');
-	}
-	ws.send(JSON.stringify({ t: 'assistant-approve', assistantSessionId: sessionId, askId, approved }));
-}
-
-/** Answers one question card, the same way and through the same door. The answers ride in
- *  the order the questions were asked: position is how the server matches them back. */
-export async function assistantAnswer(sessionId: string, askId: string, answers: AssistantQuestionAnswer[]): Promise<void> {
-	await connectWs();
-	if (!ws || ws.readyState !== WebSocket.OPEN) {
-		throw new Error('Not connected to server');
-	}
-	ws.send(JSON.stringify({ t: 'assistant-answer', assistantSessionId: sessionId, askId, answers }));
-}
-
-/**
- * Stops the turn running in `sessionId`, whoever started it. Turns are session-keyed
- * server-side, so this lands from a page that reloaded after the turn began and holds no
- * request of its own. The turn answers with its usual stopped `assistant-done`.
- */
-export async function assistantCancel(sessionId: string): Promise<void> {
-	await connectWs();
-	if (!ws || ws.readyState !== WebSocket.OPEN) {
-		throw new Error('Not connected to server');
-	}
-	ws.send(JSON.stringify({ t: 'assistant-cancel', assistantSessionId: sessionId }));
 }

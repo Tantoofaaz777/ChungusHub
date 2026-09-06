@@ -32,7 +32,6 @@
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { chatLorebookClaim } from '$lib/utils/chat-setup';
-	import { workspaceFocus } from '$lib/stores/workspaceFocus.svelte';
 	import {
 		activationSummary,
 		lorebookDeleteMessage,
@@ -377,13 +376,6 @@
 		if (!selectedBook && !lorebookStore.loading) onClose();
 	});
 
-	// Mirror the open book into the workspace focus (the assistant's auto-attach signal) and
-	// release it on unmount: unmounting IS navigating away, and a focus left standing keeps
-	// the assistant pointing at a closed book.
-	$effect(() => {
-		workspaceFocus.setLorebook(bookId);
-	});
-	$effect(() => () => workspaceFocus.setLorebook(null));
 	// Reset per-book transient UI on book switch. Expanded ids are keyed by entry id, so the
 	// other book's rows simply don't render them. A cross-book jump survives the swap.
 	$effect(() => {

@@ -13,11 +13,9 @@ import { steeringStore } from '$lib/stores/steering.svelte';
 import { chatCastStore } from '$lib/stores/chatCast.svelte';
 import { personaStore } from '$lib/stores/persona.svelte';
 import { presetControlsStore } from '$lib/stores/presetControls.svelte';
-import { assistantSessionStore } from '$lib/stores/assistantSessions.svelte';
 import { inputDraftStore } from '$lib/stores/inputDraft.svelte';
 import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
 import { presetService } from '$lib/services/presets.svelte';
-import { reloadAllSkills } from '$lib/services/assistantSkillsService';
 import { reloadAllSyncedSettings } from '$lib/services/syncedSetting';
 import { memoryStore } from '$lib/memory/store.svelte';
 import { backupStore } from '$lib/stores/backups.svelte';
@@ -81,11 +79,6 @@ const HANDLERS: Record<SyncScope, () => Promise<void>> = {
 		// view prefs, …) re-reads here, so a setting changed on one
 		// device shows up live on the others instead of only on next boot.
 		await reloadAllSyncedSettings();
-	},
-	assistant: async () => {
-		await assistantSessionStore.syncReload();
-		// Skill saves ride this scope too; a no-op unless the Skills dialog is open.
-		await reloadAllSkills();
 	},
 	// A composer draft changed on another device; only the open chat's matters
 	// here. The rest are read when their chat opens.

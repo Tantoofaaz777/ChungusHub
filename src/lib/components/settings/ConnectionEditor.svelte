@@ -486,9 +486,8 @@
 				{@const outPrice = formatPricePerMillion(info.pricing?.completion)}
 				{@const cutoff = formatMonthYear(info.knowledgeCutoff)}
 				{@const vision = !!info.inputModalities?.includes('image')}
-				{@const tools = !!info.supportedParameters?.includes('tools')}
 				{@const hasStats = !!(ctx || inPrice || outPrice || cutoff)}
-				{@const hasTags = vision || tools || !!info.isReasoning || info.isModerated !== undefined}
+				{@const hasTags = vision || !!info.isReasoning || info.isModerated !== undefined}
 				{#if hasStats || hasTags}
 					<div class="spec">
 						{#if hasStats}
@@ -502,7 +501,6 @@
 						{#if hasTags}
 							<div class="spec-tags">
 								{#if vision}{@render specTag('Vision', 'Reads images you attach to messages.', 'cap')}{/if}
-								{#if tools}{@render specTag('Tools', 'Supports tool calling, which the Chungus Assistant needs.', 'cap')}{/if}
 								{#if info.isReasoning}{@render specTag('Reasoning', 'Thinks before replying. Often better, usually slower and pricier.', 'accent')}{/if}
 								{#if info.isModerated === true}
 									{@render specTag('Moderated', 'The default provider runs a safety filter, so some prompts or replies get blocked.', 'warn')}

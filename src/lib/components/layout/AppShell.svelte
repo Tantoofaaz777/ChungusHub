@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Workspace from '$lib/components/layout/Workspace.svelte';
 	import TitleBar from '$lib/components/layout/TitleBar.svelte';
-	import AssistantFloatingWidget from '$lib/components/assistant/AssistantFloatingWidget.svelte';
 	import WelcomeDialog, { openWelcomeDialog } from '$lib/components/layout/WelcomeDialog.svelte';
 	import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
 	import DataAheadBar, { setDataAhead } from '$lib/components/layout/DataAheadBar.svelte';
@@ -34,7 +33,6 @@
 	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
 	import { personaStore } from '$lib/stores/persona.svelte';
 	import { presetControlsStore } from '$lib/stores/presetControls.svelte';
-	import { assistantSessionStore } from '$lib/stores/assistantSessions.svelte';
 	import { tokenCalibration } from '$lib/tokenizer';
 	import {
 		AccessDeniedError,
@@ -186,7 +184,6 @@
 			await steeringStore.load();
 			await personaStore.initialize();
 			await presetControlsStore.initialize();
-			await assistantSessionStore.initialize();
 
 			// Boot the global chat list, restoring the last viewed chat (or
 			// creating a fresh blank one when none exist yet).
@@ -331,13 +328,9 @@
 		<div class="app-main">
 			<Workspace />
 		</div>
-		<!-- The Chungus Assistant lives here, at the shell's top level, so its fixed
-		     floating widget/launcher paints above the title bar and the workspace's
-		     isolated stacking context. -->
-		<AssistantFloatingWidget />
-		<!-- Mounted with the workspace, not with the shell: it portals to body and owns
-		     its own open flag, and there is nothing to greet anyone about while a boot
-		     state card is still on screen. -->
+		<!-- Mounted only once the workspace is ready: it portals to body and owns its
+		     own open flag, and there is nothing to greet anyone about while a boot state
+		     card is still on screen. -->
 		<WelcomeDialog />
 	{/if}
 </div>

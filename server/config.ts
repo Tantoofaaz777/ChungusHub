@@ -284,14 +284,9 @@ export const IMAGE_CATEGORIES = [
 ] as const;
 export type ImageCategory = (typeof IMAGE_CATEGORIES)[number];
 
-// Files the user attaches to a Chungus Assistant tab as reference material. Read-only for
-// their whole life and owned by their `assistant_files` row, so nothing else writes here.
-export const ASSISTANT_FILES_ROOT = join(DATA_DIR, 'assistant-files');
-
 export const PRESETS_DIR = join(DATA_DIR, 'presets');
 // Per-preset unsaved working copies; live until the user saves or discards.
 export const TEMP_PRESETS_DIR = join(PRESETS_DIR, 'temp');
-export const ASSISTANT_SKILLS_PATH = join(DATA_DIR, 'assistantSkills.json');
 export const ALLOWLIST_PATH = join(DATA_DIR, 'allowlist.json');
 // Security switches (allowlist toggle + password hash + sessions). Deleting the
 // file restores the defaults. That is the documented lockout recovery.
@@ -302,11 +297,6 @@ export const CLIENT_DIR = resolve(join(BASE_DIR, 'build'));
 
 // Bundled default presets shipped with the repo (seeds data/presets on first run).
 export const DEFAULT_PRESETS_DIR = resolve(join(BASE_DIR, 'defaults', 'presets'));
-
-// Bundled assistant skills shipped with the repo, one `<id>.json` each in the same
-// format an export writes (seeds assistantSkills.json on first read, and backs the
-// Defaults browser in Assistant Settings).
-export const DEFAULT_SKILLS_DIR = resolve(join(BASE_DIR, 'defaults', 'skills'));
 
 // Bundled example characters shipped with the repo: `<id>.json` plus the pictures under the
 // same name (`<id>.<image>` portrait, `<id>/` sprite folder). Seeded into the library ONCE,
@@ -357,7 +347,7 @@ export const ALLOWLIST_ENV = (process.env.CHUNGUS_ALLOWLIST ?? '')
 	.filter(Boolean);
 
 export function ensureDirs(): void {
-	const dirs = [DATA_DIR, PRESETS_DIR, TEMP_PRESETS_DIR, ASSISTANT_FILES_ROOT];
+	const dirs = [DATA_DIR, PRESETS_DIR, TEMP_PRESETS_DIR];
 	for (const category of IMAGE_CATEGORIES) {
 		dirs.push(join(IMAGES_ROOT, category), join(IMAGES_ROOT, category, 'thumbnails'));
 	}

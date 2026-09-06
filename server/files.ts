@@ -15,7 +15,6 @@ import {
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
-	ASSISTANT_FILES_ROOT,
 	DEFAULT_BACKGROUNDS_DIR,
 	DEFAULT_PRESETS_DIR,
 	IMAGES_ROOT,
@@ -64,8 +63,8 @@ export const IMAGE_EXT_RE = new RegExp(`(${IMAGE_EXTENSIONS.map((e) => `\\${e}`)
 /**
  * Every thumbnail is webp, and the extension is FIXED, which is what keeps a thumbnail's
  * path a pure derivation from its original's rather than a lookup. `thumbnailFor` is the one
- * spelling of that convention on this side (the backup inventory and the assistant smoke
- * script call it rather than repeating it); the client has the only other copy, since it
+ * spelling of that convention on this side (the backup inventory calls it rather than
+ * repeating it); the client has the only other copy, since it
  * cannot import server code, and `contracts.test.ts` holds the two together.
  *
  * webp rather than jpeg because a thumbnail must not change what the picture IS: jpeg has no
@@ -264,57 +263,6 @@ export async function saveThumbnail(relativePath: string, thumb: Blob): Promise<
 	}
 	removeThumbnails(relativePath);
 	writeFileSync(absFromRelative(thumbnailFor(relativePath)), Buffer.from(await thumb.arrayBuffer()));
-}
-
-// ===== ASSISTANT FILES =====
-
-/**
- * Reference files attached to a Chungus Assistant tab (architecture/chungus-assistant.md).
- *
- * These bytes are NEVER served as a static file, unlike images. The stored text is whatever
- * the user uploaded, so serving it from the app's own origin would run an attached `.html`
- * or `.svg` as a page on the origin that holds the session cookie. The viewer and the tools
- * both read it through the JSON API instead, which has no content type to get wrong.
- */
-
-function absAssistantFile(relativePath: string): string {
-	// relativePath looks like assistant-files/<uuid>.txt. Strip the prefix and rejoin under
-	// the root so a stored path can never escape it.
-	const safe = relativePath.replace(/^assistant-files\//, '').replace(/\.\./g, '');
-	return join(ASSISTANT_FILES_ROOT, safe);
-}
-
-/** Writes one attached file's normalized text and returns the path its row stores. */
-export function saveAssistantFileText(text: string): string {
-	const relative = `assistant-files/${randomUUID()}.txt`;
-	writeFileSync(absAssistantFile(relative), text, 'utf-8');
-	return relative;
-}
-
-/** The stored text. Throws when the file is gone: a row naming bytes that vanished is a
- *  real breakage, and answering an empty file would let the assistant read a card as blank. */
-export function readAssistantFileText(relativePath: string): string {
-	const abs = absAssistantFile(relativePath);
-	if (!existsSync(abs)) throw new Error(`Attached file is missing from disk: ${relativePath}`);
-	return readFileSync(abs, 'utf-8');
-}
-
-export function deleteAssistantFileText(relativePath: string): void {
-	if (!relativePath) return;
-	const abs = absAssistantFile(relativePath);
-	if (existsSync(abs)) rmSync(abs);
-}
-
-/** Every stored file name under the root: the boot sweep's disk side. */
-export function listAssistantFileNames(): string[] {
-	if (!existsSync(ASSISTANT_FILES_ROOT)) return [];
-	return readdirSync(ASSISTANT_FILES_ROOT).filter((name) => statSync(join(ASSISTANT_FILES_ROOT, name)).isFile());
-}
-
-/** Modified time of one stored file, for the sweep's age guard. */
-export function assistantFileModifiedAt(relativePath: string): number {
-	const abs = absAssistantFile(relativePath);
-	return existsSync(abs) ? statSync(abs).mtimeMs : 0;
 }
 
 // ===== BACKGROUNDS =====

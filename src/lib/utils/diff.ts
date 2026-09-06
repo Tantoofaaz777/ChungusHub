@@ -1,4 +1,4 @@
-/** Line- + word-level diff for rendering assistant edits, with no dependencies. */
+/** Line- + word-level diff for side-by-side branch comparisons, with no dependencies. */
 
 export type DiffRow = { type: 'same' | 'add' | 'del' | 'gap'; text: string };
 

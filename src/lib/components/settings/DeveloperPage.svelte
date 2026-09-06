@@ -1,17 +1,14 @@
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { openWelcomeDialog } from '$lib/components/layout/WelcomeDialog.svelte';
-	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
 </script>
 
 <!-- Reached only while `advancedSettingsStore.developerMode` is on, which the About page's
      version turns on and off. Everything here is a workbench control: nothing a reader needs
      for ordinary use belongs on this page. -->
 <div class="dev">
-	<!-- The things the app says once. Each row reaches its notice the only way that notice
-	     can be reached again: the greeting has no trigger left once a persona exists, so it
-	     opens on the spot, while the assistant's cost line lives in the assistant's own panel
-	     and is put back there rather than previewed out of context here. -->
+	<!-- The greeting has no trigger left once a persona exists, so this workbench control
+	     opens it on the spot. -->
 	<section class="card">
 		<div class="card-head">
 			<span class="card-title">Notices</span>
@@ -25,23 +22,6 @@
 					Open the greeting
 				</button>
 			</div>
-
-			<div class="notice">
-				<span class="notice-label">Assistant cost notice</span>
-				<p class="hint">What the Chungus Assistant states about its cost, in its own panel.</p>
-				{#if generalSettingsStore.assistantCostSeen}
-					<button
-						type="button"
-						class="open-btn"
-						onclick={() => generalSettingsStore.setAssistantCostSeen(false)}
-					>
-						<Icon name="refresh" class="w-3.5 h-3.5" strokeWidth={1.75} />
-						Show it again
-					</button>
-				{:else}
-					<p class="armed">Showing in the assistant panel until its Got it is pressed.</p>
-				{/if}
-			</div>
 		</div>
 	</section>
 </div>
@@ -51,12 +31,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.85rem;
-	}
-
-	.notice + .notice {
-		margin-top: 1.1rem;
-		padding-top: 1.1rem;
-		border-top: 1px solid var(--color-border-subtle);
 	}
 
 	.notice-label {
@@ -73,15 +47,6 @@
 		font-size: 0.78rem;
 		line-height: 1.5;
 		color: var(--color-text-muted);
-	}
-
-	/* Stands where the button stands, so an armed notice reads as a state the row is in
-	   rather than as a control that went missing. */
-	.armed {
-		margin: 0;
-		font-family: var(--font-ui);
-		font-size: 0.78rem;
-		color: var(--color-accent);
 	}
 
 	.open-btn {

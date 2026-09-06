@@ -5,9 +5,7 @@
  * on the button that lets the request go.
  *
  * Background work (memory, sprites) is deliberately absent. It fires on its own schedule, so
- * holding it would build a queue of prompts nobody pressed anything to see. The Chungus
- * Assistant is out for a different reason: its turn runs server-side over a tool loop, not
- * over an assembled prompt this layer ever holds.
+ * holding it would build a queue of prompts nobody pressed anything to see.
  *
  * Glyphs are SOURCED, not chosen: each is what its action already draws elsewhere (the
  * composer's send arrow, a turn's Retry, a turn's Continue, and the two engines' own registry

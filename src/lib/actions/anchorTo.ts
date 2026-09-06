@@ -7,7 +7,7 @@
  * workspace nests panels inside several `overflow: hidden` docks, so the tail of
  * the text is simply gone, with no way to reach it. Naming a side by hand only
  * picks which edge it falls off: the same bubble that fits in the settings column
- * runs off the left of a 320px assistant panel.
+ * can run off the edge of a narrow dock.
  *
  * So the node moves to `<body>` and lives in viewport coordinates, where nothing
  * can clip it, and the side is measured rather than declared: below the anchor

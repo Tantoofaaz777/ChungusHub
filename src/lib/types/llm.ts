@@ -313,8 +313,7 @@ export interface GenerationSettings {
 	/** Deterministic seed; null = unset (omitted). */
 	seed: number | null;
 	serviceTier: ServiceTier;
-	/** Stream the reply token by token (off = the message appears whole when done).
-	 *  Applies to the Chungus Assistant too: off, each of its steps lands complete. */
+	/** Stream the reply token by token (off = the message appears whole when done). */
 	streamResponses: boolean;
 	/** How hard reasoning models should think; 'auto' = provider default (nothing sent). */
 	reasoningEffort: 'auto' | ReasoningEffort;
@@ -364,8 +363,8 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
 
 /**
  * Who serves one model call. Routing is one flat map: every calling point
- * (`primary` = the story, `assistant` = the Chungus Assistant, plus each calling
- * engine by id) is assigned its own concrete connection in
+ * (`primary` = the story, plus each calling engine by id) is assigned its own
+ * concrete connection in
  * `connectionStore.assignments`. There are no roles and no defaults-following: what
  * the Connections page shows is what the app routes each point to.
  *
@@ -374,7 +373,7 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
  * only the story's `primary` calls can be claimed that way. Resolving it is
  * `resolvePromptTarget`'s job (utils/chat-setup.ts), so no caller builds one by hand.
  */
-export type CallTarget = 'primary' | 'assistant' | { engine: string } | { connection: string };
+export type CallTarget = 'primary' | { engine: string } | { connection: string };
 
 /**
  * A named, self-contained LLM connection: a provider, its own model, context

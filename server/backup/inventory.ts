@@ -30,7 +30,6 @@ const IMAGE_PATH_RE =
  *  carry one needs an entry here; adding a KEY inside an existing one needs nothing. */
 const IMAGE_BEARING = [
 	{ table: 'messages', column: 'attachments_json' },
-	{ table: 'assistant_messages', column: 'images_json' },
 	{ table: 'character_library', column: 'data_json' },
 	{ table: 'character_versions', column: 'data_json' },
 	{ table: 'lorebooks', column: 'data_json' },
@@ -83,19 +82,6 @@ export function referencedImagePaths(db: Database): Set<string> {
 export function referencedImagePathsInText(text: string): Set<string> {
 	const found = new Set<string>();
 	for (const hit of text.matchAll(IMAGE_PATH_RE)) found.add(hit[0]);
-	return found;
-}
-
-/** Attached-file bytes, which are addressed by a plain column rather than by JSON. */
-export function referencedAssistantFiles(db: Database): Set<string> {
-	if (!columnExists(db, 'assistant_files', 'text_path')) return new Set();
-	const rows = db
-		.query('SELECT text_path AS v FROM assistant_files WHERE text_path IS NOT NULL')
-		.all() as { v: unknown }[];
-	const found = new Set<string>();
-	for (const row of rows) {
-		if (typeof row.v === 'string' && row.v) found.add(row.v);
-	}
 	return found;
 }
 

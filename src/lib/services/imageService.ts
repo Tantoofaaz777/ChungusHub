@@ -40,7 +40,7 @@ const FALLBACK_IMAGE_QUALITY = 0.9;
 const NORMALIZED_CATEGORIES = new Set<ImageCategory>(['characters', 'personas', 'chat']);
 
 /** The three budgets below are the single gate on what a model-facing image may weigh:
- *  chat and assistant attachments, portraits and gallery art all pass through it, so no
+ *  chat attachments, portraits and gallery art all pass through it, so no
  *  upload surface carries a size rule of its own.
  *
  *  Refused before decoding: past this a file is one the browser would spend seconds on

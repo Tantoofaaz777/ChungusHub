@@ -15,13 +15,11 @@
 		requestChips,
 		sourceColor,
 		statusColor,
-		statusLabel,
-		toolTokens
+		statusLabel
 	} from '$lib/debug/format';
 	import type { PromptLogEntry } from '$lib/debug/types';
 	import CopyButton from './CopyButton.svelte';
 	import PromptMessageCard from './PromptMessageCard.svelte';
-	import PromptToolCard from './PromptToolCard.svelte';
 	import PromptCompareView from './PromptCompareView.svelte';
 
 	// Set by the /debug window, which IS the panel: nothing to pop out (it already is)
@@ -50,15 +48,14 @@
 	let viewerIndex = $state<number | null>(null);
 
 	/**
-	 * Cards the user has toggled AWAY from their default: messages open by default (they
-	 * are the reading surface), tool definitions closed (they are reference). Scoped to the
+	 * Cards the user has toggled AWAY from their default: messages open by default. Scoped to the
 	 * entry the keys belong to and re-derived when the selection moves, so switching entries
 	 * can never carry another entry's state, and the fold-all control and each card's own
 	 * chevron read the same one source.
 	 */
-	let foldStore = $state<{ id: string | null; keys: string[]; toolsOpen: boolean }>({ id: null, keys: [], toolsOpen: false });
+	let foldStore = $state<{ id: string | null; keys: string[] }>({ id: null, keys: [] });
 	let fold = $derived(
-		foldStore.id === (selected?.id ?? null) ? foldStore : { id: selected?.id ?? null, keys: [], toolsOpen: false }
+		foldStore.id === (selected?.id ?? null) ? foldStore : { id: selected?.id ?? null, keys: [] }
 	);
 
 	function toggled(key: string): boolean {
@@ -69,33 +66,21 @@
 		foldStore = { ...fold, keys: fold.keys.includes(key) ? fold.keys.filter((k) => k !== key) : [...fold.keys, key] };
 	}
 
-	/** Fold-all touches messages only: a tool the user opened stays open under it. */
+	/** Fold or unfold every request message at once. */
 	function foldMessages(folded: boolean): void {
-		const others = fold.keys.filter((k) => !k.startsWith('m'));
-		foldStore = { ...fold, keys: folded ? [...others, ...messageKeys] : others };
-	}
-
-	function toggleTools(): void {
-		foldStore = { ...fold, toolsOpen: !fold.toolsOpen };
+		foldStore = { ...fold, keys: folded ? [...messageKeys] : [] };
 	}
 
 	// ===== Derived views of the selected entry =====
 
-	let tools = $derived((selected?.tools ?? []) as unknown[]);
 	let images = $derived(selected ? entryImages(selected) : []);
 	let size = $derived(selected ? promptSize(selected) : { tokens: 0, reported: false });
-	let toolSize = $derived(selected ? toolTokens(tools, selected.model) : 0);
 	let messageSize = $derived(selected ? messagesSize(selected) : 0);
-	/** The tool schemas' share of the request, always measured in the SAME (estimated)
-	 *  space as the message half: a provider's reported total cannot be split. */
-	let toolShare = $derived(toolSize + messageSize > 0 ? Math.round((toolSize / (toolSize + messageSize)) * 100) : 0);
 
 	let messageKeys = $derived(selected ? selected.messages.map((_, i) => `m${i}`) : []);
 	let allMessagesFolded = $derived(messageKeys.length > 0 && messageKeys.every((k) => fold.keys.includes(k)));
 
-	let hasResponse = $derived(
-		!!selected && !!(selected.responseContent || selected.responseThinking || selected.responseToolCalls?.length)
-	);
+	let hasResponse = $derived(!!selected && !!(selected.responseContent || selected.responseThinking));
 
 	/** Why the response section is empty, said plainly. A settled request with no body is a
 	 *  real outcome the panel must state, not a section it quietly omits. */
@@ -205,12 +190,11 @@
 	<div class="panel-body" class:mobile-detail={mobileDetail}>
 		<aside class="list panel-scroll">
 			{#if entries.length === 0}
-				<p class="empty">No prompts logged yet. Send a message or talk to the assistant. They’ll appear here.</p>
+				<p class="empty">No prompts logged yet. Send a message and it will appear here.</p>
 			{:else}
 				{#each entries as entry (entry.id)}
 					{@const rowSize = promptSize(entry)}
 					{@const rowImages = entryImages(entry).length}
-					{@const rowTools = (entry.tools as unknown[] | undefined)?.length ?? 0}
 					<div
 						class="row"
 						class:selected={selected?.id === entry.id}
@@ -222,7 +206,7 @@
 						<div class="row-top">
 							<span class="status-dot" style={`background:${statusColor(entry.status)}`} title={statusLabel(entry.status)}></span>
 							<span class="src-badge" style={`color:${sourceColor(entry.source)}; background:color-mix(in srgb, ${sourceColor(entry.source)} 15%, transparent)`}>
-								{entry.source}{entry.iteration ? ` · #${entry.iteration}` : ''}
+								{entry.source}
 							</span>
 							<span class="row-time">{formatTime(entry.startedAt)}</span>
 							<button
@@ -241,10 +225,6 @@
 							<span>{entry.provider}</span>
 							<span class="sep">·</span>
 							<span>{entry.messages.length} msg</span>
-							{#if rowTools}
-								<span class="sep">·</span>
-								<span>{rowTools} tools</span>
-							{/if}
 							{#if rowImages}
 								<span class="sep">·</span>
 								<span class="img-count">{rowImages} img</span>
@@ -286,7 +266,7 @@
 							</button>
 						{/if}
 						<span class="src-badge big" style={`color:${sourceColor(entry.source)}; background:color-mix(in srgb, ${sourceColor(entry.source)} 15%, transparent)`}>
-							{entry.source}{entry.iteration ? ` · step ${entry.iteration}` : ''}
+							{entry.source}
 						</span>
 						<span class="dh-model" title={entry.model}>{entry.model}</span>
 						{#if entry.resultModel && entry.resultModel !== entry.model}
@@ -354,7 +334,7 @@
 
 					{#if !size.reported && images.length}
 						<p class="note">
-							The estimate covers text and tool schemas only. The {images.length} image attachment{images.length === 1 ? '' : 's'}
+							The estimate covers text only. The {images.length} image attachment{images.length === 1 ? '' : 's'}
 							below also cost tokens, priced by the provider from dimensions we don't have.
 						</p>
 					{/if}
@@ -378,33 +358,6 @@
 								{/each}
 							</div>
 						</section>
-
-						{#if tools.length}
-							<section class="section">
-								<div class="sec-head">
-									<button class="sec-toggle" type="button" onclick={toggleTools} aria-expanded={fold.toolsOpen}>
-										<Icon name={fold.toolsOpen ? 'chevronDown' : 'chevronRight'} class="w-3 h-3 shrink-0" strokeWidth={2.25} />
-										<span class="sec-title">Tool definitions</span>
-										<span class="sec-count">{tools.length}</span>
-									</button>
-									<span class="sec-meta">~{toolSize.toLocaleString()} tok · {toolShare}% of the request</span>
-									<span class="spacer"></span>
-									<CopyButton text={() => JSON.stringify(tools, null, 2)} title="Copy every tool definition as JSON" />
-								</div>
-								{#if fold.toolsOpen}
-									<div class="transcript">
-										{#each tools as tool, i (i)}
-											<PromptToolCard
-												{tool}
-												model={entry.model}
-												collapsed={!toggled(`t${i}`)}
-												onToggle={() => toggleCard(`t${i}`)}
-											/>
-										{/each}
-									</div>
-								{/if}
-							</section>
-						{/if}
 
 						<section class="section">
 							<div class="sec-head">
@@ -457,7 +410,7 @@
 										/>
 									{/if}
 									<PromptMessageCard
-										message={{ role: 'assistant', content: entry.responseContent ?? '', tool_calls: entry.responseToolCalls }}
+									message={{ role: 'assistant', content: entry.responseContent ?? '' }}
 										model={entry.model}
 										collapsed={toggled('r-content')}
 										onToggle={() => toggleCard('r-content')}
@@ -927,17 +880,6 @@
 		align-items: center;
 		gap: 0.4rem;
 		min-width: 0;
-	}
-
-	.sec-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		cursor: pointer;
-		color: var(--color-text-muted);
 	}
 
 	.sec-title {

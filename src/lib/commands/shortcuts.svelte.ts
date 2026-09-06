@@ -243,15 +243,6 @@ export const SHORTCUTS: ShortcutDef[] = [
 		}
 	},
 	{
-		id: 'assistant',
-		group: 'panels',
-		label: 'Chungus Assistant',
-		// The assistant's other door, and the ONLY one once its floating button is switched
-		// off in Settings → General.
-		binding: { mod: true, key: 'j' },
-		run: () => uiStore.toggleAssistant()
-	},
-	{
 		id: 'new-chat',
 		group: 'panels',
 		label: 'New chat',
@@ -274,8 +265,8 @@ export const SHORTCUTS: ShortcutDef[] = [
 	{ id: 'send', group: 'composer', label: 'Send message', chips: ['Enter'] },
 	{ id: 'newline', group: 'composer', label: 'New line', chips: ['Shift', 'Enter'] },
 	// Owned by the composer rather than bound here: Enter belongs to whatever box has focus, so
-	// a window-level match would also fire from the assistant's composer, a rename field or a
-	// dialog. Living there is also what lets it read the menu row's own gate.
+	// a window-level match would also fire from rename fields and dialogs. Living there is also
+	// what lets it read the menu row's own gate.
 	{ id: 'regenerate-last', group: 'composer', label: 'Regenerate the newest reply', chips: ['mod', 'Enter'] },
 	{ id: 'commands', group: 'composer', label: 'Commands (empty composer)', chips: ['/'] },
 	{ id: 'history', group: 'composer', label: 'Input history (empty composer)', chips: ['↑', '↓'] },

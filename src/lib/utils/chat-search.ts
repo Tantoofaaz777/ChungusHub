@@ -8,8 +8,8 @@
  * the reader sees as one run of text and the DOM stores as three separate nodes.
  *
  * Nothing here mutates message markup: matches come back as DOM Ranges, which the search
- * bar paints through the CSS Custom Highlight API. Svelte's {@html} ownership, Copy, and
- * the chatSelection hand-off to the assistant all stay byte-identical.
+ * bar paints through the CSS Custom Highlight API. Svelte's {@html} ownership and Copy
+ * both stay byte-identical.
  */
 
 /** Ceiling on the ranges handed to the highlight registry. A one-letter query in a long

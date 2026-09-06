@@ -23,8 +23,8 @@
  *
  * Usage: <div class="toggle-row" use:toggleRow> … <Toggle … /> </div>
  * It works on any row shape, not just the `.toggle-row` recipe: Security's
- * password lock, the assistant's permission cards and the lorebook globals all
- * roll their own markup. The action stamps `data-row-toggle` so app.css can hand
+ * password lock and the lorebook globals both roll their own markup. The action
+ * stamps `data-row-toggle` so app.css can hand
  * those the pointer cursor too, gated on the same `[role="switch"]:not(:disabled)`
  * this handler checks so the affordance and the behaviour can't disagree.
  *

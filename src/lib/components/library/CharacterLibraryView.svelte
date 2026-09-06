@@ -5,7 +5,6 @@
 	import { chatCastStore } from '$lib/stores/chatCast.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
-	import { workspaceFocus } from '$lib/stores/workspaceFocus.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { importSillyTavernCard } from '$lib/services/sillyTavernImport';
 	import { createBookIndex } from '$lib/lorebook/identity';
@@ -44,14 +43,6 @@
 	// entry editor itself opens wide and centered over the chat (LibraryEditorOverlay);
 	// this view just picks which entry that is via uiStore.libraryEditorId.
 	let selectedEntryId = $derived(uiStore.libraryEditorId);
-
-	// Mirror the open entry into the workspace-focus store so the Chungus Assistant can
-	// auto-attach "the character you're editing". On close (libraryEditorId → null while
-	// mounted) this clears it; on unmount the effect is torn down without running:
-	// uiStore releases the focus itself on every real navigation away from the Library.
-	$effect(() => {
-		workspaceFocus.setEntry(selectedEntryId);
-	});
 
 	// View mode (grid cards vs. detail list). Persisted via the synced settings spine.
 	let viewMode = $derived(libraryViewPrefs.viewMode);

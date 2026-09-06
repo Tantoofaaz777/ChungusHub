@@ -108,7 +108,7 @@ const TIER_ALPHA: Record<GlassLevel, { secondary: number; tertiary: number; elev
 	};
 const BUBBLE_ALPHA: Record<GlassLevel, number> = { off: 100, subtle: 94, full: 88 };
 /* Floating surfaces over live content (dialogs, popovers, toasts, the chats
-   modal, the assistant widget). These sit over unhidden UI, so they stay markedly
+   modal). These sit over unhidden UI, so they stay markedly
    more opaque than the workspace panels and carry their own backdrop blur. */
 const FLOAT_ALPHA: Record<GlassLevel, number> = { off: 100, subtle: 90, full: 80 };
 /* Every alpha above is authored for a DARK palette, and glass composites the two
@@ -695,8 +695,8 @@ class ThemeStore {
 				? `color-mix(in srgb, ${c.error} 18%, #16100d)`
 				: `color-mix(in srgb, ${c.error} 8%, white)`,
 			'--theme-success': c.success,
-			// Same recipe, same reason: the assistant launcher's badge sits ON the
-			// success fill, and every palette's success is a light green.
+			// Same recipe, same reason: status ink sits ON the success fill, and every
+			// palette's success is a light green.
 			'--theme-on-success': dark
 				? `color-mix(in srgb, ${c.success} 18%, #16100d)`
 				: `color-mix(in srgb, ${c.success} 8%, white)`,

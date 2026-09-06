@@ -18,9 +18,8 @@
  * which on a laptop is a good 50px narrower than the screen resolution.
  */
 const DOCK_QUERY = '(min-width: 76rem)';
-// Phone-width: the floating assistant widget goes full-screen here instead of a
-// draggable box. A real phone breakpoint, not the dock query: a 1400px laptop is
-// still "desktop" for the widget.
+// The app's phone-width breakpoint. It is deliberately separate from the dock query:
+// a 1400px laptop remains desktop even when no side dock is open.
 const MOBILE_QUERY = '(max-width: 640px)';
 // "Is there a physical keyboard behind this pointer?" This is deliberately NOT the
 // width query: a narrowed desktop window still has one, a 1024px tablet doesn't.

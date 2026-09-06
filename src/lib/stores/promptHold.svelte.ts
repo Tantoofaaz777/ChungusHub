@@ -10,9 +10,8 @@
  * inserted, no reply deleted, no stream opened. That is why the hold sits above the tree
  * mutations rather than beside the LLM call (architecture/chat-sessions.md).
  *
- * The pending request lives here and nowhere else, and it is per device: the prompt is
- * assembled in this browser and has not left it, unlike the assistant's approval card, whose
- * turn is already running on the server and so is broadcast to every page.
+	* The pending request lives here and nowhere else, and it is per device: the prompt is
+	* assembled in this browser and has not left it.
  *
  * Which gates are armed rides the settings sync spine, so a device agrees with the rest.
  */

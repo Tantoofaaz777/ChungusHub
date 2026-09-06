@@ -508,24 +508,6 @@ class MessageStore {
 	 *  so the composer can only ask for it, never reach in and set it. */
 	branchTargetId = $state<string | null>(null);
 
-	/** Point the transcript at a turn from anywhere else in the app (the assistant's timeline
-	 *  rows and approval cards; the story map sets `revealTargetId` directly, since it has
-	 *  already navigated). The branch switch happens only when the turn is OFF the path being
-	 *  read: navigating to one already on it re-homes the leaf onto whatever hangs deepest
-	 *  below it, which is a different timeline. Everything after that is the transcript's:
-	 *  it loads the turn back into the window if it sits behind it, then plays the flash. */
-	async revealMessage(messageId: string): Promise<void> {
-		const onPath = chatStore.currentChatState?.activePath.some((m) => m.id === messageId) ?? false;
-		if (!onPath) {
-			try {
-				await this.navigateToBranch(messageId);
-			} catch {
-				/* not in this chat / not navigable, best effort */
-			}
-		}
-		this.revealTargetId = messageId;
-	}
-
 	async navigateToBranch(messageId: string): Promise<void> {
 		if (this.warnIfBusy()) return;
 		const state = chatStore.currentChatState;
@@ -657,7 +639,7 @@ class MessageStore {
 
 			if (message.role === 'user') {
 				// Re-roll the AI's answer to THIS turn: the user message is never cloned (that's
-				// what the Branch action does). Mirrors the assistant path: replace nukes the replies
+				// what the Branch action does). Replace removes the replies
 				// below and regenerates one; alternate keeps them and adds a swipeable assistant sibling.
 				const prompt = await this.prepareFromLeaf('regenerate', state.chat.id, message.id, 'swipe');
 				if (!prompt) return;

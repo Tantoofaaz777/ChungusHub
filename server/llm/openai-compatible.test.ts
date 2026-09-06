@@ -5,7 +5,7 @@ import type { ProviderProfile } from './providers/types';
 /**
  * Wiring tests for the provider class against a real local endpoint: net.ts SSE
  * framing + inline-reasoning extraction + the parseInlineReasoning gate working
- * together across all three completion paths (stream, non-stream, tools). The
+ * together across both completion paths (stream and non-stream). The
  * scripted responses split reasoning markers across SSE events on purpose.
  */
 
@@ -41,49 +41,6 @@ const SCENARIOS: Record<
 			usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 }
 		}
 	},
-	tools: {
-		stream: [
-			delta('<think>agent plan</think>Okay, '),
-			delta('doing it'),
-			JSON.stringify({
-				choices: [
-					{
-						delta: {
-							tool_calls: [{ index: 0, id: 'call_1', function: { name: 'navigate', arguments: '{"to":' } }]
-						}
-					}
-				]
-			}),
-			JSON.stringify({
-				choices: [
-					{
-						delta: { tool_calls: [{ index: 0, function: { arguments: '"settings"}' } }] },
-						finish_reason: 'tool_calls'
-					}
-				]
-			}),
-			USAGE,
-			'[DONE]'
-		]
-	},
-	// The same turn as `tools`, non-streamed: the whole step arrives in one message.
-	'tools-json': {
-		json: {
-			choices: [
-				{
-					message: {
-						content: '<think>agent plan</think>Okay, doing it',
-						reasoning_content: 'field plan',
-						tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'navigate', arguments: '{"to":"settings"}' } }]
-					},
-					finish_reason: 'tool_calls'
-				}
-			],
-			usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 }
-		}
-	},
-	// Nothing to show and no finish_reason: an endpoint that ended the request early.
-	'tools-json-truncated': { json: { choices: [{ message: { content: '' } }] } },
 	// OpenRouter-style mid-stream failure: 200 headers, then an error event instead of choices.
 	'stream-error': {
 		stream: [
@@ -97,26 +54,10 @@ const SCENARIOS: Record<
 			})
 		]
 	},
-	'tools-stream-error': {
-		stream: [
-			JSON.stringify({ error: { message: 'Rate limited', code: 429 } })
-		]
-	},
-	// A corrupt stream: arguments accumulate but the call never gets a name.
-	'tools-nameless': {
-		stream: [
-			JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"x":1}' } }] } }] }),
-			JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
-			USAGE,
-			'[DONE]'
-		]
-	},
 	// A truncated / early-closed stream: usage may arrive but no content and NO finish_reason
 	// (a slow local endpoint hanging up mid-generation). Must fail loud, not read as a stop.
 	'truncated': { stream: [USAGE, '[DONE]'] },
-	'tools-truncated': { stream: [USAGE, '[DONE]'] },
-	// A genuine explicit empty stop (finish_reason present, no content) passes through: the
-	// assistant loop decides what to do with an empty-but-clean turn.
+	// A genuine explicit empty stop (finish_reason present, no content) passes through.
 	'empty-stop': { stream: [JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }), USAGE, '[DONE]'] },
 	// Accepts the request and answers never: a wedged endpoint, or a model so slow on this
 	// hardware that nothing has come back yet. From here those are the same thing.
@@ -224,23 +165,6 @@ describe('OpenAICompatibleProvider inline-reasoning wiring', () => {
 		expect(result.content).toBe('<think>local plan</think>Answer.');
 		expect(result.thinking).toBe('field plan');
 	});
-
-	test('tool path: inline markers stay in content (assistant may legitimately quote them)', async () => {
-		const result = await provider.completeWithTools({
-			model: 'tools',
-			messages: USER,
-			tools: [],
-			onToken: () => {}
-		});
-		// Deliberate: no inline extraction on the tool path, because an unclosed marker would
-		// silently reroute the rest of the assistant's reply into the thinking channel.
-		expect(result.content).toBe('<think>agent plan</think>Okay, doing it');
-		expect(result.thinking).toBeNull();
-		expect(result.toolCalls).toEqual([
-			{ id: 'call_1', name: 'navigate', arguments: { to: 'settings' }, rawArguments: '{"to":"settings"}' }
-		]);
-		expect(result.finishReason).toBe('tool_calls');
-	});
 });
 
 describe('OpenAICompatibleProvider user aborts keep what streamed', () => {
@@ -322,56 +246,16 @@ describe('OpenAICompatibleProvider mid-stream failures fail loud', () => {
 		).rejects.toThrow(/DeepInfra: upstream 502: no capacity \(502\)/);
 	});
 
-	test('tool path: an error event throws instead of returning an empty turn', async () => {
-		expect(
-			provider.completeWithTools({ model: 'tools-stream-error', messages: USER, tools: [], onToken: () => {} })
-		).rejects.toThrow(/Rate limited \(429\)/);
-	});
-
-	test('tool path: arguments without a tool name throw as a corrupt stream', async () => {
-		expect(
-			provider.completeWithTools({ model: 'tools-nameless', messages: USER, tools: [], onToken: () => {} })
-		).rejects.toThrow(/no name/);
-	});
-
 	test('streaming: a stream that closes with no output and no finish_reason throws (not a fake stop)', async () => {
 		expect(provider.complete({ model: 'truncated', messages: USER, onToken: () => {} })).rejects.toThrow(
 			/closed before the model produced any output/
 		);
 	});
 
-	test('tool path: a truncated stream throws instead of reporting an empty stop', async () => {
-		expect(
-			provider.completeWithTools({ model: 'tools-truncated', messages: USER, tools: [], onToken: () => {} })
-		).rejects.toThrow(/closed before the model produced any reply or tool call/);
-	});
-
-	test('tool path: a genuine explicit empty stop passes through (loop decides)', async () => {
-		const result = await provider.completeWithTools({ model: 'empty-stop', messages: USER, tools: [], onToken: () => {} });
+	test('a genuine explicit empty stop passes through', async () => {
+		const result = await provider.complete({ model: 'empty-stop', messages: USER, onToken: () => {} });
 		expect(result.content).toBe('');
-		expect(result.toolCalls).toEqual([]);
 		expect(result.finishReason).toBe('stop');
-	});
-});
-
-describe('OpenAICompatibleProvider non-streamed tool path', () => {
-	// No onToken = the Assistant connection has Stream response off. The request must go
-	// out with stream:false and the step's reply + tool calls must land whole.
-	test('parses the reply, reasoning field and tool calls from one response', async () => {
-		const result = await provider.completeWithTools({ model: 'tools-json', messages: USER, tools: [] });
-		expect(result.content).toBe('<think>agent plan</think>Okay, doing it');
-		expect(result.thinking).toBe('field plan');
-		expect(result.toolCalls).toEqual([
-			{ id: 'call_1', name: 'navigate', arguments: { to: 'settings' }, rawArguments: '{"to":"settings"}' }
-		]);
-		expect(result.finishReason).toBe('tool_calls');
-		expect(result.usage.totalTokens).toBe(12);
-	});
-
-	test('a response with no reply, no tool call and no finish reason throws', async () => {
-		expect(provider.completeWithTools({ model: 'tools-json-truncated', messages: USER, tools: [] })).rejects.toThrow(
-			/no reply, no tool call and no finish reason/
-		);
 	});
 });
 

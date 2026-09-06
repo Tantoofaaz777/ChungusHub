@@ -3,7 +3,6 @@
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { personaStore, LAST_PERSONA_REASON } from '$lib/stores/persona.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { workspaceFocus } from '$lib/stores/workspaceFocus.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -39,12 +38,6 @@
 	// The app keeps at least one persona (architecture/library.md): the server refuses the
 	// last delete, so the menu item goes inert and says why rather than vanishing.
 	let deleteBlockedReason = $derived(personas.length > 1 ? undefined : LAST_PERSONA_REASON);
-
-	// Mirror the open entry into the workspace-focus store so the Chungus Assistant can
-	// auto-attach "the persona you're editing". Mirrors CharacterLibraryView.
-	$effect(() => {
-		workspaceFocus.setEntry(uiStore.libraryEditorId);
-	});
 
 	// Load library on mount
 	$effect(() => {

@@ -27,9 +27,6 @@ interface GeneralSettings {
 	 *  setup chip), so there is no app-wide switch to show or hide. The key is still parsed
 	 *  and written back so an install that recorded a value keeps it byte for byte. */
 	personaSwitcher: boolean;
-	/** Show the floating Chungus Assistant launcher in the workspace corner. Off hides
-	 *  the button only: the assistant itself is untouched, and Ctrl/⌘+J still opens it. */
-	assistantLauncher: boolean;
 	/** Split Settings on wide screens: the dock keeps the section list and pages
 	 *  open in a wide centered panel. Off = phone-style drill-down everywhere.
 	 *  Inert below dock widths (the panel is a single centered overlay there). */
@@ -44,10 +41,6 @@ interface GeneralSettings {
 	 *  second time. localStorage would, and would also greet a second browser on the same
 	 *  machine. Settings → the root's footer row reopens the dialog without clearing it. */
 	welcomeSeen: boolean;
-	/** Whether the Chungus Assistant's cost notice has been read. Same reasoning as
-	 *  `welcomeSeen`: it rides the spine, so a warning read on the desktop is not repeated
-	 *  on the phone. Settings → Developer clears it, which is the only way it comes back. */
-	assistantCostSeen: boolean;
 }
 
 const SETTINGS_KEY = 'generalSettings';
@@ -65,11 +58,9 @@ const DEFAULT_SETTINGS: GeneralSettings = {
 	transcriptLoadMode: 'scroll',
 	autoExpandReasoning: false,
 	personaSwitcher: false,
-	assistantLauncher: true,
 	settingsSplitView: false,
 	storyMapWheelPans: false,
-	welcomeSeen: false,
-	assistantCostSeen: false
+	welcomeSeen: false
 };
 
 function clampLimit(value: number): number {
@@ -117,10 +108,6 @@ function normalize(raw: Partial<GeneralSettings> | null): GeneralSettings {
 			typeof raw?.personaSwitcher === 'boolean'
 				? raw.personaSwitcher
 				: DEFAULT_SETTINGS.personaSwitcher,
-		assistantLauncher:
-			typeof raw?.assistantLauncher === 'boolean'
-				? raw.assistantLauncher
-				: DEFAULT_SETTINGS.assistantLauncher,
 		settingsSplitView:
 			typeof raw?.settingsSplitView === 'boolean'
 				? raw.settingsSplitView
@@ -130,11 +117,7 @@ function normalize(raw: Partial<GeneralSettings> | null): GeneralSettings {
 				? raw.storyMapWheelPans
 				: DEFAULT_SETTINGS.storyMapWheelPans,
 		welcomeSeen:
-			typeof raw?.welcomeSeen === 'boolean' ? raw.welcomeSeen : DEFAULT_SETTINGS.welcomeSeen,
-		assistantCostSeen:
-			typeof raw?.assistantCostSeen === 'boolean'
-				? raw.assistantCostSeen
-				: DEFAULT_SETTINGS.assistantCostSeen
+			typeof raw?.welcomeSeen === 'boolean' ? raw.welcomeSeen : DEFAULT_SETTINGS.welcomeSeen
 	};
 }
 
@@ -149,11 +132,9 @@ class GeneralSettingsStore {
 	transcriptPageSize = $derived(this.settings.transcriptPageSize);
 	transcriptLoadMode = $derived(this.settings.transcriptLoadMode);
 	autoExpandReasoning = $derived(this.settings.autoExpandReasoning);
-	assistantLauncher = $derived(this.settings.assistantLauncher);
 	settingsSplitView = $derived(this.settings.settingsSplitView);
 	storyMapWheelPans = $derived(this.settings.storyMapWheelPans);
 	welcomeSeen = $derived(this.settings.welcomeSeen);
-	assistantCostSeen = $derived(this.settings.assistantCostSeen);
 
 	async initialize(): Promise<void> {
 		this.settings = normalize(await readSetting<Partial<GeneralSettings> | null>(SETTINGS_KEY, null));
@@ -204,11 +185,6 @@ class GeneralSettingsStore {
 		this.persist();
 	}
 
-	setAssistantLauncher(enabled: boolean): void {
-		this.settings.assistantLauncher = enabled;
-		this.persist();
-	}
-
 	setSettingsSplitView(enabled: boolean): void {
 		this.settings.settingsSplitView = enabled;
 		this.persist();
@@ -221,11 +197,6 @@ class GeneralSettingsStore {
 
 	setWelcomeSeen(seen: boolean): void {
 		this.settings.welcomeSeen = seen;
-		this.persist();
-	}
-
-	setAssistantCostSeen(seen: boolean): void {
-		this.settings.assistantCostSeen = seen;
 		this.persist();
 	}
 

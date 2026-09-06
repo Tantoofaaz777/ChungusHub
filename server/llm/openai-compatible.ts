@@ -2,11 +2,7 @@ import type {
 	LLMProviderConfig,
 	LLMCompletionOptions,
 	LLMCompletionResult,
-	LLMToolStreamOptions,
-	LLMToolResult,
-	LLMToolCall,
 	LLMMessage,
-	LLMToolMessage,
 	GenerationTuning,
 	ModelInfo,
 	ModelEndpoint,
@@ -174,9 +170,9 @@ export class OpenAICompatibleProvider implements ChatProvider {
 
 	/**
 	 * Assemble the /chat/completions request body. The ONE place model/messages/sampling
-	 * fields become a body, so plain and tool-calling completions send an identical param
-	 * set (max_tokens, temperature, stop, provider routing, and every sampling knob in
-	 * `params`). `extra` carries only what differs (stream flags, tools). `params` is
+	 * fields become a body, so every completion sends the same parameter set
+	 * (max_tokens, temperature, stop, provider routing, and every sampling knob in
+	 * `params`). `extra` carries only request-mode flags. `params` is
 	 * merged last so it wins, exactly as the API expects.
 	 */
 	private buildRequestBody(
@@ -238,12 +234,10 @@ export class OpenAICompatibleProvider implements ChatProvider {
 	 * arrays (text part + one image_url part per attachment), loading each image
 	 * from server storage. Text-only messages keep their plain-string content (an
 	 * identical wire shape to before), so providers that never see images are
-	 * untouched. Tool-calling fields (tool_calls, tool_call_id, name) pass through
-	 * unchanged, so the assistant conversation can ride the same expansion. The client
-	 * only leaves `images` on messages when the provider's media policy + model
+	 * untouched. The client only leaves `images` on messages when the provider's media policy + model
 	 * modalities allow it.
 	 */
-	private toWireMessages(messages: (LLMMessage | LLMToolMessage)[], tuning?: GenerationTuning): unknown {
+	private toWireMessages(messages: LLMMessage[], tuning?: GenerationTuning): unknown {
 		// Only place `cache_control` for a provider that caches explicitly AND when the user
 		// turned caching on for this request. Auto-caching providers cache server-side with no
 		// field; sending the marker to their strict APIs would 4xx.
@@ -274,7 +268,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 	}
 
 	/**
-	 * Stamp `cache_control` on the two stable breakpoints the assistant/roleplay reuses every
+	 * Stamp `cache_control` on the two stable breakpoints roleplay reuses every
 	 * turn: the (static) system preamble and the end of the conversation prefix. Marking the
 	 * final message writes the cache this turn so next turn's longer history reads it back.
 	 * String content is lifted into a one-item text part to carry the marker; an existing
@@ -424,7 +418,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 		let content = '';
 		let thinking = '';
 		let finishReason: LLMCompletionResult['finishReason'] = 'stop';
-		// See completeWithTools: default 'stop' misreports a stream that closed early as a
+		// A default 'stop' misreports a stream that closed early as a
 		// clean finish, so track whether the provider ever actually signalled one.
 		let sawFinishReason = false;
 		let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 };
@@ -502,7 +496,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 
 		// A stream that closed with no content and no finish signal is truncated, not
 		// empty-by-choice, so fail loud instead of rendering a blank message (same guard +
-		// rationale as completeWithTools).
+		// rationale described above).
 		if (!sawFinishReason && !content.trim() && finishReason !== 'cancelled') {
 			throw new Error(
 				`${this.displayName}: the response stream closed before the model produced any output, and without a finish signal. The endpoint likely ended the connection early (for a local server, often during prompt processing or without keepalives). Try again, or raise the endpoint's idle/read limit.`
@@ -527,283 +521,6 @@ export class OpenAICompatibleProvider implements ChatProvider {
 	): InlineReasoningParser | null {
 		if (tuning?.parseInlineReasoning === false) return null;
 		return createInlineReasoningParser({ onThinking, onContent });
-	}
-
-	/**
-	 * Tool-calling completion used by the Chungus Assistant. Returns the assistant text
-	 * for this step plus any fully-parsed tool calls. Streaming follows the same rule as
-	 * plain completions (whether the caller wants tokens), which is how the Assistant
-	 * connection's Stream response setting reaches the wire.
-	 */
-	async completeWithTools(options: LLMToolStreamOptions): Promise<LLMToolResult> {
-		if (this.requiresApiKey && !this.apiKey) {
-			throw new Error(`${this.displayName} API key not configured`);
-		}
-		if (!options.model) {
-			throw new Error(`${this.displayName}: no model selected. Pick an assistant model in settings.`);
-		}
-
-		const isStreaming = !!options.onToken;
-		// Same snapshot-before-await rule as complete(), for the same reason.
-		const typed = this.baseUrl;
-		const headers = this.headers();
-		const body = this.buildRequestBody(
-			{ ...options, messages: this.toWireMessages(options.messages, options.tuning) },
-			{
-				tools: options.tools,
-				tool_choice: 'auto',
-				stream: isStreaming,
-				...(isStreaming ? { stream_options: { include_usage: true } } : {})
-			}
-		);
-
-		if (!isStreaming) return this.toolCompletion(body, options, typed, headers);
-
-		const response = await timedFetch(
-			`${await this.resolveBase(typed, headers)}/chat/completions`,
-			{ method: 'POST', headers, body: JSON.stringify(body), signal: options.signal },
-			COMPLETION_START_BACKSTOP_MS,
-			`${this.displayName} completion`
-		);
-		if (!response.ok) throw new Error(await this.extractErrorMessage(response));
-
-		let content = '';
-		let thinking = '';
-		let finishReason: LLMToolResult['finishReason'] = 'stop';
-		// Whether the provider ever sent an explicit finish_reason. Default 'stop' is a
-		// LIE for a stream that just closed early (local endpoints do this under load): it
-		// makes an empty truncated turn read as "the model chose to stop with nothing".
-		let sawFinishReason = false;
-		let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 };
-
-		const emitThinking = (t: string) => {
-			thinking += t;
-			options.onThinkingToken?.(t);
-		};
-		const emitContent = (t: string) => {
-			content += t;
-			options.onToken?.(t);
-		};
-		// No inline-reasoning parser here, deliberately: the assistant legitimately WRITES
-		// marker-like text (quoting or fixing a roleplay message that contains "<think>"),
-		// and an unclosed marker would silently reroute the rest of its reply into the
-		// thinking channel. Structured reasoning fields still stream normally; a model
-		// that leaks inline markers into a tool-calling reply shows them as plain text,
-		// which is ugly but honest and beats silently losing the answer.
-
-		// Tool calls accumulate by their `index` across deltas; id/name arrive on
-		// the first chunk for a call, arguments stream in as string fragments.
-		const toolAcc = new Map<number, { id: string; name: string; args: string }>();
-
-		try {
-			for await (const data of sseData(response, `${this.displayName} stream`)) {
-				if (data === '[DONE]') continue;
-
-				let parsed: Record<string, unknown>;
-				try {
-					parsed = JSON.parse(data);
-				} catch (e) {
-					// Don't echo the chunk itself: it can carry chat content.
-					console.warn(`[${this.displayName}] Failed to parse SSE chunk (${data.length} chars):`, e);
-					continue;
-				}
-
-				// A mid-stream error event ends the generation: fail loud, never return
-				// the partial accumulation as a quietly "successful" empty turn.
-				const streamError = this.streamEventError(parsed);
-				if (streamError) throw new Error(`${this.displayName}: ${streamError}`);
-
-				const choice = (parsed.choices as Record<string, unknown>[] | undefined)?.[0];
-				const delta = choice?.delta as Record<string, unknown> | undefined;
-
-				const reasoningDelta =
-					(delta?.reasoning_content as string) ?? (delta?.reasoning as string) ?? (delta?.thinking as string);
-				if (reasoningDelta) {
-					emitThinking(reasoningDelta);
-				}
-
-				const contentDelta = delta?.content as string | undefined;
-				if (contentDelta) {
-					emitContent(contentDelta);
-				}
-
-				const toolDeltas = delta?.tool_calls as
-					| { index: number; id?: string; function?: { name?: string; arguments?: string } }[]
-					| undefined;
-				if (toolDeltas) {
-					for (const td of toolDeltas) {
-						const idx = td.index ?? 0;
-						let acc = toolAcc.get(idx);
-						if (!acc) {
-							acc = { id: '', name: '', args: '' };
-							toolAcc.set(idx, acc);
-						}
-						if (td.id) acc.id = td.id;
-						if (td.function?.name) acc.name = td.function.name;
-						if (td.function?.arguments) acc.args += td.function.arguments;
-						if (acc.name) {
-							options.onToolCallDelta?.({ index: idx, name: acc.name, argumentsSoFar: acc.args });
-						}
-					}
-				}
-
-				const fr = choice?.finish_reason as string | undefined;
-				if (fr) {
-					finishReason = this.mapToolFinishReason(fr);
-					sawFinishReason = true;
-				}
-
-				const u = parsed.usage as Record<string, any> | undefined;
-				if (u) {
-					usage = {
-						promptTokens: u.prompt_tokens ?? 0,
-						completionTokens: u.completion_tokens ?? 0,
-						totalTokens: u.total_tokens ?? 0,
-						// Normalized across every provider's cache-reporting shape (see cachedTokensFrom).
-						cachedTokens: this.cachedTokensFrom(u)
-					};
-				}
-			}
-		} catch (error) {
-			if (error instanceof Error && error.name === 'AbortError') {
-				finishReason = 'cancelled';
-			} else {
-				throw error;
-			}
-		}
-
-		// A call that accumulated arguments but never a name is a corrupt stream: the
-		// model asked for SOMETHING and silently dropping it would fake an empty turn.
-		// (Nameless empty accumulators are glitch residue and are dropped below.)
-		for (const [, acc] of toolAcc) {
-			if (!acc.name && acc.args.trim() && finishReason !== 'cancelled') {
-				throw new Error(`${this.displayName} streamed a tool call with arguments but no name, so the stream arrived corrupt. Try again.`);
-			}
-		}
-
-		const toolCalls: LLMToolCall[] = [...toolAcc.entries()]
-			.sort((a, b) => a[0] - b[0])
-			.map(([, acc]) => {
-				let args: Record<string, unknown> = {};
-				try {
-					args = acc.args.trim() ? JSON.parse(acc.args) : {};
-				} catch {
-					// Leave args empty; the executor surfaces a clear error so the model retries.
-					args = {};
-				}
-				return { id: acc.id, name: acc.name, arguments: args, rawArguments: acc.args };
-			})
-			.filter((c) => c.name);
-
-		// The stream ended with NOTHING (no text, no tool call), and the provider never
-		// sent a finish_reason. That is a truncated / early-closed connection, not a real
-		// stop: reporting the default 'stop' makes the loop announce "the model chose to
-		// end its turn empty" when the endpoint actually hung up mid-generation. Common
-		// with local endpoints whose server (or a reverse proxy in front of it) ends the
-		// stream during a long prompt-processing phase, or that stream without keepalives.
-		// (`sawFinishReason` gates this so a genuine explicit empty stop still passes through.)
-		if (!sawFinishReason && !content.trim() && !toolCalls.length && finishReason !== 'cancelled') {
-			throw new Error(
-				`${this.displayName}: the response stream closed before the model produced any reply or tool call, and without a finish signal. For a local endpoint this usually means the server (or a reverse proxy) ended the connection during a long prompt-processing phase, or it streams without keepalives, and the model may still be generating on its side. Raise the endpoint's idle/read limit or enable SSE keepalives, then try again.`
-			);
-		}
-
-		return {
-			content,
-			thinking: stripResidualMarkers(thinking) || null,
-			toolCalls,
-			finishReason,
-			usage,
-			model: options.model,
-			provider: this.name
-		};
-	}
-
-	/**
-	 * One non-streamed tool-calling request: the step's reply and every tool call land
-	 * whole. No inline-reasoning extraction, for the reason the streaming path states:
-	 * the assistant legitimately writes marker-like text.
-	 */
-	private async toolCompletion(
-		body: Record<string, unknown>,
-		options: LLMToolStreamOptions,
-		typed: string,
-		headers: Record<string, string>
-	): Promise<LLMToolResult> {
-		const response = await timedFetch(
-			`${await this.resolveBase(typed, headers)}/chat/completions`,
-			{ method: 'POST', headers, body: JSON.stringify(body), signal: options.signal },
-			COMPLETION_START_BACKSTOP_MS,
-			`${this.displayName} completion`
-		);
-		if (!response.ok) throw new Error(await this.extractErrorMessage(response));
-
-		const data = (await readJsonCapped(
-			response,
-			MAX_COMPLETION_BODY_BYTES,
-			`${this.displayName} completion response`
-		)) as Record<string, any>;
-		const choice = data.choices?.[0];
-		const message = choice?.message;
-		if (!message) {
-			throw new Error(`${this.displayName} returned a completion with no choices`);
-		}
-
-		const thinking = [message.reasoning_content, message.reasoning, message.thinking]
-			.filter((t: unknown): t is string => typeof t === 'string' && t.length > 0)
-			.join('\n');
-
-		const toolCalls: LLMToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : [])
-			.map((c: Record<string, any>): LLMToolCall => {
-				const raw = typeof c.function?.arguments === 'string' ? c.function.arguments : '';
-				let args: Record<string, unknown> = {};
-				try {
-					args = raw.trim() ? JSON.parse(raw) : {};
-				} catch {
-					// Leave args empty; the executor surfaces a clear error so the model retries.
-				}
-				return { id: String(c.id ?? ''), name: String(c.function?.name ?? ''), arguments: args, rawArguments: raw };
-			})
-			.filter((c: LLMToolCall) => c.name);
-
-		const content = String(message.content ?? '').trim();
-		const finish = typeof choice.finish_reason === 'string' ? choice.finish_reason : '';
-		// Nothing to show AND no finish signal is a truncated response, not a model that
-		// chose to say nothing (the same guard the streaming path keeps, for the same reason).
-		if (!finish && !content && !toolCalls.length) {
-			throw new Error(
-				`${this.displayName}: the completion returned no reply, no tool call and no finish reason. The endpoint likely ended the request early. Try again.`
-			);
-		}
-
-		return {
-			content,
-			thinking: stripResidualMarkers(thinking) || null,
-			toolCalls,
-			finishReason: this.mapToolFinishReason(finish),
-			usage: {
-				promptTokens: data.usage?.prompt_tokens ?? 0,
-				completionTokens: data.usage?.completion_tokens ?? 0,
-				totalTokens: data.usage?.total_tokens ?? 0,
-				cachedTokens: this.cachedTokensFrom(data.usage)
-			},
-			model: options.model,
-			provider: this.name
-		};
-	}
-
-	private mapToolFinishReason(reason: string): LLMToolResult['finishReason'] {
-		switch (reason) {
-			case 'stop':
-				return 'stop';
-			case 'length':
-				return 'length';
-			case 'tool_calls':
-			case 'function_call':
-				return 'tool_calls';
-			default:
-				return 'error';
-		}
 	}
 
 	async validateCredentials(): Promise<boolean> {

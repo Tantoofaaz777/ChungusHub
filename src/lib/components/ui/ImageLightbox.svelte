@@ -5,10 +5,9 @@
 	 * like Dialog so backdrop-filter stacking contexts can't clip it.
 	 *
 	 * It pages a SET and never decides what that set is. The surface that opens it does,
-	 * because each one has exactly one set it can name: an assistant tab's attachment
-	 * roster, a chat message's own attachments, a library entry's gallery, one logged
-	 * request's images. A viewer that chose its own scope would be guessing at the screen
-	 * behind it, and every one of those four answers is different.
+	 * because each one has exactly one set it can name: a chat message's attachments,
+	 * a library entry's gallery, or one logged request's images. A viewer that chose
+	 * its own scope would be guessing at the screen behind it.
 	 */
 	import { fade, scale } from 'svelte/transition';
 	import Icon from './Icon.svelte';
@@ -27,8 +26,7 @@
 		 *  open to the caller while rendering nothing, permanently. */
 		index: number | null;
 		alt?: string;
-		/** Word the counter leads with, where the position already has a name the reader
-		 *  knows (the assistant's "attachment 3"). Bare "3 / 7" without it. */
+		/** Optional word the counter leads with. Bare "3 / 7" without it. */
 		countLabel?: string;
 		onClose: () => void;
 	}
@@ -182,8 +180,7 @@
 	.lightbox {
 		position: fixed;
 		inset: 0;
-		/* Above the assistant widget (z 200, full-screen on mobile), like Dialog's z-[300].
-		   At 90 it opened BEHIND the panel: invisible on mobile, under the widget on desktop. */
+		/* Shares Dialog's z-[300] layer so it stays above workspace panels and popovers. */
 		z-index: 300;
 		display: flex;
 		align-items: center;

@@ -11,7 +11,7 @@
 	let { a, b }: Props = $props();
 
 	interface Block {
-		/** Stable list key; the tool-definition block sits outside the message numbering. */
+		/** Stable list key. */
 		key: string;
 		label: string;
 		identical: boolean;
@@ -28,18 +28,14 @@
 	}
 
 	/**
-	 * What actually goes into the diff for one message: its wire envelope (tool name,
-	 * tool_call_id, image attachments, tool calls) on top of its text. Diffing content
-	 * alone would report two requests as identical while one of them carried an image or a
-	 * different tool call. That is the exact silence this panel exists to end.
+	 * What actually goes into the diff for one message: its role and image attachments on
+	 * top of its text. Diffing content alone would report two requests as identical while
+	 * one of them carried an image. That is the exact silence this panel exists to end.
 	 */
 	function diffText(m?: PromptLogMessage): string {
 		if (!m) return '';
 		const wire: string[] = [`[role] ${m.role}`];
-		if (m.name) wire.push(`[name] ${m.name}`);
-		if (m.tool_call_id) wire.push(`[tool_call_id] ${m.tool_call_id}`);
 		for (const path of m.images ?? []) wire.push(`[image] ${path}`);
-		if (m.tool_calls) wire.push(`[tool_calls] ${JSON.stringify(m.tool_calls)}`);
 		return wire.length ? `${wire.join('\n')}\n${m.content ?? ''}` : (m.content ?? '');
 	}
 
@@ -59,20 +55,6 @@
 
 	let blocks = $derived.by<Block[]>(() => {
 		const out: Block[] = [];
-		// Tool definitions ride the request beside the messages and are usually its largest
-		// part, so they are compared as their own block rather than left out of the verdict.
-		if (a.tools?.length || b.tools?.length) {
-			const counts = `${a.tools?.length ?? 0} vs ${b.tools?.length ?? 0}`;
-			out.push(
-				block(
-					'tools',
-					`tool definitions · ${counts}`,
-					JSON.stringify(a.tools ?? [], null, 2),
-					JSON.stringify(b.tools ?? [], null, 2),
-					!a.tools?.length ? 'b' : !b.tools?.length ? 'a' : null
-				)
-			);
-		}
 		const max = Math.max(a.messages.length, b.messages.length);
 		for (let i = 0; i < max; i++) {
 			const am = a.messages[i];
@@ -107,7 +89,7 @@
 
 	<p class="summary">
 		{changedCount === 0
-			? 'No differences: same messages, same attachments, same tool definitions.'
+			? 'No differences: same messages and attachments.'
 			: `${changedCount} of ${blocks.length} block${blocks.length === 1 ? '' : 's'} differ`}
 		<span class="legend"><span class="swatch rm"></span>only in A<span class="swatch ad"></span>only in B</span>
 	</p>

@@ -437,7 +437,7 @@
 	}
 
 	/* One frost recipe for floating surfaces over live content: dialogs,
-	   popovers, toasts, modals, the assistant widget. Interior surfaces painted ON
+	   popovers, toasts and modals. Interior surfaces painted ON
 	   an already-frosted panel must NOT use this. They only need translucent
 	   backgrounds (the card/input tokens); nested backdrop-filters don't
 	   re-blur reliably. Radius and shadow stay with the component. */
@@ -2035,8 +2035,8 @@
 	}
 
 	/* The pointer affordance follows the `toggleRow` action's own marker, not the
-	   recipe class, so rows that roll their own markup (Security's password lock,
-	   the assistant's permission cards, the lorebook globals) read as clickable too.
+	   recipe class, so rows that roll their own markup (Security's password lock and
+	   the lorebook globals) read as clickable too.
 	   Gated on a live switch so a row with a disabled one never promises a click it
 	   won't honor. */
 	[data-row-toggle]:has([role='switch']:not(:disabled)) {

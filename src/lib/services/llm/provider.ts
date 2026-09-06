@@ -2,8 +2,8 @@
  * Client LLM service.
  *
  * Provider implementations and API keys live on the server. This façade resolves
- * WHO serves each call: every calling point (`primary`, `assistant`, each
- * calling engine) is routed to its own concrete Connection in one flat map (see
+ * WHO serves each call: every calling point (`primary` and each calling engine)
+ * is routed to its own concrete Connection in one flat map (see
  * stores/connections.svelte.ts). This service reads that map to build the
  * request: provider, model, per-connection generation settings,
  * capability-filtered tuning, and the connection's OpenRouter routing.
@@ -15,7 +15,6 @@ import type {
 	LLMCompletionResult,
 	ProviderName,
 	Connection,
-	GenerationTuning,
 	CachingPolicy,
 	MediaPolicy,
 	ModelInfo,
@@ -24,7 +23,6 @@ import type {
 	ProfileReasoning,
 	ParamPolicy,
 	PromptPostProcessingMode,
-	RoutingConfig,
 	CallTarget
 } from '$lib/types/llm';
 import {
@@ -120,17 +118,6 @@ class LLMService {
 
 	modelFor(target: CallTarget): string {
 		return connectionStore.connectionFor(target)?.model ?? '';
-	}
-
-	connectionIdFor(target: CallTarget): string | undefined {
-		return connectionStore.connectionFor(target)?.id;
-	}
-
-	/** The connection's OpenRouter routing for a call target (openrouter only; null otherwise). */
-	routingFor(target: CallTarget): RoutingConfig | null {
-		const conn = connectionStore.connectionFor(target);
-		if (!conn || conn.provider !== 'openrouter') return null;
-		return conn.routing;
 	}
 
 	/** The primary connection's model: the chat generation model the meters price. */
@@ -262,35 +249,6 @@ class LLMService {
 		const meta = this.meta[conn.provider];
 		const policy = resolveParamPolicy(meta?.paramPolicy ?? 'base-only', conn.samplingParams);
 		return buildGenerationParams(conn.generation, this.getCachedModel(model, conn.id), policy, model, meta?.serviceTier ?? false);
-	}
-
-	/**
-	 * A target's own sampling, with its model list warmed first so the capability
-	 * filtering is real. `complete()` does exactly this inline for every call it
-	 * serves; the Chungus Assistant needs the same resolution WITHOUT complete(),
-	 * because its tool loop rides its own WebSocket channel.
-	 */
-	async resolveConnectionParams(target: CallTarget): Promise<Record<string, string | number>> {
-		const conn = connectionStore.connectionFor(target);
-		if (!conn) throw new Error(`No connection resolved for the ${targetLabel(target)}`);
-		await this.ensureModelsLoaded(conn.id, conn.provider);
-		return this.getGenerationParams(conn, conn.model);
-	}
-
-	/** Reasoning/verbosity/media tuning for a target's connection, filtered to provider support. */
-	getGenerationTuning(target: CallTarget): GenerationTuning | undefined {
-		const conn = connectionStore.connectionFor(target);
-		if (!conn) return undefined;
-		const meta = this.meta[conn.provider];
-		return buildGenerationTuning(
-			conn.generation,
-			meta?.reasoning ?? null,
-			conn.reasoningDialect,
-			meta?.media ?? null,
-			meta?.verbosity ?? false,
-			meta?.caching ?? null,
-			this.getCachedModel(conn.model, conn.id)
-		);
 	}
 
 	/** Whether attached images may ride a target's generation (connection toggle + provider media policy + model modality). */

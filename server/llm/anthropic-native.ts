@@ -2,10 +2,6 @@ import type {
 	LLMCompletionOptions,
 	LLMCompletionResult,
 	LLMProviderConfig,
-	LLMToolCall,
-	LLMToolMessage,
-	LLMToolResult,
-	LLMToolStreamOptions,
 	LLMMessage,
 	GenerationTuning,
 	ModelEndpoint,
@@ -39,9 +35,6 @@ const PLACEHOLDER_USER_TURN = '[Start a new chat]';
 
 /** How long the per-model capability snapshot (from /models) stays fresh. */
 const CAPS_TTL_MS = 5 * 60_000;
-
-/** How many raw assistant turns (thinking + tool_use blocks) we keep for replay. */
-const RAW_TURN_CACHE_MAX = 200;
 
 /** What we need per model to build honest requests, from /models capabilities. */
 interface ModelCaps {
@@ -86,9 +79,6 @@ interface StreamOutcome {
 	refusalExplanation: string | null;
 	cancelled: boolean;
 	usage: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number };
-	/** Content blocks exactly as streamed (thinking/text/tool_use), replayable next turn. */
-	raw: Block[];
-	tools: { id: string; name: string; args: string }[];
 }
 
 /**
@@ -121,18 +111,6 @@ export class AnthropicNativeProvider implements ChatProvider {
 	/** Per-model capability snapshot from the last /models fetch. */
 	private caps = new Map<string, ModelCaps>();
 	private capsAt = 0;
-
-	/**
-	 * Raw assistant content blocks from previous tool-calling turns, keyed by the
-	 * turn's first tool_use id. The assistant transport only carries text +
-	 * tool_calls, but the Messages API requires thinking blocks to be replayed
-	 * unmodified ahead of the tool_use blocks they produced, so we stash each
-	 * streamed turn here and splice it back verbatim when the loop resends the
-	 * conversation. In-process only: after a restart mid-conversation the rebuilt
-	 * turn simply lacks its thinking blocks (thinking-enabled models may reject
-	 * that one request; a fresh assistant conversation recovers).
-	 */
-	private rawTurns = new Map<string, Block[]>();
 
 	constructor(profile: ProviderProfile) {
 		this.name = profile.name;
@@ -497,199 +475,6 @@ export class AnthropicNativeProvider implements ChatProvider {
 		};
 	}
 
-	// ===== Tool-calling completions (Chungus Assistant) =====
-
-	async completeWithTools(options: LLMToolStreamOptions): Promise<LLMToolResult> {
-		this.assertConfigured(options.model, 'Pick an assistant model in settings.');
-		const caps = await this.capsFor(options.model);
-		const { system, messages } = this.convertToolMessages(options.messages);
-		this.placeCacheBreakpoints(system, messages, options.tuning);
-
-		// Streaming follows the same rule as plain completions (whether the caller wants
-		// tokens), which is how the Assistant connection's Stream response setting reaches
-		// the wire. Off, the step's blocks land whole in one response.
-		const isStreaming = !!options.onToken;
-		const body: Record<string, unknown> = {
-			model: options.model,
-			messages,
-			...(isStreaming ? { stream: true } : {}),
-			tools: options.tools.map((t) => ({
-				name: t.function.name,
-				description: t.function.description,
-				input_schema: t.function.parameters
-			})),
-			tool_choice: { type: 'auto' }
-		};
-		if (system) body.system = system;
-		this.applyTuning(body, options, caps);
-		// Honour the assistant's reasoning tuning (effort / visibility) exactly like plain
-		// completions; with no tuning this reproduces the prior default (adaptive + summarized).
-		this.applyReasoning(body, caps, options.tuning);
-
-		if (!isStreaming) return this.toolCompletion(body, options);
-
-		const response = await this.messagesRequest(body, options.signal, COMPLETION_START_BACKSTOP_MS);
-		const s = await this.consumeStream(response, {
-			onText: options.onToken,
-			onThinking: options.onThinkingToken,
-			onToolDelta: (ordinal, name, argsSoFar) =>
-				options.onToolCallDelta?.({ index: ordinal, name, argumentsSoFar: argsSoFar })
-		});
-		this.assertNotEmptyRefusal(s.stopReason, s.text, s.refusalExplanation);
-
-		if (s.tools.length > 0) this.rememberRawTurn(s.tools[0].id, s.raw);
-
-		const toolCalls: LLMToolCall[] = s.tools.map((t) => {
-			let args: Record<string, unknown> = {};
-			try {
-				args = t.args.trim() ? JSON.parse(t.args) : {};
-			} catch {
-				// Leave args empty; the executor surfaces a clear error so the model retries.
-			}
-			return { id: t.id, name: t.name, arguments: args, rawArguments: t.args };
-		});
-
-		const finishReason: LLMToolResult['finishReason'] = s.cancelled
-			? 'cancelled'
-			: s.stopReason === 'tool_use'
-				? 'tool_calls'
-				: this.mapStopReason(s.stopReason);
-
-		return {
-			content: s.text,
-			thinking: s.thinking || null,
-			toolCalls,
-			finishReason,
-			usage: s.usage,
-			model: options.model,
-			provider: this.name
-		};
-	}
-
-	/**
-	 * Reshape the assistant transcript (OpenAI-shaped roles) into Messages API turns:
-	 * assistant tool calls become tool_use blocks (replayed verbatim from the raw
-	 * cache when we streamed them ourselves, preserving thinking blocks), and
-	 * consecutive tool results fold into ONE user turn of tool_result blocks, as
-	 * the API requires for parallel calls.
-	 */
-	private convertToolMessages(messages: LLMToolMessage[]): { system?: Block[]; messages: WireMessage[] } {
-		const systemParts: string[] = [];
-		const wire: WireMessage[] = [];
-
-		const pushTurn = (role: 'user' | 'assistant', blocks: Block[]) => {
-			if (blocks.length > 0) wire.push({ role, content: blocks });
-		};
-
-		// Positional, like convertPlainMessages: hoist only leading system turns.
-		let seenTurn = false;
-		for (const m of messages) {
-			if (m.role !== 'system') seenTurn = true;
-			if (m.role === 'system') {
-				if (!seenTurn) systemParts.push(m.content);
-				else if (m.content.trim()) pushTurn('user', [{ type: 'text', text: m.content }]);
-				continue;
-			}
-			if (m.role === 'tool') {
-				const block: Block = { type: 'tool_result', tool_use_id: m.tool_call_id ?? '', content: m.content };
-				const prev = wire[wire.length - 1];
-				// Fold consecutive tool results into the same user turn.
-				if (prev && prev.role === 'user' && prev.content.every((b) => b.type === 'tool_result')) {
-					prev.content.push(block);
-				} else {
-					pushTurn('user', [block]);
-				}
-				continue;
-			}
-			if (m.role === 'assistant' && m.tool_calls?.length) {
-				const cached = this.rawTurns.get(m.tool_calls[0].id);
-				if (cached) {
-					// Shared directly: nothing downstream mutates blocks (see
-					// placeCacheBreakpoints), so no per-request deep copy is needed.
-					pushTurn('assistant', cached);
-				} else {
-					const blocks: Block[] = [];
-					if (m.content.trim()) blocks.push({ type: 'text', text: m.content });
-					for (const tc of m.tool_calls) {
-						let input: Record<string, unknown> = {};
-						try {
-							input = tc.function.arguments.trim() ? JSON.parse(tc.function.arguments) : {};
-						} catch {
-							input = {};
-						}
-						blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input });
-					}
-					pushTurn('assistant', blocks);
-				}
-				continue;
-			}
-			// Image blocks lead their turn (the documented placement); text follows.
-			const blocks: Block[] = (m.images ?? []).map((path) => {
-				const img = loadImage(path);
-				return { type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } };
-			});
-			if (m.content.trim()) blocks.push({ type: 'text', text: m.content });
-			pushTurn(m.role, blocks);
-		}
-
-		if (wire.length === 0 || wire[0].role !== 'user') {
-			wire.unshift({ role: 'user', content: [{ type: 'text', text: PLACEHOLDER_USER_TURN }] });
-		}
-		return { system: this.systemBlocks(systemParts), messages: wire };
-	}
-
-	/**
-	 * One non-streamed tool-calling request: the step's blocks land whole. The response's
-	 * own `content` array IS the replayable raw turn, so thinking blocks survive the next
-	 * iteration exactly as they do on the streamed path.
-	 */
-	private async toolCompletion(body: Record<string, unknown>, options: LLMToolStreamOptions): Promise<LLMToolResult> {
-		const response = await this.messagesRequest(body, options.signal, COMPLETION_START_BACKSTOP_MS);
-		const data = (await readJsonCapped(
-			response,
-			MAX_COMPLETION_BODY_BYTES,
-			`${this.displayName} completion response`
-		)) as Record<string, unknown>;
-
-		const blocks = Array.isArray(data.content) ? (data.content as Block[]) : [];
-		const text = blocks.filter((b) => b.type === 'text').map((b) => String(b.text ?? '')).join('');
-		const thinking = blocks.filter((b) => b.type === 'thinking').map((b) => String(b.thinking ?? '')).join('\n');
-		const stopReason = typeof data.stop_reason === 'string' ? data.stop_reason : null;
-		const details = data.stop_details as { explanation?: string } | undefined;
-		this.assertNotEmptyRefusal(stopReason, text, details?.explanation ?? null);
-
-		const toolBlocks = blocks.filter((b) => b.type === 'tool_use');
-		if (toolBlocks.length > 0) this.rememberRawTurn(String(toolBlocks[0].id ?? ''), blocks);
-
-		const toolCalls: LLMToolCall[] = toolBlocks.map((b) => {
-			const args = (b.input ?? {}) as Record<string, unknown>;
-			return { id: String(b.id ?? ''), name: String(b.name ?? ''), arguments: args, rawArguments: JSON.stringify(args) };
-		});
-
-		return {
-			content: text,
-			thinking: thinking.trim() ? thinking : null,
-			toolCalls,
-			finishReason: stopReason === 'tool_use' ? 'tool_calls' : this.mapStopReason(stopReason),
-			usage: this.usageFrom(data.usage as Record<string, unknown> | undefined),
-			model: options.model,
-			provider: this.name
-		};
-	}
-
-	private rememberRawTurn(firstToolId: string, raw: Block[]): void {
-		// Streaming can emit empty text blocks ahead of tool_use; the API rejects
-		// them on replay ("text content blocks must be non-empty"), so strip them.
-		const replayable = raw.filter((b) => !(b.type === 'text' && !String(b.text ?? '').trim()));
-		this.rawTurns.set(firstToolId, replayable);
-		while (this.rawTurns.size > RAW_TURN_CACHE_MAX) {
-			const oldest = this.rawTurns.keys().next().value;
-			if (oldest === undefined) break;
-			this.rawTurns.delete(oldest);
-		}
-	}
-
-	// ===== Wire plumbing =====
 
 	private assertConfigured(model: string, hint: string): void {
 		if (!this.apiKey) throw new Error(`${this.displayName} API key not configured`);
@@ -746,13 +531,10 @@ export class AnthropicNativeProvider implements ChatProvider {
 		handlers: {
 			onText?: (t: string) => void;
 			onThinking?: (t: string) => void;
-			onToolDelta?: (ordinal: number, name: string, argsSoFar: string) => void;
 		}
 	): Promise<StreamOutcome> {
-		const raw: Block[] = [];
-		const open = new Map<number, { block: Block; toolArgs: string; toolOrdinal: number }>();
-		const tools: StreamOutcome['tools'] = [];
-		let toolOrdinal = 0;
+		let text = '';
+		let thinking = '';
 		let stopReason: string | null = null;
 		let refusalExplanation: string | null = null;
 		let cancelled = false;
@@ -783,52 +565,15 @@ export class AnthropicNativeProvider implements ChatProvider {
 								cacheReadTokens;
 							break;
 						}
-						case 'content_block_start': {
-							const index = num(ev.index) ?? 0;
-							const cb = (ev.content_block ?? {}) as Block;
-							let block: Block;
-							if (cb.type === 'text') block = { type: 'text', text: '' };
-							else if (cb.type === 'thinking') block = { type: 'thinking', thinking: '', signature: '' };
-							else if (cb.type === 'tool_use') block = { type: 'tool_use', id: cb.id, name: cb.name, input: {} };
-							else block = { ...cb }; // redacted_thinking and future block types, kept verbatim
-							raw.push(block);
-							open.set(index, { block, toolArgs: '', toolOrdinal: cb.type === 'tool_use' ? toolOrdinal++ : -1 });
-							break;
-						}
 						case 'content_block_delta': {
-							const entry = open.get(num(ev.index) ?? 0);
-							if (!entry) break;
 							const d = (ev.delta ?? {}) as Block;
 							if (d.type === 'text_delta' && typeof d.text === 'string') {
-								entry.block.text = String(entry.block.text ?? '') + d.text;
+								text += d.text;
 								handlers.onText?.(d.text);
 							} else if (d.type === 'thinking_delta' && typeof d.thinking === 'string') {
-								entry.block.thinking = String(entry.block.thinking ?? '') + d.thinking;
+								thinking += d.thinking;
 								handlers.onThinking?.(d.thinking);
-							} else if (d.type === 'signature_delta' && typeof d.signature === 'string') {
-								entry.block.signature = String(entry.block.signature ?? '') + d.signature;
-							} else if (d.type === 'input_json_delta' && typeof d.partial_json === 'string') {
-								entry.toolArgs += d.partial_json;
-								handlers.onToolDelta?.(entry.toolOrdinal, String(entry.block.name ?? ''), entry.toolArgs);
 							}
-							break;
-						}
-						case 'content_block_stop': {
-							const index = num(ev.index) ?? 0;
-							const entry = open.get(index);
-							if (entry && entry.block.type === 'tool_use') {
-								try {
-									entry.block.input = entry.toolArgs.trim() ? JSON.parse(entry.toolArgs) : {};
-								} catch {
-									entry.block.input = {};
-								}
-								tools.push({
-									id: String(entry.block.id ?? ''),
-									name: String(entry.block.name ?? ''),
-									args: entry.toolArgs
-								});
-							}
-							open.delete(index);
 							break;
 						}
 						case 'message_delta': {
@@ -855,22 +600,13 @@ export class AnthropicNativeProvider implements ChatProvider {
 			}
 		}
 
-		const text = raw.filter((b) => b.type === 'text').map((b) => String(b.text ?? '')).join('');
-		const thinkingText = raw
-			.filter((b) => b.type === 'thinking')
-			.map((b) => String(b.thinking ?? ''))
-			.filter((t) => t.trim())
-			.join('\n');
-
 		return {
 			text,
-			thinking: thinkingText,
+			thinking,
 			stopReason,
 			refusalExplanation,
 			cancelled,
-			usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, cachedTokens: cacheReadTokens },
-			raw,
-			tools
+			usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, cachedTokens: cacheReadTokens }
 		};
 	}
 
@@ -888,7 +624,6 @@ export class AnthropicNativeProvider implements ChatProvider {
 		switch (reason) {
 			case 'end_turn':
 			case 'stop_sequence':
-			case 'tool_use':
 				return 'stop';
 			case 'max_tokens':
 			case 'model_context_window_exceeded':

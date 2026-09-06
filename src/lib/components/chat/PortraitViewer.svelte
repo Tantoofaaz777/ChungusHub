@@ -86,7 +86,7 @@
 		position: fixed;
 		left: 0;
 		bottom: 0;
-		/* Below the docked side panels (Settings / Assistant at z-25) and the chat-area
+		/* Below the docked side panels and the chat-area
 		   overlays, but above the chat column and the sprite layer (14): panels always
 		   win, and a portrait the reader opened wins its corner. */
 		z-index: 15;

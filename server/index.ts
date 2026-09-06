@@ -45,7 +45,6 @@ import {
 	listDrafts,
 	listPresets,
 	listStoredImages,
-	readAssistantFileText,
 	resolveImageFile,
 	restoreDefaults,
 	saveDraft,
@@ -55,28 +54,8 @@ import {
 } from './files';
 import type { PresetFileData } from './files';
 import { fromOurOwnHost, fromOurOwnOrigin, isKnownHost } from './same-origin';
-import { storeAssistantFile } from './assistant/files-ingest';
-import { clampRange, splitLines } from './assistant/files-core';
-import type { AssistantFile } from '../shared/assistant-files';
-import type { AssistantFileRow } from './db';
 import { complete, fetchAccount, fetchAvailableModels, fetchModelEndpoints, isProvider, providerMetadata, resolvedBaseUrl, validateCredentials, type RoutingConfig } from './llm/registry';
-import { handleAssistant, type AssistantRequest } from './assistant/loop';
 import * as promptLog from './promptLog';
-import type {
-	ApprovalCall,
-	ApprovalCard,
-	ApprovalOutcome,
-	AskQuestion,
-	AssistantStep,
-	AssistantToolResult,
-	QuestionAnswer,
-	QuestionCard,
-	QuestionOutcome
-} from './assistant/types';
-import { listSkills, listDefaultSkills, saveSkills, type SkillInput } from './assistant/registry/skills';
-import { capabilityGroupCosts } from './assistant/registry';
-import { CAPABILITY_GROUPS, CAPABILITY_PRESETS, DEFAULT_ENABLED_GROUPS } from './assistant/registry/groups';
-import { applyLiveSettings, settingsStale } from './assistant/sessionSettings';
 
 /** Stop with a reason, where the reader can read it. A portable build's console closes
  *  with the process, so it is held there, and only where there is a console to hold. */
@@ -191,14 +170,6 @@ function json(data: unknown, status = 200, extraHeaders?: Record<string, string>
 	});
 }
 
-/** An attached file as the client may see it: the shared shape, with the stored path left
- *  behind. Every surface addresses a file by id, so handing one a location would be the only
- *  thing in the app that could tempt it into naming a path. */
-function publicFile(row: AssistantFileRow): AssistantFile {
-	const { textPath: _textPath, ...rest } = row;
-	return rest;
-}
-
 /** Drop every live WebSocket. Run after a security setting tightens, so an app
  *  that is already open can't keep working on a connection it opened earlier.
  *  Its reconnect (and the next REST call) re-runs the gates. */
@@ -214,7 +185,7 @@ function broadcastSync(scope: SyncScope, originClientId: string | null): void {
 	// schedule learns that anything is owed a copy. Without it an idle machine writes an
 	// identical copy of the same database every interval, forever. The backup scope itself is
 	// excluded, or finishing a snapshot would immediately mark the next one as needed. The
-	// paths that write without broadcasting mark themselves (see the assistant files below).
+	// paths that write without broadcasting mark themselves directly.
 	if (scope !== 'backups') backupService.markChanged();
 	const payload = JSON.stringify({ t: 'sync', scope });
 	for (const ws of sockets) {
@@ -266,9 +237,6 @@ function quiesceForRestore(): void {
 		gen.controller.abort();
 		dropGeneration(id);
 	}
-	// Aborting only breaks the loop; the turn still finalizes its own rows. That is fine
-	// here (those rows are about to be replaced), but it is why nothing waits on them.
-	for (const turn of assistantTurns.values()) turn.controller.abort();
 }
 
 async function runRestore(id: string, manifestAt: number): Promise<void> {
@@ -908,8 +876,8 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 	}
 	// These two carry no sync hint: a copy is made for a row that is about to be written and
 	// announces itself through that row, and a delete follows one. They still tell the backup
-	// schedule, on the same rule as the assistant files below: every write into the data dir
-	// says so, whether or not another device needs to hear about it.
+	// schedule directly: every write into the data dir says so, whether or not another device
+	// needs to hear about it.
 	if (path === '/api/images/copy' && req.method === 'POST') {
 		const { path: rel, category } = (await req.json()) as {
 			path: string;
@@ -967,133 +935,6 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 		deletePreset(id);
 		broadcastSync('presets', clientId ?? null);
 		return json({ ok: true });
-	}
-
-	// ----- Assistant skills (the user's own list; defaults/skills is the read-only catalog) -----
-	if (path === '/api/assistant-skills' && req.method === 'GET') {
-		return json({ skills: listSkills() });
-	}
-	if (path === '/api/assistant-skills/defaults' && req.method === 'GET') {
-		return json({ skills: listDefaultSkills() });
-	}
-	if (path === '/api/assistant-skills' && req.method === 'PUT') {
-		const { skills, clientId } = (await req.json()) as { skills: SkillInput[]; clientId?: string };
-		if (!Array.isArray(skills)) return json({ error: 'PUT /api/assistant-skills expects { skills: [...] }.' }, 400);
-		try {
-			const saved = saveSkills(skills);
-			// A save sends the FULL set, so a dialog left open on another device would
-			// otherwise save its stale list back over this one. Skills ride the coarse
-			// `assistant` scope rather than earning their own: same subsystem, and the
-			// sessions reload it also triggers is one cheap read.
-			broadcastSync('assistant', clientId ?? null);
-			return json({ skills: saved });
-		} catch (e) {
-			return json({ error: e instanceof Error ? e.message : String(e) }, 400);
-		}
-	}
-
-	// ----- Assistant capabilities (the CATALOG only; the chosen set is an ordinary settings
-	// row the client reads and writes over the db bridge) -----
-	if (path === '/api/assistant-capabilities' && req.method === 'GET') {
-		const costs = capabilityGroupCosts();
-		return json({
-			groups: CAPABILITY_GROUPS.map((g) => ({
-				id: g.id,
-				label: g.label,
-				describe: g.describe,
-				tools: g.tools,
-				alwaysOn: !!g.alwaysOn,
-				experimental: !!g.experimental,
-				// Priced with the loop's own estimator, so the page and the context budget
-				// never quote different numbers for the same schemas.
-				tokens: costs[g.id] ?? 0
-			})),
-			presets: CAPABILITY_PRESETS.map((p) => ({ id: p.id, label: p.label, describe: p.describe, groups: [...p.groups] })),
-			defaults: [...DEFAULT_ENABLED_GROUPS]
-		});
-	}
-
-	// ----- Assistant files (read-only reference material attached to one tab) -----
-	//
-	// Where the file lives on disk is the server's alone: every other surface addresses it by
-	// id, so neither the model nor the client is ever handed a location.
-	//
-	// The bytes are NEVER served as a static file. What a user attaches is arbitrary text, so
-	// handing it back with a guessed content type would run an attached `.html` as a page on
-	// the app's own origin, the origin holding the session cookie. Everything here answers
-	// in JSON, which has no content type to get wrong.
-	//
-	// No sync broadcast on any of these: an upload is staged on the page that made it and
-	// carries nothing another device could render, and once a file rides a turn the transcript
-	// (and its own `assistant` broadcast) is what announces it. They are the two writes in the
-	// app that reach `assistant-files/` without one, so they tell the backup schedule directly:
-	// a snapshot carries that folder, and a broadcast is otherwise how it hears about a change.
-	if (path === '/api/assistant-files' && req.method === 'GET') {
-		const sessionId = url.searchParams.get('sessionId') ?? '';
-		if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
-		return json({ files: serverDb.listAssistantFiles(sessionId).map(publicFile) });
-	}
-	if (path === '/api/assistant-files' && req.method === 'POST') {
-		const form = await req.formData();
-		const file = form.get('file');
-		const sessionId = String(form.get('sessionId') ?? '');
-		if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
-		if (!serverDb.getAssistantSession(sessionId)) return json({ error: 'No assistant session with that id.' }, 404);
-		if (!(file instanceof Blob)) return json({ error: 'file required' }, 400);
-		const name = String(form.get('name') ?? (file instanceof File ? file.name : '') ?? 'attachment');
-		try {
-			const stored = storeAssistantFile(sessionId, name, new Uint8Array(await file.arrayBuffer()));
-			backupService.markChanged();
-			return json({ file: publicFile(stored) });
-		} catch (e) {
-			// Every ingest refusal is the user's to read: too big, not text, a picture with no
-			// document in it. Nothing was stored, so there is nothing to clean up.
-			return json({ error: e instanceof Error ? e.message : String(e) }, 400);
-		}
-	}
-	if (path === '/api/assistant-files/text' && req.method === 'GET') {
-		const file = serverDb.getAssistantFile(url.searchParams.get('id') ?? '');
-		if (!file) return json({ error: 'No attached file with that id.' }, 404);
-		const text = readAssistantFileText(file.textPath);
-		const lines = splitLines(text);
-		// The viewer pages: a 10 MB file must not be handed to the DOM in one string.
-		const from = Number(url.searchParams.get('from') ?? 1);
-		const to = Number(url.searchParams.get('to') ?? lines.length);
-		const range = clampRange(lines.length, Number.isFinite(from) ? from : 1, Number.isFinite(to) ? to : lines.length);
-		return json({
-			file: publicFile(file),
-			fromLine: range.from,
-			toLine: range.to,
-			totalLines: lines.length,
-			lines: lines.length === 0 ? [] : lines.slice(range.from - 1, range.to)
-		});
-	}
-	if (path === '/api/assistant-files/delete' && req.method === 'POST') {
-		const { id } = (await req.json()) as { id?: string };
-		if (!id) return json({ error: 'id is required.' }, 400);
-		const file = serverDb.getAssistantFile(id);
-		// Only a file still staged in a composer can be thrown away. Once it has ridden a
-		// turn the transcript names it, and a row deleted out from under that would leave the
-		// assistant's own record pointing at nothing.
-		if (file && file.messageId !== null) {
-			return json({ error: 'That file has already been sent, so it stays with the conversation.' }, 400);
-		}
-		serverDb.deleteAssistantFile(id);
-		backupService.markChanged();
-		return json({ ok: true });
-	}
-
-	// ----- Assistant session settings (frozen per session; re-synced on demand) -----
-	if (path === '/api/assistant-session-settings' && req.method === 'GET') {
-		const sessionId = url.searchParams.get('sessionId') ?? '';
-		if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
-		return json({ stale: settingsStale(sessionId) });
-	}
-	if (path === '/api/assistant-session-settings' && req.method === 'PUT') {
-		const { sessionId } = (await req.json()) as { sessionId?: string };
-		if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
-		applyLiveSettings(sessionId);
-		return json({ stale: false });
 	}
 
 	// ----- LLM (non-streaming control plane) -----
@@ -1497,246 +1338,6 @@ function handleLlmRelease(msg: { id?: unknown }): void {
 	if (typeof msg.id === 'string' && msg.id) dropGeneration(msg.id);
 }
 
-/**
- * Assistant turns in flight, keyed by SESSION. This map is the per-tab lock (one tab =
- * one loop: two concurrent turns would interleave writes into the same persisted
- * context), the abort registry, and the live snapshot a page that connects mid-turn is
- * handed. It is deliberately NOT per-socket state: an assistant turn outlives its socket
- * so a page reload or network blip cannot kill long multi-step work, and the loop
- * commits the finished turn server-side, so the result syncs to every device when it lands.
- */
-interface LiveTurn {
-	requestId: string;
-	controller: AbortController;
-	/** The turn's timeline so far, in exactly the shape the panel renders it. */
-	steps: AssistantStep[];
-	iteration: number;
-	/**
-	 * What this turn has STOPPED on and is waiting for a person to answer: calls that need
-	 * approving, or questions the assistant asked. It rides the LIVE TURN rather than a socket
-	 * because the answer may come from any device with the tab open, and because a page that
-	 * reloads mid-wait has to be handed the card again, which is what `assistantStatus` does
-	 * with it. First answer wins; `resolve` is dropped with it.
-	 *
-	 * ONE slot, not two: the loop runs a step's calls in order, so it can only ever be waiting
-	 * on one of them, and "both pending" must not be representable.
-	 */
-	pending?:
-		| { kind: 'approval'; card: ApprovalCard; resolve: (outcome: ApprovalOutcome) => void }
-		| { kind: 'question'; card: QuestionCard; resolve: (outcome: QuestionOutcome) => void };
-}
-const assistantTurns = new Map<string, LiveTurn>();
-
-/**
- * Folds one outgoing event into the turn's live snapshot, mirroring how the panel builds
- * its own timeline from the same events. A page that reloads mid-turn asks for this
- * snapshot and then keeps applying the deltas that follow, so the screen looks as if it
- * had been watching all along.
- *
- * `assistant-tool-progress` is deliberately NOT folded in: this snapshot is the turn's
- * durable timeline, the same `AssistantStep[]` the loop persists, and a call that has not
- * returned yet has no step. The panel renders those frames in a separate, ephemeral row,
- * and a page that reloads mid-call fills it from the next frame (at most one throttle
- * period away) instead of this array carrying state that can never be committed.
- */
-function recordLiveEvent(turn: LiveTurn, event: Record<string, unknown>): void {
-	const last = turn.steps[turn.steps.length - 1];
-	if (event.t === 'assistant-reply') {
-		const delta = String(event.delta);
-		if (last?.kind === 'text') last.text += delta;
-		else turn.steps.push({ kind: 'text', text: delta });
-	} else if (event.t === 'assistant-thinking') {
-		const delta = String(event.delta);
-		if (last?.kind === 'thinking') last.text += delta;
-		else turn.steps.push({ kind: 'thinking', text: delta });
-	} else if (event.t === 'assistant-tool-result') {
-		turn.steps.push({ kind: 'tool', tool: event.result as AssistantToolResult });
-	} else if (event.t === 'assistant-iteration') {
-		turn.iteration = Number(event.iteration);
-	}
-}
-
-/**
- * Takes the card down and tells every page it is spent. Guarded by id so a late answer to an
- * older card cannot settle the one that replaced it, and so the second device to answer is a
- * no-op rather than a second outcome the waiting loop has no room for.
- */
-function settlePending(turn: LiveTurn, sessionId: string, requestId: string, askId: string): boolean {
-	if (turn.pending?.card.askId !== askId) return false;
-	turn.pending = undefined;
-	broadcastAssistant({ t: 'assistant-ask-settled', id: requestId, assistantSessionId: sessionId, askId });
-	return true;
-}
-
-/**
- * Blocks the turn on a decision. Unlimited by design: nothing has been written when this
- * waits, so a turn abandoned here (the user walks away, the server restarts) loses only
- * work that never happened. A stop settles it as a refusal of everything, which is the
- * reading a Stop already has everywhere else in this app.
- */
-function askApproval(turn: LiveTurn, sessionId: string, requestId: string, calls: ApprovalCall[]): Promise<ApprovalOutcome> {
-	return new Promise((resolve) => {
-		const card: ApprovalCard = { askId: crypto.randomUUID(), calls };
-		const settle = (outcome: ApprovalOutcome) => {
-			if (settlePending(turn, sessionId, requestId, card.askId)) resolve(outcome);
-		};
-		turn.pending = { kind: 'approval', card, resolve: settle };
-		turn.controller.signal.addEventListener('abort', () => settle({ approved: [] }), { once: true });
-		broadcastAssistant({ t: 'assistant-approval', id: requestId, assistantSessionId: sessionId, ...card });
-	});
-}
-
-/**
- * Blocks the turn on the assistant's own questions, the other half of the same wait. Safe
- * for the same reason and then some: nothing has been written and nothing has been asked
- * twice, so a Stop here simply answers `stopped` and the tool fails like any other.
- */
-function askQuestions(turn: LiveTurn, sessionId: string, requestId: string, questions: AskQuestion[]): Promise<QuestionOutcome> {
-	return new Promise((resolve) => {
-		const card: QuestionCard = { askId: crypto.randomUUID(), questions };
-		const settle = (outcome: QuestionOutcome) => {
-			if (settlePending(turn, sessionId, requestId, card.askId)) resolve(outcome);
-		};
-		turn.pending = { kind: 'question', card, resolve: settle };
-		turn.controller.signal.addEventListener('abort', () => settle({ answers: [], stopped: true }), { once: true });
-		broadcastAssistant({ t: 'assistant-question', id: requestId, assistantSessionId: sessionId, ...card });
-	});
-}
-
-/** One device answered the card. Every device saw it, so the first answer wins and the
- *  rest are no-ops, matched by ask id, never by socket. */
-function handleAssistantApprove(msg: { assistantSessionId?: string; askId?: string; approved?: unknown }): void {
-	const turn = typeof msg.assistantSessionId === 'string' ? assistantTurns.get(msg.assistantSessionId) : undefined;
-	if (turn?.pending?.kind !== 'approval' || turn.pending.card.askId !== msg.askId) return;
-	const approved = Array.isArray(msg.approved) ? msg.approved.filter((n): n is number => typeof n === 'number') : [];
-	turn.pending.resolve({ approved });
-}
-
-/** The same door for a question card. The answers arrive in the order the questions were
- *  asked; anything malformed reads as unanswered rather than throwing under a waiting turn. */
-function handleAssistantAnswer(msg: { assistantSessionId?: string; askId?: string; answers?: unknown }): void {
-	const turn = typeof msg.assistantSessionId === 'string' ? assistantTurns.get(msg.assistantSessionId) : undefined;
-	if (turn?.pending?.kind !== 'question' || turn.pending.card.askId !== msg.askId) return;
-	const raw = Array.isArray(msg.answers) ? msg.answers : [];
-	const answers: QuestionAnswer[] = turn.pending.card.questions.map((q, i) => {
-		const a = (raw[i] ?? {}) as { picked?: unknown; written?: unknown };
-		// Only options the card actually offered count: an answer naming something else came
-		// from a stale card, and the model would read it as a choice it never presented.
-		const offered = new Set(q.options);
-		const picked = Array.isArray(a.picked) ? a.picked.filter((p): p is string => typeof p === 'string' && offered.has(p)) : [];
-		const written = typeof a.written === 'string' && a.written.trim() ? a.written.trim() : null;
-		return { picked: q.multiple ? picked : picked.slice(0, 1), written };
-	});
-	turn.pending.resolve({ answers });
-}
-
-/** Publish one assistant event to every open page. The events belong to the SESSION: a
- *  page that reloaded mid-turn never issued the request, and the socket that did may be
- *  gone, so sending only there is how a running reply vanishes from the screen. */
-function broadcastAssistant(event: Record<string, unknown>): void {
-	const payload = JSON.stringify(event);
-	for (const ws of sockets) ws.send(payload);
-}
-
-async function handleAssistantMessage(
-	ws: ServerWebSocket<SocketData>,
-	msg: AssistantRequest
-): Promise<void> {
-	if (typeof msg.id !== 'string' || !msg.id || typeof msg.assistantSessionId !== 'string' || !msg.assistantSessionId) return;
-	for (const turn of assistantTurns.values()) {
-		if (turn.requestId === msg.id) {
-			ws.send(JSON.stringify({ t: 'assistant-error', id: msg.id, message: 'Duplicate request id: this request is already running.' }));
-			return;
-		}
-	}
-	if (assistantTurns.has(msg.assistantSessionId)) {
-		ws.send(
-			JSON.stringify({
-				t: 'assistant-error',
-				id: msg.id,
-				message: 'A turn is already running in this assistant tab (possibly from another device). It keeps running on the server; its result appears here when it finishes.'
-			})
-		);
-		return;
-	}
-	const controller = new AbortController();
-	const turn: LiveTurn = { requestId: msg.id, controller, steps: [], iteration: 0 };
-	assistantTurns.set(msg.assistantSessionId, turn);
-
-	try {
-		await handleAssistant(msg, {
-			signal: controller.signal,
-			// Every event carries the session (which page is showing this turn) and the
-			// request id (which pending promise settles on it), and goes to every open page.
-			send: (event) => {
-				recordLiveEvent(turn, event);
-				broadcastAssistant({ ...event, id: msg.id, assistantSessionId: msg.assistantSessionId });
-			},
-			// originClientId = null → every client (including this one) refreshes,
-			// so the assistant's edits show up live wherever they're displayed.
-			broadcast: (scope) => broadcastSync(scope, null),
-			// Capture each iteration's assembled prompt into the shared debug log, but
-			// only while a device is actually debugging.
-			recordPrompt: (entry) => {
-				if (!anyDebug()) return;
-				promptLog.recordRequest(entry);
-				broadcastPromptLog({ type: 'request', entry });
-			},
-			// Patch the real result onto the recorded prompt. No anyDebug gate here:
-			// patchResult no-ops (false) unless the request was captured, which keeps the
-			// pair intact even if debugging toggles off mid-turn.
-			recordResult: (id, result) => {
-				if (promptLog.patchResult(id, result)) broadcastPromptLog({ type: 'result', id, result });
-			},
-			// The turn blocks here when the tab's approval mode says it must. It is the one
-			// place a turn waits on a person, and it is safe to wait forever: nothing has
-			// been written yet, so losing the turn costs nothing that happened.
-			requestApproval: (calls) => askApproval(turn, msg.assistantSessionId, msg.id, calls),
-			askQuestions: (questions) => askQuestions(turn, msg.assistantSessionId, msg.id, questions)
-		});
-	} catch (e) {
-		// Session-addressed like every other event of this turn: pages that already rendered
-		// part of it must be told it ended, not left waiting on a turn that is over.
-		broadcastAssistant({
-			t: 'assistant-error',
-			id: msg.id,
-			assistantSessionId: msg.assistantSessionId,
-			message: e instanceof Error ? e.message : String(e)
-		});
-	} finally {
-		assistantTurns.delete(msg.assistantSessionId);
-	}
-}
-
-/**
- * Answers "is a turn running in these sessions?" for a page that just connected, on boot
- * or after a reconnect. The snapshot is read and sent in this one synchronous block, so no
- * event can slip between it and the deltas that follow: the page can append them straight
- * onto what it was handed. A session that is missing from the answer has no turn running,
- * which is the page's cue to re-read its transcript (the turn may have finished while it
- * was away).
- */
-function handleAssistantStatus(ws: ServerWebSocket<SocketData>, msg: { id: string; sessionIds?: unknown }): void {
-	const ids = Array.isArray(msg.sessionIds) ? msg.sessionIds.filter((s): s is string => typeof s === 'string') : [];
-	const running = ids.flatMap((sessionId) => {
-		const turn = assistantTurns.get(sessionId);
-		return turn
-			? [
-					{
-						sessionId,
-						steps: turn.steps,
-						iteration: turn.iteration,
-						// A page that reloads while the turn waits must be handed the card again,
-						// or the turn looks hung with no way to answer it.
-						...(turn.pending ? { ask: { kind: turn.pending.kind, ...turn.pending.card } } : {})
-					}
-				]
-			: [];
-	});
-	ws.send(JSON.stringify({ t: 'assistant-status-result', id: msg.id, running }));
-}
-
-// ===== Boot =====
 
 // A backup job re-invokes THIS executable with the job in its environment (backup/job.ts
 // explains why it is a process rather than a worker). It must not become a second server,
@@ -2008,8 +1609,8 @@ function serve(hostname: string) {
 
 			// WebSocket upgrade. Same-origin policy does not cover a socket, so without the
 			// check any page in the reader's browser can open one, and everything a socket
-			// carries (generations against their keys, whole assistant turns with the tools
-			// those hold) is on the other side of it.
+			// carries (including generations addressed by their request keys) is on the other
+			// side of it.
 			if (path === '/ws') {
 				if (!fromOurOwnHost(req.headers)) {
 					return new Response('This upgrade came from another site.', { status: 403 });
@@ -2050,8 +1651,7 @@ function serve(hostname: string) {
 				// Detach, never abort. A backgrounded phone has this socket torn down by the
 				// OS mid-reply, and aborting here threw away the call and every token the
 				// reader had already watched arrive. The generation keeps running with nobody
-				// listening; whoever comes back claims it (`llm-attach`). Assistant turns
-				// survive their socket the same way, in assistantTurns.
+				// listening; whoever comes back claims it (`llm-attach`).
 				for (const gen of generations.values()) {
 					if (gen.ws === ws) gen.ws = null;
 				}
@@ -2068,14 +1668,6 @@ function serve(hostname: string) {
 				if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') return;
 				if (msg.t === 'llm') {
 					await handleLlm(ws, msg as never);
-				} else if (msg.t === 'assistant') {
-					await handleAssistantMessage(ws, msg as never);
-				} else if (msg.t === 'assistant-approve') {
-					handleAssistantApprove(msg as never);
-				} else if (msg.t === 'assistant-answer') {
-					handleAssistantAnswer(msg as never);
-				} else if (msg.t === 'assistant-status') {
-					handleAssistantStatus(ws, msg as never);
 				} else if (msg.t === 'debug') {
 					// This device toggled its debug panel; track it so the server captures +
 					// broadcasts prompt logs only while someone is listening.
@@ -2088,18 +1680,9 @@ function serve(hostname: string) {
 				} else if (msg.t === 'llm-release') {
 					handleLlmRelease(msg as never);
 				} else if (msg.t === 'llm-cancel') {
-					// Matched by request id across every socket, so a Stop lands after the
-					// requesting socket reconnected, exactly like assistant-cancel below.
+					// Matched by request id across every socket, so a Stop lands even after
+					// the requesting socket reconnects.
 					generations.get(String(msg.id))?.controller.abort();
-				} else if (msg.t === 'assistant-cancel') {
-					// Assistant turns are session-keyed, not socket-keyed: match by request id
-					// first, and honour an explicit session id so a Stop still lands after the
-					// requesting socket reconnected (or from another device).
-					for (const turn of assistantTurns.values()) {
-						if (turn.requestId === String(msg.id)) turn.controller.abort();
-					}
-					const sessionId = typeof msg.assistantSessionId === 'string' ? msg.assistantSessionId : '';
-					if (sessionId) assistantTurns.get(sessionId)?.controller.abort();
 				} else if (msg.t === 'ping') {
 					ws.send(JSON.stringify({ t: 'pong' }));
 				}

@@ -68,7 +68,7 @@
 	.toast-wrap {
 		bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
 		/* Above every out-of-flow surface in the app: dialogs and the lightbox portal to z 300,
-		   the assistant widget sits at 200 (full-screen on phones), and tooltips reach 1000. A
+		   and tooltips reach 1000. A
 		   message drawn behind the surface that raised it is a message nobody receives, which is
 		   why half a dozen panels grew inline error lines of their own. `.app-shell` opens no
 		   stacking context, so this value competes at the root and needs no portal of its own. */
@@ -89,8 +89,8 @@
 		text-align: center;
 	}
 
-	/* Phones: the bottom edge is owned by the composer (send button) and the raised
-	   assistant launcher, so the stack moves under the title bar instead. */
+	/* Phones: the bottom edge is owned by the composer (send button), so the stack moves
+	   under the title bar instead. */
 	@media (max-width: 680px) {
 		.toast-wrap {
 			left: 0.65rem;

@@ -13,14 +13,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { IMAGES_ROOT, resolveDbPath } from './config';
-import {
-	assistantFileModifiedAt,
-	deleteAssistantFileText,
-	deleteImage,
-	listAssistantFileNames
-} from './files';
+import { deleteImage } from './files';
 import type { SyncScope } from '../shared/sync';
-import type { AssistantFile } from '../shared/assistant-files';
 
 /** Short stable digest, the chat-tree fingerprint's building block. Truncated SHA-1:
  *  64 bits is far past what "are these two chats the same" needs, and it only ever
@@ -118,11 +112,8 @@ const QUARTER_HOUR_MS = 15 * 60 * 1000;
 /**
  * The greetings a chat opens on, in seed order: First Message, then every alternate.
  *
- * Exported because the assistant's `create_chat` replica seeds a chat from this same list
- * and `refreshSeededGreetings` recognises a chat by the rows that seeding lays down: one
- * server-side answer, so the two can never disagree about what a chat's opening is. The
- * client's `chatStore.seedCharacterGreetings` is the third builder and the one that cannot
- * import this (architecture/chat-sessions.md coupling 12).
+ * Exported so server refresh logic and the client's new-chat seeding can share the same
+ * documented ordering (architecture/chat-sessions.md coupling 12).
  */
 export function chatGreetingsOf(data: unknown): string[] {
 	const held = (data ?? {}) as { traits?: { firstMessage?: unknown }; alternateGreetings?: unknown };
@@ -142,8 +133,7 @@ interface Migration {
  * What a new chat with a character starts on, stored BESIDE `data` in the entry payload
  * (src/lib/types/library.ts). Listed once here because `libraryPayload` writes each only when
  * set: an entry carrying none stores exactly what it stored before they existed, which is what
- * lets a new seed land without a migration. Nothing in this process parses them except
- * `create_chat`'s version seed (server/assistant/registry/workspace.ts).
+ * lets a new seed land without a migration.
  */
 const CHAT_DEFAULT_KEYS = [
 	'defaultPersonaId',
@@ -169,44 +159,6 @@ interface NewChatRow {
 	 *  app. Never parsed here (mapChat). */
 	featureState?: string | null;
 	isFavorite?: boolean;
-}
-
-/**
- * One attached file as STORED: the shape both sides speak (shared/assistant-files.ts) plus
- * the one field only this side may know. The path never leaves the server: a file is
- * addressed by id everywhere else, so neither the model nor the client can name a location
- * on disk.
- */
-export interface AssistantFileRow extends AssistantFile {
-	textPath: string;
-}
-
-interface AssistantFileDbRow {
-	id: string;
-	session_id: string;
-	message_id: string | null;
-	name: string;
-	kind: string;
-	bytes: number;
-	lines: number;
-	token_estimate: number;
-	text_path: string;
-	created_at: number;
-}
-
-function assistantFileFromRow(r: AssistantFileDbRow): AssistantFileRow {
-	return {
-		id: r.id,
-		sessionId: r.session_id,
-		messageId: r.message_id,
-		name: r.name,
-		kind: r.kind,
-		bytes: r.bytes,
-		lines: r.lines,
-		tokenEstimate: r.token_estimate,
-		textPath: r.text_path,
-		createdAt: r.created_at
-	};
 }
 
 /**
@@ -372,9 +324,7 @@ const MIGRATIONS: Migration[] = [
 			-- remembers what it found and did. Separate from the transcript below.
 			context_json TEXT,
 			chat_id TEXT,
-			-- The Assistant settings this session runs under, frozen at its first turn: they
-			-- sit in the system prompt, so reading them live would re-price the conversation
-			-- every time a setting moved.
+			-- Historical Assistant settings, removed with this table by migration 45.
 			settings_json TEXT
 		);
 
@@ -525,6 +475,38 @@ const MIGRATIONS: Migration[] = [
 		      AND v.id = CASE WHEN json_valid(character_library.data_json)
 		                      THEN json_extract(character_library.data_json, '$.activeVersionId') END
 		  );
+		`
+	},
+	{
+		version: 45,
+		name: 'remove_chungus_assistant_storage',
+		sql: `
+		-- These keys belonged only to the removed Chungus Assistant. Guard every JSON
+		-- function with CASE: malformed settings must not turn a cleanup into a failed boot.
+		UPDATE settings
+		SET value = CASE WHEN json_valid(value)
+		                 THEN json_remove(value, '$.assistantLauncher', '$.assistantCostSeen')
+		                 ELSE value END
+		WHERE key = 'generalSettings'
+		  AND CASE WHEN json_valid(value)
+		           THEN json_type(value, '$.assistantLauncher') IS NOT NULL
+		             OR json_type(value, '$.assistantCostSeen') IS NOT NULL
+		           ELSE 0 END;
+
+		UPDATE settings
+		SET value = CASE WHEN json_valid(value)
+		                 THEN json_remove(value, '$.assistant')
+		                 ELSE value END
+		WHERE key = 'connectionAssignments'
+		  AND CASE WHEN json_valid(value)
+		           THEN json_type(value, '$.assistant') IS NOT NULL
+		           ELSE 0 END;
+
+		-- Child tables first: both carry foreign keys into the session table, and files
+		-- also point at messages. Their indexes disappear with their owning tables.
+		DROP TABLE assistant_files;
+		DROP TABLE assistant_messages;
+		DROP TABLE assistant_sessions;
 		`
 	}
 ];
@@ -1194,18 +1176,18 @@ class ServerDatabase {
 
 	// ===== Chat image attachments (files under images/chat/) =====
 	//
-	// A deleted chat, message, or assistant session must leave nothing behind on disk: the
-	// user deleted it, so its pictures are gone too. Two rules make that safe.
+	// A deleted chat or message must leave nothing behind on disk: the user deleted it, so
+	// its pictures are gone too. Two rules make that safe.
 	//
 	//  1. Reference counting. Branching or forking a message COPIES its attachment list,
-	//     so several rows can point at one file. A file dies only once NO message and no
-	//     assistant message references it any more, checked AFTER the rows are gone.
+	//     so several rows can point at one file. A file dies only once NO message references
+	//     it any more, checked AFTER the rows are gone.
 	//  2. images/chat/ only. Character and persona art lives in its own folder and is
 	//     always a copy (see edit_character_images), never an alias of a chat attachment.
 	//     This sweep refuses to touch anything outside images/chat/, so deleting a chat
 	//     can never blank a portrait that came from it.
 
-	/** The image paths one attachments_json / images_json blob references. */
+	/** The image paths one attachments_json blob references. */
 	private imagePathsIn(json: string | null): string[] {
 		if (!json) return [];
 		const parsed = JSON.parse(json) as unknown;
@@ -1225,11 +1207,6 @@ class ServerDatabase {
 		const holes = messageIds.map(() => '?').join(', ');
 		const rows = this.select<{ attachments_json: string | null }[]>(`SELECT attachments_json FROM messages WHERE id IN (${holes})`, messageIds);
 		return rows.flatMap((r) => this.imagePathsIn(r.attachments_json));
-	}
-
-	private imagePathsOfAssistantSession(sessionId: string): string[] {
-		const rows = this.select<{ images_json: string | null }[]>('SELECT images_json FROM assistant_messages WHERE session_id = ?', [sessionId]);
-		return rows.flatMap((r) => this.imagePathsIn(r.images_json));
 	}
 
 	/** Ids of a message and everything under it, so their files can be collected first. */
@@ -1260,8 +1237,6 @@ class ServerDatabase {
 			const needle = `%"${escaped}"%`;
 			const inMessages = this.select<{ n: number }[]>("SELECT COUNT(*) AS n FROM messages WHERE attachments_json LIKE ? ESCAPE '\\'", [needle])[0]?.n ?? 0;
 			if (inMessages > 0) continue;
-			const inAssistant = this.select<{ n: number }[]>("SELECT COUNT(*) AS n FROM assistant_messages WHERE images_json LIKE ? ESCAPE '\\'", [needle])[0]?.n ?? 0;
-			if (inAssistant > 0) continue;
 			deleteImage(path);
 		}
 	}
@@ -1276,16 +1251,13 @@ class ServerDatabase {
 		const dir = join(IMAGES_ROOT, 'chat');
 		if (!existsSync(dir)) return 0;
 		const cutoff = Date.now() - 60 * 60 * 1000;
-		// Every path any message or assistant turn references, parsed from the real rows.
+		// Every path any message references, parsed from the real rows.
 		// No LIKE guessing here, this sweep must err on the side of keeping files. If any
 		// row fails to parse, the reference set is unknowable: abort, delete nothing.
 		const referenced = new Set<string>();
 		try {
 			for (const row of this.select<{ attachments_json: string | null }[]>('SELECT attachments_json FROM messages WHERE attachments_json IS NOT NULL')) {
 				for (const p of this.imagePathsIn(row.attachments_json)) referenced.add(p);
-			}
-			for (const row of this.select<{ images_json: string | null }[]>('SELECT images_json FROM assistant_messages WHERE images_json IS NOT NULL')) {
-				for (const p of this.imagePathsIn(row.images_json)) referenced.add(p);
 			}
 		} catch (e) {
 			console.error('[db] abandoned-image sweep skipped because a row failed to parse:', e instanceof Error ? e.message : e);
@@ -2865,344 +2837,6 @@ class ServerDatabase {
 		this.execute('DELETE FROM steering_notes WHERE id = ?', [id]);
 	}
 
-	// ===== ASSISTANT SESSIONS (Chungus Assistant conversations) =====
-
-	getAllAssistantSessions(): unknown[] {
-		const rows = this.select<{ id: string; title: string; chat_id: string | null; created_at: number; updated_at: number; message_count: number }[]>(
-			`SELECT s.id, s.title, s.chat_id, s.created_at, s.updated_at, COUNT(m.id) AS message_count
-			 FROM assistant_sessions s LEFT JOIN assistant_messages m ON m.session_id = s.id
-			 GROUP BY s.id ORDER BY s.updated_at DESC`
-		);
-		return rows.map((r) => ({ id: r.id, title: r.title, chatId: r.chat_id ?? null, createdAt: r.created_at, updatedAt: r.updated_at, messageCount: r.message_count }));
-	}
-
-	insertAssistantSession(session: { id: string; title: string; createdAt: number; updatedAt: number }): void {
-		this.execute('INSERT INTO assistant_sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)', [
-			session.id,
-			session.title,
-			session.createdAt,
-			session.updatedAt
-		]);
-	}
-
-	updateAssistantSession(session: { id: string; title?: string; updatedAt?: number; chatId?: string | null }): void {
-		const updates: string[] = [];
-		const values: unknown[] = [];
-		if (session.title !== undefined) {
-			updates.push('title = ?');
-			values.push(session.title);
-		}
-		if (session.updatedAt !== undefined) {
-			updates.push('updated_at = ?');
-			values.push(session.updatedAt);
-		}
-		if (session.chatId !== undefined) {
-			updates.push('chat_id = ?');
-			values.push(session.chatId);
-		}
-		if (!updates.length) return;
-		values.push(session.id);
-		this.execute(`UPDATE assistant_sessions SET ${updates.join(', ')} WHERE id = ?`, values);
-	}
-
-	/** One session's row, or null. The loop uses this to tell "session deleted mid-turn"
-	 *  apart from a real insert failure when committing a finished turn. */
-	getAssistantSession(id: string): unknown {
-		const rows = this.select<{ id: string; title: string; chat_id: string | null; created_at: number; updated_at: number }[]>(
-			'SELECT id, title, chat_id, created_at, updated_at FROM assistant_sessions WHERE id = ?',
-			[id]
-		);
-		const r = rows[0];
-		return r ? { id: r.id, title: r.title, chatId: r.chat_id ?? null, createdAt: r.created_at, updatedAt: r.updated_at } : null;
-	}
-
-	/** The settings snapshot a session runs under, or null when it has never taken a
-	 *  turn. Raw JSON: server/assistant/sessionSettings.ts owns the shape. */
-	getAssistantSessionSettings(id: string): string | null {
-		const rows = this.select<{ settings_json: string | null }[]>('SELECT settings_json FROM assistant_sessions WHERE id = ?', [id]);
-		return rows[0]?.settings_json ?? null;
-	}
-
-	setAssistantSessionSettings(id: string, json: string): void {
-		this.execute('UPDATE assistant_sessions SET settings_json = ? WHERE id = ?', [json, id]);
-	}
-
-	deleteAssistantSession(id: string): void {
-		const paths = this.imagePathsOfAssistantSession(id);
-		// Attached files are owned outright by this session, so their bytes go with it. The
-		// rows cascade, though, so collect the paths while they can still be read.
-		const filePaths = this.assistantFilePathsOfSession(id);
-		this.execute('DELETE FROM assistant_sessions WHERE id = ?', [id]); // assistant_messages + assistant_files cascade
-		this.dropOrphanedChatImages(paths);
-		for (const path of filePaths) deleteAssistantFileText(path);
-	}
-
-	getAssistantMessages(sessionId: string): unknown[] {
-		const rows = this.select<{ id: string; session_id: string; role: string; content: string; steps_json: string | null; actions_json: string | null; usage_json: string | null; images_json: string | null; attachments_json: string | null; error: string | null; status: string; created_at: number }[]>(
-			// A transcript reads in the order its rows were appended, and rowid says so
-			// outright when two land in the same millisecond, rather than leaving the pair
-			// to whichever order the index happens to walk them in.
-			'SELECT * FROM assistant_messages WHERE session_id = ? ORDER BY created_at ASC, rowid ASC',
-			[sessionId]
-		);
-		// One corrupt JSON cell must not brick the whole tab (this runs at the start of
-		// EVERY turn via collectUserImages): the row degrades to a visible error bubble
-		// instead, loud in the transcript, fatal to nothing.
-		return rows.map((r) => {
-			try {
-				return {
-					id: r.id,
-					sessionId: r.session_id,
-					role: r.role,
-					content: r.content,
-					steps: r.steps_json ? JSON.parse(r.steps_json) : undefined,
-					actions: r.actions_json ? JSON.parse(r.actions_json) : undefined,
-					usage: r.usage_json ? JSON.parse(r.usage_json) : undefined,
-					images: r.images_json ? JSON.parse(r.images_json) : undefined,
-					attachments: r.attachments_json ? JSON.parse(r.attachments_json) : undefined,
-					error: r.error ?? undefined,
-					// Only the two abnormal states travel; a committed turn says nothing, so
-					// every reader can treat an absent status as "this turn is finished".
-					...(r.status !== 'done' ? { status: r.status } : {}),
-					createdAt: r.created_at
-				};
-			} catch (e) {
-				console.error(`[db] corrupt assistant message ${r.id}:`, e instanceof Error ? e.message : e);
-				// images_json gets its own parse: the attachment roster ("attachment 3") is
-				// numbered off these rows, so a corrupt steps/usage cell elsewhere in the row
-				// must not silently renumber every attachment after it.
-				let images: unknown;
-				try {
-					images = r.images_json ? JSON.parse(r.images_json) : undefined;
-				} catch {
-					images = undefined;
-				}
-				const imagesLost = !!r.images_json && images === undefined;
-				// attachments_json likewise: the chips are this row's own record of what rode
-				// with it, so a corrupt cell elsewhere must not silently strip them.
-				let attachments: unknown;
-				try {
-					attachments = r.attachments_json ? JSON.parse(r.attachments_json) : undefined;
-				} catch {
-					attachments = undefined;
-				}
-				return {
-					id: r.id,
-					sessionId: r.session_id,
-					role: r.role,
-					content: r.content,
-					...(Array.isArray(images) && images.length ? { images } : {}),
-					...(Array.isArray(attachments) && attachments.length ? { attachments } : {}),
-					...(r.status !== 'done' ? { status: r.status } : {}),
-					error:
-						'This message failed to load because its stored data is corrupt. Delete it (or the session) to clear the damage.' +
-						(imagesLost ? ' Its attachments could not be recovered, so attachment numbering may have shifted.' : ''),
-					createdAt: r.created_at
-				};
-			}
-		});
-	}
-
-	/** The assistant's full replayed conversation for a session (model-facing context). */
-	getAssistantContext(sessionId: string): unknown[] {
-		const rows = this.select<{ context_json: string | null }[]>(
-			'SELECT context_json FROM assistant_sessions WHERE id = ?',
-			[sessionId]
-		);
-		const raw = rows[0]?.context_json;
-		if (!raw) return [];
-		// A corrupt row must surface, not silently wipe the assistant's memory of the session,
-		// and it must surface ACTIONABLY: a bare SyntaxError with no session id would leave
-		// the tab permanently stuck behind a cryptic error. A non-array is exactly as corrupt.
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(raw);
-		} catch (e) {
-			throw new Error(
-				`Assistant session ${sessionId} has a corrupt stored context (${e instanceof Error ? e.message : 'invalid JSON'}). Delete the session, or start a new tab, to clear it.`
-			);
-		}
-		if (!Array.isArray(parsed)) {
-			throw new Error(`Assistant session ${sessionId} has a corrupt stored context (not a message list). Delete the session to clear it.`);
-		}
-		return parsed;
-	}
-
-	setAssistantContext(sessionId: string, messages: unknown[]): void {
-		this.execute('UPDATE assistant_sessions SET context_json = ? WHERE id = ?', [JSON.stringify(messages), sessionId]);
-	}
-
-	// ----- Attached files (read-only reference material, architecture/chungus-assistant.md) -----
-
-	/** Records one uploaded file. `messageId` is null until the turn it rides is sent. */
-	createAssistantFile(file: AssistantFileRow): void {
-		this.execute(
-			'INSERT INTO assistant_files (id, session_id, message_id, name, kind, bytes, lines, token_estimate, text_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-			[file.id, file.sessionId, file.messageId, file.name, file.kind, file.bytes, file.lines, file.tokenEstimate, file.textPath, file.createdAt]
-		);
-	}
-
-	/** Every file of one tab, oldest first: the roster the assistant addresses by id and
-	 *  the list the panel draws its chips from. Includes files still staged in the composer
-	 *  (message_id null); the caller decides whether those count for its purpose. */
-	listAssistantFiles(sessionId: string): AssistantFileRow[] {
-		const rows = this.select<AssistantFileDbRow[]>(
-			'SELECT * FROM assistant_files WHERE session_id = ? ORDER BY created_at ASC, rowid ASC',
-			[sessionId]
-		);
-		return rows.map(assistantFileFromRow);
-	}
-
-	getAssistantFile(id: string): AssistantFileRow | null {
-		const rows = this.select<AssistantFileDbRow[]>('SELECT * FROM assistant_files WHERE id = ?', [id]);
-		return rows[0] ? assistantFileFromRow(rows[0]) : null;
-	}
-
-	/** Binds staged files to the turn that carried them. Scoped to the session AND to rows
-	 *  still unbound, so a replayed request can never re-home a file that already rode. */
-	stampAssistantFiles(sessionId: string, ids: string[], messageId: string): void {
-		for (const id of ids) {
-			this.execute('UPDATE assistant_files SET message_id = ? WHERE id = ? AND session_id = ? AND message_id IS NULL', [
-				messageId,
-				id,
-				sessionId
-			]);
-		}
-	}
-
-	/** Drops one file and its bytes. A file is named by exactly one row, so there is no
-	 *  shared-reference check to make here, unlike a chat image, which several turns can
-	 *  point at once branching or forking has copied its attachment list. */
-	deleteAssistantFile(id: string): void {
-		const file = this.getAssistantFile(id);
-		if (!file) return;
-		this.execute('DELETE FROM assistant_files WHERE id = ?', [id]);
-		deleteAssistantFileText(file.textPath);
-	}
-
-	/** Both cascades take the ROWS; the bytes are ours to unlink, so collect the paths first. */
-	private assistantFilePathsOfSession(sessionId: string): string[] {
-		return this.select<{ text_path: string }[]>('SELECT text_path FROM assistant_files WHERE session_id = ?', [sessionId]).map(
-			(r) => r.text_path
-		);
-	}
-
-	/**
-	 * Boot-time GC for assistant-files/: bytes whose row is gone (a session deleted while the
-	 * server was down, or a crash between the write and the insert) are referenced by nothing
-	 * and reachable by no other sweep. The one-hour age guard protects a file a client
-	 * uploaded moments before a restart, exactly like the chat-image sweep's.
-	 *
-	 * Files still staged in a composer are NOT swept: their row exists, and a half-typed
-	 * message that survives a restart must not lose its attachment.
-	 */
-	sweepAbandonedAssistantFiles(): number {
-		const names = listAssistantFileNames();
-		if (!names.length) return 0;
-		const cutoff = Date.now() - 60 * 60 * 1000;
-		const referenced = new Set(
-			this.select<{ text_path: string }[]>('SELECT text_path FROM assistant_files').map((r) => r.text_path)
-		);
-		let swept = 0;
-		for (const name of names) {
-			const relative = `assistant-files/${name}`;
-			if (referenced.has(relative)) continue;
-			if (assistantFileModifiedAt(relative) > cutoff) continue;
-			deleteAssistantFileText(relative);
-			swept += 1;
-		}
-		if (swept > 0) console.log(`[db] swept ${swept} orphaned assistant file${swept === 1 ? '' : 's'}`);
-		return swept;
-	}
-
-	/** Drop one assistant message, used when a retry replaces the failed turn's bubble. */
-	deleteAssistantMessage(id: string): void {
-		const rows = this.select<{ images_json: string | null }[]>('SELECT images_json FROM assistant_messages WHERE id = ?', [id]);
-		const paths = rows.flatMap((r) => this.imagePathsIn(r.images_json));
-		this.execute('DELETE FROM assistant_messages WHERE id = ?', [id]);
-		this.dropOrphanedChatImages(paths);
-	}
-
-	/**
-	 * Appends one transcript row and returns the moment it was stamped with. The stamp is
-	 * taken HERE and never accepted from the caller: `getAssistantMessages` orders by it,
-	 * and the two writers sit on different clocks: a browser inserts the user's message,
-	 * the loop inserts the turn answering it milliseconds later. Let each side stamp its
-	 * own row and any drift between those clocks puts the reply above the message it
-	 * answers, permanently, in the stored transcript.
-	 */
-	insertAssistantMessage(message: { id: string; sessionId: string; role: string; content: string; steps?: unknown; actions?: unknown; usage?: unknown; images?: unknown; error?: string; status?: string }): number {
-		const createdAt = Date.now();
-		this.execute(
-			'INSERT INTO assistant_messages (id, session_id, role, content, steps_json, actions_json, usage_json, images_json, error, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-			[
-				message.id,
-				message.sessionId,
-				message.role,
-				message.content,
-				message.steps ? JSON.stringify(message.steps) : null,
-				message.actions ? JSON.stringify(message.actions) : null,
-				message.usage ? JSON.stringify(message.usage) : null,
-				Array.isArray(message.images) && message.images.length ? JSON.stringify(message.images) : null,
-				message.error ?? null,
-				message.status ?? 'done',
-				createdAt
-			]
-		);
-		return createdAt;
-	}
-
-	/**
-	 * Rewrites a turn's row in place: the assistant loop owns one row from the moment the
-	 * turn starts ('running') to the moment it commits ('done'), rewriting it at every step
-	 * boundary. Returns false when the row is gone (its session was deleted mid-turn), so
-	 * the caller can tell that apart from a real write failure instead of guessing.
-	 * Server-only: the loop is the single writer, so this is deliberately not bridged.
-	 */
-	updateAssistantTurn(turn: { id: string; content: string; steps?: unknown; usage?: unknown; error?: string; status: string }): boolean {
-		if (!this.select<{ id: string }[]>('SELECT id FROM assistant_messages WHERE id = ?', [turn.id]).length) return false;
-		this.execute('UPDATE assistant_messages SET content = ?, steps_json = ?, usage_json = ?, error = ?, status = ? WHERE id = ?', [
-			turn.content,
-			turn.steps ? JSON.stringify(turn.steps) : null,
-			turn.usage ? JSON.stringify(turn.usage) : null,
-			turn.error ?? null,
-			turn.status,
-			turn.id
-		]);
-		return true;
-	}
-
-	/**
-	 * Stamps the resolved workspace-attachment record onto a USER row, once the loop's note
-	 * builder has decided each attachment's real mode. Guarded by session and role so a bad
-	 * id can never scribble on another session's transcript or on an assistant turn; returns
-	 * false when the row is gone (its session deleted between the client's insert and the
-	 * turn start), so the caller can tell that apart from a write failure. Server-only:
-	 * the loop is the single writer, so this is deliberately not bridged.
-	 */
-	setAssistantMessageAttachments(id: string, sessionId: string, attachments: unknown[]): boolean {
-		if (!this.select<{ id: string }[]>("SELECT id FROM assistant_messages WHERE id = ? AND session_id = ? AND role = 'user'", [id, sessionId]).length) {
-			return false;
-		}
-		this.execute('UPDATE assistant_messages SET attachments_json = ? WHERE id = ?', [
-			Array.isArray(attachments) && attachments.length ? JSON.stringify(attachments) : null,
-			id
-		]);
-		return true;
-	}
-
-	/**
-	 * Boot sweep: a row still marked 'running' belongs to a turn whose process died, and
-	 * nothing can resume it. Marking it interrupted keeps the steps it did finish visible and
-	 * keeps it out of the retry path: re-running it would repeat every mutation it already
-	 * committed, and none of those can be taken back. Returns the count.
-	 */
-	markInterruptedAssistantTurns(): number {
-		const n = this.select<{ n: number }[]>("SELECT COUNT(*) AS n FROM assistant_messages WHERE status = 'running'")[0]?.n ?? 0;
-		if (n) this.execute("UPDATE assistant_messages SET status = 'interrupted' WHERE status = 'running'");
-		return n;
-	}
-
 	// ===== CHAT MEMORY =====
 
 	private mapMemoryState(r: Record<string, unknown>): unknown {
@@ -3528,11 +3162,6 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	insertSteeringNote: 'steering',
 	updateSteeringNote: 'steering',
 	deleteSteeringNote: 'steering',
-	insertAssistantSession: 'assistant',
-	updateAssistantSession: 'assistant',
-	deleteAssistantSession: 'assistant',
-	insertAssistantMessage: 'assistant',
-	deleteAssistantMessage: 'assistant',
 	memSetState: 'memory',
 	memApplyBatch: 'memory',
 	memApplyPromotion: 'memory',
@@ -3553,7 +3182,6 @@ const READ_METHODS = [
 	'getAllCharacterVersions', 'getCharacterVersion',
 	'getAllLorebooks', 'getLorebook',
 	'getAllSteeringNotes',
-	'getAllAssistantSessions', 'getAssistantMessages',
 	'memGetState', 'memListEpisodes'
 ];
 

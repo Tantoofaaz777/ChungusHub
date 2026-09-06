@@ -59,7 +59,7 @@ export function chatConnectionId(chat: Chat | null): string | null {
  * `base` is the routing point the caller would ride without a chat in hand: the story send
  * and every meter beside it pass `primary`, while an engine passes its own target so its
  * assigned connection applies to assembly exactly as it does to the call. **Only `primary`
- * can be claimed by a chat**: the assistant and every engine stay app-wide, which is what
+ * can be claimed by a chat**: every engine stays app-wide, which is what
  * keeps the Connections page honest about the rows it does own.
  */
 export function resolvePromptTarget(chat: Chat | null, base: CallTarget = 'primary'): PromptTarget {

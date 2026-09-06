@@ -1710,10 +1710,8 @@
 		z-index: 10;
 	}
 
-	/* The portaled pair sits on <body>, above every panel, including the assistant
-	   launcher/widget at z 200, which would otherwise paint over the menu and stay
-	   clickable through the scrim. Same ceiling the composer's token popup uses, and for
-	   the same reason (architecture/chat-sessions.md). */
+	/* The portaled pair sits on <body>, above every panel. It shares the composer's token
+	   popup ceiling for the same reason (architecture/chat-sessions.md). */
 	.chats-scrim-portaled {
 		z-index: 1000;
 	}

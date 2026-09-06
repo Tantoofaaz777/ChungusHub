@@ -7,8 +7,6 @@
  */
 import type {
 	LLMProvider,
-	LLMToolStreamOptions,
-	LLMToolResult,
 	ModelInfo,
 	ModelEndpoint,
 	ProviderAccount,
@@ -102,14 +100,13 @@ export interface ProviderRuntime {
 
 /**
  * The behavior surface the registry drives: the client-facing LLMProvider
- * contract plus tool-calling, model endpoints and account snapshots. Static
+ * contract plus model endpoints and account snapshots. Static
  * and capability metadata (base URL, key requirement, param policy, routing,
  * service tier, account presence) is deliberately NOT here: the registry
  * reads it from the ProviderProfile, so the profile stays the single source
  * of truth and a native implementation can never drift from its profile.
  */
 export interface ChatProvider extends LLMProvider {
-	completeWithTools(options: LLMToolStreamOptions): Promise<LLMToolResult>;
 	fetchAvailableModels(): Promise<ModelInfo[]>;
 	fetchModelEndpoints(model: string): Promise<ModelEndpoint[]>;
 	fetchAccountInfo(): Promise<ProviderAccount | null>;

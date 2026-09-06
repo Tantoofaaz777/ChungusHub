@@ -604,8 +604,7 @@
 		/>
 	{/if}
 
-	<!-- Prompt items: the primary surface. data-setting is the Chungus Assistant's
-	     deep-link anchor (registry: settings.ts, anchor 'prompt-builder'). -->
+	<!-- Prompt items: the primary authoring surface. -->
 	<section class="pb-sec" data-setting="prompt-builder">
 		<div class="pb-sec-head">
 			<span class="pb-sec-title">Prompt items</span>

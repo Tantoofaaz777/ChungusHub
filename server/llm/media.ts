@@ -52,7 +52,7 @@ export function imageDataUrl(relativePath: string): string {
 }
 
 /** Whether an attachment path still resolves to a real file (same jail as loadImage).
- *  Lets the assistant loop heal references to since-deleted files instead of letting
+ *  Lets generation fail clearly on references to files deleted since assembly instead of letting
  *  one dead path fail every future request of a long-lived conversation. */
 export function imageFileExists(relativePath: string): boolean {
 	const safe = normalize(relativePath.replace(/^images\//, '')).replace(/^([/\\]|\.\.([/\\]|$))+/g, '');

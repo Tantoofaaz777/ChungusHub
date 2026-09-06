@@ -126,6 +126,8 @@ describe('snapshot', () => {
 		writeFileSync(join(dataDir, 'images', 'characters', 'thumbnails', 'a.jpg'), 'thumb-a');
 		mkdirSync(join(dataDir, 'presets'), { recursive: true });
 		writeFileSync(join(dataDir, 'presets', 'p1.json'), JSON.stringify({ name: 'One', items: [] }));
+		mkdirSync(join(dataDir, 'assistant-files'), { recursive: true });
+		writeFileSync(join(dataDir, 'assistant-files', 'legacy.txt'), 'legacy');
 		writeFileSync(join(dataDir, 'assistantSkills.json'), JSON.stringify({ skills: [] }));
 		seedChat('c1', 'images/characters/a.png');
 
@@ -145,7 +147,8 @@ describe('snapshot', () => {
 		expect(existsSync(join(data, 'images', 'characters', 'a.png'))).toBe(true);
 		expect(existsSync(join(data, 'images', 'characters', 'thumbnails', 'a.jpg'))).toBe(true);
 		expect(existsSync(join(data, 'presets', 'p1.json'))).toBe(true);
-		expect(existsSync(join(data, 'assistantSkills.json'))).toBe(true);
+		expect(existsSync(join(data, 'assistant-files'))).toBe(false);
+		expect(existsSync(join(data, 'assistantSkills.json'))).toBe(false);
 	});
 
 	test('the copied database is readable and holds the rows', async () => {

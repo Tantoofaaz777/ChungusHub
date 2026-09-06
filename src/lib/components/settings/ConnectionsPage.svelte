@@ -4,8 +4,8 @@
 	 * connection list.
 	 *
 	 * Routing is one flat, always-visible list: every calling point with its own
-	 * pill select, nothing else. The two points the user drives directly (Primary,
-	 * Assistant) sit slightly emphasized on top; every calling engine follows right
+	 * pill select, nothing else. The point the user drives directly (Primary) sits
+	 * slightly emphasized on top; every calling engine follows right
 	 * below in the same shape. No roles, no groups, no "follows X" inheritance,
 	 * no warnings: a fresh install routes everything to the Default connection,
 	 * and re-pointing anything is the user's own, explicit choice.
@@ -54,11 +54,10 @@
 			| 'image';
 	}
 
-	// The two points the user talks to directly, slightly emphasized: the story and
-	// the assistant. Everything else is machinery the app runs on their behalf.
+	// The point the user talks to directly, slightly emphasized: the story.
+	// Everything else is machinery the app runs on their behalf.
 	const KEY_POINTS: RoutePoint[] = [
-		{ id: 'primary', label: 'Primary', icon: 'chat' },
-		{ id: 'assistant', label: 'Assistant', icon: 'annotation' }
+		{ id: 'primary', label: 'Primary', icon: 'chat' }
 	];
 
 	// Every calling engine, registry order. Steering makes no call and is

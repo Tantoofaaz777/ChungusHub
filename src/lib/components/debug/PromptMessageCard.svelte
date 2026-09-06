@@ -1,8 +1,7 @@
 <script lang="ts">
 	/**
-	 * One message of a logged request, rendered whole: role, position, the wire fields that
-	 * came with it (tool name, tool_call_id), every image attachment it carried, its text,
-	 * and any tool calls. Nothing here is shortened: the panel exists to show what was
+	 * One message of a logged request, rendered whole: role, position, every image attachment
+	 * it carried, and its text. Nothing here is shortened: the panel exists to show what was
 	 * actually sent, and a preview would answer a different question than the one asked.
 	 *
 	 * Folding is CONTROLLED by the panel so its fold-all control and this chevron can never
@@ -33,13 +32,6 @@
 	let lineCount = $derived(content ? content.split('\n').length : 0);
 	let images = $derived(message.images ?? []);
 
-	// The assistant's turns carry tool calls; surface them verbatim, not hidden.
-	let toolCalls = $derived(
-		Array.isArray(message.tool_calls)
-			? (message.tool_calls as { id?: string; function?: { name?: string; arguments?: string } }[])
-			: []
-	);
-
 	/** Thumbnails are derived paths, so one that fails to load means the PREVIEW is gone,
 	 *  not that the image never rode the request: the path in this logged message is the
 	 *  proof it did. Say exactly that instead of leaving a broken tile. */
@@ -50,14 +42,12 @@
 	}
 </script>
 
-<div class="msg" style={`--role-color: ${color}; --tool-color: ${roleColor('tool')}`}>
+<div class="msg" style={`--role-color: ${color}`}>
 	<div class="head">
 		<button class="toggle" type="button" onclick={onToggle} aria-expanded={!collapsed}>
 			<Icon name={collapsed ? 'chevronRight' : 'chevronDown'} class="w-3 h-3 shrink-0" strokeWidth={2.25} />
 			<span class="role">{message.role}</span>
 			{#if index !== undefined}<span class="num">#{index + 1}</span>{/if}
-			{#if message.name}<span class="wire">{message.name}</span>{/if}
-			{#if message.tool_call_id}<span class="wire dim">{message.tool_call_id}</span>{/if}
 			{#if images.length}
 				<span class="img-chip" title={`${images.length} image attachment(s) sent with this message`}>
 					<Icon name="image" class="w-3 h-3 shrink-0" strokeWidth={1.75} />
@@ -95,18 +85,6 @@
 			<pre class="body">{content}</pre>
 		{:else}
 			<p class="empty">(no text content)</p>
-		{/if}
-
-		{#if toolCalls.length}
-			<div class="tools">
-				{#each toolCalls as call (call.id ?? call.function?.name)}
-					<div class="tool">
-						<span class="tname">{call.function?.name ?? 'tool'}</span>
-						{#if call.id}<span class="wire dim">{call.id}</span>{/if}
-						<pre class="targs">{call.function?.arguments ?? ''}</pre>
-					</div>
-				{/each}
-			</div>
 		{/if}
 	{/if}
 </div>
@@ -160,23 +138,6 @@
 		font-size: 0.64rem;
 		color: var(--color-text-muted);
 		opacity: 0.7;
-	}
-
-	/* Wire fields (tool name, tool_call_id, call id) can be long; they shrink before the
-	   size readout does, so a long id never pushes the numbers off the row. */
-	.wire {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-family: var(--font-mono, monospace);
-		font-size: 0.66rem;
-		color: var(--color-text-secondary);
-	}
-
-	.wire.dim {
-		color: var(--color-text-muted);
-		opacity: 0.75;
 	}
 
 	.img-chip {
@@ -272,39 +233,4 @@
 		color: var(--color-text-muted);
 	}
 
-	.tools {
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
-		padding: 0 0.6rem 0.55rem 0.95rem;
-	}
-
-	.tool {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 0.4rem;
-		min-width: 0;
-	}
-
-	.tname {
-		font-family: var(--font-mono, monospace);
-		font-size: 0.7rem;
-		font-weight: 700;
-		/* The tool role's own color, so a call reads as the thing its result will wear. */
-		color: var(--tool-color);
-	}
-
-	.targs {
-		flex-basis: 100%;
-		margin: 0;
-		padding: 0.4rem;
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-		font-family: var(--font-mono, monospace);
-		font-size: 0.72rem;
-		color: var(--color-text-secondary);
-		background: color-mix(in srgb, var(--color-bg-tertiary) 35%, transparent);
-		border-radius: var(--radius-sm);
-	}
 </style>

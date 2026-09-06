@@ -9,11 +9,9 @@
  * never drift apart. CRC-32 itself lives once more in {@link ./crc32}, shared with the ZIP
  * writer for the same reason.
  *
- * The server imports this module too: an attached `.png` is ingested by unwrapping the
- * document out of it (architecture/chungus-assistant.md), and there must not be a second
- * chunk reader on that side. That is why the import below is RELATIVE and why this file and
- * `crc32.ts` must stay free of `$lib` value imports, the same requirement the memory core
- * carries (architecture/memory.md).
+ * Keep this module and `crc32.ts` free of `$lib` value imports so the binary format logic
+ * remains portable and usable outside the browser bundle, the same requirement the memory
+ * core carries (architecture/memory.md).
  */
 
 import { crc32 } from './crc32';

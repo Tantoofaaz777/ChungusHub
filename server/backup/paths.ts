@@ -24,12 +24,15 @@ import { CONFIG_PATH, resolveBackupDir, resolveDataDir } from '../config';
  * writes a self-contained database that already holds everything the live WAL was
  * carrying, so copying them would pair a stale journal with a file it does not describe.
  */
-export const SNAPSHOT_ENTRIES = [
+type SnapshotEntry = {
+	name: string;
+	kind: 'db' | 'dir' | 'file';
+};
+
+export const SNAPSHOT_ENTRIES: readonly SnapshotEntry[] = [
 	{ name: 'chungushub.db', kind: 'db' },
 	{ name: 'images', kind: 'dir' },
-	{ name: 'assistant-files', kind: 'dir' },
-	{ name: 'presets', kind: 'dir' },
-	{ name: 'assistantSkills.json', kind: 'file' }
+	{ name: 'presets', kind: 'dir' }
 ] as const;
 
 /** The mirrored data dir inside a snapshot folder, beside its `manifest.json`. */

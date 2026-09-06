@@ -62,8 +62,7 @@ describe('prompt log persistence', () => {
 				usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
 				finishReason: 'stop',
 				responseContent: 'hi there',
-				responseThinking: 'pondering',
-				responseToolCalls: [{ id: 't1', type: 'function', function: { name: 'read', arguments: '{}' } }]
+				responseThinking: 'pondering'
 			})
 		).toBe(true);
 
@@ -76,7 +75,6 @@ describe('prompt log persistence', () => {
 		expect(b.finishReason).toBe('stop');
 		expect(b.responseContent).toBe('hi there');
 		expect(b.responseThinking).toBe('pondering');
-		expect(b.responseToolCalls?.[0]?.function.name).toBe('read');
 		expect(entries[1].status).toBe('pending');
 	});
 

@@ -10,15 +10,14 @@ import type { GenerationTuning, RoutingConfig } from '$lib/types/llm';
 
 export type { PromptLogMessage };
 
-/** `pending` → `done`/`error`/`cancelled`, for completions and assistant iterations
- *  alike (each iteration gets its own per-step result patched on). */
+/** `pending` → `done`/`error`/`cancelled` for a completion. */
 export type PromptLogStatus = 'pending' | 'done' | 'error' | 'cancelled';
 
 export interface PromptLogEntry {
 	id: string;
-	/** What kind of query this is: 'chat', 'memory', 'assistant'… */
+	/** What kind of query this is: 'chat', 'memory', an engine id… */
 	source: string;
-	kind: 'completion' | 'assistant';
+	kind: 'completion';
 	provider: string;
 	model: string;
 	messages: PromptLogMessage[];
@@ -30,11 +29,6 @@ export interface PromptLogEntry {
 	tuning?: GenerationTuning;
 	/** The connection's OpenRouter routing for this request (null/absent elsewhere). */
 	routing?: RoutingConfig | null;
-	/** Assistant only: the tool definitions sent with the prompt. */
-	tools?: unknown[];
-	/** Assistant only: the tool-loop step this prompt belongs to. */
-	iteration?: number;
-	assistantSessionId?: string;
 	startedAt: number;
 	status: PromptLogStatus;
 	endedAt?: number;
@@ -47,6 +41,4 @@ export interface PromptLogEntry {
 	/** The response body the provider returned (thinking is extracted separately). */
 	responseContent?: string;
 	responseThinking?: string;
-	/** Assistant iterations: the tool calls the model issued this step, wire-shape. */
-	responseToolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
 }

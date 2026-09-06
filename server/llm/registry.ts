@@ -12,8 +12,6 @@
 import type {
 	LLMCompletionOptions,
 	LLMCompletionResult,
-	LLMToolStreamOptions,
-	LLMToolResult,
 	ModelInfo,
 	ModelEndpoint,
 	ProviderAccount,
@@ -153,15 +151,6 @@ export async function complete(
 ): Promise<LLMCompletionResult> {
 	const { routing, ...rest } = options;
 	return configure(connectionId, name).complete({ ...rest, providerRouting: routingFor(name, routing) });
-}
-
-export async function completeWithTools(
-	connectionId: string,
-	name: ProviderName,
-	options: LLMToolStreamOptions & { routing?: RoutingConfig | null }
-): Promise<LLMToolResult> {
-	const { routing, ...rest } = options;
-	return configure(connectionId, name).completeWithTools({ ...rest, providerRouting: routingFor(name, routing) });
 }
 
 export async function validateCredentials(connectionId: string, name: ProviderName): Promise<boolean> {

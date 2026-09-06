@@ -19,21 +19,19 @@
  */
 import { describe, test, expect } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { PROVIDER_NAMES } from '$lib/types/llm';
 import { REASONING_DIALECTS } from '$lib/config/sampling';
 import { PERMANENT_TRAITS } from '$lib/types/library';
 import { MACROS } from '$lib/macros';
-import { STEERING_ROLES, STEERING_SCOPES } from '$lib/types/steering';
 import { palettes } from '$lib/themes/presets';
 // The app's own reading, so this contract and the palette editor's readout can never
 // drift into disagreeing about what a ratio is.
 import { contrastRatio } from '$lib/utils/contrast';
 import { SYNC_SCOPES } from '$shared/sync';
 import { PROVIDER_PROFILES } from '../../server/llm/providers/index';
-import { CAPABILITY_GROUPS, CAPABILITY_PRESETS } from '../../server/assistant/registry/groups';
 
 const ROOT = join(import.meta.dir, '..', '..');
 const read = (...parts: string[]): string => readFileSync(join(ROOT, ...parts), 'utf8');
@@ -74,8 +72,8 @@ describe('RPC bridge (architecture/client-data-layer.md #1, architecture/server-
 			'client proxy calls'
 		);
 
-		// The other direction is deliberately NOT asserted: the server exposes methods the
-		// client has no proxy for (the assistant reaches them in-process).
+		// The server may expose internal maintenance methods with no client proxy; every
+		// client method still has to be explicitly allowlisted.
 		expect([...new Set(proxied)].filter((m) => !allowed.has(m))).toEqual([]);
 	});
 });
@@ -133,6 +131,36 @@ describe('live sync (architecture/client-data-layer.md #2, architecture/server-c
 		walk(join(ROOT, 'src', 'lib'));
 		expect(checked, 'found no settings readers, so the scan pattern is stale').toBeGreaterThan(0);
 		expect(offenders).toEqual([]);
+	});
+});
+
+describe('retired Chungus Assistant surface', () => {
+	test('feature files and runtime storage hooks stay removed', () => {
+		for (const parts of [
+			['server', 'assistant'],
+			['src', 'lib', 'components', 'assistant'],
+			['src', 'lib', 'stores', 'assistantSessions.svelte.ts'],
+			['shared', 'assistant-files.ts'],
+			['defaults', 'skills']
+		]) {
+			expect(existsSync(join(ROOT, ...parts)), parts.join('/')).toBe(false);
+		}
+
+		// Migration history necessarily still names the old tables. Runtime code begins at
+		// the database class and must never grow a second, live copy of that surface.
+		const db = read('server', 'db.ts');
+		const runtime = db.slice(db.indexOf('class ServerDatabase'));
+		for (const retired of ['assistant_sessions', 'assistant_messages', 'assistant_files']) {
+			expect(runtime.includes(retired), retired).toBe(false);
+		}
+
+		const backup = [
+			read('server', 'backup', 'paths.ts'),
+			read('server', 'backup', 'inventory.ts'),
+			read('server', 'backup', 'snapshot.ts')
+		].join('\n');
+		expect(backup.includes('assistant-files')).toBe(false);
+		expect(backup.includes('assistantSkills')).toBe(false);
 	});
 });
 
@@ -321,15 +349,6 @@ describe('em dash contract (architecture/ui-shell-settings.md)', () => {
 			.filter((l) => l.text.includes(EN_DASH))
 			.map((l) => `${l.file.slice(l.file.indexOf('src/'))}: ${l.text.slice(0, 100)}`);
 		expect(offenders).toEqual([]);
-	});
-
-	// The other named UI copy living outside src/: this `describe` renders directly in the
-	// Capabilities settings section. `whenToReach` on the same type is prompt text for the
-	// model instead (the system prompt's tool index), where a range is legitimate.
-	test('no capability group or preset describe carries an en dash', () => {
-		const describes = [...CAPABILITY_GROUPS.map((g) => g.describe), ...CAPABILITY_PRESETS.map((p) => p.describe)];
-		expect(describes.length, 'found no capability describes, so the scan pattern is stale').toBeGreaterThan(0);
-		expect(describes.filter((d) => d.includes(EN_DASH))).toEqual([]);
 	});
 
 	/** The comment-stripped text `codeLines` produces, rejoined per file, so a statement spread
@@ -632,8 +651,8 @@ describe('transcript window (architecture/chat-sessions.md #14)', () => {
 	// The transcript renders a WINDOW of the branch, so a turn the reader has not loaded back
 	// has no row in the document. A surface that points at a turn by resolving `msg-<id>`
 	// itself therefore finds nothing for anything behind that window, and on screen that reads
-	// as the turn having been deleted. Pointing goes through `messageStore.revealMessage` (or
-	// `revealTargetId`, which it sets); the transcript loads the turn back in and flashes it.
+	// as the turn having been deleted. Pointing goes through `revealTargetId`; the transcript
+	// loads the turn back in and flashes it.
 	// The two files exempted below are the transcript itself: they own the window, so they are
 	// the only place that may reach for a row directly.
 	const OWNS_THE_WINDOW = ['components/chat/MessageList.svelte', 'components/chat/ChatSearchBar.svelte'];
@@ -836,96 +855,6 @@ describe('websocket messages (architecture/client-data-layer.md #3, architecture
 	});
 });
 
-describe('capability groups (architecture/chungus-assistant.md)', () => {
-	// CAPABILITY_GROUPS is what gates every tool, generates the prompt's tool index, and
-	// fills the Capabilities page. A capability missing from it would be ungatable and
-	// unnamed; a family naming a tool that no longer exists would price a switch wrong.
-	// groups.ts is pure (no imports at all), so this one imports rather than scanning; the
-	// capability NAMES are scanned, because importing the registry opens the database.
-	const capabilityNames = (): string[] => {
-		const dir = join(ROOT, 'server', 'assistant', 'registry');
-		const sources = readdirSync(dir)
-			.filter((f) => f.endsWith('.ts'))
-			.map((f) => readFileSync(join(dir, f), 'utf8'))
-			.join('\n');
-		// A capability's `name` is the only top-level `name:` in these modules; a ParamDef's
-		// sits inline inside an array literal, never at one tab of indent.
-		return scan(sources, /^\tname: '([a-z_]+)',$/gm, 'capability definitions');
-	};
-
-	test('the families partition every capability', () => {
-		const grouped = CAPABILITY_GROUPS.flatMap((g) => g.tools);
-		expect(new Set(grouped).size, 'a tool is listed in two families').toBe(grouped.length);
-		expect([...grouped].sort()).toEqual([...capabilityNames()].sort());
-	});
-
-	test('every preset names real families, and none drops an always-on one', () => {
-		const ids = new Set(CAPABILITY_GROUPS.map((g) => g.id));
-		const alwaysOn = CAPABILITY_GROUPS.filter((g) => g.alwaysOn).map((g) => g.id);
-		for (const preset of CAPABILITY_PRESETS) {
-			expect(preset.groups.filter((g) => !ids.has(g)), `preset ${preset.id} names an unknown family`).toEqual([]);
-			expect(alwaysOn.filter((g) => !preset.groups.includes(g)), `preset ${preset.id} drops an always-on family`).toEqual([]);
-		}
-	});
-
-	// Experimental is a promise to the user: the family is opt-in per workspace, so no preset
-	// may hand it out. A preset that did would flip it on with one tap and no badge in sight.
-	test('no preset hands out an experimental family', () => {
-		const experimental = CAPABILITY_GROUPS.filter((g) => g.experimental).map((g) => g.id);
-		expect(experimental.length, 'no experimental family left, so retire this test with the flag').toBeGreaterThan(0);
-		for (const preset of CAPABILITY_PRESETS) {
-			expect(preset.groups.filter((g) => experimental.includes(g)), `preset ${preset.id} includes an experimental family`).toEqual([]);
-		}
-	});
-
-	// One capability per `export const X: Capability = {`, up to the next one, scanned rather
-	// than imported, for the same reason as above.
-	const capabilityBlocks = (): { name: string; body: string }[] => {
-		const dir = join(ROOT, 'server', 'assistant', 'registry');
-		const out: { name: string; body: string }[] = [];
-		for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
-			for (const body of readFileSync(join(dir, file), 'utf8').split(/^export const \w+: Capability = \{$/m).slice(1)) {
-				const name = /^\tname: '([a-z_]+)',$/m.exec(body)?.[1];
-				if (name) out.push({ name, body });
-			}
-		}
-		expect(out.length, 'no capability definitions found, so the scan pattern went stale').toBeGreaterThan(0);
-		return out;
-	};
-
-	// The whole approval policy is a threshold on `risk` (server/assistant/types.ts). A
-	// capability that declares none would be judged by the registry's unknown-tool fallback and
-	// asked about in every mode, which reads as a broken switch rather than as the bug it is.
-	test('every capability declares its rung on the ladder', () => {
-		const undeclared = capabilityBlocks()
-			.filter(({ body }) => !/^\trisk: '(read|write|delete)',$/m.test(body))
-			.map(({ name }) => name);
-		expect(undeclared, 'a capability with no risk class cannot be placed against an approval mode').toEqual([]);
-	});
-
-	// The approval card is built by the capabilities themselves. One that writes without a
-	// `preview` falls back to its tool name and its raw arguments, which is a row asking the
-	// user to trust a change nobody described.
-	test('every capability that writes says what it will write', () => {
-		const blind = capabilityBlocks()
-			.filter(({ body }) => !/^\trisk: 'read',$/m.test(body) && !/^\tpreview\(/m.test(body))
-			.map(({ name }) => name);
-		expect(blind, 'a mutating capability with no preview shows the user its raw arguments').toEqual([]);
-	});
-
-	// A tool whose rung depends on its arguments is let through the cheap name-only pass so the
-	// preview can price it. With no preview to answer, it would be asked about in Auto whatever
-	// it turned out to be. The gate would work, but every `switch` would stop the turn.
-	test('every escalating capability has the preview that decides its rung', () => {
-		const escalating = capabilityBlocks().filter(({ body }) => /^\tescalates: true,$/m.test(body));
-		expect(escalating.length, 'no escalating capability left, so retire this test with the flag').toBeGreaterThan(0);
-		for (const { name, body } of escalating) {
-			expect(/^\trisk: 'write',$/m.test(body), `${name} escalates from a rung that is not \`write\``).toBe(true);
-			expect(/risk: 'delete'/.test(body), `${name} escalates but its preview never raises the rung`).toBe(true);
-		}
-	});
-});
-
 describe('provider vocabulary (architecture/llm-providers.md #1)', () => {
 	// PROVIDER_NAMES is the single client source (ProviderName derives from it). The server
 	// keeps its own union and profile list because the two sides never import each other.
@@ -991,15 +920,8 @@ describe('per-chat setup (architecture/ui-shell-settings.md)', () => {
 	// the first version made. `activeVersionId` says which variant the LIBRARY is editing;
 	// let it answer here and opening another variant in the editor silently changes what
 	// every story started afterwards is played against.
-	test("no door pins a new chat to the library's active version", () => {
-		for (const site of [
-			['src', 'lib', 'stores', 'chat.svelte.ts'],
-			['server', 'assistant', 'registry', 'workspace.ts']
-		]) {
-			expect(read(...site), `${site.join('/')} pins from the active version`).not.toContain(
-				'activeVersionId'
-			);
-		}
+	test("a new chat never pins to the library's active version", () => {
+		expect(read('src', 'lib', 'stores', 'chat.svelte.ts')).not.toContain('activeVersionId');
 	});
 
 	// A preset is one document, and the chat's claim carries all of it: the items assembled,
@@ -1044,39 +966,6 @@ describe('per-chat setup (architecture/ui-shell-settings.md)', () => {
 		for (const method of ['carriedFrom(preset', 'effectiveFor(preset', 'forDisplay(text']) {
 			expect(source, `regex-rules.svelte.ts must declare ${method}…)`).toContain(method);
 		}
-	});
-
-	// The one place the persona rule is spelled twice: the assistant's chat reads run in the
-	// server process, which cannot import chat-setup.ts. A server that read the app pointer
-	// alone would tell the model that a story playing as somebody else attributes its new
-	// turns to whoever the app starts chats as.
-	test("the assistant's chat reads resolve the chat's own persona first", () => {
-		const source = read('server', 'assistant', 'registry', 'chat-reads.ts');
-		// Both claim readers go through the one parse of the chat's own setup blob.
-		expect(block(source, /function chatClaim\(chat: RawChat[\s\S]*?\n\}/, 'chatClaim')).toContain(
-			'chat.featureState'
-		);
-		const resolver = block(source, /function chatPersona\(chat: RawChat\)[\s\S]*?\n\}/, 'chatPersona');
-		expect(resolver).toContain("chatClaim(chat, 'persona')");
-		expect(resolver).toContain("serverDb.getSetting('activePersonaId')");
-		// Every read of the app pointer in this file goes through that fallback.
-		expect(scan(source, /(serverDb\.getSetting\('activePersonaId'\))/g, 'app persona reads')).toHaveLength(1);
-	});
-
-	// The other half of the same problem: `resolveLorebookLinks` answers four layers and this
-	// side has to spell all four. Three of them reach a prompt through no card at all, so an
-	// absence here reports a scene missing books nothing else on the assistant's side names, or
-	// holding one the story took back off.
-	test("the assistant's chat reads carry every layer of a chat's lorebooks", () => {
-		const resolver = block(
-			read('server', 'assistant', 'registry', 'chat-reads.ts'),
-			/function chatLorebooks\(chat: RawChat\)[\s\S]*?\n\}/,
-			'chatLorebooks'
-		);
-		expect(resolver, 'the books switched into every chat').toContain('b.global');
-		expect(resolver, "the cards' own links").toContain('lorebookIds');
-		expect(resolver, "the chat's own books").toContain("claimedIds(chat, 'lorebooks')");
-		expect(resolver, 'the books the chat muted').toContain("claimedIds(chat, 'mutedLorebooks')");
 	});
 
 	// The client half of the same problem, one step further down. `LorebookLinks` requires all
@@ -1256,59 +1145,6 @@ describe('reasoning + tuning shapes (architecture/llm-providers.md #2)', () => {
 	});
 });
 
-describe('settings deep links (architecture/chungus-assistant.md #1, architecture/ui-shell-settings.md #2)', () => {
-	const catalog = () => read('server', 'assistant', 'registry', 'settings.ts');
-
-	test('the assistant tab union matches the client one', () => {
-		const server = scan(
-			block(catalog(), /export type SettingsTab =[\s\S]*?;/, 'server SettingsTab'),
-			/'([A-Za-z]+)'/g,
-			'server settings tabs'
-		);
-		const client = scan(
-			block(
-				read('src', 'lib', 'config', 'settings-pages.ts'),
-				/export type SettingsTab =[\s\S]*?;/,
-				'client SettingsTab'
-			),
-			/'([A-Za-z]+)'/g,
-			'client settings tabs'
-		);
-		expect(server.sort()).toEqual(client.sort());
-	});
-
-	test('every catalogued setting can be routed to and highlighted', () => {
-		const anchors = [...new Set(scan(catalog(), /anchor:\s*'([a-z0-9-]+)'/g, 'catalog anchors'))];
-
-		const pages = read('src', 'lib', 'config', 'settings-pages.ts');
-		const routable = new Set(
-			scan(
-				block(pages, /ANCHOR_PAGES[^=]*=\s*\{[\s\S]*?\n\};/, 'ANCHOR_PAGES'),
-				/^\t'?([a-z0-9-]+)'?:/gm,
-				'ANCHOR_PAGES keys'
-			)
-		);
-		expect(anchors.filter((a) => !routable.has(a))).toEqual([]);
-
-		// `flashSelector` finds the control by this attribute; without one the deep link
-		// lands on the right page but highlights nothing.
-		const marked = new Set<string>();
-		const walk = (dir: string): void => {
-			for (const entry of readdirSync(dir, { withFileTypes: true })) {
-				const full = join(dir, entry.name);
-				if (entry.isDirectory()) walk(full);
-				else if (entry.name.endsWith('.svelte')) {
-					for (const m of readFileSync(full, 'utf8').matchAll(/data-setting="([a-z0-9-]+)"/g)) {
-						marked.add(m[1]);
-					}
-				}
-			}
-		};
-		walk(join(ROOT, 'src', 'lib', 'components'));
-		expect(marked.size, 'found no data-setting attributes, so the scan is stale').toBeGreaterThan(0);
-		expect(anchors.filter((a) => !marked.has(a))).toEqual([]);
-	});
-});
 
 describe('anchored tips (architecture/ui-shell-settings.md)', () => {
 	// A hover bubble positioned inside its own panel is clipped by that panel's scroll
@@ -1441,41 +1277,6 @@ describe('image categories (architecture/server-core.md #5, architecture/backups
 		expect(alternation.split('|').sort()).toEqual(server());
 	});
 });
-
-describe('steering vocabulary (architecture/engines.md, architecture/chungus-assistant.md)', () => {
-	// `add_steering` states scope/mode/role as tool-schema enums and cannot import the
-	// client model (server code never reaches into src/), so all three are mirrored.
-	const mirrored = (name: string): string[] =>
-		scan(
-			block(
-				read('server', 'assistant', 'registry', 'workspace.ts'),
-				new RegExp(`const ${name} = \\[[\\s\\S]*?\\] as const;`),
-				`mirrored ${name}`
-			),
-			/'([a-z]+)'/g,
-			`mirrored ${name} values`
-		);
-
-	test("the assistant's scope enum matches the scope ladder", () => {
-		expect(mirrored('STEERING_SCOPES')).toEqual([...STEERING_SCOPES]);
-	});
-
-	test("the assistant's role enum matches the injectable roles", () => {
-		expect(mirrored('STEERING_ROLES')).toEqual([...STEERING_ROLES]);
-	});
-
-	test("the assistant's mode enum matches the note lifetimes", () => {
-		// SteeringMode has no runtime list of its own: it is a two-value union, so the
-		// literals are read out of the type declaration.
-		const declared = scan(
-			block(read('src', 'lib', 'types', 'steering.ts'), /export type SteeringMode =[\s\S]*?;/, 'SteeringMode'),
-			/'([a-z]+)'/g,
-			'SteeringMode values'
-		);
-		expect(mirrored('STEERING_MODES')).toEqual(declared);
-	});
-});
-
 
 /* Every palette is authored to the same readability floor.
  *

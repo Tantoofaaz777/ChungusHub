@@ -6,8 +6,8 @@
  * (the `connection_credentials` table), never in this object.
  *
  * Routing is ONE flat map (`assignments`), and every calling point carries its own
- * concrete connection id: `primary` (the story), `assistant` (the Chungus Assistant),
- * and each calling engine by id. There are no roles, no groups, no
+ * concrete connection id: `primary` (the story) and each calling engine by id.
+ * There are no roles, no groups, no
  * "follows X" defaults, no pins: what the Connections page shows is literally
  * what each call rides. A fresh install binds every point to the one Default
  * connection; splitting them later is the user's own, explicit choice.
@@ -36,11 +36,10 @@ import {
 const CONNECTIONS_KEY = 'connections';
 const ASSIGNMENTS_KEY = 'connectionAssignments';
 
-/** Every routing point, in display order: the story, the assistant, then each
+/** Every routing point, in display order: the story, then each
  *  calling engine (registry order). Steering makes no call and is absent. */
 export const ASSIGNMENT_IDS: string[] = [
 	'primary',
-	'assistant',
 	...ENGINES.filter((e) => e.makesCalls).map((e) => e.id)
 ];
 

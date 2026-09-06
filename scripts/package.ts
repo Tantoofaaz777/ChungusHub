@@ -4,7 +4,7 @@
  *   dist/ChungusHub-portable/
  *     ChungusHub(.exe):    compiled server, Bun runtime embedded
  *     build/:              the built PWA the server serves
- *     defaults/:           bundled presets, skills, characters + backgrounds (first-run seed)
+ *     defaults/:           bundled presets, characters + backgrounds (first-run seed)
  *     README.txt
  *
  * Zip that folder and it runs on a clean machine: no Bun or Node required.
@@ -83,7 +83,6 @@ if (process.platform === 'darwin') {
 // so shipping without them puts an empty picker in front of every first-run user.
 cpSync(join(root, 'build'), join(out, 'build'), { recursive: true });
 cpSync(join(root, 'defaults', 'presets'), join(out, 'defaults', 'presets'), { recursive: true });
-cpSync(join(root, 'defaults', 'skills'), join(out, 'defaults', 'skills'), { recursive: true });
 cpSync(join(root, 'defaults', 'characters'), join(out, 'defaults', 'characters'), { recursive: true });
 const backgroundsSrc = join(root, 'defaults', 'backgrounds');
 if (!existsSync(backgroundsSrc)) throw new Error('defaults/backgrounds is missing');

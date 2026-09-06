@@ -69,7 +69,7 @@ export async function timedFetch(
 ): Promise<Response> {
 	// AbortSignal.any composes the caller's signal with our deadline without
 	// hand-managed listeners (which would accumulate on a signal reused across
-	// requests, e.g. one assistant-loop AbortController spanning many turns).
+	// requests sharing one AbortController).
 	const deadline = new AbortController();
 	const signal = init.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
 	const timer = setTimeout(

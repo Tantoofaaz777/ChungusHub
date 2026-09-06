@@ -13,9 +13,9 @@
  * `equal`/`removed` segment's text reproduces `before` exactly, and every `equal`/`added`
  * segment's text reproduces `after` exactly, whitespace included. See text-diff.test.ts.
  *
- * Deliberately separate from utils/diff.ts (the assistant's edit preview): that one is
+ * Deliberately separate from utils/diff.ts (the branch comparison view): that one is
  * line-first and renders a change as PAIRED del/add rows, each side its own segment list:
- * right for line-shaped assistant edits, wrong for a one-paragraph composer draft. This one
+ * right for comparing story turns, wrong for a one-paragraph composer draft. This one
  * emits a single interleaved stream for an inline redline, and guarantees the reconstruction
  * invariant above, which diff.ts neither needs nor offers. Only the ~20-line LCS walk is
  * shared in shape; folding them together would couple this contract to untested render code.

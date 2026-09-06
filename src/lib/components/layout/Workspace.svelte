@@ -6,7 +6,6 @@
 	import PresetControlsView from '$lib/components/presetControls/PresetControlsView.svelte';
 	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
 	import SettingsContentPanel from '$lib/components/settings/SettingsContentPanel.svelte';
-	import AssistantFloatingWidget from '$lib/components/assistant/AssistantFloatingWidget.svelte';
 	import ChatsView from '$lib/components/sidebar/ChatsView.svelte';
 	import StoryMapView from '$lib/components/storymap/StoryMapView.svelte';
 	import MemoryPanel from '$lib/components/memory/MemoryPanel.svelte';
@@ -142,10 +141,6 @@
 	let libraryOpen = $derived(uiStore.libraryOpen);
 	let libraryDocked = $derived(libraryOpen && canDock);
 	let libraryOverlay = $derived(libraryOpen && !canDock);
-	// A side-snapped Assistant uses the same native seam as a dock. Its transient side
-	// state only extends the chat/welcome tint; it does not enter panel choreography.
-	let assistantSnapSide = $derived(uiStore.assistantSnapSide);
-
 	// The entry editor pops out of the dock into a wide, centered overlay over the
 	// chat. The dock picks which entry (character or persona) it edits.
 	let libraryEditorOpen = $derived(libraryOpen && uiStore.libraryEditorId != null);
@@ -251,9 +246,8 @@
 <div class="workspace-shell">
 	<main
 		class="workspace-main"
-		class:dock-left-open={settingsDocked || assistantSnapSide === 'left'}
-		class:dock-right-open={libraryDocked || assistantSnapSide === 'right'}
-		data-assistant-snap-workspace
+		class:dock-left-open={settingsDocked}
+		class:dock-right-open={libraryDocked}
 		bind:this={workspaceEl}
 	>
 		<!-- Workspace background image: bottom of the stack. Two pictures while one is arriving: the

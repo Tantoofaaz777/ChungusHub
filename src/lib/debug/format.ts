@@ -9,17 +9,16 @@ import type { PromptLogEntry, PromptLogMessage, PromptLogStatus } from './types'
 /**
  * A stable color per query kind, so the eye can scan the list. Keyed by the engine ids
  * (an engine's registry id IS its debug source label, per architecture/engines.md coupling
- * #1) plus the three callers that are not engines (an ordinary chat send, the assistant, and
- * a continue, which rides the primary connection like a send but is worth telling apart in
+ * #1) plus the two callers that are not engines (an ordinary chat send and a continue,
+ * which rides the primary connection like a send but is worth telling apart in
  * the log), so a new engine without a color is a compile error instead of an unexplained
  * gray row.
  */
-const SOURCE_COLORS: Record<EngineId | 'chat' | 'assistant' | 'continue', string> = {
+const SOURCE_COLORS: Record<EngineId | 'chat' | 'continue', string> = {
 	chat: '#22c55e',
 	'opening-scene': '#14b8a6',
 	continue: '#f97316',
 	memory: '#a855f7',
-	assistant: '#3b82f6',
 	steering: '#6366f1',
 	spellcheck: '#06b6d4',
 	impersonate: '#f43f5e',
@@ -33,14 +32,13 @@ export function sourceColor(source: string): string {
 
 /**
  * One color per message role, declared once so a role reads identically wherever the panel
- * draws it: a transcript card, a synthesized response card, a tool-call block. `thinking`
+ * draws it: a transcript card or a synthesized response card. `thinking`
  * is the panel's own label for extracted reasoning; it never rides the wire.
  */
 const ROLE_COLORS: Record<string, string> = {
 	system: '#60a5fa',
 	user: '#4ade80',
 	assistant: '#c084fc',
-	tool: '#fbbf24',
 	thinking: '#22d3ee'
 };
 
@@ -78,8 +76,7 @@ export function formatTime(ts: number): string {
 	return new Date(ts).toLocaleTimeString();
 }
 
-/** Wall clock down to the millisecond. The assistant fires several iterations inside one
- *  second, and a seconds-only stamp makes them look simultaneous. */
+/** Wall clock down to the millisecond for closely spaced requests. */
 export function formatPreciseTime(ts: number): string {
 	return `${new Date(ts).toLocaleTimeString()}.${String(new Date(ts).getMilliseconds()).padStart(3, '0')}`;
 }
@@ -93,22 +90,9 @@ export function formatDuration(start: number, end?: number): string | null {
 
 // ===== Size =====
 
-/**
- * Base-estimate tokens for one logged message: its text PLUS the tool-call payload it
- * carries. An assistant turn's tool arguments are real prompt weight on every later
- * iteration, and counting only `content` prices them at zero.
- */
+/** Base-estimate tokens for one logged message. */
 export function messageTokens(message: PromptLogMessage, model?: string): number {
-	let total = countTokens(message.content ?? '', model);
-	if (message.tool_calls) total += countTokens(JSON.stringify(message.tool_calls), model);
-	return total;
-}
-
-/** Base-estimate tokens for the tool definitions sent with a request: routinely more than
- *  half of an assistant prompt, so leaving them out understates the request by more than
- *  the conversation itself. */
-export function toolTokens(tools: unknown[] | undefined, model?: string): number {
-	return tools?.length ? countTokens(JSON.stringify(tools), model) : 0;
+	return countTokens(message.content ?? '', model);
 }
 
 /**
@@ -121,7 +105,7 @@ const estimateCache = new Map<string, number>();
 function estimatePrompt(entry: PromptLogEntry): number {
 	const hit = estimateCache.get(entry.id);
 	if (hit !== undefined) return hit;
-	let total = toolTokens(entry.tools, entry.model);
+	let total = 0;
 	for (const message of entry.messages) total += messageTokens(message, entry.model);
 	if (estimateCache.size > 1000) estimateCache.clear();
 	estimateCache.set(entry.id, total);
@@ -140,7 +124,7 @@ export function promptSize(entry: PromptLogEntry): { tokens: number; reported: b
 	return { tokens: estimatePrompt(entry), reported: false };
 }
 
-/** Estimated tokens of the whole conversation (no tool definitions), for the section header. */
+/** Estimated tokens of the whole conversation, for the section header. */
 export function messagesSize(entry: PromptLogEntry): number {
 	let total = 0;
 	for (const message of entry.messages) total += messageTokens(message, entry.model);
@@ -183,8 +167,8 @@ function fieldChips(prefix: string, value: unknown, out: string[]): void {
 export function requestChips(entry: PromptLogEntry): string[] {
 	const chips: string[] = [];
 	const params = entry.params ?? {};
-	// Most callers put max_tokens/temperature inside `params`; the assistant also surfaces
-	// them as top-level fields. Show each value once, from whichever half carries it.
+	// Some callers put max_tokens/temperature inside `params`; show each value once,
+	// from whichever half carries it.
 	if (entry.temperature !== undefined && params.temperature === undefined) chips.push(`temperature ${entry.temperature}`);
 	if (entry.maxTokens !== undefined && params.max_tokens === undefined && params.max_completion_tokens === undefined) {
 		chips.push(`max_tokens ${entry.maxTokens}`);

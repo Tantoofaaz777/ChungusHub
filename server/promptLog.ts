@@ -2,7 +2,7 @@
  * Server-side prompt debug log.
  *
  * The single source of truth for the debug panel. The server is the chokepoint for
- * every LLM call (completions and assistant turns), so it captures each request and
+ * every LLM completion, so it captures each request and
  * its real result here and broadcasts the change to every connected panel. A device
  * that opens the panel late backfills from storage. Capture is server-side rather than
  * per-device, so every device sees the same log.
@@ -23,9 +23,6 @@ export interface PromptLogMessage {
 	content: string;
 	/** Chat image attachments as server-relative paths (never raw bytes). */
 	images?: string[];
-	tool_calls?: unknown;
-	tool_call_id?: string;
-	name?: string;
 }
 
 export type PromptLogStatus = 'pending' | 'done' | 'error' | 'cancelled';
@@ -33,7 +30,7 @@ export type PromptLogStatus = 'pending' | 'done' | 'error' | 'cancelled';
 export interface PromptLogEntry {
 	id: string;
 	source: string;
-	kind: 'completion' | 'assistant';
+	kind: 'completion';
 	provider: string;
 	model: string;
 	messages: PromptLogMessage[];
@@ -47,9 +44,6 @@ export interface PromptLogEntry {
 	/** The connection's OpenRouter routing for this request (null/absent elsewhere). It
 	 *  decides which upstream served the call. */
 	routing?: RoutingConfig | null;
-	tools?: unknown[];
-	iteration?: number;
-	assistantSessionId?: string;
 	startedAt: number;
 	status: PromptLogStatus;
 	endedAt?: number;
@@ -61,8 +55,6 @@ export interface PromptLogEntry {
 	/** The response body the provider returned (thinking is extracted separately). */
 	responseContent?: string;
 	responseThinking?: string;
-	/** Assistant iterations: the tool calls the model issued this step, wire-shape. */
-	responseToolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
 }
 
 /** The result envelope patched onto a request once it returns. */
@@ -76,7 +68,6 @@ export interface PromptLogResult {
 	error?: string;
 	responseContent?: string;
 	responseThinking?: string;
-	responseToolCalls?: PromptLogEntry['responseToolCalls'];
 }
 
 /** The incremental change broadcast to panels, mirroring the client bus shape. */
@@ -107,7 +98,6 @@ export function patchResult(id: string, result: PromptLogResult): boolean {
 	if (result.error) e.error = result.error;
 	if (result.responseContent) e.responseContent = result.responseContent;
 	if (result.responseThinking) e.responseThinking = result.responseThinking;
-	if (result.responseToolCalls?.length) e.responseToolCalls = result.responseToolCalls;
 	serverDb.updatePromptLogEntry(id, JSON.stringify(e));
 	return true;
 }

@@ -110,8 +110,8 @@ export interface ChatFeatureState {
 	scene: ChatScene | null;
 	/** The connection this story sends on, claimed from the composer's setup chip. A plain
 	 *  connection id, or null to follow whatever the Connections page routes Primary to.
-	 *  It covers the story's own calls and nothing else: the assistant and every engine
-	 *  stay app-wide. An id naming a connection that no longer exists resolves to the app's
+	 *  It covers the story's own calls and nothing else: every engine stays app-wide.
+	 *  An id naming a connection that no longer exists resolves to the app's
 	 *  too, rather than throwing or being swept (see utils/chat-setup.ts). */
 	connection: string | null;
 	/** The persona this story plays as, or null to follow the app's. Stamped at birth only

@@ -69,12 +69,6 @@ ChungusHub is under active development. So there might be some rough edges. Plea
 - **Composer:** per-chat drafts sync across devices, and input history recalls what you sent.
 - **Search:** find-in-chat searches every branch, and the chats panel finds and previews chats without opening them.
 
-### Chungus Assistant
-
-- **Workspace tools:** fixes character cards, edits chat messages, writes lorebooks and corrects chat memory.
-- **Instructions and skills:** write your own to shape how it works.
-- **Approval and capabilities:** choose whether it asks before acting and what it can reach.
-
 ### Story state
 
 - **Character versions:** save a variant of a character without duplicating the whole card.

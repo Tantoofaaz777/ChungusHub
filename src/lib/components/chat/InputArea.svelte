@@ -739,9 +739,8 @@
 	}
 
 	// ===== Dropping a picture on the composer =====
-	// Pictures only. A story turn has nowhere to put a text file (the assistant panel is
-	// what reads those), so one dropped here is refused by name rather than silently ignored,
-	// which would read as the drop having failed.
+	// Pictures only. A story turn has nowhere to put a text file, so one dropped here is
+	// refused by name rather than silently ignored, which would read as the drop having failed.
 
 	/** Depth-counted so a drag crossing a child element doesn't flicker the overlay off. */
 	let dragDepth = $state(0);
@@ -769,7 +768,7 @@
 		e.preventDefault();
 		const images = dropped.filter(isImageFile);
 		for (const file of dropped.filter((f) => !isImageFile(f))) {
-			toastStore.error(`"${file.name}" is not a picture. Attach a file to the Chungus Assistant instead, which can read it.`);
+			toastStore.error(`"${file.name}" is not a picture. Chat messages only accept pictures.`);
 		}
 		if (images.length) void attachImageFiles(images);
 	}
@@ -822,8 +821,7 @@
 	// it open; outside taps and Escape (consumed, per the workspace Esc contract)
 	// release the pin. The popup is portaled to <body> and fixed-positioned off the
 	// trigger's box: the chat column is its own stacking context (isolation on
-	// .chat-center-shell), so an in-place popup can never paint over fixed overlays
-	// like the assistant launcher, whatever its z-index.
+	// .chat-center-shell), so an in-place popup can never paint over fixed overlays.
 	let tokenPopupPinned = $state(false);
 	let tokenPopupHovered = $state(false);
 	let tokenPopupFocused = $state(false);
@@ -1020,8 +1018,8 @@
 			</div>
 		{/if}
 
-		<!-- The composer is the drop target for pictures. Files are the assistant's business,
-		     so one dropped here is refused by name rather than quietly ignored. -->
+		<!-- The composer is the drop target for pictures. Other files are refused by name
+		     rather than quietly ignored. -->
 		<div
 			class="composer-shell input-base"
 			class:composer-shell--frozen={transformOpen}
@@ -1781,7 +1779,7 @@
 	}
 
 	/* Portaled to <body>, fixed off the trigger's box. That puts it above every fixed
-	   overlay (assistant launcher is z 200) and immune to the chat column's stacking context.
+	   overlay and immune to the chat column's stacking context.
 	   Carries .surface-float in markup. */
 	.token-popup {
 		position: fixed;

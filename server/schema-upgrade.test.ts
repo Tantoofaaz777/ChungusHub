@@ -3,8 +3,8 @@
  *
  * Restoring an old snapshot is not a special path, it is the upgrade path a user who did not
  * open the app all year would take anyway: the app finds an older `_migrations` and runs
- * whatever is missing. That only stays safe while migrations are structure, so the one that
- * rewrites rows has to be a decision made here rather than something discovered later.
+ * whatever is missing. That only stays safe while migrations are structure, so any migration
+ * that rewrites rows has to be a decision made here rather than something discovered later.
  */
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
@@ -12,11 +12,14 @@ import { Database } from 'bun:sqlite';
 import { MIGRATIONS_FOR_TESTS } from './db';
 
 /**
- * The migrations that deliberately rewrite rows. Every entry must be idempotent, must narrow
- * itself with a WHERE to the rows that actually need it, and must be able to state what it
- * would cost if it ran twice.
+ * The migrations that deliberately rewrite rows. Each needs focused coverage of its boundary;
+ * a repeatable backfill must be idempotent, while destructive schema cleanup must prove that
+ * unrelated rows survive and malformed values cannot break the upgrade.
  */
-const DATA_MIGRATIONS: string[] = ['44: backfill_chat_default_version'];
+const DATA_MIGRATIONS: string[] = [
+	'44: backfill_chat_default_version',
+	'45: remove_chungus_assistant_storage'
+];
 
 describe('migrations', () => {
 	test('a migration only moves data when it was decided here', () => {
@@ -28,15 +31,13 @@ describe('migrations', () => {
 });
 
 /**
- * The one data migration, driven against real rows in the shape they sit on disk.
- *
- * It runs the schema up to the migration under test, seeds the rows an install would be
- * carrying, and then applies that migration by hand, which is what lets the same statement be
- * run a second time: re-firing is the failure this whole class of change is guarded against,
- * and it cannot be tested through the boot path, where `_migrations` makes a second run
- * impossible by construction.
+ * Data migrations, driven against real rows in the shape they sit on disk. The shared setup
+ * stops before migration 44 so each suite can seed the state its migration is expected to see.
+ * Migration 44 is applied twice because repeatability is part of that backfill's contract;
+ * migration 45 is applied once, as the real runner guarantees, and tests its destructive edge.
  */
 const BACKFILL = MIGRATIONS_FOR_TESTS.find((m) => m.version === 44)!;
+const ASSISTANT_CLEANUP = MIGRATIONS_FOR_TESTS.find((m) => m.version === 45)!;
 
 let db: Database;
 
@@ -80,6 +81,7 @@ function runBackfill(): void {
 
 beforeEach(() => {
 	db = new Database(':memory:');
+	db.exec('PRAGMA foreign_keys = ON');
 	for (const migration of [...MIGRATIONS_FOR_TESTS].sort((a, b) => a.version - b.version)) {
 		if (migration.version >= BACKFILL.version) continue;
 		db.exec(migration.sql);
@@ -186,5 +188,88 @@ describe('44: the chat-default version backfill', () => {
 		runBackfill();
 
 		expect(['aria', 'solo', 'kept', 'torn'].map(raw)).toEqual(afterFirst);
+	});
+});
+
+describe('45: the Chungus Assistant storage removal', () => {
+	test('drops the legacy tables and removes only the obsolete settings properties', () => {
+		db.run(
+			'INSERT INTO assistant_sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)',
+			['session', 'Old Assistant', 1, 1]
+		);
+		db.run(
+			"INSERT INTO assistant_messages (id, session_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)",
+			['assistant-message', 'session', 'legacy reply', 1]
+		);
+		db.run(
+			'INSERT INTO assistant_files (id, session_id, message_id, name, kind, bytes, lines, token_estimate, text_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+			['file', 'session', 'assistant-message', 'notes.txt', 'text', 5, 1, 2, 'assistant-files/file.txt', 1]
+		);
+		db.run('INSERT INTO chats (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)', [
+			'chat',
+			'Story',
+			1,
+			1
+		]);
+		db.run(
+			"INSERT INTO messages (id, chat_id, role, content, created_at) VALUES (?, ?, 'assistant', ?, ?)",
+			['story-message', 'chat', 'ordinary story reply', 1]
+		);
+		db.run('INSERT INTO settings (key, value) VALUES (?, ?)', [
+			'generalSettings',
+			JSON.stringify({ saveDrafts: true, assistantLauncher: false, assistantCostSeen: true })
+		]);
+		db.run('INSERT INTO settings (key, value) VALUES (?, ?)', [
+			'connectionAssignments',
+			JSON.stringify({ primary: 'main', assistant: 'old', memory: 'memory-model' })
+		]);
+
+		db.exec(ASSISTANT_CLEANUP.sql);
+
+		const tables = db
+			.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'assistant_%' ORDER BY name")
+			.all();
+		expect(tables).toEqual([]);
+		expect(db.query('SELECT content FROM messages WHERE id = ?').get('story-message')).toEqual({
+			content: 'ordinary story reply'
+		});
+		const general = db.query('SELECT value FROM settings WHERE key = ?').get('generalSettings') as {
+			value: string;
+		};
+		const assignments = db.query('SELECT value FROM settings WHERE key = ?').get('connectionAssignments') as {
+			value: string;
+		};
+		expect(JSON.parse(general.value)).toEqual({ saveDrafts: true });
+		expect(JSON.parse(assignments.value)).toEqual({ primary: 'main', memory: 'memory-model' });
+	});
+
+	test('leaves malformed settings byte for byte unchanged', () => {
+		db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['generalSettings', '{not json']);
+		db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['connectionAssignments', '[also broken']);
+
+		expect(() => db.exec(ASSISTANT_CLEANUP.sql)).not.toThrow();
+
+		expect(db.query('SELECT value FROM settings WHERE key = ?').get('generalSettings')).toEqual({
+			value: '{not json'
+		});
+		expect(db.query('SELECT value FROM settings WHERE key = ?').get('connectionAssignments')).toEqual({
+			value: '[also broken'
+		});
+	});
+
+	test('a fresh database finishes without Assistant tables', () => {
+		const fresh = new Database(':memory:');
+		try {
+			fresh.exec('PRAGMA foreign_keys = ON');
+			for (const migration of [...MIGRATIONS_FOR_TESTS].sort((a, b) => a.version - b.version)) {
+				fresh.exec(migration.sql);
+			}
+			const tables = fresh
+				.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'assistant_%' ORDER BY name")
+				.all();
+			expect(tables).toEqual([]);
+		} finally {
+			fresh.close();
+		}
 	});
 });
