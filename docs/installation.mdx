@@ -67,6 +67,12 @@ password hash if you set one. Back that folder up and you have backed up the who
 Snapshots land in `backups/` beside it. Nothing leaves the machine except the provider requests
 you configure.
 
+For a copy you can move to another installation, open **Settings → Backups** and export any
+snapshot in History. On the other installation, choose **Import backup**, select that ZIP, then
+restore the imported row. Portable backups contain your stories, settings and API keys, but not
+your password or authorized-device list. Restoring still asks you to restart ChungusHub so the
+database can be replaced safely.
+
 **Where that folder sits depends on how you started ChungusHub.** A downloaded or packaged copy
 keeps it beside the executable. Run from source, it is created in the directory you launch from,
 which the launchers make the repository folder. A second clone therefore opens a second, empty

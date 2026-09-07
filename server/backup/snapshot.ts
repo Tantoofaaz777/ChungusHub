@@ -117,7 +117,9 @@ export async function createSnapshot(options: SnapshotOptions): Promise<Snapshot
 
 	// Share against the newest snapshot that is still on disk. If it was pruned, or its
 	// index is unreadable, everything is copied: slower, never wrong.
-	const previous = listSnapshots().snapshots[0] ?? null;
+	// An imported archive did not capture this installation's source mtimes, and deliberately
+	// carries an empty index. Use the newest native snapshot as the hardlink baseline.
+	const previous = listSnapshots().snapshots.find((snapshot) => snapshot.kind !== 'imported') ?? null;
 	const previousIndex = previous ? readIndex(previous.id) : null;
 	const previousData = previous ? join(backupRoot, previous.id, SNAPSHOT_DATA_DIR) : null;
 

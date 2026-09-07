@@ -73,6 +73,14 @@ describe('retention', () => {
 		expect(prunable(list, settings, NOW)).toEqual([]);
 	});
 
+	test('never prunes imported restore points or lets their clock freeze local thinning', () => {
+		const imported = snap('foreign', 'imported', -30);
+		const scheduled = [0, 1, 2, 20, 21, 400].map((d) => snap(`s${d}`, 'scheduled', d));
+		const doomed = prunable([imported, ...scheduled], settings, NOW);
+		expect(doomed).not.toContain('foreign');
+		expect(doomed).toContain('s400');
+	});
+
 	test('never prunes a pinned snapshot, whatever its kind', () => {
 		const list = [
 			snap('keep-me', 'scheduled', 900, true),

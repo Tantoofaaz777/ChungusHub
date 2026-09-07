@@ -8,7 +8,7 @@
  * Nothing here touches the network at import time, so it is safe during
  * prerendering. The browser-only bits guard on `typeof window`.
  */
-import type { BackupsPayload } from '$shared/backups';
+import type { BackupsPayload, SnapshotManifest } from '$shared/backups';
 
 /**
  * Identifies this PAGE, not this device. It exists for exactly one job: the server skips
@@ -121,6 +121,29 @@ export async function getBackups(): Promise<
 /** Starts a snapshot and returns immediately; the job outlives this request and the page. */
 export async function startBackup(label: string | null): Promise<void> {
 	await apiSend('/api/backups/snapshot', 'POST', { label });
+}
+
+/** Prepare a portable archive on disk; the returned one-time URL streams it to the browser. */
+export async function prepareBackupExport(id: string): Promise<{ url: string; filename: string }> {
+	const result = (await apiSend('/api/backups/export', 'POST', { id })) as {
+		token: string;
+		filename: string;
+	};
+	return {
+		url: `/api/backups/export/download?token=${encodeURIComponent(result.token)}`,
+		filename: result.filename
+	};
+}
+
+/** Upload a portable ZIP as the raw body, so a large archive is never wrapped in memory. */
+export async function importBackupArchive(file: File): Promise<SnapshotManifest> {
+	const res = await fetch('/api/backups/import', {
+		method: 'POST',
+		headers: { 'content-type': 'application/zip' },
+		body: file
+	});
+	const result = (await parseOrThrow(res)) as { manifest: SnapshotManifest };
+	return result.manifest;
 }
 
 /** Claims the next launch for a restore. From here the server stops accepting work. */

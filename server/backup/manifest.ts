@@ -62,7 +62,10 @@ function parseManifest(raw: unknown, id: string): SnapshotManifest | null {
 	const createdAt = num(m.createdAt);
 	const schemaVersion = num(m.schemaVersion);
 	if (createdAt === null || schemaVersion === null) return null;
-	if (typeof m.kind !== 'string') return null;
+	if (!['manual', 'scheduled', 'preUpgrade', 'preRestore', 'imported'].includes(String(m.kind))) return null;
+	const sourceKind = ['manual', 'scheduled', 'preUpgrade', 'preRestore'].includes(String(m.sourceKind))
+		? (m.sourceKind as SnapshotManifest['sourceKind'])
+		: undefined;
 	const bytes = (m.bytes ?? {}) as Record<string, unknown>;
 	const summary = (m.summary ?? {}) as Record<string, unknown>;
 	const n = (v: unknown): number => num(v) ?? 0;
@@ -88,7 +91,8 @@ function parseManifest(raw: unknown, id: string): SnapshotManifest | null {
 		bytes: { logical: n(bytes.logical), onDisk: n(bytes.onDisk) },
 		fileCount: n(m.fileCount),
 		linked: m.linked === true,
-		warnings: Array.isArray(m.warnings) ? m.warnings.filter((w): w is string => typeof w === 'string') : []
+		warnings: Array.isArray(m.warnings) ? m.warnings.filter((w): w is string => typeof w === 'string') : [],
+		...(sourceKind ? { sourceKind } : {})
 	};
 }
 

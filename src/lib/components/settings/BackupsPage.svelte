@@ -36,7 +36,8 @@
 		manual: 'By hand',
 		scheduled: 'Scheduled',
 		preUpgrade: 'Before upgrade',
-		preRestore: 'Before restore'
+		preRestore: 'Before restore',
+		imported: 'Imported'
 	};
 
 	let settings = $derived(backupStore.settings);
@@ -46,7 +47,11 @@
 
 	let label = $state('');
 	let busy = $state(false);
+	let fileInput: HTMLInputElement;
+	let importing = $state(false);
+	let exportingId = $state<string | null>(null);
 	let pageError = $state('');
+	let operationBusy = $derived(busy || importing || exportingId !== null || !!job);
 
 	// Selection is a mode rather than a permanent column: a row of checkboxes on every row
 	// makes the common case (read the list, restore one) look like a form to fill in.
@@ -106,6 +111,48 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	async function exportBackup(snapshot: SnapshotManifest): Promise<void> {
+		exportingId = snapshot.id;
+		pageError = '';
+		try {
+			const download = await backupStore.exportPortable(snapshot.id);
+			const link = document.createElement('a');
+			link.href = download.url;
+			link.download = download.filename;
+			link.style.display = 'none';
+			document.body.append(link);
+			link.click();
+			link.remove();
+			toastStore.success('Backup download started');
+		} catch (error) {
+			pageError = failureText('export that backup', error);
+		} finally {
+			exportingId = null;
+		}
+	}
+
+	async function importBackup(event: Event): Promise<void> {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		importing = true;
+		pageError = '';
+		try {
+			const manifest = await backupStore.importPortable(file);
+			toastStore.success(`Imported backup from ${formatDate(manifest.createdAt)}`);
+		} catch (error) {
+			pageError = failureText('import that backup', error);
+		} finally {
+			importing = false;
+		}
+	}
+
+	function kindLine(snapshot: SnapshotManifest): string {
+		if (snapshot.kind !== 'imported' || !snapshot.sourceKind) return KIND_LABEL[snapshot.kind];
+		return `${KIND_LABEL.imported} · ${KIND_LABEL[snapshot.sourceKind]}`;
 	}
 
 	async function openRestore(s: SnapshotManifest): Promise<void> {
@@ -323,11 +370,27 @@
 				bind:value={label}
 				maxlength="60"
 				placeholder="Optional note"
-				disabled={busy || !!job || !!pendingRestoreId}
+				disabled={operationBusy || !!pendingRestoreId}
 			/>
-			<Button size="sm" onclick={runBackup} disabled={busy || !!job || !!pendingRestoreId}>
+			<Button size="sm" onclick={runBackup} disabled={operationBusy || !!pendingRestoreId}>
 				Back up now
 			</Button>
+			<Button
+				size="sm"
+				variant="secondary"
+				onclick={() => fileInput?.click()}
+				disabled={operationBusy || !!pendingRestoreId}
+			>
+				<Icon name="upload" class="w-3.5 h-3.5" strokeWidth={1.75} />
+				{importing ? 'Importing…' : 'Import backup'}
+			</Button>
+			<input
+				bind:this={fileInput}
+				type="file"
+				class="hidden"
+				accept=".zip,application/zip,application/x-zip-compressed"
+				onchange={importBackup}
+			/>
 		</div>
 
 		{#if job}
@@ -381,7 +444,7 @@
 								class="pin"
 								class:on={s.pinned}
 								onclick={() => togglePin(s)}
-								disabled={!!pendingRestoreId}
+								disabled={operationBusy || !!pendingRestoreId}
 								title={s.pinned ? 'Pinned: never removed automatically' : 'Pin so it is never removed automatically'}
 								aria-label={s.pinned ? 'Unpin this backup' : 'Pin this backup'}
 								aria-pressed={s.pinned}
@@ -393,7 +456,7 @@
 						<div class="body">
 							<div class="line-1">
 								<span class="when">{formatRelativeTime(s.createdAt)}</span>
-								<span class="kind kind-{s.kind}">{KIND_LABEL[s.kind]}</span>
+								<span class="kind kind-{s.kind}">{kindLine(s)}</span>
 							</div>
 							<div class="line-2">
 								<span>{formatDate(s.createdAt)}</span>
@@ -419,8 +482,23 @@
 								<button
 									type="button"
 									class="act"
+									onclick={() => exportBackup(s)}
+									disabled={operationBusy || !!pendingRestoreId}
+									aria-label="Export this backup"
+									title="Download a portable ChungusHub backup"
+								>
+									{#if exportingId === s.id}
+										<Spinner size="sm" />
+									{:else}
+										<Icon name="download" class="w-3.5 h-3.5" strokeWidth={1.75} />
+									{/if}
+									<span class="act-label">{exportingId === s.id ? 'Preparing…' : 'Export'}</span>
+								</button>
+								<button
+									type="button"
+									class="act"
 									onclick={() => openRestore(s)}
-									disabled={stale || !!job || !!pendingRestoreId}
+									disabled={stale || operationBusy || !!pendingRestoreId}
 									title="Put your data back to this point"
 								>
 									<Icon name="refresh" class="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -430,7 +508,7 @@
 									type="button"
 									class="act danger"
 									onclick={() => (deleteTarget = s)}
-									disabled={!!job || !!pendingRestoreId}
+									disabled={operationBusy || !!pendingRestoreId}
 									aria-label="Delete this backup"
 									title="Delete this backup"
 								>
@@ -452,7 +530,8 @@
 				</button>
 				<p class="where-note">
 					{totalLine}. This folder holds your stories and your API keys, so treat it the way you
-					treat the app itself.
+					treat the app itself. Exported archives contain the same private data, but not your password
+					or device list.
 				</p>
 			</div>
 		{/if}

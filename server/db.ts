@@ -514,6 +514,8 @@ const MIGRATIONS: Migration[] = [
 /** The newest schema this build can produce. A snapshot recording a higher one was written
  *  by a newer app and cannot be restored here, since migrations only ever run forward. */
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
+/** Oldest database format for which this build still has a complete migration path. */
+export const BASELINE_SCHEMA_VERSION = MIGRATIONS[0]?.version ?? 0;
 
 /**
  * Exported for the two tests that need a schema without booting a server: `schema-upgrade.test.ts`,

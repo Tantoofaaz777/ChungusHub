@@ -33,6 +33,7 @@ import { assertBackupDirUsable } from './backup/paths';
 import { patchManifest, readManifest } from './backup/manifest';
 import { cancelPendingRestore, readJournal, resumeInterruptedRestore } from './backup/restore';
 import { ensureBackupStoreMarkers, sweepAbandonedSnapshots } from './backup/snapshot';
+import { sweepPortableTemps, takePreparedExport } from './backup/portable';
 import { restoreBlockedReason } from '../shared/backups';
 import {
 	copyImage,
@@ -734,6 +735,43 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 			console.error('[backup] snapshot failed:', error);
 		});
 		return json({ started: true }, 202);
+	}
+	if (path === '/api/backups/export' && req.method === 'POST') {
+		const { id } = (await req.json()) as { id?: string };
+		if (typeof id !== 'string') return json({ error: 'POST /api/backups/export expects { id }.' }, 400);
+		if (backupService.isBusy()) {
+			return json({ error: 'A backup operation is already running. Wait for it to finish, then try again.' }, 409);
+		}
+		try {
+			return json(await backupService.exportPortable(id));
+		} catch (error) {
+			return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+		}
+	}
+	if (path === '/api/backups/export/download' && req.method === 'GET') {
+		const download = takePreparedExport(url.searchParams.get('token') ?? '');
+		if (!download) return json({ error: 'This backup download is missing or has expired.' }, 404);
+		const fallback = download.filename.replace(/[^A-Za-z0-9._-]/g, '_');
+		return new Response(download.body, {
+			headers: {
+				'content-type': 'application/zip',
+				'content-length': String(download.size),
+				'content-disposition': `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(download.filename)}`,
+				'x-content-type-options': 'nosniff',
+				'cache-control': 'no-store'
+			}
+		});
+	}
+	if (path === '/api/backups/import' && req.method === 'POST') {
+		if (backupService.isBusy()) {
+			return json({ error: 'A backup operation is already running. Wait for it to finish, then try again.' }, 409);
+		}
+		try {
+			const manifest = await backupService.importPortable(req.body);
+			return json({ manifest });
+		} catch (error) {
+			return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+		}
 	}
 	if (path === '/api/backups/restore' && req.method === 'POST') {
 		const { id } = (await req.json()) as { id?: string };
@@ -1446,6 +1484,10 @@ const abandonedSnapshots = sweepAbandonedSnapshots();
 if (abandonedSnapshots > 0) {
 	console.log(`[backup] cleared ${abandonedSnapshots} half-written snapshot(s) from an interrupted job.`);
 }
+const abandonedPortableFiles = sweepPortableTemps();
+if (abandonedPortableFiles > 0) {
+	console.log(`[backup] cleared ${abandonedPortableFiles} unfinished portable archive file(s).`);
+}
 backupService.configure((scope) => broadcastSync(scope, null));
 backupService.pruneNow();
 backupService.startSchedule();
@@ -1500,8 +1542,10 @@ function serve(hostname: string) {
 	return Bun.serve<SocketData>({
 		port: PORT,
 		hostname,
-		// Allow large image uploads.
-		maxRequestBodySize: 64 * 1024 * 1024,
+		// Portable backups can be much larger than an image. Bun enforces this ceiling
+		// before the streaming importer sees the request; keep it high enough that the
+		// importer's live disk-space guard is the practical limit instead.
+		maxRequestBodySize: 1024 ** 4,
 
 		async fetch(req, srv) {
 			const url = new URL(req.url);

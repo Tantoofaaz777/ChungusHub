@@ -2,7 +2,9 @@ import {
 	cancelRestore,
 	deleteBackups,
 	getBackups,
+	importBackupArchive,
 	pinBackup,
+	prepareBackupExport,
 	startBackup,
 	startRestore
 } from '$lib/services/transport';
@@ -147,6 +149,16 @@ class BackupStore {
 	async restore(id: string): Promise<void> {
 		await startRestore(id);
 		await this.refresh();
+	}
+
+	async exportPortable(id: string): Promise<{ url: string; filename: string }> {
+		return prepareBackupExport(id);
+	}
+
+	async importPortable(file: File): Promise<SnapshotManifest> {
+		const manifest = await importBackupArchive(file);
+		await this.refresh();
+		return manifest;
 	}
 
 	/** Withdraws the claimed restore. Nothing to undo: the claim destroyed nothing yet. */

@@ -121,9 +121,12 @@ the app is writing to it can corrupt it.
 
 ChungusHub backs that folder up on its own, into a backups folder beside it,
 and always takes one before it upgrades its own database. Settings → Backups
-is where you change how often, and where you go back to an earlier one. Both
-folders hold your stories and your API keys, so copy them somewhere safe and
-treat that copy the way you treat this one.
+is where you change how often, go back to an earlier one, or export a portable
+ZIP for another installation. Importing that ZIP adds it to the other app's
+backup history so you can restore it there. The data folder, backup folder and
+exported ZIPs hold your stories and API keys, so keep them somewhere safe and
+treat them the way you treat the app itself. Portable snapshots do not carry
+the password or authorized-device list.
 
 The port and both folder locations live in chungushub.config.json, written
 beside the executable the first time you run it. Change "port" there if

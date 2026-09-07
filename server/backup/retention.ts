@@ -61,7 +61,11 @@ export function prunable(snapshots: SnapshotManifest[], settings: BackupSettings
 	// time sync) would read every snapshot as more than a year old and empty the timeline in
 	// one pass at boot, which is data loss caused by a wrong date. The count-based caps above
 	// need no clock and stand; this half stands down until the two agree again.
-	const newest = snapshots.reduce((max, s) => Math.max(max, s.createdAt), 0);
+	// Imported rows are portable restore points, not positions on this installation's
+	// timeline. A source machine with a future clock must not freeze local retention.
+	const newest = snapshots
+		.filter((snapshot) => snapshot.kind !== 'imported')
+		.reduce((max, snapshot) => Math.max(max, snapshot.createdAt), 0);
 	if (now < newest) return doomed;
 
 	const weeklyWindow = THIN_WEEKLY_WEEKS * WEEK;

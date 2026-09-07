@@ -24,12 +24,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { ZipFile as ZipWriter } from 'yazl';
 import { LATEST_SCHEMA_VERSION, MIGRATIONS_FOR_TESTS } from '../db';
 
 let dataDir: string;
 let backupDir: string;
 let snapshotMod: typeof import('./snapshot');
 let manifestMod: typeof import('./manifest');
+let portableMod: typeof import('./portable');
 
 /**
  * The real schema, applied through a connection this file owns.
@@ -67,6 +69,7 @@ beforeAll(async () => {
 	process.env.CHUNGUS_BACKUP_DIR = backupDir;
 	snapshotMod = await import('./snapshot');
 	manifestMod = await import('./manifest');
+	portableMod = await import('./portable');
 	buildDatabase();
 });
 
@@ -117,6 +120,15 @@ function seedChat(id: string, attachmentPath: string | null): void {
 		]
 	);
 	db.close();
+}
+
+async function zipBytes(entries: Array<[string, string | Uint8Array]>): Promise<Uint8Array> {
+	const zip = new ZipWriter();
+	for (const [name, body] of entries) zip.addBuffer(Buffer.from(body), name);
+	zip.end();
+	const chunks: Buffer[] = [];
+	for await (const chunk of zip.outputStream) chunks.push(Buffer.from(chunk));
+	return Buffer.concat(chunks);
 }
 
 describe('snapshot', () => {
@@ -241,5 +253,88 @@ describe('snapshot', () => {
 		expect(manifest.pinned).toBe(false);
 		manifestMod.patchManifest(manifest.id, { pinned: true });
 		expect(manifestMod.readManifest(manifest.id)?.pinned).toBe(true);
+	});
+});
+
+describe('portable backups', () => {
+	test('round-trips one snapshot through a streamed ZIP as an imported restore point', async () => {
+		writeImage('characters', 'portable.png', 'PORTABLE-IMAGE');
+		const source = await snapshotMod.createSnapshot({ kind: 'manual', label: 'take me elsewhere' });
+		const prepared = await portableMod.preparePortableExport(source.id);
+		const download = portableMod.takePreparedExport(prepared.token);
+		expect(download).not.toBeNull();
+		const archive = await new Response(download!.body).arrayBuffer();
+
+		const imported = await portableMod.importPortableBackup(new Response(archive).body);
+		expect(imported.kind).toBe('imported');
+		expect(imported.sourceKind).toBe('manual');
+		expect(imported.createdAt).toBe(source.createdAt);
+		expect(imported.label).toBe('take me elsewhere');
+		expect(imported.summary).toEqual(source.summary);
+		expect(manifestMod.readIndex(imported.id)).toEqual({});
+		expect(
+			readFileSync(join(backupDir, imported.id, 'data', 'images', 'characters', 'portable.png'), 'utf8')
+		).toBe('PORTABLE-IMAGE');
+		expect(existsSync(join(backupDir, imported.id, '.building'))).toBe(false);
+	});
+
+	test('rejects a file that is not a ZIP and leaves no staged snapshot behind', async () => {
+		const before = new Set(readdirSync(backupDir));
+		await expect(
+			portableMod.importPortableBackup(new Response('not an archive').body)
+		).rejects.toThrow();
+		const after = readdirSync(backupDir).filter((name) => !before.has(name));
+		expect(after).toEqual([]);
+	});
+
+	test('rejects unexpected and duplicate archive paths before extraction', async () => {
+		const unexpected = await zipBytes([
+			['backup.json', '{}'],
+			['data/chungushub.db', 'not used'],
+			['outside.txt', 'no']
+		]);
+		await expect(portableMod.importPortableBackup(new Response(unexpected).body)).rejects.toThrow(
+			'unexpected file'
+		);
+
+		const duplicate = await zipBytes([
+			['backup.json', '{}'],
+			['backup.json', '{}'],
+			['data/chungushub.db', 'not used']
+		]);
+		await expect(portableMod.importPortableBackup(new Response(duplicate).body)).rejects.toThrow(
+			'more than once'
+		);
+	});
+
+	test('rejects an archive with no database', async () => {
+		const archive = await zipBytes([['backup.json', '{}']]);
+		await expect(portableMod.importPortableBackup(new Response(archive).body)).rejects.toThrow(
+			'does not contain its database'
+		);
+	});
+
+	test('rejects a damaged database and removes the staged restore point', async () => {
+		const before = new Set(readdirSync(backupDir));
+		const archive = await zipBytes([
+			[
+				'backup.json',
+				JSON.stringify({
+					format: 'chungushub-backup',
+					formatVersion: 1,
+					exportedAt: Date.now(),
+					snapshot: {
+						id: 'damaged',
+						createdAt: Date.now(),
+						kind: 'manual',
+						schemaVersion: LATEST_SCHEMA_VERSION
+					}
+				})
+			],
+			['data/chungushub.db', 'definitely not sqlite']
+		]);
+		await expect(portableMod.importPortableBackup(new Response(archive).body)).rejects.toThrow();
+		const after = readdirSync(backupDir).filter((name) => !before.has(name));
+		expect(after).toEqual([]);
 	});
 });

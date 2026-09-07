@@ -29,6 +29,7 @@ import { listSnapshots } from './manifest';
 import { prunable } from './retention';
 import { snapshotPath } from './paths';
 import { beginRestore, readJournal } from './restore';
+import { importPortableBackup, preparePortableExport } from './portable';
 import { scheduleDecision } from './schedule';
 
 const SETTINGS_KEY = 'backupSettings';
@@ -229,6 +230,43 @@ class BackupService {
 		);
 	}
 
+	/** Build a short-lived portable archive without replacing the efficient snapshot store. */
+	async exportPortable(id: string): Promise<{ token: string; filename: string }> {
+		const target = listSnapshots().snapshots.find((snapshot) => snapshot.id === id);
+		if (!target) throw new Error(`No readable snapshot named "${id}".`);
+		return this.withLock(
+			{
+				kind: 'export',
+				snapshotId: id,
+				phase: 'Preparing download',
+				filesDone: 0,
+				filesTotal: target.fileCount,
+				startedAt: Date.now()
+			},
+			async (update) =>
+				preparePortableExport(id, (progress) => update(progress))
+		);
+	}
+
+	/** Receive and commit one portable archive as a restore point in History. */
+	async importPortable(body: ReadableStream<Uint8Array> | null): Promise<SnapshotManifest> {
+		return this.withLock(
+			{
+				kind: 'import',
+				snapshotId: '',
+				phase: 'Receiving backup',
+				filesDone: 0,
+				filesTotal: 0,
+				startedAt: Date.now()
+			},
+			async (update) => {
+				const manifest = await importPortableBackup(body, (progress) => update(progress));
+				update({ snapshotId: manifest.id });
+				return manifest;
+			}
+		);
+	}
+
 	/** Apply retention outside a job: boot's own call, once the database is readable. */
 	pruneNow(): void {
 		if (this.locked) return;
@@ -402,7 +440,7 @@ class BackupService {
 		this.persistedAt = this.changedAt;
 		// Read before the first request can arrive, so the very first change after a launch
 		// still knows whether it is the one that has to reach the disk.
-		this.anchorAt = listSnapshots().snapshots[0]?.createdAt ?? 0;
+		this.anchorAt = listSnapshots().snapshots.find((snapshot) => snapshot.kind !== 'imported')?.createdAt ?? 0;
 		const tick = () => {
 			try {
 				this.maybeScheduled();
@@ -432,7 +470,7 @@ class BackupService {
 			return;
 		}
 
-		const newest = listSnapshots().snapshots[0] ?? null;
+		const newest = listSnapshots().snapshots.find((snapshot) => snapshot.kind !== 'imported') ?? null;
 		this.anchorAt = newest?.createdAt ?? 0;
 		const decision = scheduleDecision({
 			now: Date.now(),

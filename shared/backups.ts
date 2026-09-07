@@ -7,7 +7,10 @@
  * Why a snapshot exists. It decides the retention class it falls into and the words its
  * row uses, and it is stamped once at creation. Nothing ever reclassifies a snapshot.
  */
-export type SnapshotKind = 'manual' | 'scheduled' | 'preUpgrade' | 'preRestore';
+export type SnapshotKind = 'manual' | 'scheduled' | 'preUpgrade' | 'preRestore' | 'imported';
+
+/** The kinds an imported portable archive may have had on its source installation. */
+export type SourceSnapshotKind = Exclude<SnapshotKind, 'imported'>;
 
 /** What the snapshot holds, counted while it is taken so no listing has to open a database. */
 export interface SnapshotSummary {
@@ -54,6 +57,9 @@ export interface SnapshotManifest {
 	linked: boolean;
 	/** Anything the snapshot could not guarantee, stated on its row rather than swallowed. */
 	warnings: string[];
+	/** Present only after a portable archive is imported. Kept for provenance while `kind`
+	 *  becomes `imported`, so it cannot affect this installation's backup schedule. */
+	sourceKind?: SourceSnapshotKind;
 }
 
 /** How often unattended snapshots are taken. Hours, so the timer needs no calendar. */
@@ -90,7 +96,7 @@ export const THIN_MONTHLY_MONTHS = 12;
 
 /** What a job is doing right now. One job runs at a time, server-wide. */
 export interface BackupJobState {
-	kind: 'snapshot' | 'restore';
+	kind: 'snapshot' | 'restore' | 'export' | 'import';
 	/** The snapshot being written, or the one being restored from. */
 	snapshotId: string;
 	/** One short sentence for the row: what is happening now. */
@@ -99,6 +105,17 @@ export interface BackupJobState {
 	filesTotal: number;
 	startedAt: number;
 }
+
+/** Stable wrapper stored at the root of a portable backup ZIP. */
+export interface PortableBackupEnvelope {
+	format: 'chungushub-backup';
+	formatVersion: 1;
+	exportedAt: number;
+	snapshot: SnapshotManifest;
+}
+
+export const PORTABLE_BACKUP_FORMAT = 'chungushub-backup' as const;
+export const PORTABLE_BACKUP_VERSION = 1 as const;
 
 export interface BackupsPayload {
 	snapshots: SnapshotManifest[];

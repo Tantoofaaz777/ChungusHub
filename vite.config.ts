@@ -201,7 +201,9 @@ export default defineConfig({
 			'gpt-tokenizer/encoding/cl100k_base',
 			'gpt-tokenizer/encoding/o200k_base',
 			'marked',
-			'svelte-dnd-action'
+			'svelte-dnd-action',
+			'yauzl',
+			'yazl'
 		]
 	},
 	server: {
