@@ -22,6 +22,9 @@
 		clearSelection,
 		requestDelete,
 		allowMessageSearch = true,
+		showSearch = true,
+		mobileActions = false,
+		iconSort = false,
 		listboxId,
 		activeDescendant,
 		leading,
@@ -45,14 +48,30 @@
 		clearSelection: () => void;
 		requestDelete: () => void;
 		allowMessageSearch?: boolean;
+		showSearch?: boolean;
+		mobileActions?: boolean;
+		iconSort?: boolean;
 		listboxId?: string;
 		activeDescendant?: string;
 		leading?: Snippet;
 		compact?: boolean;
 	} = $props();
 	let moreMenuOpen = $state(false);
-	let moreButton: HTMLButtonElement;
-	let sortButton: HTMLButtonElement;
+	let moreButton = $state<HTMLButtonElement>();
+	let sortButton = $state<HTMLButtonElement>();
+	let sortRoot = $state<HTMLDivElement>();
+	let moreRoot = $state<HTMLDivElement>();
+
+	$effect(() => {
+		if (!sortMenuOpen && !moreMenuOpen) return;
+		const onPointerDown = (event: PointerEvent) => {
+			const target = event.target as Node;
+			if (sortMenuOpen && !sortRoot?.contains(target)) sortMenuOpen = false;
+			if (moreMenuOpen && !moreRoot?.contains(target)) moreMenuOpen = false;
+		};
+		document.addEventListener('pointerdown', onPointerDown, true);
+		return () => document.removeEventListener('pointerdown', onPointerDown, true);
+	});
 
 	function closeMenus(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || (!moreMenuOpen && !sortMenuOpen)) return;
@@ -88,6 +107,7 @@
 
 <div class="chats-controls" class:compact>
 	{#if leading}{@render leading()}{/if}
+	{#if showSearch}
 	<div class="chats-search input-base">
 		<Icon name="search" class="w-4 h-4 chats-search-icon" />
 		<!-- The field keeps focus while the arrows drive the list below it, so the
@@ -141,6 +161,7 @@
 		</button>
 		{/if}
 	</div>
+	{/if}
 
 	<!-- Filters ride the controls row as icon toggles rather than a row of their
 	     own: a second header line for two switches is a lot of panel to spend. -->
@@ -161,7 +182,8 @@
 	{#if twinsInScope || filterMode === 'duplicates'}
 		<button
 			type="button"
-			class="chats-toggle mobile-secondary"
+			class="chats-toggle"
+			class:mobile-secondary={!mobileActions}
 			class:is-on={filterMode === 'duplicates'}
 			aria-pressed={filterMode === 'duplicates'}
 			title="Show only chats whose content is identical to another chat's"
@@ -174,7 +196,8 @@
 
 	<button
 		type="button"
-		class="chats-toggle mobile-secondary"
+		class="chats-toggle"
+		class:mobile-secondary={!mobileActions}
 		class:is-on={selecting}
 		aria-pressed={selecting}
 		title="Pick several chats"
@@ -184,19 +207,26 @@
 		<Icon name="checkCircle" class="w-4 h-4" />
 	</button>
 
-	<div class="chats-sort">
+	<div class="chats-sort" bind:this={sortRoot}>
 		<button
 			bind:this={sortButton}
 			onkeydown={closeMenus}
 			type="button"
 			class="chats-sort-btn"
+			class:chats-sort-icon={iconSort}
+			aria-label={iconSort ? 'Sort chats' : undefined}
+			title={iconSort ? `Sort by ${sortLabel(sortKey)}` : undefined}
 			aria-haspopup="menu"
 			aria-expanded={sortMenuOpen}
 			onclick={() => { moreMenuOpen = false; sortMenuOpen = !sortMenuOpen; }}
 		>
-			<span class="chats-sort-caption">Sort</span>
-			<span>{sortLabel(sortKey)}</span>
-			<Icon name="chevronDown" class="w-3.5 h-3.5 text-text-muted" />
+			{#if iconSort}
+				<Icon name="filter" class="w-4 h-4" />
+			{:else}
+				<span class="chats-sort-caption">Sort</span>
+				<span>{sortLabel(sortKey)}</span>
+				<Icon name="chevronDown" class="w-3.5 h-3.5 text-text-muted" />
+			{/if}
 		</button>
 		<button
 			type="button"
@@ -209,28 +239,12 @@
 		</button>
 
 		{#if sortMenuOpen}
-			<div
-				class="chats-scrim"
-				onclick={() => (sortMenuOpen = false)}
-				onkeydown={(e) => {
-					if (e.key === 'Escape') {
-						// Consume the press so the window handler doesn't see the menu
-						// already closed and close the whole panel on the same event.
-						e.preventDefault();
-						e.stopPropagation();
-						sortMenuOpen = false;
-					}
-				}}
-				role="button"
-				tabindex="-1"
-				aria-label="Close menu"
-			></div>
 			<div class="chats-sort-menu surface-float" role="menu" tabindex="-1" onkeydown={(event) => {
 				if (event.key === 'Escape') {
 					event.preventDefault();
 					event.stopPropagation();
 					sortMenuOpen = false;
-					searchInputEl?.focus();
+					(searchInputEl ?? sortButton)?.focus();
 				}
 			}}>
 				{#each SORT_OPTIONS as opt (opt.key)}
@@ -264,7 +278,8 @@
 			</div>
 		{/if}
 	</div>
-	<div class="chats-more">
+	{#if !mobileActions}
+	<div class="chats-more" bind:this={moreRoot}>
 		<button
 			bind:this={moreButton}
 			onkeydown={closeMenus}
@@ -276,7 +291,6 @@
 			<Icon name="dotsVertical" class="w-4 h-4" />
 		</button>
 		{#if moreMenuOpen}
-			<button type="button" class="chats-scrim" aria-label="Close menu" tabindex="-1" onkeydown={closeMenus} onclick={() => (moreMenuOpen = false)}></button>
 			<div class="chats-sort-menu surface-float" role="menu" aria-label="More chat options" tabindex="-1" onkeydown={closeMenus}>
 				{#if twinsInScope || filterMode === 'duplicates'}
 					<button type="button" role="menuitemcheckbox" aria-checked={filterMode === 'duplicates'}
@@ -295,6 +309,7 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 </div>
 
 <!-- The picking bar: count and scope on the left, the one destructive action on the
@@ -445,6 +460,8 @@
 		color: var(--color-text-primary);
 		border-color: var(--color-border);
 	}
+
+	.chats-sort-icon { width: 2.4rem; padding: 0; justify-content: center; }
 
 	.chats-sort-caption {
 		font-size: 0.7rem;
@@ -608,8 +625,6 @@
 		color: var(--color-accent);
 	}
 
-	.chats-scrim { position: fixed; inset: 0; z-index: 10; }
-
 	.compact .chats-sort-caption { display: none; }
 	.compact .chats-search { flex-basis: 6rem; }
 	.chats-more { display: none; position: relative; }
@@ -624,5 +639,6 @@
 		.chats-search-btn { width: 2.15rem; height: 2.15rem; }
 		.chats-search, .chats-sort-btn { height: 2.75rem; }
 		.chats-toggle, .chats-sort-dir { width: 2.75rem; height: 2.75rem; }
+		.chats-sort-icon { width: 2.75rem; }
 	}
 </style>

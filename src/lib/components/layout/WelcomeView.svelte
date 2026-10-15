@@ -12,6 +12,7 @@
 	import { chatCastStore } from '$lib/stores/chatCast.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
+	import { viewport } from '$lib/stores/viewport.svelte';
 
 	let chats = $derived(chatStore.sortedChats);
 	// Only chats that have actually been written in are worth resuming: a fresh
@@ -20,7 +21,7 @@
 	let expanded = $state(false);
 	let visibleCount = $state(3);
 	let searchQuery = $state('');
-	let query = $derived(searchQuery.trim());
+	let query = $derived(viewport.isMobile ? '' : searchQuery.trim());
 	let sortKey = $state<SortKey>('activity');
 	let sortDir = $state<SortDir>('desc');
 	let filterMode = $state<FilterMode>('all');
@@ -136,7 +137,7 @@
 			<div class="actions">
 				<ChatBrowserControls
 					bind:searchQuery bind:sortKey bind:sortDir bind:filterMode
-					allowMessageSearch={false} compact
+					allowMessageSearch={false} showSearch={!viewport.isMobile} mobileActions iconSort compact
 					{twinsInScope} {selecting} {toggleSelecting} {selectedCount} {allVisibleSelected}
 					visibleCount={recent.length} {selectAllVisible}
 					clearSelection={() => (selectedIds = new Set())}
