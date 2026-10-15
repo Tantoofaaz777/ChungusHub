@@ -28,6 +28,7 @@
 		type PromptPostProcessingMode
 	} from '$lib/types/llm';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
+	import SliderValueInput from '$lib/components/ui/SliderValueInput.svelte';
 	import { formatPricePerMillion, formatContext, formatMonthYear } from '$lib/utils/modelFormat';
 	import {
 		SAMPLING_SLIDERS,
@@ -160,8 +161,8 @@
 
 	// Both token sliders ride a fixed ladder that splits every octave into 16 rungs, so
 	// the step tracks the magnitude (1,024 around 16k, 65,536 around 1M) and every rung
-	// lands on a round number. The ladder is the dragging instrument only: the readout
-	// beside it is an input, so no exact figure depends on hitting a rung, and the range
+	// lands on a round number. The ladder is the dragging instrument only: the field
+	// below it accepts exact figures without depending on a rung, and the range
 	// ends at a sanity cap rather than at whatever the selected model happens to report.
 	// Storage stays raw tokens: an off-ladder saved value keeps displaying exactly.
 	const RUNGS_PER_OCTAVE = 16;
@@ -182,24 +183,6 @@
 			if (Math.abs(rungs[i] - value) < Math.abs(rungs[best] - value)) best = i;
 		}
 		return best;
-	}
-
-	/** A typed token count, capped; null while the field holds nothing usable. */
-	function parseTokenField(raw: string, max: number): number | null {
-		const n = parseInt(raw.replace(/[^0-9]/g, ''), 10);
-		if (!Number.isFinite(n) || n < 1) return null;
-		return Math.min(n, max);
-	}
-
-	// A focused readout shows raw digits (typing shouldn't fight thousands separators)
-	// and renders from this draft rather than from the store, so a stripped character
-	// can't move the caret mid-edit. Unfocused, both read formatted.
-	let editingField = $state<'context' | 'response' | null>(null);
-	let tokenDraft = $state('');
-
-	function beginEdit(field: 'context' | 'response', value: number): void {
-		editingField = field;
-		tokenDraft = String(value);
 	}
 
 	const CONTEXT_LADDER = tokenLadder(1024, MAX_CONTEXT_SIZE);
@@ -636,25 +619,6 @@
 								reset
 							</button>
 						{/if}
-						<input
-							type="text"
-							inputmode="numeric"
-							class="slider-value value-input"
-							class:engaged={conn.contextSize !== DEFAULT_CONTEXT_SIZE}
-							aria-label="Context window in tokens"
-							title="Type an exact token count"
-							value={editingField === 'context' ? tokenDraft : conn.contextSize.toLocaleString()}
-							onfocus={() => beginEdit('context', conn!.contextSize)}
-							onblur={() => (editingField = null)}
-							onkeydown={(e) => {
-								if (e.key === 'Enter') e.currentTarget.blur();
-							}}
-							oninput={(e) => {
-								tokenDraft = e.currentTarget.value;
-								const n = parseTokenField(tokenDraft, MAX_CONTEXT_SIZE);
-								if (n !== null) commitContextSize(n);
-							}}
-						/>
 					</div>
 				</div>
 				<input
@@ -668,6 +632,8 @@
 					oninput={(e) => commitContextSize(CONTEXT_LADDER[parseInt(e.currentTarget.value)])}
 					use:rangeReset={{ defaultValue: ctxDefaultIdx, apply: (i) => commitContextSize(CONTEXT_LADDER[i]) }}
 				/>
+				<SliderValueInput value={conn.contextSize} min={1} max={MAX_CONTEXT_SIZE}
+					groupedInteger label="Context window in tokens" onchange={commitContextSize} />
 				{#if modelInfo?.contextLength && !ctxOverModelWindow}
 					<span class="slider-note">Model max: {modelInfo.contextLength.toLocaleString()} tokens.</span>
 				{/if}
@@ -699,24 +665,6 @@
 				<div class="slider-block">
 					<div class="slider-top">
 						<label for="max-tokens" class="slider-label">Max tokens</label>
-						<input
-							type="text"
-							inputmode="numeric"
-							class="slider-value value-input"
-							aria-label="Max response tokens"
-							title="Type an exact token count"
-							value={editingField === 'response' ? tokenDraft : gen.maxTokens.toLocaleString()}
-							onfocus={() => beginEdit('response', gen.maxTokens)}
-							onblur={() => (editingField = null)}
-							onkeydown={(e) => {
-								if (e.key === 'Enter') e.currentTarget.blur();
-							}}
-							oninput={(e) => {
-								tokenDraft = e.currentTarget.value;
-								const n = parseTokenField(tokenDraft, MAX_RESPONSE_TOKENS);
-								if (n !== null) updateGen('maxTokens', n);
-							}}
-						/>
 					</div>
 					<input
 						id="max-tokens"
@@ -729,6 +677,8 @@
 						oninput={(e) => updateGen('maxTokens', RESPONSE_LADDER[parseInt(e.currentTarget.value)])}
 						use:rangeReset={{ defaultValue: responseDefaultIdx, apply: (i) => updateGen('maxTokens', RESPONSE_LADDER[i]) }}
 					/>
+					<SliderValueInput value={gen.maxTokens} min={1} max={MAX_RESPONSE_TOKENS}
+						groupedInteger label="Max response tokens" onchange={(value) => updateGen('maxTokens', value)} />
 					{#if maxTokensCeiling && maxTokensCeiling < gen.maxTokens}
 						<span class="slider-note warn">This model caps output at {maxTokensCeiling.toLocaleString()} tokens.</span>
 					{:else if maxTokensCeiling}
@@ -859,7 +809,7 @@
 			<div class="card-head">
 				<span class="card-title">Sampling Parameters</span>
 				<InfoTip
-					text="The sampling values sent with every generation on this connection, and only what it actually sends appears here. Double-click a slider to reset it."
+					text="The sampling values sent with every generation on this connection, and only what it actually sends appears here. Drag a slider or type in the field below it. Press Enter or leave the field to apply. Double-click a slider to reset it."
 				/>
 			</div>
 
@@ -906,7 +856,6 @@
 								<label for={`gen-${p.key}`} class="slider-label">{p.label}</label>
 								<InfoTip text={p.info} />
 							</div>
-							<span class="slider-value">{p.int ? gen[p.key] : gen[p.key].toFixed(2)}</span>
 						</div>
 						<input
 							id={`gen-${p.key}`}
@@ -919,6 +868,8 @@
 							oninput={(e) => updateGen(p.key, p.int ? parseInt(e.currentTarget.value) : parseFloat(e.currentTarget.value))}
 							use:rangeReset={{ defaultValue: DEFAULT_GENERATION_SETTINGS[p.key], apply: (v) => updateGen(p.key, v) }}
 						/>
+						<SliderValueInput value={gen[p.key]} min={p.min} max={p.max} step={p.step}
+							label={`${p.label} value`} onchange={(value) => updateGen(p.key, value)} />
 						{#if p.key === 'temperature' && modelInfo?.defaultTemperature != null}
 							<span class="slider-note">This model suggests {modelInfo.defaultTemperature.toFixed(2)}.</span>
 						{/if}
@@ -1075,30 +1026,6 @@
 		text-decoration-style: solid;
 	}
 
-	/* The token readouts are fields, not labels: the sliders are for coarse dragging
-	   and this is where an exact figure gets typed. Chromeless until hovered so the
-	   card still reads as a row of values rather than a form. */
-	.value-input {
-		width: 5.9rem;
-		padding: 0.12rem 0.3rem;
-		border: 1px solid transparent;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		font-variant-numeric: tabular-nums;
-		transition: border-color 90ms ease, background 90ms ease;
-	}
-
-	.value-input:hover {
-		border-color: color-mix(in srgb, var(--color-border-subtle) 75%, transparent);
-	}
-
-	.value-input:focus {
-		outline: none;
-		color: var(--color-text-primary);
-		border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
-		background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-	}
-
 	/* ===== Request ===== */
 	.req-sec {
 		display: flex;
@@ -1253,10 +1180,6 @@
 	}
 
 	/* ===== Control rows: local additions; the shared recipes live in app.css ===== */
-	.slider-value.engaged {
-		color: var(--color-accent);
-	}
-
 	.seed-input {
 		width: 100%;
 		padding: 0.45rem 0.6rem;
