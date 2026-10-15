@@ -7,6 +7,7 @@
 	 * stories replayable.
 	 */
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
@@ -27,11 +28,7 @@
 	let defaultVersionId = $derived(characterLibraryStore.chatVersionSeed(entryId));
 
 	let open = $state(false);
-	let menuRef = $state<HTMLDivElement | null>(null);
 	let busy = $state(false);
-	// Right-align the dropdown when the anchor sits too close to the viewport's
-	// right edge for the fixed-width panel to fit.
-	let alignRight = $state(false);
 
 	// Chats pinned per version, fetched when the menu opens so rows can show which
 	// variants anchor stories, and so delete can warn before the store refuses.
@@ -54,27 +51,6 @@
 	$effect(() => {
 		if (!open) return;
 		void characterLibraryStore.versionUsage(entryId).then((u) => (usage = u));
-		if (menuRef) {
-			alignRight = menuRef.getBoundingClientRect().left + 270 > window.innerWidth - 8;
-		}
-		const onDown = (e: MouseEvent) => {
-			if (menuRef && !menuRef.contains(e.target as Node)) closeMenu();
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				// Consume the press so the workspace's global Esc doesn't also
-				// close the hosting Library panel.
-				e.preventDefault();
-				e.stopPropagation();
-				closeMenu();
-			}
-		};
-		document.addEventListener('mousedown', onDown);
-		document.addEventListener('keydown', onKey);
-		return () => {
-			document.removeEventListener('mousedown', onDown);
-			document.removeEventListener('keydown', onKey);
-		};
 	});
 
 	async function handleCreate() {
@@ -151,13 +127,13 @@
 	}
 </script>
 
-<div class="relative" bind:this={menuRef}>
+<div>
 	<button
 		type="button"
 		onclick={() => (open ? closeMenu() : (open = true))}
 		class="version-chip"
 		class:is-open={open}
-		aria-haspopup="menu"
+		aria-haspopup="dialog"
 		aria-expanded={open}
 		title={activeVersion ? `Version: ${activeVersion.name}` : 'Versions'}
 	>
@@ -166,12 +142,8 @@
 		<Icon name="chevronDown" class="w-3 h-3" />
 	</button>
 
-	{#if open}
-		<div
-			role="menu"
-			class="surface-float absolute top-full {alignRight ? 'right-0' : 'left-0'} mt-1 w-[270px] max-w-[calc(100vw-1rem)] py-1.5 rounded-[var(--radius-lg)] z-50"
-			style="box-shadow: var(--shadow-md);"
-		>
+	<Dialog {open} onClose={closeMenu} title="Versions" titleAlign="left" size="sm" placement="center" bare>
+		<div class="min-h-0 panel-scroll overscroll-contain py-1.5">
 			{#if versions.length === 0}
 				<p class="px-3 py-1.5 text-[11px] leading-relaxed font-ui text-text-muted">
 					Fork the current state into a named version before reworking it. Chats keep
@@ -198,6 +170,7 @@
 										}
 									}}
 									placeholder="Version name"
+									data-dialog-initial-focus
 									maxlength="60"
 									autofocus
 								/>
@@ -271,6 +244,7 @@
 							}
 						}}
 						placeholder='Name it: "pirate", "calmer", …'
+						data-dialog-initial-focus
 						maxlength="60"
 						autofocus
 					/>
@@ -291,7 +265,7 @@
 				</button>
 			{/if}
 		</div>
-	{/if}
+	</Dialog>
 </div>
 
 <style>

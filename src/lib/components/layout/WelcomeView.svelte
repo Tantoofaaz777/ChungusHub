@@ -1,8 +1,11 @@
 <script lang="ts">
-	import BrandGlyph from '$lib/components/ui/BrandGlyph.svelte';
+	import ChatBrowserControls from '$lib/components/sidebar/ChatBrowserControls.svelte';
+	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
+	import { db } from '$lib/services/database';
+	import type { ChatListStats } from '$lib/types/chat';
+	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '$lib/utils/chat-browser';
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import { MOD_KEY } from '$lib/components/ui/ShortcutsSheet.svelte';
-	import { LINKS } from '$lib/config/links';
 	import ChatAvatars from '$lib/components/sidebar/ChatAvatars.svelte';
 	import { formatRelativeTime } from '$lib/utils/date';
 	import { chatStore } from '$lib/stores/chat.svelte';
@@ -16,14 +19,68 @@
 	let resumable = $derived(chats.filter((c) => c.rootMessageId !== null));
 	let expanded = $state(false);
 	let visibleCount = $state(3);
-	let recent = $derived(resumable.slice(0, expanded ? visibleCount : 3));
+	let searchQuery = $state('');
+	let query = $derived(searchQuery.trim());
+	let sortKey = $state<SortKey>('activity');
+	let sortDir = $state<SortDir>('desc');
+	let filterMode = $state<FilterMode>('all');
+	let stats = $state<Record<string, ChatListStats>>({});
+	let twinGroups = $state<Record<string, string>>({});
+	$effect(() => {
+		void chats;
+		let cancelled = false;
+		Promise.all([db.getChatListStats(), db.getChatContentGroups()])
+			.then(([nextStats, nextGroups]) => {
+				if (cancelled) return;
+				stats = nextStats;
+				twinGroups = nextGroups;
+			})
+			.catch((error) => console.error('Failed to load welcome chat stats:', error));
+		return () => { cancelled = true; };
+	});
+	let twinCounts = $derived(chatTwinCounts(chats, twinGroups));
+	let twinsInScope = $derived(chats.some((chat) => (twinCounts[chat.id] ?? 0) > 1));
+	let selecting = $state(false);
+	let selectedIds = $state<Set<string>>(new Set());
+	let bulkDeleteOpen = $state(false);
+	let browsing = $derived(!!query || filterMode !== 'all' || selecting || sortKey !== 'activity' || sortDir !== 'desc');
+	let filteredChats = $derived(filterAndSortChats(browsing ? chats : resumable, {
+		query, filter: filterMode, sort: sortKey, direction: sortDir, stats, twins: twinCounts
+	}));
+	let recent = $derived(browsing ? filteredChats : filteredChats.slice(0, expanded ? visibleCount : 3));
+	let selectedChats = $derived(chats.filter((chat) => selectedIds.has(chat.id)));
+	let selectedCount = $derived(selectedChats.length);
+	let allVisibleSelected = $derived(recent.length > 0 && recent.every((chat) => selectedIds.has(chat.id)));
+	let bulkDeleteStats = $derived(selectedChats.reduce((total, chat) => total + (stats[chat.id]?.total ?? 0), 0));
+	let bulkDeleteMessage = $derived(
+		`Delete ${selectedCount} chat${selectedCount === 1 ? '' : 's'} and ${bulkDeleteStats} message${bulkDeleteStats === 1 ? '' : 's'} in total? This cannot be undone.`
+	);
+	function toggleSelecting() {
+		selecting = !selecting;
+		if (!selecting) selectedIds = new Set();
+	}
+	function toggleSelect(chatId: string) {
+		const next = new Set(selectedIds);
+		if (!next.delete(chatId)) next.add(chatId);
+		selectedIds = next;
+	}
+	function selectAllVisible() {
+		selectedIds = new Set([...selectedIds, ...recent.map((chat) => chat.id)]);
+	}
+	async function confirmBulkDelete() {
+		const ids = selectedChats.map((chat) => chat.id);
+		bulkDeleteOpen = false;
+		selectedIds = new Set();
+		selecting = false;
+		await chatStore.deleteChats(ids);
+	}
 
 	// Free room under the content, measured off the flexible spacer while collapsed.
 	// Expanding fills that room instead of scrolling; ROW_PX ≈ card height + list gap,
-	// and RESERVE_PX keeps air above the community links instead of crowding them.
+	// and RESERVE_PX leaves a little space below the expanded list.
 	let spareHeight = $state(0);
 	const ROW_PX = 75;
-	const RESERVE_PX = 96;
+	const RESERVE_PX = 32;
 
 	function toggleExpand() {
 		if (expanded) {
@@ -37,25 +94,14 @@
 
 	// Opening a chat is what retires the landing, and chatStore handles the dismissal.
 	function continueStory(chatId: string) {
-		chatStore.selectChat(chatId);
+		if (selecting) toggleSelect(chatId);
+		else chatStore.selectChat(chatId);
 	}
 
 	// The two-step New chat flow: the Library opens on Characters, then Personas,
 	// then a fresh chat is created for the picked pair (uiStore.startNewChat).
 	function newChat() {
 		uiStore.startNewChat(() => lorebookStore.flush());
-	}
-
-	// Same flush the Workspace shortcuts pass: a docked panel over the welcome may
-	// hold unsaved lorebook edits.
-	function openChats() {
-		uiStore.toggleOverlay('chats', () => lorebookStore.flush());
-	}
-
-	// Stats belong to the library rather than to any one chat, so this landing and the
-	// composer's menu are its doors: the TitleBar cluster is the open chat's own tools.
-	function openStats() {
-		uiStore.toggleOverlay('stats', () => lorebookStore.flush());
 	}
 
 	// A toggle, not an open: the docked Library leaves this landing visible and
@@ -70,15 +116,6 @@
 		uiStore.openLibrary(() => lorebookStore.flush());
 	}
 
-	const modKey = MOD_KEY;
-
-	// Community links. They leave the app, so they open in a new tab: the workspace
-	// is a running session with unsaved composer drafts, and navigating it away to
-	// read a repo page is never what the click meant.
-	const socials = [
-		{ key: 'github', label: 'GitHub', href: LINKS.repo },
-		{ key: 'discord', label: 'Discord', href: LINKS.discord }
-	] as const;
 </script>
 
 <div class="welcome panel-scroll">
@@ -90,51 +127,44 @@
 					<img class="logo-mark" src="/mark.svg" alt="" />
 				</div>
 
-				<p class="eyebrow">
-					<span class="eyebrow-rule" aria-hidden="true"></span>
-					<span>Story Workspace</span>
-					<span class="eyebrow-rule" aria-hidden="true"></span>
-				</p>
-				<h1 class="brand">ChungusHub</h1>
+				<div class="brand-copy">
+					<h1 class="brand">ChungusHub</h1>
+					<p class="tagline">Your stories, your way.</p>
+				</div>
 			</header>
 
 			<div class="actions">
-				<button type="button" class="action action-primary" onclick={newChat}>
-					<Icon name="plus" class="w-4 h-4" />
-					<span>New chat</span>
-					<kbd class="action-kbd action-kbd-primary">{modKey} N</kbd>
-				</button>
-				<button type="button" class="action action-ghost" onclick={openChats}>
-					<Icon name="chat" class="w-4 h-4" />
-					<span>Chats</span>
-					<kbd class="action-kbd">{modKey} K</kbd>
-				</button>
-				<button type="button" class="action action-ghost" onclick={toggleLibrary}>
-					<Icon name="bookOpen" class="w-4 h-4" />
-					<span>Library</span>
-					<kbd class="action-kbd">{modKey} L</kbd>
-				</button>
-				<button type="button" class="action action-ghost" onclick={openStats}>
-					<Icon name="chart" class="w-4 h-4" />
-					<span>Your stats</span>
-				</button>
+				<ChatBrowserControls
+					bind:searchQuery bind:sortKey bind:sortDir bind:filterMode
+					allowMessageSearch={false} compact
+					{twinsInScope} {selecting} {toggleSelecting} {selectedCount} {allVisibleSelected}
+					visibleCount={recent.length} {selectAllVisible}
+					clearSelection={() => (selectedIds = new Set())}
+					requestDelete={() => (bulkDeleteOpen = true)}
+				>
+					{#snippet leading()}
+						<button type="button" class="action action-primary" aria-label="New chat" title="New chat" onclick={newChat}>
+							<Icon name="plus" class="w-4 h-4" />
+						</button>
+						<button type="button" class="action action-ghost" aria-label="Library" title="Library" onclick={toggleLibrary}>
+							<Icon name="bookOpen" class="w-4 h-4" />
+						</button>
+					{/snippet}
+				</ChatBrowserControls>
 			</div>
 
 			{#if recent.length}
 				<section class="recent" aria-label="Recent chats">
-					<div class="section-head">
-						<h2 class="section-title">Continue</h2>
-						<span class="section-rule" aria-hidden="true"></span>
-						<button type="button" class="section-link" onclick={openChats}>
-							All chats
-						</button>
-					</div>
-
 					<div class="recent-list">
 						{#each recent as chat (chat.id)}
 							{@const cast = chatCastStore.charactersForChat(chat.id)}
 							{@const persona = chatCastStore.personaForChat(chat.id)}
-							<button type="button" class="recent-card" onclick={() => continueStory(chat.id)}>
+							<button type="button" class="recent-card" class:is-selected={selecting && selectedIds.has(chat.id)} aria-pressed={selecting ? selectedIds.has(chat.id) : undefined} onclick={() => continueStory(chat.id)}>
+								{#if selecting}
+									<span class="selection-check" class:is-checked={selectedIds.has(chat.id)} aria-hidden="true">
+										{#if selectedIds.has(chat.id)}<Icon name="check" class="w-3.5 h-3.5" />{/if}
+									</span>
+								{/if}
 								<div class="recent-faces">
 									{#if cast.length}
 										<ChatAvatars members={cast} size={40} max={3} />
@@ -145,15 +175,16 @@
 								<div class="recent-text">
 									<span class="recent-title">{chat.title}</span>
 									<span class="recent-meta">
-										{formatRelativeTime(chat.updatedAt)}{#if persona}<span class="recent-meta-sep" aria-hidden="true">·</span>as {persona.name}{/if}
+										{formatRelativeTime(chatActivityAt(chat, stats))}{#if persona}<span class="recent-meta-sep" aria-hidden="true">·</span>as {persona.name}{/if}
 									</span>
 								</div>
-								<Icon name="arrowRight" class="w-4 h-4 recent-arrow" />
+								{#if chat.isFavorite}<Icon name="heart" class="w-4 h-4 fill-current text-accent shrink-0" />{/if}
+								{#if !selecting}<Icon name="arrowRight" class="w-4 h-4 recent-arrow" />{/if}
 							</button>
 						{/each}
 					</div>
 
-					{#if resumable.length > 3}
+					{#if !browsing && filteredChats.length > 3}
 						<button type="button" class="recent-expand" onclick={toggleExpand}>
 							<Icon name={expanded ? 'chevronUp' : 'chevronDown'} class="w-3.5 h-3.5" />
 							<span>{expanded ? 'Show less' : 'Show more'}</span>
@@ -161,32 +192,28 @@
 					{/if}
 				</section>
 			{:else}
-				<section class="empty" aria-label="No chats yet">
-					<p class="empty-text">No chats yet</p>
+				<section class="empty" aria-label={query ? 'No matching chats' : 'No chats yet'}>
+					<p class="empty-text">{query ? 'No chats match your search' : filterMode === 'favorites' ? 'No favorites yet' : filterMode === 'duplicates' ? 'No identical chats' : 'No chats yet'}</p>
 				</section>
 			{/if}
 		</div>
 
-		<!-- Flexible spacer: keeps the community links pinned to the bottom and doubles
-		     as the measure of how much room an expanded recent list may fill. -->
+		<!-- Measure the remaining room available for the expanded recent list. -->
 		<div class="welcome-grow" bind:clientHeight={spareHeight} aria-hidden="true"></div>
-
-		<nav class="socials" aria-label="Community">
-			{#each socials as s (s.key)}
-				<a
-					class="social-link"
-					href={s.href}
-					target="_blank"
-					rel="noopener noreferrer"
-					aria-label={s.label}
-				>
-					<BrandGlyph name={s.key} class="social-glyph" />
-					<span>{s.label}</span>
-				</a>
-			{/each}
-		</nav>
 	</div>
 </div>
+
+<ConfirmDialog
+	open={bulkDeleteOpen}
+	title="Delete {selectedCount} chat{selectedCount === 1 ? '' : 's'}"
+	message={bulkDeleteMessage}
+	confirmLabel="Delete {selectedCount}"
+	variant="danger"
+	destructive
+	holdMs={holdMsForBlast(bulkDeleteStats)}
+	onConfirm={confirmBulkDelete}
+	onCancel={() => (bulkDeleteOpen = false)}
+/>
 
 <style>
 	.welcome {
@@ -195,8 +222,7 @@
 		background: transparent;
 	}
 
-	/* Fills the column so the hero block can center itself vertically (auto margins)
-	   and the community links sit pinned at the bottom. */
+	/* One content column for the header, actions and recent chats. */
 	.welcome-inner {
 		min-height: 100%;
 		max-width: 44rem;
@@ -210,11 +236,10 @@
 	.welcome-top {
 		display: flex;
 		flex-direction: column;
-		gap: clamp(1.7rem, 1.3rem + 1.4vw, 2.5rem);
+		gap: clamp(1.25rem, 1rem + 0.8vw, 1.75rem);
 	}
 
-	/* Eats the leftover height: pushes the community links to the bottom, and its
-	   measured size is the room the expanded recent list may fill. */
+	/* Its measured size is the room the expanded recent list may fill. */
 	.welcome-grow {
 		flex: 1 1 0;
 		min-height: 0;
@@ -224,8 +249,7 @@
 	.hero,
 	.actions,
 	.recent,
-	.empty,
-	.socials {
+	.empty {
 		animation: welcome-rise 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
 	}
 
@@ -236,10 +260,6 @@
 	.recent,
 	.empty {
 		animation-delay: 140ms;
-	}
-
-	.socials {
-		animation-delay: 220ms;
 	}
 
 	@keyframes welcome-rise {
@@ -256,19 +276,18 @@
 	/* ===== Hero ===== */
 	.hero {
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		text-align: center;
-		gap: 0.45rem;
+		text-align: left;
+		gap: 0.85rem;
 	}
 
 	.logo-shell {
 		position: relative;
-		width: clamp(4.4rem, 3.9rem + 2vw, 5.8rem);
-		height: clamp(4.4rem, 3.9rem + 2vw, 5.8rem);
+		width: clamp(2.5rem, 2.15rem + 1vw, 3rem);
+		height: clamp(2.5rem, 2.15rem + 1vw, 3rem);
+		flex-shrink: 0;
 		display: grid;
 		place-items: center;
-		margin-bottom: 0.65rem;
 	}
 
 	/* A soft blurred glow rather than a hard-edged disc. */
@@ -293,60 +312,48 @@
 		filter: drop-shadow(0 6px 16px color-mix(in srgb, var(--color-accent) 30%, transparent));
 	}
 
-	/* Frontispiece eyebrow: the label sits between two fading hairlines. */
-	.eyebrow {
-		margin: 0;
+	.brand-copy {
+		min-width: 0;
 		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.2em;
-		color: var(--color-text-muted);
-	}
-
-	.eyebrow-rule {
-		width: 2.6rem;
-		height: 1px;
-		background: linear-gradient(
-			to right,
-			transparent,
-			color-mix(in srgb, var(--color-text-muted) 55%, transparent)
-		);
-	}
-
-	.eyebrow-rule:last-child {
-		transform: scaleX(-1);
+		flex-direction: column;
+		gap: 0.25rem;
 	}
 
 	.brand {
-		/* The bottom margin stands in for the removed tagline, keeping the original
-		   distance between the brand and the actions row. */
-		margin: 0 0 2.5rem;
+		margin: 0;
+		min-width: 0;
 		font-family: var(--font-ui);
-		font-size: clamp(2rem, 1.6rem + 1.8vw, 2.9rem);
+		font-size: clamp(1.125rem, 1rem + 0.4vw, 1.25rem);
 		font-weight: 740;
-		line-height: 1.04;
+		line-height: 1.15;
 		letter-spacing: 0.01em;
+		overflow-wrap: anywhere;
 		color: var(--color-text-primary);
+	}
+
+	.tagline {
+		margin: 0;
+		font-family: var(--font-ui);
+		font-size: clamp(0.78rem, 0.74rem + 0.15vw, 0.85rem);
+		line-height: 1.4;
+		color: var(--color-text-secondary);
 	}
 
 	/* ===== Quick actions ===== */
 	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.55rem;
+		min-width: 0;
+		position: relative;
+		z-index: 1;
 	}
 
 	.action {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
+		justify-content: center;
+		flex: 0 0 2.4rem;
+		width: 2.4rem;
 		height: 2.4rem;
-		padding: 0 1rem;
+		padding: 0;
 		border-radius: var(--radius-full);
 		font-family: var(--font-ui);
 		font-size: 0.84rem;
@@ -379,73 +386,33 @@
 		background: color-mix(in srgb, var(--color-bg-tertiary) 85%, transparent);
 	}
 
-	.action-kbd {
-		font-family: var(--font-ui);
-		font-size: 0.62rem;
-		font-weight: 600;
-		letter-spacing: 0.04em;
-		line-height: 1;
-		padding: 0.22rem 0.38rem;
-		border-radius: var(--radius-sm);
-		background: color-mix(in srgb, var(--color-bg-primary) 55%, transparent);
-		border: 1px solid var(--color-border-subtle);
-		color: var(--color-text-muted);
+	.action:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
 	}
 
-	.action-kbd-primary {
-		background: color-mix(in srgb, var(--color-on-accent) 14%, transparent);
-		border-color: color-mix(in srgb, var(--color-on-accent) 26%, transparent);
+	.recent-card.is-selected {
+		border-color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 12%, var(--color-card-bg));
+	}
+
+	.selection-check {
+		display: grid;
+		place-items: center;
+		width: 1.2rem;
+		height: 1.2rem;
+		flex-shrink: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-full);
+	}
+
+	.selection-check.is-checked {
+		background: var(--color-accent);
+		border-color: var(--color-accent);
 		color: var(--color-on-accent);
-		opacity: 0.85;
-	}
-
-	/* Shortcut chips only make sense with a keyboard and enough width. */
-	@media (max-width: 639px), (hover: none) and (pointer: coarse) {
-		.action-kbd {
-			display: none;
-		}
 	}
 
 	/* ===== Recent stories ===== */
-	.section-head {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.section-title {
-		margin: 0;
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.16em;
-		color: var(--color-text-muted);
-	}
-
-	.section-rule {
-		flex: 1;
-		height: 1px;
-		background: var(--color-border-subtle);
-	}
-
-	.section-link {
-		font-family: var(--font-ui);
-		font-size: 0.72rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		padding: 0.2rem 0.35rem;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		white-space: nowrap;
-		transition: color 140ms ease;
-	}
-
-	.section-link:hover {
-		color: var(--color-accent);
-	}
-
 	.recent-list {
 		display: flex;
 		flex-direction: column;
@@ -578,54 +545,12 @@
 		color: var(--color-text-muted);
 	}
 
-	/* ===== Community links (pinned bottom) ===== */
-	.socials {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.35rem;
-		padding-top: clamp(2rem, 1.6rem + 1.4vw, 3rem);
-	}
-
-	.social-link {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0.42rem 0.75rem;
-		border-radius: var(--radius-full);
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-family: var(--font-ui);
-		font-size: 0.76rem;
-		font-weight: 600;
-		transition: background-color 140ms ease, color 140ms ease;
-	}
-
-	/* The mark is drawn by ui/BrandGlyph, so the selector has to leave the scoping alone:
-	   a plain descendant rule would be pruned as unused, this component's markup holding
-	   no <svg> of its own. */
-	.social-link :global(.social-glyph) {
-		width: 0.95rem;
-		height: 0.95rem;
-	}
-
-	.social-link:hover {
-		color: var(--color-text-primary);
-		background: color-mix(in srgb, var(--color-bg-tertiary) 70%, transparent);
+	@media (pointer: coarse) {
+		.action { width: 2.75rem; height: 2.75rem; flex-basis: 2.75rem; }
 	}
 
 	/* ===== Narrow screens ===== */
 	@media (max-width: 560px) {
-		.actions {
-			flex-direction: column;
-			align-items: stretch;
-		}
-
-		.action {
-			justify-content: center;
-			height: 2.6rem;
-		}
-
 		.recent-card {
 			padding: 0.7rem 0.85rem;
 			gap: 0.75rem;

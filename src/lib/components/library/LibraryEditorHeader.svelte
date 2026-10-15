@@ -1,13 +1,13 @@
 <script lang="ts">
 	/**
-	 * Shared header bar for the character/persona editors. One row, two clusters:
-	 * identity on the left (name, badge, save state), actions on the right (lorebooks
-	 * popover, favorite, overflow menu, close). New entries swap the action cluster
-	 * for explicit Save/Discard. Collapses gracefully on narrow screens: labels drop,
-	 * icons stay, nothing wraps.
+	 * Shared header bar for the character/persona editors. Characters keep versions
+	 * and lorebooks on the left; personas retain their name and badge. Save state
+	 * stays beside those controls, with favorite, overflow and close on the right.
+	 * New entries use explicit Save/Discard. Labels drop on narrow screens.
 	 */
 	import type { Snippet } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import LorebookLinkPicker from '$lib/components/lorebook/LorebookLinkPicker.svelte';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
@@ -38,11 +38,13 @@
 		onDiscardNew: () => void;
 		/** Present on characters only: adds the export item to the overflow menu. */
 		onExport?: () => void;
+		/** Opens an on-demand snapshot of the character's text counts. */
+		onCountTokens?: () => void;
 		/** The kind being edited: names the conversion item ("Save as persona…" and back). */
 		entryType: LibraryEntryType;
 		/** Opens the conversion dialog: a persona made from this character, or the reverse. */
 		onConvert?: () => void;
-		/** Rendered next to the name: version chip (character) or Active pill (persona). */
+		/** Leading version chip (character) or badge next to the name (persona). */
 		badge?: Snippet;
 		/** Rendered first in the action cluster, e.g. the persona's Set Active button. */
 		primaryAction?: Snippet;
@@ -66,6 +68,7 @@
 		onSaveNew,
 		onDiscardNew,
 		onExport,
+		onCountTokens,
 		entryType,
 		onConvert,
 		badge,
@@ -74,7 +77,6 @@
 
 	let lorebookOpen = $state(false);
 	let menuOpen = $state(false);
-	let lorebookRef = $state<HTMLDivElement | null>(null);
 	let menuRef = $state<HTMLDivElement | null>(null);
 
 	// Deleting a book leaves its id on the entry (architecture/lorebook.md), so the count
@@ -83,10 +85,9 @@
 	let lorebookCount = $derived(lorebookStore.resolveLinks(lorebookIds).length);
 
 	$effect(() => {
-		if (!lorebookOpen && !menuOpen) return;
+		if (!menuOpen) return;
 		const onDown = (e: MouseEvent) => {
 			const target = e.target as Node;
-			if (lorebookOpen && lorebookRef && !lorebookRef.contains(target)) lorebookOpen = false;
 			if (menuOpen && menuRef && !menuRef.contains(target)) menuOpen = false;
 		};
 		const onKey = (e: KeyboardEvent) => {
@@ -95,7 +96,6 @@
 				// close the hosting Library panel.
 				e.preventDefault();
 				e.stopPropagation();
-				lorebookOpen = false;
 				menuOpen = false;
 			}
 		};
@@ -122,17 +122,42 @@
 	}
 </script>
 
-<header class="editor-header">
+{#snippet lorebookControl()}
+	<!-- Lorebooks: link standalone world-info books to this entry, right from the bar. -->
+	<button
+		type="button"
+		class="edh-chip"
+		class:is-open={lorebookOpen}
+		class:has-links={lorebookCount > 0}
+		onclick={() => (lorebookOpen = !lorebookOpen)}
+		aria-haspopup="dialog"
+		aria-expanded={lorebookOpen}
+		title="Linked lorebooks"
+	>
+		<Icon name="bookOpen" class="w-4 h-4" />
+		<span class="edh-chip-label">Lorebooks</span>
+		{#if lorebookCount > 0}
+			<span class="edh-chip-count">{lorebookCount}</span>
+		{/if}
+	</button>
+{/snippet}
+
+<header class="editor-header" class:character-header={entryType === 'character'}>
 	<div class="editor-header-identity">
-		<!-- Which of the three editors this is. The bar is shared with the open lorebook's, so
-		     the glyph is what answers that without reading the page under it. -->
-		<span class="editor-header-glyph" aria-hidden="true">
-			<Icon name={entryType === 'persona' ? 'user' : 'users'} class="w-4 h-4" strokeWidth={1.5} />
-		</span>
-		<!-- Muted "name me" placeholder only while the entry is brand-new; once saved without a
-		     name, its fallback ("Unnamed Character") reads as a normal name. -->
-		<h2 class="editor-header-name" class:is-untitled={!name && isNew}>{name || fallbackName}</h2>
+		{#if entryType === 'persona'}
+			<span class="editor-header-glyph" aria-hidden="true">
+				<Icon name="user" class="w-4 h-4" strokeWidth={1.5} />
+			</span>
+			<h2 class="editor-header-name" class:is-untitled={!name && isNew}>{name || fallbackName}</h2>
+		{/if}
 		{@render badge?.()}
+		{#if entryType === 'character'}{@render lorebookControl()}{/if}
+		{#if onCountTokens}
+			<button type="button" class="edh-chip edh-token-count" onclick={onCountTokens}
+				aria-haspopup="dialog" title="Total tokens">
+				<span aria-hidden="true">#</span> Total tokens
+			</button>
+		{/if}
 		{#if isNew}
 			<span class="edh-pill">New</span>
 		{:else if saving}
@@ -153,37 +178,7 @@
 			{@render primaryAction?.()}
 		{/if}
 
-		<!-- Lorebooks: link standalone world-info books to this entry, right from the bar. -->
-		<div class="edh-anchor" bind:this={lorebookRef}>
-			<button
-				type="button"
-				class="edh-chip"
-				class:is-open={lorebookOpen}
-				class:has-links={lorebookCount > 0}
-				onclick={() => (lorebookOpen = !lorebookOpen)}
-				aria-haspopup="dialog"
-				aria-expanded={lorebookOpen}
-				title="Linked lorebooks"
-			>
-				<Icon name="bookOpen" class="w-4 h-4" />
-				<span class="edh-chip-label">Lorebooks</span>
-				{#if lorebookCount > 0}
-					<span class="edh-chip-count">{lorebookCount}</span>
-				{/if}
-			</button>
-			{#if lorebookOpen}
-				<div class="edh-popover surface-float" role="dialog" aria-label="Linked lorebooks">
-					<div class="edh-popover-head">
-						<p class="edh-popover-title">Lorebooks</p>
-					</div>
-					<LorebookLinkPicker
-						selected={lorebookIds}
-						onChange={onLorebookChange}
-						onNavigate={() => (lorebookOpen = false)}
-					/>
-				</div>
-			{/if}
-		</div>
+		{#if entryType === 'persona'}{@render lorebookControl()}{/if}
 
 		{#if isNew}
 			<span class="editor-header-divider"></span>
@@ -271,10 +266,26 @@
 	</div>
 </header>
 
+<Dialog open={lorebookOpen} onClose={() => (lorebookOpen = false)} title="Lorebooks"
+	titleAlign="left" size="sm" placement="center" bare>
+	<div class="min-h-0 panel-scroll overscroll-contain">
+		<LorebookLinkPicker
+			selected={lorebookIds}
+			onChange={onLorebookChange}
+			onNavigate={() => (lorebookOpen = false)}
+		/>
+	</div>
+</Dialog>
+
 <style>
 	/* The bar itself, its identity cluster, its name, its icon buttons and the divider
 	   are the shared .editor-header language in app.css, so this header and the open
 	   lorebook's are one surface. What is below belongs to a library entry alone. */
+
+	.character-header { position: relative; }
+	.character-header .editor-header-identity { flex-wrap: wrap; row-gap: 0.4rem; }
+	.edh-token-count { white-space: nowrap; }
+
 
 	/* ---- Identity cluster ---- */
 
@@ -411,31 +422,6 @@
 	}
 
 	/* ---- Popovers ---- */
-
-	.edh-popover {
-		position: absolute;
-		top: calc(100% + 0.4rem);
-		right: 0;
-		z-index: 50;
-		width: min(21rem, calc(100vw - 2rem));
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-md);
-		overflow: hidden;
-	}
-
-	.edh-popover-head {
-		padding: 0.7rem 0.9rem 0.15rem;
-		text-align: center;
-	}
-
-	.edh-popover-title {
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		font-weight: 650;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--color-accent);
-	}
 
 	.edh-menu {
 		position: absolute;

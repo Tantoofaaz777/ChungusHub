@@ -25,6 +25,8 @@
 	 *    (aria-activedescendant), and every row action also lives in the preview's action
 	 *    bar, which IS tabbable, so nothing is reachable by mouse alone.
 	 */
+	import ChatBrowserControls from './ChatBrowserControls.svelte';
+	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '$lib/utils/chat-browser';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
@@ -37,7 +39,6 @@
 	import { db } from '$lib/services/database';
 	import { displaySelfRefs } from '$lib/macros';
 	import { storyRoleName } from '$lib/types/library';
-	import { buildSearchRegex } from '$lib/utils/chat-search';
 	import { dayBucket } from '$lib/utils/date';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { messageStore } from '$lib/stores/messages.svelte';
@@ -47,17 +48,6 @@
 	import { chatCastStore, type ChatCastMember } from '$lib/stores/chatCast.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
-
-	type SortKey = 'activity' | 'created' | 'messages' | 'title';
-	type SortDir = 'asc' | 'desc';
-	type FilterMode = 'all' | 'favorites' | 'duplicates';
-
-	const SORT_OPTIONS: { key: SortKey; label: string; defaultDir: SortDir }[] = [
-		{ key: 'activity', label: 'Last activity', defaultDir: 'desc' },
-		{ key: 'created', label: 'Date created', defaultDir: 'desc' },
-		{ key: 'messages', label: 'Message count', defaultDir: 'desc' },
-		{ key: 'title', label: 'Title', defaultDir: 'asc' }
-	];
 
 	const BUCKET_LABELS: Record<string, string> = {
 		today: 'Today',
@@ -166,18 +156,7 @@
 	 *  aggregate read on its own schedule, so it can briefly hold a chat the list has
 	 *  already dropped, and a twin must stop claiming a partner the moment the row
 	 *  disappears. */
-	let twinCounts = $derived.by(() => {
-		const live = new Set(chats.map((c) => c.id));
-		const sizes = new Map<string, number>();
-		for (const [chatId, group] of Object.entries(twinGroups)) {
-			if (live.has(chatId)) sizes.set(group, (sizes.get(group) ?? 0) + 1);
-		}
-		const out: Record<string, number> = {};
-		for (const [chatId, group] of Object.entries(twinGroups)) {
-			if (live.has(chatId)) out[chatId] = sizes.get(group) ?? 0;
-		}
-		return out;
-	});
+	let twinCounts = $derived(chatTwinCounts(chats, twinGroups));
 
 	// ===== Search =====
 
@@ -213,16 +192,6 @@
 		};
 	});
 
-	let titleMatcher = $derived(buildSearchRegex(searchQuery.trim(), { matchCase: false, wholeWord: false }));
-
-	function matchesTitle(title: string): boolean {
-		if (!titleMatcher) return true;
-		// The matcher is a /g/ regex, so its lastIndex survives a test. Reset it, or every
-		// second row silently fails to match.
-		titleMatcher.lastIndex = 0;
-		return titleMatcher.test(title);
-	}
-
 	// ===== Scope, filter, sort =====
 
 	// The unfiltered scope (drives the count under the title): the scoped character's
@@ -236,45 +205,12 @@
 	/** One activity value for sorting, grouping and the row's timestamp alike: the last
 	 *  message on the branch, falling back to the row's own updated_at for a chat that
 	 *  has none. Two different values here would order the sections against the rows. */
-	function activityAt(chat: Chat): number {
-		return stats[chat.id]?.lastAt ?? chat.updatedAt;
-	}
+	function activityAt(chat: Chat): number { return chatActivityAt(chat, stats); }
 
-	let visibleChats = $derived.by(() => {
-		const query = searchQuery.trim();
-		let list = scopedChats.filter((chat) => {
-			if (filterMode === 'favorites' && !chat.isFavorite) return false;
-			if (filterMode === 'duplicates' && (twinCounts[chat.id] ?? 0) < 2) return false;
-			if (!query) return true;
-			return matchesTitle(chat.title) || !!messageHits[chat.id];
-		});
-
-		const dir = sortDir === 'asc' ? 1 : -1;
-		list = [...list].sort((a, b) => {
-			let cmp: number;
-			switch (sortKey) {
-				case 'created':
-					cmp = a.createdAt - b.createdAt;
-					break;
-				case 'messages':
-					// The branch count, the number the row leads with.
-					cmp = (stats[a.id]?.path ?? 0) - (stats[b.id]?.path ?? 0);
-					break;
-				case 'title':
-					cmp = a.title.localeCompare(b.title);
-					break;
-				default:
-					cmp = activityAt(a) - activityAt(b);
-			}
-			// Stable tiebreaker so equal keys (e.g. same count) keep a deterministic order.
-			return cmp !== 0 ? cmp * dir : activityAt(b) - activityAt(a);
-		});
-
-		// Favorites float above everything, whatever the sort: the standard pinned-items
-		// behaviour. Pointless while the list is already filtered down to favorites.
-		if (filterMode === 'favorites') return list;
-		return [...list.filter((c) => c.isFavorite), ...list.filter((c) => !c.isFavorite)];
-	});
+	let visibleChats = $derived(filterAndSortChats(scopedChats, {
+		query: searchQuery, filter: filterMode, sort: sortKey, direction: sortDir,
+		stats, twins: twinCounts, messageHits
+	}));
 
 	/** The same flat order, cut into labelled sections. Boundaries only ever fall between
 	 *  runs, because the flat list is already ordered favorites-first then by the sort
@@ -380,28 +316,6 @@
 		if (viewport.isMobile) return;
 		requestAnimationFrame(() => searchInputEl?.focus());
 	});
-
-	function sortLabel(key: SortKey): string {
-		return SORT_OPTIONS.find((o) => o.key === key)!.label;
-	}
-
-	function chooseSort(key: SortKey) {
-		if (key === sortKey) {
-			sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-		} else {
-			sortKey = key;
-			sortDir = SORT_OPTIONS.find((o) => o.key === key)!.defaultDir;
-		}
-		sortMenuOpen = false;
-	}
-
-	function toggleSortDir() {
-		sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-	}
-
-	function setFilter(mode: FilterMode) {
-		filterMode = filterMode === mode ? 'all' : mode;
-	}
 
 	/** The twin highlight is lit by a chip's mouseenter and put out by its mouseleave,
 	 *  which never fires if that row unmounts under the pointer (a delete, a sync),
@@ -804,190 +718,16 @@
 			</div>
 		{/if}
 
-		<div class="chats-controls">
-			<div class="chats-search input-base">
-				<Icon name="search" class="w-4 h-4 chats-search-icon" />
-				<!-- The field keeps focus while the arrows drive the list below it, so the
-				     pair is a combobox: focus stays here and aria-activedescendant names the
-				     row the selection is on. -->
-				<input
-					bind:this={searchInputEl}
-					type="text"
-					placeholder={searchInMessages ? 'Search titles and messages…' : 'Search chats…'}
-					bind:value={searchQuery}
-					class="chats-search-input"
-					role="combobox"
-					aria-expanded="true"
-					aria-controls="chats-listbox"
-					aria-autocomplete="list"
-					aria-activedescendant={keyboardActive && visibleChats[selectedIndex]
-						? `chat-option-${visibleChats[selectedIndex].id}`
-						: undefined}
-				/>
-				{#if searchingMessages}
-					<span class="chats-search-spinner" aria-hidden="true"></span>
-				{/if}
-				{#if searchQuery}
-					<button
-						type="button"
-						class="chats-search-btn"
-						onclick={() => (searchQuery = '')}
-						aria-label="Clear search"
-					>
-						<Icon name="close" class="w-3.5 h-3.5" />
-					</button>
-				{/if}
-				<button
-					type="button"
-					class="chats-search-btn chats-search-deep"
-					class:is-on={searchInMessages}
-					aria-pressed={searchInMessages}
-					title={searchInMessages
-						? 'Searching message text too (the branch each chat is on)'
-						: 'Search inside messages as well'}
-					aria-label="Search inside messages"
-					onclick={() => (searchInMessages = !searchInMessages)}
-				>
-					<Icon name="annotation" class="w-4 h-4" />
-				</button>
-			</div>
-
-			<!-- Filters ride the controls row as icon toggles rather than a row of their
-			     own: a second header line for two switches is a lot of panel to spend. -->
-			<button
-				type="button"
-				class="chats-toggle"
-				class:is-on={filterMode === 'favorites'}
-				aria-pressed={filterMode === 'favorites'}
-				title="Show favorites only"
-				aria-label="Show favorites only"
-				onclick={() => setFilter('favorites')}
-			>
-				<Icon name="heart" class="w-4 h-4 {filterMode === 'favorites' ? 'fill-current' : ''}" />
-			</button>
-			<!-- Kept on screen while its own filter is on, even once the scope holds no
-			     twins: a flip of the switch would otherwise take the only control that
-			     can turn it back off away with it. -->
-			{#if twinsInScope || filterMode === 'duplicates'}
-				<button
-					type="button"
-					class="chats-toggle"
-					class:is-on={filterMode === 'duplicates'}
-					aria-pressed={filterMode === 'duplicates'}
-					title="Show only chats whose content is identical to another chat's"
-					aria-label="Show identical chats only"
-					onclick={() => setFilter('duplicates')}
-				>
-					<Icon name="copy" class="w-4 h-4" />
-				</button>
-			{/if}
-
-			<button
-				type="button"
-				class="chats-toggle"
-				class:is-on={selecting}
-				aria-pressed={selecting}
-				title="Pick several chats"
-				aria-label="Pick several chats"
-				onclick={toggleSelecting}
-			>
-				<Icon name="checkCircle" class="w-4 h-4" />
-			</button>
-
-			<div class="chats-sort">
-				<button
-					type="button"
-					class="chats-sort-btn"
-					aria-haspopup="menu"
-					aria-expanded={sortMenuOpen}
-					onclick={() => (sortMenuOpen = !sortMenuOpen)}
-				>
-					<span class="chats-sort-caption">Sort</span>
-					<span>{sortLabel(sortKey)}</span>
-					<Icon name="chevronDown" class="w-3.5 h-3.5 text-text-muted" />
-				</button>
-				<button
-					type="button"
-					class="chats-sort-dir"
-					onclick={toggleSortDir}
-					title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
-					aria-label="Toggle sort direction"
-				>
-					<Icon name={sortDir === 'asc' ? 'chevronUp' : 'chevronDown'} class="w-4 h-4" />
-				</button>
-
-				{#if sortMenuOpen}
-					<div
-						class="chats-scrim"
-						onclick={() => (sortMenuOpen = false)}
-						onkeydown={(e) => {
-							if (e.key === 'Escape') {
-								// Consume the press so the window handler doesn't see the menu
-								// already closed and close the whole panel on the same event.
-								e.preventDefault();
-								e.stopPropagation();
-								sortMenuOpen = false;
-							}
-						}}
-						role="button"
-						tabindex="-1"
-						aria-label="Close menu"
-					></div>
-					<div class="chats-sort-menu surface-float" role="menu">
-						{#each SORT_OPTIONS as opt (opt.key)}
-							<button
-								type="button"
-								role="menuitemradio"
-								aria-checked={sortKey === opt.key}
-								class="chats-menu-item"
-								class:is-active={sortKey === opt.key}
-								onclick={() => chooseSort(opt.key)}
-							>
-								<span>{opt.label}</span>
-								{#if sortKey === opt.key}
-									<Icon name="check" class="w-4 h-4" />
-								{/if}
-							</button>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		</div>
-
-		<!-- The picking bar: count and scope on the left, the one destructive action on the
-		     right. It replaces nothing above it, so the search and the filters keep working
-		     while a selection is being built across several queries. -->
-		{#if selecting}
-			<div class="chats-bulk">
-				<span class="chats-bulk-count"><b>{selectedCount}</b> selected</span>
-				<button
-					type="button"
-					class="chats-bulk-link"
-					onclick={selectAllVisible}
-					disabled={allVisibleSelected}
-				>
-					All ({visibleChats.length})
-				</button>
-				<button
-					type="button"
-					class="chats-bulk-link"
-					onclick={() => (selectedIds = new Set())}
-					disabled={selectedCount === 0}
-				>
-					None
-				</button>
-				<div class="chats-bulk-spacer"></div>
-				<button
-					type="button"
-					class="chats-bulk-delete"
-					onclick={() => (bulkDeleteOpen = true)}
-					disabled={selectedCount === 0}
-				>
-					<Icon name="trash" class="w-3.5 h-3.5" />
-					Delete {selectedCount}
-				</button>
-			</div>
-		{/if}
+		<ChatBrowserControls
+			bind:searchQuery bind:searchInMessages bind:sortKey bind:sortDir bind:sortMenuOpen
+			bind:filterMode bind:searchInputEl
+			{twinsInScope} {selecting} {toggleSelecting} {selectedCount} {allVisibleSelected} {searchingMessages}
+			visibleCount={visibleChats.length} {selectAllVisible}
+			clearSelection={() => (selectedIds = new Set())}
+			requestDelete={() => (bulkDeleteOpen = true)}
+			listboxId="chats-listbox"
+			activeDescendant={keyboardActive && visibleChats[selectedIndex] ? `chat-option-${visibleChats[selectedIndex].id}` : undefined}
+		/>
 
 	</header>
 
@@ -1312,245 +1052,6 @@
 		white-space: nowrap;
 	}
 
-	.chats-controls {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-	}
-
-	/* ===== Search ===== */
-	/* .input-base in markup carries the border + focus ring, so the field is visible on
-	   every theme instead of only while focused. */
-	.chats-search {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0 0.5rem 0 0.65rem;
-		height: 2.4rem;
-	}
-
-	.chats-search :global(.chats-search-icon) {
-		flex-shrink: 0;
-		color: var(--color-text-muted);
-	}
-
-	.chats-search-input {
-		flex: 1;
-		min-width: 0;
-		border: 0;
-		background: transparent;
-		outline: none;
-		font-family: var(--font-ui);
-		font-size: 0.85rem;
-		color: var(--color-text-primary);
-	}
-
-	.chats-search-input::placeholder {
-		color: var(--color-text-muted);
-	}
-
-	.chats-search-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.6rem;
-		height: 1.6rem;
-		flex-shrink: 0;
-		border: 0;
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: var(--color-text-muted);
-		cursor: pointer;
-		transition: color 120ms ease, background-color 120ms ease;
-	}
-
-	.chats-search-btn:hover {
-		color: var(--color-text-primary);
-		background: color-mix(in srgb, var(--color-bg-tertiary) 85%, transparent);
-	}
-
-	.chats-search-deep.is-on {
-		color: var(--color-accent);
-		background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-	}
-
-	.chats-search-spinner {
-		width: 0.85rem;
-		height: 0.85rem;
-		flex-shrink: 0;
-		border-radius: var(--radius-full);
-		border: 2px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
-		border-top-color: var(--color-accent);
-		animation: chats-spin 700ms linear infinite;
-	}
-
-	@keyframes chats-spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	/* ===== Sort ===== */
-	.chats-sort {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-		flex-shrink: 0;
-	}
-
-	.chats-sort-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0 0.75rem;
-		height: 2.4rem;
-		border: 1px solid var(--color-border-subtle);
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--color-bg-secondary) 70%, transparent);
-		color: var(--color-text-secondary);
-		font-family: var(--font-ui);
-		font-size: 0.8rem;
-		font-weight: 600;
-		cursor: pointer;
-		white-space: nowrap;
-		transition: background-color 130ms ease, border-color 130ms ease, color 130ms ease;
-	}
-
-	.chats-sort-btn:hover {
-		color: var(--color-text-primary);
-		border-color: var(--color-border);
-	}
-
-	.chats-sort-caption {
-		font-size: 0.7rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-	}
-
-	.chats-sort-dir {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.4rem;
-		height: 2.4rem;
-		border: 1px solid var(--color-border-subtle);
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--color-bg-secondary) 70%, transparent);
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		flex-shrink: 0;
-		transition: background-color 130ms ease, border-color 130ms ease, color 130ms ease;
-	}
-
-	.chats-sort-dir:hover {
-		color: var(--color-text-primary);
-		border-color: var(--color-border);
-	}
-
-	.chats-sort-menu {
-		position: absolute;
-		top: calc(100% + 0.4rem);
-		right: 0;
-		z-index: 20;
-		min-width: 12rem;
-		padding: 0.3rem;
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-md);
-	}
-
-	/* ===== Filter toggles ===== */
-	/* Square, same height as the sort controls they sit beside. */
-	.chats-toggle {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.4rem;
-		height: 2.4rem;
-		flex-shrink: 0;
-		border: 1px solid var(--color-border-subtle);
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--color-bg-secondary) 70%, transparent);
-		color: var(--color-text-muted);
-		cursor: pointer;
-		transition: background-color 130ms ease, border-color 130ms ease, color 130ms ease;
-	}
-
-	.chats-toggle:hover {
-		color: var(--color-text-primary);
-		border-color: var(--color-border);
-	}
-
-	.chats-toggle.is-on {
-		color: var(--color-accent);
-		border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
-		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-	}
-
-	.chats-bulk {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-top: 0.6rem;
-		padding: 0.4rem 0.5rem;
-		border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--color-accent) 9%, transparent);
-		font-family: var(--font-ui);
-		font-size: 0.75rem;
-	}
-
-	.chats-bulk-count {
-		color: var(--color-text-secondary);
-	}
-	.chats-bulk-count b {
-		color: var(--color-text-primary);
-		font-weight: 600;
-	}
-
-	.chats-bulk-link {
-		color: var(--color-text-muted);
-		cursor: pointer;
-		transition: color 120ms ease;
-	}
-	.chats-bulk-link:hover:not(:disabled) {
-		color: var(--color-text-primary);
-	}
-	.chats-bulk-link:disabled {
-		opacity: 0.45;
-		cursor: default;
-	}
-
-	.chats-bulk-spacer {
-		flex: 1;
-	}
-
-	.chats-bulk-delete {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-		padding: 0.25rem 0.6rem;
-		border: 1px solid color-mix(in srgb, var(--color-error) 38%, transparent);
-		border-radius: var(--radius-md);
-		background: color-mix(in srgb, var(--color-error) 9%, transparent);
-		color: var(--color-error);
-		font-weight: 600;
-		cursor: pointer;
-		transition: background-color 120ms ease, border-color 120ms ease;
-	}
-	.chats-bulk-delete:hover:not(:disabled) {
-		border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
-		background: color-mix(in srgb, var(--color-error) 16%, transparent);
-	}
-	.chats-bulk-delete:disabled {
-		opacity: 0.45;
-		cursor: default;
-	}
-
 	/* ===== Body ===== */
 	.chats-body {
 		flex: 1;
@@ -1700,10 +1201,6 @@
 		color: var(--color-text-primary);
 	}
 
-	.chats-menu-item.is-active {
-		color: var(--color-accent);
-	}
-
 	.chats-menu-item.is-danger:hover {
 		background: color-mix(in srgb, var(--color-error) 14%, transparent);
 		color: var(--color-error);
@@ -1753,36 +1250,7 @@
 		background: var(--color-text-muted);
 	}
 
-	/* The controls row wraps rather than overflowing once the panel gets narrow. The
-	   single-column switch is NOT here: it is decided from the panel's measured width
-	   (see `singleColumn`), because this query would be answering about the window. */
-	@media (max-width: 900px) {
-		.chats-controls {
-			flex-wrap: wrap;
-		}
-	}
-
-	/* Fingers get bigger targets, the same bump the browse controls take (app.css). */
 	@media (pointer: coarse) {
-		.chats-search-btn {
-			width: 2.15rem;
-			height: 2.15rem;
-		}
-
-		.chats-search {
-			height: 2.75rem;
-		}
-
-		.chats-toggle,
-		.chats-sort-dir {
-			width: 2.75rem;
-			height: 2.75rem;
-		}
-
-		.chats-sort-btn {
-			height: 2.75rem;
-		}
-
 		.chats-scope-btn {
 			padding: 0.6rem;
 		}

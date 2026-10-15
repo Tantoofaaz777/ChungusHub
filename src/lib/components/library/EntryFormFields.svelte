@@ -17,6 +17,7 @@
 	} from '$lib/types/library';
 	import { presetService } from '$lib/services/presets.svelte';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
+	import FieldTokenCount from './FieldTokenCount.svelte';
 	import { extractMacroNames } from '$lib/macros';
 
 	interface Props {
@@ -34,8 +35,8 @@
 		// Unique id for form element IDs
 		entityId: string;
 
-		/** Rendered at the foot of the identity pane: beside the portrait on wide screens, and
-		 *  above the card's own fields when the grid stacks. A snippet rather than data, so
+		/** Rendered below the compact identity header and above the card's fields.
+		 *  A snippet rather than data, so
 		 *  what goes there keeps its own state and its own store writes. */
 		identityExtra?: Snippet;
 
@@ -154,7 +155,6 @@
 		placeholder: string;
 		notSent: boolean;
 		notSentTitle: string;
-		seedsChat: boolean;
 		/** Optional short helper line rendered under the field's textarea. */
 		hint?: string;
 	}
@@ -177,7 +177,6 @@
 				// turn, so it's never flagged "not sent".
 				notSent: def.seedsChat ? false : isNotSent(def.macro, !!def.inBlob),
 				notSentTitle: buildNotSentTitle(def.macro, !!def.inBlob),
-				seedsChat: !!def.seedsChat,
 				hint: TRAIT_HINTS[def.key]
 			})
 		)
@@ -344,31 +343,26 @@
 	<div
 		class="group/field rounded-[var(--radius-lg)] border border-border-subtle bg-bg-secondary/40 transition-colors hover:border-border"
 	>
-		<div class="flex items-center gap-2 px-3 pt-2.5 pb-1">
-			<div class="flex-1 min-w-0 flex items-center gap-2">
+		<div class="flex flex-wrap items-center gap-2 px-3 pt-2.5 pb-1">
+			<div class="grow min-w-0 flex items-center gap-2">
 				<span class="min-w-0 truncate text-sm font-ui font-medium text-text-primary">
 					{field.label}
 				</span>
-				{@render headerExtra?.()}
 			</div>
+			<div class="flex flex-wrap items-center justify-end gap-2 min-w-0 max-w-full ml-auto">
+				<FieldTokenCount value={field.value} label={field.label} {entityId} />
+				{@render headerExtra?.()}
 
-			{#if field.seedsChat}
-				<span
-					class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-ui font-medium rounded-[var(--radius-sm)] bg-accent/15 text-accent shrink-0"
-					title="This becomes the chat's opening message, so it reaches the AI as context. It doesn't need a preset macro."
-				>
-					<Icon name="chat" class="w-3 h-3" />
-					Opening message
-				</span>
-			{:else if field.notSent}
-				<span
-					class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-ui font-medium rounded-[var(--radius-sm)] bg-warning/15 text-warning shrink-0"
-					title={field.notSentTitle}
-				>
-					<Icon name="eyeOff" class="w-3 h-3" />
-					Not sent to AI
-				</span>
-			{/if}
+				{#if field.notSent}
+					<span
+						class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-ui font-medium rounded-[var(--radius-sm)] bg-warning/15 text-warning shrink-0"
+						title={field.notSentTitle}
+					>
+						<Icon name="eyeOff" class="w-3 h-3" />
+						Not sent to AI
+					</span>
+				{/if}
+			</div>
 		</div>
 		<div class="px-3 pb-3 pt-1">
 			{#if expandable}
@@ -433,7 +427,7 @@
 	</div>
 {/snippet}
 
-<!-- Sits next to the First Message label; opens the alternate-greetings manager. -->
+<!-- Sits on the right of the First Message header; opens the alternate-greetings manager. -->
 {#snippet greetingsButton()}
 	<button
 		type="button"
@@ -446,14 +440,12 @@
 	</button>
 {/snippet}
 
-<div class="grid grid-cols-1 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] gap-6 p-6">
-	<!-- Identity pane: portrait + name/tags. Pinned alongside the scrolling fields on wide
-	     screens (top offset matches the grid's own padding so it never drifts); stacks on top on
-	     narrow ones. -->
-	<div class="space-y-4 lg:sticky lg:top-6 lg:self-start">
+<div class="entry-form">
+	<!-- Compact identity header; all writing fields use the full width below it. -->
+	<div class="entry-identity">
 		<!-- Portrait -->
 		<div
-			class="portrait-frame relative w-full max-w-[15rem] lg:max-w-none mx-auto lg:mx-0 aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
+			class="portrait-frame identity-portrait relative w-full aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
 			role="button"
 			tabindex="0"
 			onclick={handleImageClick}
@@ -504,6 +496,8 @@
 			{/if}
 		</div>
 
+		<div class="identity-fields">
+		<div class="identity-basics">
 		<!-- Name -->
 		<div>
 			<label for="name-{entityId}" class="block text-sm font-ui font-medium text-text-primary mb-1.5">
@@ -536,13 +530,15 @@
 				Used for {'{{char}}'} and as the name shown in chats. Leave blank to use Name.
 			</p>
 		</div>
+		</div>
+		</div>
 
 		<!-- Tags -->
-		<div>
+		<div class="identity-tag-field">
 			<span class="block text-sm font-ui font-medium text-text-primary mb-1.5">
 				Tags
 			</span>
-			<div class="flex flex-wrap gap-2 items-center">
+			<div class="identity-tags flex flex-wrap gap-2 items-center">
 				{#each tags || [] as tag, i}
 					{#if editingTagIndex === i}
 						<input
@@ -595,15 +591,11 @@
 				{/if}
 			</div>
 		</div>
-
-		{@render identityExtra?.()}
 	</div>
 
-	<!-- Fields pane: three fixed, collapsible categories. The rule between the panes is drawn
-	     on this side and only once the grid is side by side; stacked, the panes follow each
-	     other down the page and a line across the middle would read as a divider between the
-	     tags and the card. -->
-	<div class="min-w-0 space-y-5 lg:border-l lg:border-border-subtle lg:pl-6">
+	{@render identityExtra?.()}
+
+	<div class="min-w-0 space-y-5">
 		<!-- Character Card: the essentials. -->
 		<div class="space-y-3">
 			{@render sectionHeading('card', 'Character Card', 'user', cardOpen)}
@@ -664,3 +656,46 @@
 		onClose={() => (showFraming = false)}
 	/>
 {/if}
+
+<style>
+	.entry-form {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+		padding: 1.5rem;
+		min-width: 0;
+	}
+
+	.entry-identity {
+		display: grid;
+		grid-template-columns: 7.5rem minmax(0, 1fr);
+		align-items: start;
+		gap: 1.25rem;
+	}
+
+	.identity-portrait { align-self: start; }
+
+	.identity-fields {
+		display: flex;
+		flex-direction: column;
+		gap: 0.875rem;
+		min-width: 0;
+	}
+
+	.identity-basics {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 1rem;
+	}
+
+	.identity-tag-field { grid-column: 1 / -1; min-width: 0; }
+	.identity-tags > span { max-width: 100%; }
+	.identity-tags button { overflow-wrap: anywhere; min-width: 0; }
+	.identity-tags input { max-width: 100%; }
+
+	@media (max-width: 560px) {
+		.entry-form { padding: 1rem; gap: 1.25rem; }
+		.entry-identity { grid-template-columns: 5rem minmax(0, 1fr); gap: 0.875rem; }
+		.identity-basics { gap: 0.75rem; }
+	}
+</style>

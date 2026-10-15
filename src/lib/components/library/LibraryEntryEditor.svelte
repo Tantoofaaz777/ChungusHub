@@ -9,10 +9,12 @@
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import EntryFormFields from './EntryFormFields.svelte';
 	import CharacterVersionMenu from './CharacterVersionMenu.svelte';
-	import LibraryStatsBar from './LibraryStatsBar.svelte';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
 	import ExportDialog from './ExportDialog.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
+	import CharacterTokenCountsDialog from './CharacterTokenCountsDialog.svelte';
+	import { countCharacterTokens, type CharacterTokenCounts } from '$lib/utils/character-token-counts';
+	import { llmService } from '$lib/services/llm/provider';
 	import type { CharacterTraits, ChatDefaultKey } from '$lib/types/library';
 
 	interface Props {
@@ -260,6 +262,15 @@
 	}
 
 	let showConvert = $state(false);
+	let tokenSnapshot = $state<{ entryId: string; counts: CharacterTokenCounts } | null>(null);
+
+	function openTokenCounts() {
+		if (!entry) return;
+		tokenSnapshot = {
+			entryId: entry.id,
+			counts: countCharacterTokens(entry.data.traits, entry.data.alternateGreetings, llmService.getPrimaryModel())
+		};
+	}
 
 	async function handleDuplicate() {
 		if (!entry) return;
@@ -288,6 +299,7 @@
 			onSaveNew={handleSaveNew}
 			onDiscardNew={handleDiscardNew}
 			onExport={openExport}
+			onCountTokens={openTokenCounts}
 			entryType="character"
 			onConvert={() => (showConvert = true)}
 		>
@@ -373,7 +385,6 @@
 			/>
 		</div>
 
-		<LibraryStatsBar {entry} />
 	</div>
 
 	<ConfirmDialog
@@ -395,4 +406,8 @@
 
 	<!-- Folds the active version, which is the content the editor has on screen. -->
 	<ConvertEntryDialog {entry} open={showConvert} onClose={() => (showConvert = false)} />
+	{#if tokenSnapshot && tokenSnapshot.entryId === entry.id}
+		<CharacterTokenCountsDialog counts={tokenSnapshot.counts}
+			onClose={() => (tokenSnapshot = null)} />
+	{/if}
 {/if}

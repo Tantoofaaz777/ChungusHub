@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * Lorebook link picker: the body of the editor header's Lorebooks popover.
+	 * Lorebook link picker: the body of the editor header's Lorebooks dialog.
 	 * Linked books float to the top (captured once at mount so rows don't jump while
 	 * toggling), each row shows what the book actually holds, and a search field
 	 * appears once the shelf is big enough to need one.
@@ -61,7 +61,7 @@
 		uiStore.openLorebooks();
 	}
 
-	// Escape clears an active search before it bubbles up and closes the popover.
+	// Escape clears an active search before it bubbles up and closes the dialog.
 	function handleSearchKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && query) {
 			e.stopPropagation();
@@ -94,6 +94,7 @@
 			type="text"
 			class="lbp-search-input"
 			placeholder="Search lorebooks…"
+			data-dialog-initial-focus
 			bind:value={query}
 			onkeydown={handleSearchKeydown}
 			autofocus
