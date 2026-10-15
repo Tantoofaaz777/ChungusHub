@@ -6,7 +6,6 @@
 	import AdvancedPage from './AdvancedPage.svelte';
 	import SecurityPage from './SecurityPage.svelte';
 	import EnginesPage from './EnginesPage.svelte';
-	import ImportPage from './ImportPage.svelte';
 	import BackupsPage from './BackupsPage.svelte';
 	import RegexPage from './RegexPage.svelte';
 	import AboutPage from './AboutPage.svelte';
@@ -35,8 +34,6 @@
 	<EnginesPage />
 {:else if page === 'security'}
 	<SecurityPage />
-{:else if page === 'import'}
-	<ImportPage />
 {:else if page === 'backups'}
 	<BackupsPage />
 {:else if page === 'prompt-builder'}

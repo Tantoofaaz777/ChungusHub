@@ -122,7 +122,9 @@
 								</p>
 								{#if record.matches.length > 0}
 									<p class="lt-keys">
-										{#each record.matches as match (match.role + match.key)}
+										<!-- Unkeyed: rebuilt every render, never reordered, and role+key is not a
+										     value the engine can promise is unique. -->
+										{#each record.matches as match}
 											<span class="lt-key" class:lt-key-secondary={match.role === 'secondary'}>
 												{match.key}
 												<span class="lt-where">{sourceLabel(match, record.bookName)}</span>

@@ -6,7 +6,6 @@
 	import DataAheadBar, { setDataAhead } from '$lib/components/layout/DataAheadBar.svelte';
 	import ConnectionBar from '$lib/components/layout/ConnectionBar.svelte';
 	import DeleteGuardBar from '$lib/components/layout/DeleteGuardBar.svelte';
-	import ImportBar from '$lib/components/layout/ImportBar.svelte';
 	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
 	import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
 	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
@@ -314,7 +313,7 @@
 	{:else}
 		<!-- Only once the workspace is up: the boot failure states below say the same thing
 		     in their own words, and two accounts of one outage is one too many. -->
-		<!-- First of the four: an outage stops writes, while this one lets them through into
+		<!-- First of the three: an outage stops writes, while this one lets them through into
 		     data this build does not understand, and it is the only one here that cannot
 		     resolve while the app is open. -->
 		<DataAheadBar />
@@ -322,9 +321,6 @@
 		<!-- Under the connection row on purpose: an outage is the more urgent of the two, and
 		     an outage also closes any window, so they only ever stack on a kept rung. -->
 		<DeleteGuardBar />
-		<!-- Last of the three: work that is merely running is the least urgent thing this
-		     channel says, and unlike the two above it resolves on its own. -->
-		<ImportBar />
 		<div class="app-main">
 			<Workspace />
 		</div>

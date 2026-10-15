@@ -1,0 +1,32 @@
+---
+title: "File import and export"
+description: "Import individual character cards, lorebooks, presets and regex rules."
+---
+
+## Character cards
+
+Use **Library → Characters** to import PNG or JSON cards. The reader supports ChungusHub's
+own exports and standard V2/V3 character-card data. When a card carries an embedded lorebook,
+you can bring that book into the library too. Existing matching books are linked rather than
+copied again.
+
+Character exports are PNG or JSON cards. The export dialog can include sprites and gallery
+images in a ZIP archive.
+
+## Lorebooks
+
+Use **Library → Lorebooks** to import individual world-info JSON files. Exports use the same
+format, preserving the entry fields and metadata used by the app.
+
+## Presets and regex rules
+
+Import presets through the preset manager in **Prompt Builder**. ChungusHub presets have their
+own format, available as JSON or a preset PNG card.
+
+Use **Settings → Regex** to import rule files. Existing SillyTavern regex-script files remain
+compatible with this reader.
+
+## Backups
+
+Use **Settings → Backups** to restore a ChungusHub backup. Backup restore is separate from
+individual file import and replaces the workspace with the saved snapshot.

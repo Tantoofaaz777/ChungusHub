@@ -207,6 +207,14 @@ describe('the cross-site gate', () => {
 	});
 });
 
+describe('retired SillyTavern migration methods', () => {
+	test.each(['importChat', 'getImportedSources', 'recordImportedSources'])('%s is no longer exposed over RPC', async (method) => {
+		const answer = await exchange('POST', '/api/rpc/db', ours(), JSON.stringify({ method, args: [] }));
+		expect(answer.status).toBe(500);
+		expect(answer.body).toContain(`Unknown db method: ${method}`);
+	});
+});
+
 describe('/files/', () => {
 	test('a stored picture is answered as its fixed type, and a stored document is not answered', async () => {
 		const dir = join(scratch, 'data', 'images', 'characters');

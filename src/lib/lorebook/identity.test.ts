@@ -155,14 +155,6 @@ describe('createBookIndex', () => {
 		expect(index.same(createEmptyLorebook('Two'))).toBeNull();
 	});
 
-	test('binds a SillyTavern world name to the book it named, case and space blind', () => {
-		const index = createBookIndex([]);
-		index.bindWorldName('Kingdom', 'book-1');
-		expect(index.byWorldName('kingdom')).toBe('book-1');
-		expect(index.byWorldName('  KINGDOM ')).toBe('book-1');
-		expect(index.byWorldName('Other')).toBeNull();
-	});
-
 	test('grows as a run lands books, so the second card meets the first one', () => {
 		const index = createBookIndex([]);
 		const landed = parseLorebook(NATIVE, 'x');

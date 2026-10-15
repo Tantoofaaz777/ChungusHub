@@ -17,6 +17,8 @@ data/
 # This install's own port and folders, written on its first run. It belongs to the machine
 # it was created on, never to the repository.
 chungushub.config.json
+# Machine-specific copies made by setup:tunnel can include old security settings.
+*.before-tunnel
 
 # TypeScript
 *.tsbuildinfo

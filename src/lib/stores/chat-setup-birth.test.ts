@@ -72,10 +72,6 @@ mock.module('$lib/services/database', () => ({
 		insertChat: async (chat: Record<string, unknown>) => {
 			server.chats.set(chat.id as string, copy(chat));
 		},
-		importChat: async (chat: Record<string, unknown>, messages: Record<string, unknown>[]) => {
-			server.chats.set(chat.id as string, copy(chat));
-			for (const message of messages) server.messages.push(copy(message));
-		},
 		updateChat: async (patch: Record<string, unknown>) => {
 			const row = server.chats.get(patch.id as string);
 			if (!row) throw new Error(`updateChat: no chat ${patch.id}`);
@@ -90,11 +86,15 @@ mock.module('$lib/services/database', () => ({
 		insertMessage: async (message: Record<string, unknown>) => {
 			server.messages.push(copy(message));
 		},
-		getMessagesDelta: async (chatId: string) => ({
-			rev: 1,
-			full: true,
-			messages: server.messages.filter((m) => m.chatId === chatId).map(copy)
-		}),
+		getMessagesDelta: async (chatId: string) =>
+			server.chats.has(chatId)
+				? {
+						rev: 1,
+						chat: copy(server.chats.get(chatId)!),
+						full: true,
+						messages: server.messages.filter((m) => m.chatId === chatId).map(copy)
+					}
+				: null,
 		getLastPersonaByChat: async () => ({}),
 
 		getAllLibraryEntries: async () => server.entries.map(copy),
@@ -337,25 +337,6 @@ describe('a chat born from the composer', () => {
 		expect(claims(chatId)).toMatchObject({ persona: otherPersonaId, connection: null, preset: null });
 	});
 
-	test('an imported story is a door that stamps nothing', async () => {
-		// A SillyTavern import carries somebody else's story, not a choice about this install's
-		// personas, connections or presets.
-		const entryId = await character({
-			defaultPersonaId: otherPersonaId,
-			defaultConnectionId: OWN_CONNECTION,
-			defaultPresetId: OWN_PRESET
-		});
-		const { chatId } = await chatStore.importSillyTavernChat({
-			characterId: entryId,
-			lines: [
-				JSON.stringify({ user_name: 'Reader', character_name: 'Aria' }),
-				JSON.stringify({ name: 'Aria', is_user: false, mes: 'The gate stands open.', send_date: clock })
-			]
-		});
-
-		expect(chatId).not.toBeNull();
-		expect(stored(chatId!).featureState).toBeNull();
-	});
 });
 
 describe('the defaults are seeds and stop deciding at birth', () => {

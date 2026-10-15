@@ -220,7 +220,7 @@ describe('resolveLorebookLinks', () => {
 		expect(backwards.map((b) => b.id)).toEqual(['first', 'second']);
 	});
 
-	// The clause that actually carries that promise: a folder import stamps a run of books in
+	// The clause that actually carries that promise: a batch can create several books in
 	// the same millisecond, so creation order alone leaves them in whatever order each caller's
 	// array happened to be in, which is the divergence the sort exists to close.
 	test('globals made in the same millisecond resolve in one fixed sequence', () => {

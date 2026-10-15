@@ -16,6 +16,7 @@
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import { anchorTo } from '$lib/actions/anchorTo';
 	import {
+		addLorebookKeys,
 		compileRegexKey,
 		LOREBOOK_KEY_MODES,
 		parseKeys,
@@ -24,6 +25,7 @@
 		type LorebookKeyRule,
 		type LorebookKeyRules
 	} from '$lib/lorebook/types';
+	import { toastStore } from '$lib/stores/toast.svelte';
 
 	interface Props {
 		/** Current keys (source of truth lives in the store). */
@@ -100,19 +102,19 @@
 		onRulesChange(next);
 	}
 
-	/** Add every comma-separated token in `raw` that isn't already present (case-insensitive). */
+	/** Add every comma-separated token in `raw` that this list does not already hold, and say
+	 *  what it turned away. `addLorebookKeys` owns the decision; this owns the wording. */
 	function commit(raw: string) {
 		const parts = parseKeys(raw);
 		draft = '';
 		if (parts.length === 0) return;
-		const seen = new Set(keys.map((k) => k.toLowerCase()));
-		const next = [...keys];
-		for (const p of parts) {
-			const lower = p.toLowerCase();
-			if (!seen.has(lower)) {
-				next.push(p);
-				seen.add(lower);
-			}
+		const { next, refused } = addLorebookKeys(keys, parts);
+		// A refusal, not a failure, but it is the one thing here that answers a keystroke with
+		// nothing happening, so it carries more than the quiet weight an info note has.
+		if (refused.length === 1) {
+			toastStore.warning(`"${refused[0]}" is already a keyword here`);
+		} else if (refused.length > 1) {
+			toastStore.warning(`${refused.length} keywords were already here: ${refused.join(', ')}`);
 		}
 		if (next.length !== keys.length) onChange(next);
 	}

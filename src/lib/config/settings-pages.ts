@@ -26,7 +26,6 @@ export type SettingsPage =
 	| 'general'
 	| 'engines'
 	| 'security'
-	| 'import'
 	| 'backups'
 	// Advanced
 	| 'prompt-builder'
@@ -48,7 +47,6 @@ export type SettingsRowIcon =
 	| 'wrench'
 	| 'filter'
 	| 'flask'
-	| 'download'
 	| 'archive'
 	| 'info'
 	| 'sliders';
@@ -105,7 +103,6 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
 			{ page: 'engines', label: 'Engines', icon: 'bolt', preview: enginesSummary },
 			{ page: 'security', label: 'Security', icon: 'shield' },
 			{ page: 'backups', label: 'Backups', icon: 'archive', preview: backupsSummary },
-			{ page: 'import', label: 'Import', icon: 'download' }
 		]
 	},
 	{

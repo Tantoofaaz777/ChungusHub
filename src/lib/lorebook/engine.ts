@@ -232,6 +232,16 @@ function found(
 }
 
 /**
+ * A key listed twice is one key. The chip input refuses a repeat, but `asKeyList` reads an
+ * imported list verbatim and SillyTavern's own files carry repeats, so a book arrives with one
+ * and never says so. Compared as written, so two spellings differing only in case stay two keys:
+ * an entry can be case-sensitive, and folding them would delete one of them.
+ */
+function distinct(keys: string[]): string[] {
+	return [...new Set(keys)];
+}
+
+/**
  * Whether a keyword-triggered entry's keys fire against the sources, and what they matched.
  * The last two layers of the cascade land here: an entry's own tri-state match fields override
  * the book's resolved defaults (`null` inherits them), and each key's own rule overrides those
@@ -246,13 +256,16 @@ function evaluateKeys(
 		caseSensitive: entry.caseSensitive ?? bookDefaults.caseSensitive,
 		matchWholeWords: entry.matchWholeWords ?? bookDefaults.matchWholeWords
 	};
-	const primary = found(entry.key, sources, 'primary', entry.keyRules, defaults);
+	const primary = found(distinct(entry.key), sources, 'primary', entry.keyRules, defaults);
 	if (primary.length === 0) return NO_MATCH;
-	if (entry.keysecondary.length === 0) return { fired: true, primaryHit: true, matches: primary };
+	// Both the scan and the count below read the SAME deduped list: measuring `total` off the
+	// raw one would make AND ALL unsatisfiable for an entry whose secondary key is listed twice.
+	const secondaryKeys = distinct(entry.keysecondary);
+	if (secondaryKeys.length === 0) return { fired: true, primaryHit: true, matches: primary };
 
-	const secondary = found(entry.keysecondary, sources, 'secondary', entry.keyRules, defaults);
+	const secondary = found(secondaryKeys, sources, 'secondary', entry.keyRules, defaults);
 	const hits = secondary.length;
-	const total = entry.keysecondary.length;
+	const total = secondaryKeys.length;
 	let fired: boolean;
 	switch (entry.selectiveLogic) {
 		case 0: // AND ANY

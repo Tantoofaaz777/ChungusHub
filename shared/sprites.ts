@@ -1,12 +1,9 @@
 /**
  * The sprite rules both halves of the app write through.
  *
- * Three doors put a pack of pictures on a character: the editor's Sprites upload, the
- * SillyTavern folder import, and the example character the server seeds on first boot. The
- * first two are client code and the third is not, so these live here rather than in
- * `$lib/utils/sprites.ts`, which re-exports them. A second copy would let the same pack label
- * itself two ways, or leave a character holding sprites with no default, depending on which
- * way in it took.
+ * The editor's Sprites upload and the example-character seeder share these rules. One is
+ * client code and the other runs on the server, so labels and defaults live here and are
+ * re-exported by `$lib/utils/sprites.ts`.
  */
 
 /** Collapse whitespace and drop the surrounding blanks. Labels keep their own casing. */

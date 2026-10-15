@@ -115,16 +115,6 @@
 				grew big enough that sharing it seemed like the better idea: maybe a few people
 				like me will enjoy it too.
 			</p>
-
-			<!-- Named rather than wired to a button: the next step is the persona form, and a
-			     button leaving for Import would strand the greeting half finished. -->
-			<p class="wd-note">
-				<span class="wd-note-icon"><Icon name="download" class="w-4 h-4" strokeWidth={1.75} /></span>
-				<span>
-					Bringing a SillyTavern setup with you? Settings → Import reads a whole folder
-					in one pass: characters, personas, lorebooks, chats and backgrounds.
-				</span>
-			</p>
 		</div>
 
 		<div class="wd-foot">
@@ -202,38 +192,6 @@
 		font-size: 0.9rem;
 		line-height: 1.6;
 		color: var(--color-text-secondary);
-	}
-
-	/* Accent-tinted so it reads as an aside rather than a fourth capability: it is the
-	   one line on this screen aimed at readers arriving with a library already. */
-	.wd-note {
-		/* The paragraph's line box, spelled once: the glyph's own wrapper takes this
-		   height, so it centres on the FIRST line the same way the capability rows
-		   centre on their titles. Not `align-items: center`, which on a paragraph this
-		   long would park the glyph halfway down three lines of text. */
-		--note-lead: 1.17rem;
-		width: 100%;
-		display: flex;
-		align-items: flex-start;
-		gap: 0.55rem;
-		margin: 1.35rem 0 0;
-		padding: 0.7rem 0.8rem;
-		border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent);
-		border-radius: var(--radius-md);
-		background: color-mix(in srgb, var(--color-accent) 9%, transparent);
-		text-align: left;
-		font-family: var(--font-ui);
-		font-size: 0.78rem;
-		line-height: var(--note-lead);
-		color: var(--color-text-secondary);
-	}
-
-	.wd-note-icon {
-		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		height: var(--note-lead);
-		color: var(--color-accent);
 	}
 
 	.wd-form {

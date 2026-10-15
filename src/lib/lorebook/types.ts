@@ -1071,3 +1071,40 @@ export function parseKeys(input: string): string[] {
 export function formatKeys(keys: string[]): string {
 	return keys.join(', ');
 }
+
+/** What {@link addLorebookKeys} decided, so the caller can say what it turned away. */
+export interface LorebookKeyAddition {
+	/** The list with every accepted key appended, in the order they were offered. */
+	next: string[];
+	/** Keys refused because this list already holds that exact string, each named once. */
+	refused: string[];
+}
+
+/**
+ * Add keys to one of an entry's two key lists, deciding what is a repeat.
+ *
+ * A repeat is a key this list ALREADY HOLDS BYTE FOR BYTE, and nothing else. Two spellings of
+ * a word that differ only in case are two keys, because a key carries its own match rule: an
+ * entry can hold a case-sensitive acronym beside an ordinary word, so an entry that has to
+ * catch `phone` and `PHONE` and `Phone` has to be able to say all three. Folding case here
+ * would refuse the second and third, and refuse them for a rule that is set per key and can
+ * change after the fact.
+ *
+ * Pure, and it returns what it refused rather than dropping it quietly: a keystroke that
+ * vanishes with no explanation reads as the input being broken. Each refused key is named
+ * once however many times it was offered, so the caller counts keywords and not tokens.
+ */
+export function addLorebookKeys(existing: string[], incoming: string[]): LorebookKeyAddition {
+	const next = [...existing];
+	const held = new Set(existing);
+	const refused = new Set<string>();
+	for (const key of incoming) {
+		if (held.has(key)) {
+			refused.add(key);
+			continue;
+		}
+		next.push(key);
+		held.add(key);
+	}
+	return { next, refused: [...refused] };
+}

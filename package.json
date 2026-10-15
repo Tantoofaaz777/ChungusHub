@@ -14,6 +14,7 @@
     "server": "bun server/index.ts",
     "server:dev": "bun --watch server/index.ts",
     "start": "vite build && bun server/index.ts",
+    "setup:tunnel": "bun scripts/setup-tunnel.ts",
     "package": "bun scripts/package.ts",
     "icons": "bun scripts/icons.ts"
   },

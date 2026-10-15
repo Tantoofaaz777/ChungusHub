@@ -752,38 +752,6 @@ class ServerDatabase {
 		);
 	}
 
-	/**
-	 * Land an imported chat whole: the chat row, every message, and the pointers into them,
-	 * in one transaction. Returns nothing; the caller already knows the ids it sent.
-	 *
-	 * A story imported row by row over the RPC bridge is one round trip, one autocommit and
-	 * one sync broadcast PER TURN, so a long chat takes minutes and tells every other device
-	 * about it thousands of times. The real damage is that the pointers are written last: a
-	 * tab closed partway leaves the messages behind under a chat with no root and no leaf,
-	 * which lists with a message count and opens empty, and nothing ever cleans it up. Here
-	 * an interrupted import leaves nothing at all, which is the outcome a retry can act on.
-	 *
-	 * `messages` must be parent-first (a row before any row naming it as parent): parent_id
-	 * is a foreign key checked per row, and the converter already emits them that way.
-	 */
-	importChat(chat: NewChatRow, messages: Record<string, unknown>[]): void {
-		this.inTransaction(() => {
-			// root_message_id and active_leaf_id are foreign keys into messages, so the chat
-			// lands pointing nowhere and claims its pointers once the rows exist.
-			this.insertChat({ ...chat, rootMessageId: null, activeLeafId: null, canonLeafId: null });
-			for (const message of messages) this.insertMessage(message);
-			this.updateChat(
-				{
-					id: chat.id,
-					rootMessageId: chat.rootMessageId,
-					activeLeafId: chat.activeLeafId,
-					canonLeafId: chat.canonLeafId ?? null
-				},
-				{ touchUpdatedAt: false }
-			);
-		});
-	}
-
 	/** Star/unstar a chat. Never touches updated_at: favoriting is bookkeeping, not
 	 *  activity, and must not reshuffle an activity-sorted list under the user. */
 	updateChatFavorite(chatId: string, isFavorite: boolean): void {
@@ -1339,17 +1307,18 @@ class ServerDatabase {
 	 * and a `sinceRev` AHEAD of the chat answers full too rather than guessing: the only way
 	 * a client gets ahead is a database swapped under it (a restore), and its cache describes
 	 * rows this database never held. Null when the chat itself is gone.
+	 *
+	 * The chat row rides along from the same read: a path is its leaf walked through these
+	 * rows, and a leaf read apart from them can name a turn a delete has already taken.
 	 */
 	getMessagesDelta(chatId: string, sinceRev: number | null): unknown {
 		return this.inTransaction(() => {
-			const chat = this.select<{ messages_rev: number }[]>(
-				'SELECT messages_rev FROM chats WHERE id = ?',
-				[chatId]
-			)[0];
-			if (!chat) return null;
-			const rev = chat.messages_rev;
+			const row = this.select<Record<string, unknown>[]>('SELECT * FROM chats WHERE id = ?', [chatId])[0];
+			if (!row) return null;
+			const chat = this.mapChat(row);
+			const rev = row.messages_rev as number;
 			if (sinceRev === null || sinceRev > rev) {
-				return { rev, full: true, messages: this.getMessagesByChat(chatId) };
+				return { rev, chat, full: true, messages: this.getMessagesByChat(chatId) };
 			}
 			const upserts = this.select<Record<string, unknown>[]>(
 				'SELECT * FROM messages WHERE chat_id = ? AND rev > ?',
@@ -1359,7 +1328,7 @@ class ServerDatabase {
 				'SELECT message_id FROM message_tombstones WHERE chat_id = ? AND rev > ?',
 				[chatId, sinceRev]
 			).map((r) => r.message_id);
-			return { rev, full: false, upserts, deletedIds };
+			return { rev, chat, full: false, upserts, deletedIds };
 		});
 	}
 
@@ -2227,47 +2196,6 @@ class ServerDatabase {
 		return Number.isFinite(cap) ? Math.min(1000, Math.max(10, Math.round(cap))) : 100;
 	}
 
-	// ===== IMPORT SOURCES =====
-
-	/** Every source file an import has claimed, with what it became where that is worth
-	 *  remembering. Read when a folder is scanned, and again when one is imported. */
-	getImportedSources(): { key: string; entityId: string | null }[] {
-		const rows = this.select<{ source_key: string; entity_id: string | null }[]>(
-			'SELECT source_key, entity_id FROM import_sources',
-			[]
-		);
-		return rows.map((r) => ({ key: r.source_key, entityId: r.entity_id }));
-	}
-
-	/**
-	 * Claim these source files. Written in batches as an import walks, never once at the end,
-	 * so a run that is stopped or dies keeps what it already landed.
-	 *
-	 * **A second claim on the same file refreshes what it became**, which is what makes
-	 * `entity_id` mean the entry that exists rather than one that used to. A file only arrives
-	 * twice because the reader asked for it (the confirm card's include-known box, or an entry
-	 * they deleted being offered again), and it makes a NEW entry each time; leaving the first
-	 * id standing would point the claim at a deleted row for good, and a reader who deleted
-	 * that entry would then be handed the same file on every run forever. `created_at` is not
-	 * touched, since it records when this file first came over, and a claim carrying no id
-	 * cannot blank one that is already there.
-	 */
-	recordImportedSources(claims: { key: string; entityId?: string | null }[]): void {
-		if (claims.length === 0) return;
-		const now = Date.now();
-		const tx = this.db.transaction(() => {
-			for (const claim of claims) {
-				this.execute(
-					`INSERT INTO import_sources (source_key, entity_id, created_at) VALUES (?, ?, ?)
-					 ON CONFLICT(source_key) DO UPDATE SET entity_id = excluded.entity_id
-					 WHERE excluded.entity_id IS NOT NULL`,
-					[claim.key, claim.entityId ?? null, now]
-				);
-			}
-		});
-		tx();
-	}
-
 	// ===== CONNECTION CREDENTIALS =====
 
 	getConnectionCredentials(connectionId: string): unknown {
@@ -3111,10 +3039,6 @@ export const serverDb = new ServerDatabase();
 // is a compile error here rather than a device that quietly stops refreshing.
 export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	insertChat: 'chats',
-	// Writes messages too, but carries 'chats' for the same reason duplicateChat does: the
-	// whole story arrives at once, and a chat-list reload is what another device needs. It is
-	// also the point of the method that this is ONE hint rather than one per turn.
-	importChat: 'chats',
 	updateChat: 'chats',
 	updateChatActiveLeaf: 'chats',
 	updateChatFavorite: 'chats',
@@ -3144,9 +3068,6 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	deleteChatDraft: 'drafts',
 	addInputHistory: 'inputHistory',
 	clearInputHistory: 'inputHistory',
-	// Nothing on another device draws this row. It rides the `library` scope because an import
-	// is writing library entries around it anyway, and a mutation with no scope has no shape here.
-	recordImportedSources: 'library',
 	setConnectionCredentials: 'settings',
 	deleteConnectionCredentials: 'settings',
 	copyConnectionCredentials: 'settings',
@@ -3179,7 +3100,6 @@ const READ_METHODS = [
 	'getChatListStats', 'getChatContentGroups', 'searchChatMessages', 'getChatMemoryFootprint',
 	'getUserStats',
 	'getMessage', 'getNextSiblingIndex', 'getSetting', 'getChatDraft', 'getInputHistory', 'getConnectionCredentials',
-	'getImportedSources',
 	'getAllLibraryEntries', 'getLibraryEntry',
 	'getAllCharacterVersions', 'getCharacterVersion',
 	'getAllLorebooks', 'getLorebook',

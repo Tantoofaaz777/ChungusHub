@@ -292,21 +292,21 @@ const EN_DASH = '\u2013';
 const DATA_MARKER = 'em-dash: data';
 
 describe('em dash contract (architecture/ui-shell-settings.md)', () => {
-	// ONE rule, over every tracked file: the em dash appears nowhere. Not in copy, not in a
+	// ONE rule, over every project file: the em dash appears nowhere. Not in copy, not in a
 	// comment, not in prompt text a model reads, not in a doc, not in a shell script. The
 	// character renders as a stray bar in the UI font at message sizes, and a model copies the
 	// punctuation it is fed straight back onto the screen, so there is no file type where it is
-	// harmless. `git ls-files` is the scope on purpose: a new file, a new directory or a new
-	// extension is covered the day it lands, with nothing here to keep in step.
+	// harmless. `git ls-files` includes tracked and new non-ignored files. Deleted working-tree
+	// paths are omitted, so a removal need not be staged just to run this check.
 	//
 	// The escape hatch is per LINE, never per file. A file allowlist would exempt the regex
 	// starter pack's next em dash along with the four it is allowed, and nobody would see it
 	// happen. A line that carries the character as DATA (a pattern that matches it, a fixture
 	// that proves the pattern, a sample the reader previews) ends with `em-dash: data`.
-	test('no tracked file carries an em dash outside a line marked as data', () => {
-		const files = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64e6 })
+	test('no project file carries an em dash outside a line marked as data', () => {
+		const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64e6 })
 			.split('\0')
-			.filter(Boolean);
+			.filter((file) => file && existsSync(join(ROOT, file)));
 		expect(files.length, 'git listed no files, so the scan is stale').toBeGreaterThan(100);
 		const offenders: string[] = [];
 		for (const file of files) {

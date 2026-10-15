@@ -3,7 +3,7 @@
 
 <p><br></p>
 
-ChungusHub is a local-first, privacy-focused LLM frontend for roleplay. Characters, lorebooks and personas use SillyTavern's formats, so most existing libraries should import without trouble.
+ChungusHub is a local-first, privacy-focused LLM frontend for roleplay. Character cards and lorebooks use compatible file formats for individual import and export.
 
 A chat is a tree rather than a line, so an edit or a regeneration branches instead of overwriting, and the story map lets you find your way around it.
 
@@ -13,7 +13,7 @@ A chat is a tree rather than a line, so an edit or a regeneration branches inste
 
 Portable: unpack it and run it, nothing is installed and your data stays in the folder beside it.
 
-The **[documentation](https://chungushub.mintlify.app/)** covers installing it, the first run and coming over from SillyTavern.
+The **[documentation](https://chungushub.mintlify.app/)** covers installing it, the first run and importing individual files.
 
 ChungusHub is under active development. So there might be some rough edges. Please do not hold back on bug reports, feature requests or plain feedback.
 
@@ -134,6 +134,19 @@ bun run start
 Then open <http://localhost:4242>. Your data lives in `user-data/` next to the repo.
 
 By default the app listens on loopback only. Turn on network access from Settings → Security when you want to reach it from other devices.
+
+For an existing Cloudflare Tunnel running directly on the same VPS, stop ChungusHub and run:
+
+```sh
+bun run setup:tunnel chungus.example.com
+bun run start
+```
+
+The setup command configures the hostname, disables automatic browser opening, keeps the server on loopback and disables the IP allowlist. Existing data paths, passwords and sessions are preserved; existing settings get a `.before-tunnel` backup. You can also paste `https://chungus.example.com` into the command.
+
+Before publishing the hostname, create a Cloudflare Access self-hosted application that allows only your email. In your existing tunnel, route the hostname to `http://127.0.0.1:4242` (or the local service printed by setup), set HTTP Host Header to the public hostname, and enable Protect with Access. Leave the route path empty. The app's internal password alone is insufficient behind this proxy because local proxy requests currently trust the first `X-Forwarded-For` value. No inbound app port needs to be opened.
+
+This command configures ChungusHub only; it does not change your Cloudflare account or install a service to keep the app running after SSH disconnects. If `cloudflared` runs in a container, its origin address must reach the host instead of the container's own loopback.
 
 ### Develop
 

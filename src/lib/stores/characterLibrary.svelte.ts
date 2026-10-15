@@ -475,10 +475,6 @@ class CharacterLibraryStore {
 			 *  the run started plus everything the run has landed since. Without one, every card
 			 *  in a batch shelves its own copy of the book they share. */
 			bookIndex?: BookIndex;
-			/** The book SillyTavern's own `world` link names, resolved by the caller against the
-			 *  profile folder. It wins over the card's embedded copy, which is the copy
-			 *  SillyTavern itself stops reading once that world exists. */
-			linkBookId?: string | null;
 		} = {}
 	): Promise<{ entry: LibraryEntry; book: { id: string; created: boolean } | null }> {
 		const character = { ...importResult.character };
@@ -529,7 +525,7 @@ class CharacterLibraryStore {
 		if (options.importLorebook) {
 			const embedded = importResult.lorebook;
 			const shelved = embedded && embedded.entries.length > 0 ? embedded : null;
-			const existing = options.linkBookId ?? (shelved ? options.bookIndex?.same(shelved) : null) ?? null;
+			const existing = (shelved ? options.bookIndex?.same(shelved) : null) ?? null;
 			if (existing) {
 				book = { id: existing, created: false };
 			} else if (shelved) {
