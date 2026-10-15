@@ -11,6 +11,7 @@ import type {
 import type { ChatProvider, ProviderProfile } from './providers/types';
 import { num } from './providers/util';
 import { loadImage } from './media';
+import { mergeCustomBody } from '../../shared/custom-body';
 import {
 	timedFetch,
 	readBodyCapped,
@@ -430,10 +431,11 @@ export class AnthropicNativeProvider implements ChatProvider {
 		const { system, messages } = this.convertPlainMessages(options.messages);
 		this.placeCacheBreakpoints(system, messages, options.tuning);
 
-		const body: Record<string, unknown> = { model: options.model, messages };
+		let body: Record<string, unknown> = { model: options.model, messages };
 		if (system) body.system = system;
 		this.applyTuning(body, options, caps);
 		this.applyReasoning(body, caps, options.tuning);
+		body = mergeCustomBody(body, options.customBody);
 
 		if (options.onToken) {
 			body.stream = true;

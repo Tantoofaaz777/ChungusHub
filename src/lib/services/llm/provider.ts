@@ -311,6 +311,7 @@ class LLMService {
 			maxTokens: options.maxTokens,
 			temperature: options.temperature,
 			params,
+			customBody: conn.customBody,
 			tuning,
 			routing: provider === 'openrouter' ? conn.routing : undefined,
 			source: options.source,

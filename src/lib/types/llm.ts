@@ -409,6 +409,8 @@ export interface Connection {
 	 */
 	reasoningDialect: ReasoningDialect;
 	generation: GenerationSettings;
+	/** Extra JSON fields merged into this connection's final request body. */
+	customBody?: import('$shared/custom-body').CustomBody;
 }
 
 export interface LLMCompletionOptions {
@@ -419,6 +421,7 @@ export interface LLMCompletionOptions {
 	stop?: string[];
 	/** Extra request-body fields (sampling knobs + service_tier) merged verbatim. */
 	params?: Record<string, string | number>;
+	customBody?: import('$shared/custom-body').CustomBody;
 	/** Reasoning/verbosity/media tuning; providers translate what they support. */
 	tuning?: GenerationTuning;
 	onToken?: (token: string) => void;

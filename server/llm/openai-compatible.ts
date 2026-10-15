@@ -10,6 +10,7 @@ import type {
 } from './types';
 import { num } from './providers/util';
 import { imageDataUrl } from './media';
+import { mergeCustomBody, type CustomBody } from '../../shared/custom-body';
 import {
 	createInlineReasoningParser,
 	extractInlineReasoning,
@@ -184,6 +185,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 			stop?: string[];
 			providerRouting?: Record<string, unknown>;
 			params?: Record<string, string | number>;
+			customBody?: CustomBody;
 			tuning?: GenerationTuning;
 		},
 		extra: Record<string, unknown>
@@ -195,7 +197,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 		if (o.providerRouting) body.provider = o.providerRouting;
 		if (o.tuning) this.applyTuning(body, o.tuning);
 		if (o.params) Object.assign(body, o.params);
-		return body;
+		return mergeCustomBody(body, o.customBody);
 	}
 
 	/**

@@ -141,6 +141,7 @@ export interface LLMCompletionOptions {
 	stop?: string[];
 	/** Extra request-body fields (sampling knobs + service_tier) merged verbatim. */
 	params?: Record<string, string | number>;
+	customBody?: import('../../shared/custom-body').CustomBody;
 	/** Reasoning/verbosity/media tuning; each provider translates what it supports. */
 	tuning?: GenerationTuning;
 	onToken?: (token: string) => void;

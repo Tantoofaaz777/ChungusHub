@@ -51,6 +51,7 @@
 	} from '$lib/config/sampling';
 	import { rangeReset } from '$lib/actions/rangeReset';
 	import { toggleRow } from '$lib/actions/toggleRow';
+	import { parseCustomBody } from '$shared/custom-body';
 
 	type Status = 'idle' | 'binding' | 'valid' | 'invalid';
 
@@ -86,6 +87,20 @@
 	let connectSeq = 0;
 
 	const gen = $derived(conn?.generation ?? DEFAULT_GENERATION_SETTINGS);
+	let customBodyDraft = $state<string | null>(null);
+	const customBodyText = $derived(customBodyDraft ?? (conn?.customBody ? JSON.stringify(conn.customBody, null, 2) : ''));
+	const customBodyParsed = $derived(parseCustomBody(customBodyText));
+
+	function commitCustomBody() {
+		if (customBodyDraft === null || !customBodyParsed.ok) return;
+		connectionStore.update(id, { customBody: customBodyParsed.value });
+		customBodyDraft = null;
+	}
+
+	function clearCustomBody() {
+		connectionStore.update(id, { customBody: undefined });
+		customBodyDraft = null;
+	}
 	const routedModels = $derived(conn && !isRoutingEmpty(conn.routing) ? new Set([conn.model]) : new Set<string>());
 
 	const POST_PROCESSING_OPTIONS: { value: PromptPostProcessingMode; label: string; hint?: string }[] = [
@@ -901,6 +916,39 @@
 						/>
 					</div>
 				{/if}
+
+				<div class="custom-body">
+					<div class="slider-top">
+						<label for="custom-body-{id}" class="slider-label">Custom body</label>
+						{#if customBodyText.trim()}
+							<button type="button" class="link-btn" onclick={clearCustomBody}>clear</button>
+						{/if}
+					</div>
+					<textarea
+						id="custom-body-{id}"
+						class="input-base custom-body-input"
+						rows="7"
+						value={customBodyText}
+						placeholder={'{\n  "your_parameter": "value"\n}'}
+						spellcheck="false"
+						autocapitalize="off"
+						aria-invalid={!customBodyParsed.ok}
+						aria-describedby={!customBodyParsed.ok ? `custom-body-error-${id}` : undefined}
+						oninput={(event) => (customBodyDraft = event.currentTarget.value)}
+						onblur={commitCustomBody}
+						onkeydown={(event) => {
+							if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+								event.preventDefault();
+								commitCustomBody();
+							}
+						}}
+					></textarea>
+					{#if !customBodyParsed.ok}
+						<p id="custom-body-error-{id}" class="custom-body-error" role="status">
+							{customBodyParsed.error} The last valid body remains active.
+						</p>
+					{/if}
+				</div>
 			</div>
 		</section>
 	</div>
@@ -1187,6 +1235,12 @@
 		font-size: 0.8rem;
 		color: var(--color-text-primary);
 	}
+
+	.custom-body { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.8rem; border-top: 1px solid var(--color-border-subtle); }
+	.custom-body-input { width: 100%; min-width: 0; min-height: 9rem; padding: 0.65rem; resize: vertical;
+		font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5; color: var(--color-text-primary); }
+	.custom-body-input[aria-invalid='true'] { border-color: var(--color-error); }
+	.custom-body-error { margin: 0; font-family: var(--font-ui); font-size: 0.72rem; color: var(--color-error); overflow-wrap: anywhere; }
 
 	.slider-note {
 		font-family: var(--font-ui);

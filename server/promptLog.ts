@@ -35,6 +35,7 @@ export interface PromptLogEntry {
 	model: string;
 	messages: PromptLogMessage[];
 	params?: Record<string, string | number>;
+	customBody?: import('../shared/custom-body').CustomBody;
 	maxTokens?: number;
 	temperature?: number;
 	stream: boolean;

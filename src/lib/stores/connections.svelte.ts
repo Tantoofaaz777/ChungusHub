@@ -18,6 +18,7 @@
  */
 import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
 import { db } from '$lib/services/database';
+import { customBodyError } from '$shared/custom-body';
 import { ENGINES } from '$lib/engines/registry';
 import { DECLARABLE_PARAMS, REASONING_DIALECTS } from '$lib/config/sampling';
 import {
@@ -103,7 +104,8 @@ function normalizeConnection(raw: Partial<Connection> | null): Connection | null
 		routing: raw.routing ?? null,
 		samplingParams: normalizeSamplingParams(raw.samplingParams),
 		reasoningDialect: dialect,
-		generation: { ...DEFAULT_GENERATION_SETTINGS, ...(raw.generation ?? {}) }
+		generation: { ...DEFAULT_GENERATION_SETTINGS, ...(raw.generation ?? {}) },
+		customBody: raw.customBody && !customBodyError(raw.customBody) ? raw.customBody : undefined
 	};
 }
 

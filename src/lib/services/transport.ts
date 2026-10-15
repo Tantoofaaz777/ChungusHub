@@ -424,6 +424,7 @@ export interface PromptLogRequest {
 	model: string;
 	messages: PromptLogMessage[];
 	params?: Record<string, string | number>;
+	customBody?: import('$shared/custom-body').CustomBody;
 	maxTokens?: number;
 	temperature?: number;
 	stream: boolean;
@@ -1012,6 +1013,7 @@ export interface LlmRequest {
 	temperature?: number;
 	/** Extra request-body fields (sampling knobs + service_tier) merged server-side. */
 	params?: Record<string, string | number>;
+	customBody?: import('$shared/custom-body').CustomBody;
 	/** Reasoning/verbosity/media tuning; the server's providers translate what they support. */
 	tuning?: import('$lib/types/llm').GenerationTuning;
 	/** The connection's OpenRouter routing (openrouter only; ignored elsewhere). */
@@ -1092,6 +1094,7 @@ export async function llmComplete(req: LlmRequest): Promise<LlmResult> {
 				maxTokens: req.maxTokens,
 				temperature: req.temperature,
 				params: req.params,
+				customBody: req.customBody,
 				tuning: req.tuning,
 				routing: req.routing,
 				stream: req.stream,

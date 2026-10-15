@@ -176,5 +176,6 @@ export function requestChips(entry: PromptLogEntry): string[] {
 	chips.push(entry.stream ? 'stream' : 'no-stream');
 	fieldChips('', entry.tuning, chips);
 	fieldChips('route', entry.routing, chips);
+	fieldChips('custom', entry.customBody, chips);
 	return chips;
 }

@@ -1114,6 +1114,7 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 	maxTokens?: number;
 	temperature?: number;
 	params?: Record<string, string | number>;
+	customBody?: import('../shared/custom-body').CustomBody;
 	/** Reasoning/verbosity/media tuning; providers translate what they support. */
 	tuning?: import('./llm/types').GenerationTuning;
 	/** The connection's OpenRouter routing (openrouter only; ignored elsewhere). */
@@ -1204,6 +1205,7 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 			model: msg.model,
 			messages: msg.messages,
 			params: msg.params,
+			customBody: msg.customBody,
 			maxTokens: msg.maxTokens,
 			temperature: msg.temperature,
 			stream,
@@ -1233,6 +1235,7 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 			maxTokens: msg.maxTokens,
 			temperature: msg.temperature,
 			params: msg.params,
+			customBody: msg.customBody,
 			tuning: msg.tuning,
 			routing: msg.routing,
 			signal: controller.signal,
