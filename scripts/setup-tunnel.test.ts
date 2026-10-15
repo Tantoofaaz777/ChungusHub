@@ -10,11 +10,12 @@ beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'chungus-tunnel-')); });
 afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 const write = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value));
 const read = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
-function run(domain: string, overrides: Record<string, string> = {}) {
+function run(domain: string, overrides: Record<string, string> = {}, mode = '--access', password?: string) {
 	const env = { ...process.env };
 	for (const key of ['CHUNGUS_DATA_DIR', 'CHUNGUS_PORT', 'CHUNGUS_HOST']) delete env[key];
-	return Bun.spawnSync([process.execPath, script, domain], {
-		cwd: root, env: { ...env, ...overrides }, stdout: 'pipe', stderr: 'pipe'
+	return Bun.spawnSync([process.execPath, script, domain, ...(mode ? [mode] : [])], {
+		cwd: root, env: { ...env, ...overrides }, stdout: 'pipe', stderr: 'pipe',
+		stdin: password === undefined ? 'ignore' : Buffer.from(password)
 	});
 }
 
@@ -70,6 +71,34 @@ test('environment data and port overrides match the server and unsafe host overr
 	expect(read(join(root, 'chungushub.config.json')).port).toBe(8080);
 	expect(existsSync(join(root, 'user-data'))).toBe(false);
 	expect(run('chungus.example.com', { CHUNGUS_HOST: '0.0.0.0' }).exitCode).toBe(1);
+});
+
+test('password setup hashes stdin, enables the lock and never prints the password', () => {
+	const password = 'test password with spaces and ç';
+	const result = run('chungus.example.com', {}, '--password-stdin', `${password}\n`);
+	expect(result.exitCode).toBe(0);
+	const path = join(root, 'user-data/security.json');
+	const security = read(path);
+	expect(security.passwordEnabled).toBe(true);
+	expect(Bun.password.verifySync(password, security.passwordHash)).toBe(true);
+	expect(security.sessions).toEqual({});
+	expect(result.stdout.toString() + result.stderr.toString() + readFileSync(path, 'utf8')).not.toContain(password);
+	// Reuse the password without requiring a terminal, including after a lock was disabled.
+	write(path, { ...security, passwordEnabled: false, sessions: { existing: 123 } });
+	expect(run('chungus.example.com', {}, '').exitCode).toBe(0);
+	expect(read(path)).toMatchObject({ passwordEnabled: true, passwordHash: security.passwordHash, sessions: { existing: 123 } });
+	// A replacement invalidates the old sessions and old password.
+	expect(run('chungus.example.com', {}, '--password-stdin', 'replacement password').exitCode).toBe(0);
+	expect(read(path).sessions).toEqual({});
+	expect(Bun.password.verifySync(password, read(path).passwordHash)).toBe(false);
+});
+
+test('a missing or short password cannot silently configure an unprotected origin', () => {
+	for (const [mode, password] of [['', undefined], ['--password-stdin', 'short']] as const) {
+		expect(run('chungus.example.com', {}, mode, password).exitCode).toBe(1);
+		expect(existsSync(join(root, 'chungushub.config.json'))).toBe(false);
+		expect(existsSync(join(root, 'user-data/security.json'))).toBe(false);
+	}
 });
 
 test('a running instance prevents edits to the configuration and security switches', async () => {

@@ -55,6 +55,7 @@ import {
 } from './files';
 import type { PresetFileData } from './files';
 import { fromOurOwnHost, fromOurOwnOrigin, isKnownHost } from './same-origin';
+import { requestClientIp } from './request-client';
 import { complete, fetchAccount, fetchAvailableModels, fetchModelEndpoints, isProvider, providerMetadata, resolvedBaseUrl, validateCredentials, type RoutingConfig } from './llm/registry';
 import * as promptLog from './promptLog';
 
@@ -1551,16 +1552,10 @@ function serve(hostname: string) {
 			const url = new URL(req.url);
 			const path = url.pathname;
 
-			// Effective client IP. Direct connections use the socket address. The one
-			// exception: the Vite dev proxy reaches us from loopback and forwards the
-			// real device behind it in X-Forwarded-For (xfwd in vite.config.ts). Trust
-			// that header from loopback only, so both gates below see the actual device
-			// in dev too. A remote client sending a forged XFF is ignored, and anything
-			// local enough to hit loopback already owns the machine.
+			// Only local proxies may supply a visitor address. Use their appended peer,
+			// never the visitor-controlled prefix, and keep unknown public visitors gated.
 			const socketIp = srv.requestIP(req)?.address ?? null;
-			const forwarded = req.headers.get('x-forwarded-for');
-			const clientIp =
-				isLoopback(socketIp) && forwarded ? forwarded.split(',')[0].trim() : socketIp;
+			const clientIp = requestClientIp(socketIp, req.headers, ALLOWED_HOSTNAMES);
 
 			// Access gate: only allowlisted IPs (and the loopback host) get past here,
 			// unless the allowlist has been switched off in Settings → Security. A denied

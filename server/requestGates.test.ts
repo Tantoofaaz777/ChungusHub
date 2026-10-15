@@ -250,3 +250,36 @@ describe('/files/', () => {
 		expect(bundled.headers['cache-control']).toBe('no-cache');
 	});
 });
+
+describe('password authentication through a local tunnel', () => {
+	test('a forged XFF prefix cannot unlock API, files, page loads or sockets', async () => {
+		const password = 'tunnel test password';
+		const visitor = { Host: hostname(), 'X-Forwarded-For': '127.0.0.1, 203.0.113.9' };
+		expect((await exchange('GET', '/api/config', visitor)).status).toBe(403);
+		await exchange('POST', '/api/security/ip-allowlist', ours(), JSON.stringify({ enabled: false }));
+		await exchange('POST', '/api/security/password', ours(), JSON.stringify({ password }));
+		try {
+			expect((await exchange('GET', '/api/config', ours())).status).toBe(200);
+			for (const path of ['/api/config', '/files/images/characters/gate.PNG', '/ws']) {
+				expect((await exchange('GET', path, visitor)).status, path).toBe(401);
+			}
+			const page = await exchange('GET', '/', visitor);
+			expect(page.status).toBe(302);
+			expect(page.headers.location).toBe('/unlock');
+			expect((await exchange('GET', '/unlock', visitor)).status).toBe(200);
+			// Even a proxy that reports loopback must not exempt a public host.
+			expect((await exchange('GET', '/api/config', { ...visitor, 'X-Forwarded-For': '127.0.0.1' })).status).toBe(401);
+			expect(await socketOpens({ 'X-Forwarded-For': visitor['X-Forwarded-For'] })).toBe(false);
+			const badLogin = await exchange('POST', '/api/auth/login', visitor, JSON.stringify({ password: 'wrong' }));
+			expect(badLogin.status).toBe(401);
+			const authenticated = await exchange('POST', '/api/auth/login', visitor, JSON.stringify({ password }));
+			expect(authenticated.status).toBe(200);
+			const Cookie = authenticated.headers['set-cookie'].split(';')[0];
+			expect((await exchange('GET', '/api/config', { ...visitor, Cookie })).status).toBe(200);
+			expect(await socketOpens({ 'X-Forwarded-For': visitor['X-Forwarded-For'], Cookie })).toBe(true);
+		} finally {
+			await exchange('POST', '/api/security/password/enabled', ours(), JSON.stringify({ enabled: false }));
+			await exchange('POST', '/api/security/ip-allowlist', ours(), JSON.stringify({ enabled: true }));
+		}
+	});
+});

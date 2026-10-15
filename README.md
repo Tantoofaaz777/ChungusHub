@@ -142,9 +142,11 @@ bun run setup:tunnel chungus.example.com
 bun run start
 ```
 
-The setup command configures the hostname, disables automatic browser opening, keeps the server on loopback and disables the IP allowlist. Existing data paths, passwords and sessions are preserved; existing settings get a `.before-tunnel` backup. You can also paste `https://chungus.example.com` into the command.
+The setup command configures the hostname, disables automatic browser opening, keeps the server on loopback and disables the IP allowlist. It asks for a password with hidden input when none is set, or enables the existing password. Existing data paths and settings are preserved; existing settings get a `.before-tunnel` backup. You can also paste `https://chungus.example.com` into the command. To replace the password, add `--password`; a replacement signs out existing sessions. For automation, `--password-stdin` reads a new password from standard input instead of exposing it as a command argument.
 
-Before publishing the hostname, create a Cloudflare Access self-hosted application that allows only your email. In your existing tunnel, route the hostname to `http://127.0.0.1:4242` (or the local service printed by setup), set HTTP Host Header to the public hostname, and enable Protect with Access. Leave the route path empty. The app's internal password alone is insufficient behind this proxy because local proxy requests currently trust the first `X-Forwarded-For` value. No inbound app port needs to be opened.
+In your existing tunnel, route the hostname to `http://127.0.0.1:4242` (or the local service printed by setup), set HTTP Host Header to the public hostname, and leave Protect with Access off and the route path empty. Open the public address and sign in with the ChungusHub password. No inbound app port needs to be opened.
+
+Cloudflare Access is optional. To use it instead of setting a ChungusHub password, run setup with `--access`, create an Access self-hosted application that allows only your email, and enable Protect with Access on the tunnel route before publishing. This mode preserves existing password settings and sessions.
 
 This command configures ChungusHub only; it does not change your Cloudflare account or install a service to keep the app running after SSH disconnects. If `cloudflared` runs in a container, its origin address must reach the host instead of the container's own loopback.
 
