@@ -6,6 +6,8 @@ import { Writable } from 'node:stream';
 import { claimDataDir } from '../server/instance-lock';
 import { hostnameEntry } from '../server/same-origin';
 
+const MIN_PASSWORD_LENGTH = 7;
+
 function readObject(path: string): Record<string, unknown> {
 	if (!existsSync(path)) return {};
 	const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
@@ -97,8 +99,8 @@ async function main(): Promise<void> {
 		if (needsPassword) {
 			const password = mode === '--password-stdin'
 				? (await Bun.stdin.text()).replace(/\r?\n$/, '')
-				: await hiddenQuestion('New ChungusHub password (at least 12 characters; input is hidden): ');
-			if (password.length < 12) throw new Error('Use a password with at least 12 characters. No settings were changed.');
+				: await hiddenQuestion(`New ChungusHub password (at least ${MIN_PASSWORD_LENGTH} characters; input is hidden): `);
+			if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`Use a password with at least ${MIN_PASSWORD_LENGTH} characters. No settings were changed.`);
 			if (mode !== '--password-stdin' && password !== await hiddenQuestion('Confirm password: ')) {
 				throw new Error('Passwords do not match. No settings were changed.');
 			}

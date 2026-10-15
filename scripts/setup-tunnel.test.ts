@@ -73,8 +73,8 @@ test('environment data and port overrides match the server and unsafe host overr
 	expect(run('chungus.example.com', { CHUNGUS_HOST: '0.0.0.0' }).exitCode).toBe(1);
 });
 
-test('password setup hashes stdin, enables the lock and never prints the password', () => {
-	const password = 'test password with spaces and ç';
+test('password setup accepts seven characters, hashes stdin and never prints the password', () => {
+	const password = 'senha ç';
 	const result = run('chungus.example.com', {}, '--password-stdin', `${password}\n`);
 	expect(result.exitCode).toBe(0);
 	const path = join(root, 'user-data/security.json');
@@ -94,7 +94,7 @@ test('password setup hashes stdin, enables the lock and never prints the passwor
 });
 
 test('a missing or short password cannot silently configure an unprotected origin', () => {
-	for (const [mode, password] of [['', undefined], ['--password-stdin', 'short']] as const) {
+	for (const [mode, password] of [['', undefined], ['--password-stdin', '123456']] as const) {
 		expect(run('chungus.example.com', {}, mode, password).exitCode).toBe(1);
 		expect(existsSync(join(root, 'chungushub.config.json'))).toBe(false);
 		expect(existsSync(join(root, 'user-data/security.json'))).toBe(false);
