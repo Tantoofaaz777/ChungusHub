@@ -463,6 +463,7 @@
 					bookIndex
 				});
 				lastEntry = entry;
+				for (const warning of item.result.warnings ?? []) toastStore.error(warning);
 				successCount++;
 			} catch (error) {
 				const name = item.result.character.name || 'character';
@@ -1244,7 +1245,7 @@
 <input
 	bind:this={importInputRef}
 	type="file"
-	accept=".png,.json"
+	accept=".png,.apng,.json,.charx"
 	multiple
 	onchange={handleImportFile}
 	class="hidden"

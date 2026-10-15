@@ -95,15 +95,10 @@
 	let messages = $derived(chats.reduce((n, c) => n + (chatStats[c.id]?.path ?? 0), 0));
 	let messagesTotal = $derived(chats.reduce((n, c) => n + (chatStats[c.id]?.total ?? 0), 0));
 
-	// The four counts below are character-only fields, so a persona simply answers 0 to each
+	// Versions and greetings are character-only fields, so a persona answers 0 to each
 	// and the rows they draw stand down on their own.
 	let versions = $derived(characterLibraryStore.versionsFor(entry.id).length);
 	let greetings = $derived(entry.data.alternateGreetings?.length ?? 0);
-	// Two counts, because they are two sets of pictures: the gallery is the character's art and
-	// the sprites are what the engine picks between (architecture/library.md).
-	let images = $derived(entry.identity.gallery?.length ?? 0);
-	let sprites = $derived(entry.identity.sprites?.length ?? 0);
-
 	// ===== Tokens =====
 
 	// Summed per field rather than over one joined string: the join's own separators are not
@@ -176,12 +171,6 @@
 	{/if}
 	{#if greetings > 0}
 		<span class="editor-stat"><b>{num(greetings)}</b> alternate {greetings === 1 ? 'greeting' : 'greetings'}</span>
-	{/if}
-	{#if images > 0}
-		<span class="editor-stat"><b>{num(images)}</b> gallery {images === 1 ? 'image' : 'images'}</span>
-	{/if}
-	{#if sprites > 0}
-		<span class="editor-stat"><b>{num(sprites)}</b> {sprites === 1 ? 'sprite' : 'sprites'}</span>
 	{/if}
 	<span
 		class="editor-stat"

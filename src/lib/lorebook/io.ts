@@ -4,7 +4,7 @@
  * free of it. Export is SillyTavern native World Info (its "Import World Info" reads it).
  */
 import type { Lorebook } from './types';
-import { parseLorebook, toNativeWorldInfo } from './sillytavern';
+import { parseLorebook, toNativeWorldInfo, toCharacterBook } from './sillytavern';
 import { createZip } from '$lib/services/zip';
 import { triggerDownload } from '$lib/services/libraryExport';
 
@@ -16,8 +16,12 @@ function sanitizeFilename(name: string): string {
 	return cleaned || 'lorebook';
 }
 
+function exportDocument(book: Lorebook) {
+	return book.entries.some((entry) => entry.cardV3) ? { spec: 'lorebook_v3', data: toCharacterBook(book) } : toNativeWorldInfo(book);
+}
+
 function worldInfoBlob(book: Lorebook): Blob {
-	return new Blob([JSON.stringify(toNativeWorldInfo(book), null, 2)], {
+	return new Blob([JSON.stringify(exportDocument(book), null, 2)], {
 		type: 'application/json'
 	});
 }
@@ -48,7 +52,7 @@ export function downloadLorebooks(books: Lorebook[]): void {
 		taken.add(name);
 		return {
 			name: `${name}.json`,
-			data: encoder.encode(JSON.stringify(toNativeWorldInfo(book), null, 2))
+			data: encoder.encode(JSON.stringify(exportDocument(book), null, 2))
 		};
 	});
 	triggerDownload('lorebooks.zip', createZip(entries));

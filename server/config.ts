@@ -299,7 +299,7 @@ export const CLIENT_DIR = resolve(join(BASE_DIR, 'build'));
 export const DEFAULT_PRESETS_DIR = resolve(join(BASE_DIR, 'defaults', 'presets'));
 
 // Bundled example characters shipped with the repo: `<id>.json` plus the pictures under the
-// same name (`<id>.<image>` portrait, `<id>/` sprite folder). Seeded into the library ONCE,
+// same name (`<id>.<image>` portrait). Seeded into the library ONCE,
 // tracked by id, so a character the user deletes is gone for good.
 export const DEFAULT_CHARACTERS_DIR = resolve(join(BASE_DIR, 'defaults', 'characters'));
 

@@ -11,7 +11,7 @@
  */
 
 import type { Message } from '$lib/types/chat';
-import { expandMacros, type MacroContext } from '$lib/macros';
+import { expandMacros, cardLoreContext, cardLorePositions, withLorebookFields, type MacroContext } from '$lib/macros';
 import { resolveLorebooks } from '$lib/lorebook/engine';
 import { lorebookHistory, lorebookScanFields, type LorebookTrigger } from '$lib/lorebook/types';
 import { chatStore } from '$lib/stores/chat.svelte';
@@ -66,6 +66,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 			: undefined;
 	const persona = chatPersonaEntry(chatStore.activeChat);
 	const base: MacroContext = {
+		cardLorePositions: cardLorePositions(preset?.items ?? []),
 		resolvedPersona: toPromptCharacter(persona),
 		resolvedCharacters: character ? [character] : [],
 		chatMessages,
@@ -77,6 +78,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 	// buildMacroContext, through the same resolver, so these surfaces cannot select
 	// differently from the prompt they sit beside.
 	const lore = resolveLorebooks({
+		cardContext: cardLoreContext(base),
 		books: lorebookStore.booksForChat({
 			cards: [...(characterData?.lorebookIds ?? []), ...(persona?.data.lorebookIds ?? [])],
 			chat: chatLorebookClaim(chatStore.activeChat),
@@ -90,5 +92,5 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 		expand: (text) => expandMacros(text, base),
 		budget: lorebookBudget
 	});
-	return { ...base, lorebook: lore.text, lorebookTrace: lore.trace };
+	return withLorebookFields({ ...base, lorebook: lore.text, lorebookTrace: lore.trace }, lore.fields);
 }

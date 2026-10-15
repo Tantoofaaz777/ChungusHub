@@ -26,7 +26,7 @@ import { lorebookHistory, lorebookScanFields } from '$lib/lorebook/types';
 import { presetControlsStore } from '$lib/stores/presetControls.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { findActivePath } from '$lib/utils/message-tree';
-import { expandMacros, resolveMacroValues, type MacroContext } from '$lib/macros';
+import { expandMacros, resolveMacroValues, cardLoreContext, withLorebookFields, type MacroContext } from '$lib/macros';
 import { storyRoleName } from '$lib/types/library';
 
 import { createMemoryDb } from './db-adapter';
@@ -461,6 +461,7 @@ class MemoryStore {
 		// One scan, through the same resolver as the prompt and the meters. No budget here: a
 		// memory template is its own request, priced against its own engine connection.
 		const lore = resolveLorebooks({
+			cardContext: cardLoreContext(base),
 			books: lorebookStore.booksForChat({
 				cards: [...(data?.lorebookIds ?? []), ...(persona?.data.lorebookIds ?? [])],
 				chat: ctx.lorebookIds,
@@ -472,7 +473,7 @@ class MemoryStore {
 			settings: lorebookSettingsStore.settings,
 			expand: (text) => expandMacros(text, base)
 		});
-		return { ...base, lorebook: lore.text, lorebookTrace: lore.trace };
+		return withLorebookFields({ ...base, lorebook: lore.text, lorebookTrace: lore.trace }, lore.fields);
 	}
 
 	// ===== Loading / lifecycle (driven by the chat store) =====

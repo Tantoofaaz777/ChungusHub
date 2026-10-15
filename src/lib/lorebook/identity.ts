@@ -26,7 +26,8 @@ function entryPrint(entry: LorebookEntry): string {
 		entry.content,
 		entry.constant,
 		entry.disable,
-		entry.order
+		entry.order,
+		...(entry.cardV3 ? [entry.cardV3.useRegex, entry.cardV3.selective] : [])
 	]);
 }
 

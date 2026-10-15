@@ -1865,7 +1865,7 @@ class ServerDatabase {
 	/** Extend an assistant turn with a generated continuation: the full joined content plus
 	 *  the run's accumulated stats. Deliberately leaves edited_at alone: a continuation is
 	 *  more generation, not a user edit, so the turn never gets flagged as edited. The
-	 *  sprite reading is left alone here too, for the same reason memory's summary is:
+	 *  legacy sprite metadata is also retained on rewrites:
 	 *  whether a rewritten turn is re-read is the caller's decision, gated on a setting the
 	 *  server has no business reading (architecture/engines.md).
 	 *
@@ -1912,16 +1912,6 @@ class ServerDatabase {
 		this.inTransaction(() => {
 			const rev = this.revForMessageWrite(messageId);
 			this.execute('UPDATE messages SET persona_id = ?, rev = ? WHERE id = ?', [personaId ?? null, rev, messageId]);
-		});
-	}
-
-	/** Record which sprite label the Sprites engine read an assistant turn as. Metadata like the
-	 *  branch label below: it never touches content or edited_at, so re-reading a turn is not an
-	 *  edit and the memory pipeline has nothing to invalidate. */
-	updateMessageSpriteLabel(messageId: string, label: string | null): void {
-		this.inTransaction(() => {
-			const rev = this.revForMessageWrite(messageId);
-			this.execute('UPDATE messages SET sprite_label = ?, rev = ? WHERE id = ?', [label ?? null, rev, messageId]);
 		});
 	}
 
@@ -3056,7 +3046,6 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	updateMessageContent: 'messages',
 	applyMessageContinuation: 'messages',
 	updateMessagePersona: 'messages',
-	updateMessageSpriteLabel: 'messages',
 	setChatUserPersona: 'messages',
 	updateMessageBranchLabel: 'messages',
 	deleteMessageOnly: 'messages',

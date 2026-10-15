@@ -37,7 +37,7 @@
 		/** Emit the next rule map when a chip's mode or case changes. */
 		onRulesChange: (next: LorebookKeyRules) => void;
 		/** What a chip that sets nothing falls back to: the entry's resolved match settings. */
-		defaults: { caseSensitive: boolean; matchWholeWords: boolean };
+		defaults: { caseSensitive: boolean; matchWholeWords: boolean; useRegex?: boolean };
 		placeholder?: string;
 		ariaLabel?: string;
 	}
@@ -85,7 +85,7 @@
 
 	/** A pattern that will not compile fires nothing, so it is marked where it is written. */
 	function isBroken(key: string): boolean {
-		const regex = parseRegexKey(key);
+		const regex = resolveKeyMatch(key, rules, defaults).regex;
 		return !!regex && !compileRegexKey(regex);
 	}
 

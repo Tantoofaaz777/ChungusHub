@@ -78,7 +78,8 @@
 	/** What a chip falls back to: the entry's own two switches over the book's. */
 	let keyDefaults = $derived({
 		caseSensitive: entry?.caseSensitive ?? caseDefault,
-		matchWholeWords: entry?.matchWholeWords ?? wholeDefault
+		matchWholeWords: entry?.matchWholeWords ?? wholeDefault,
+		useRegex: entry?.cardV3?.useRegex
 	});
 
 	const NATURE_HINTS: Record<Nature, string> = {
@@ -196,7 +197,8 @@
 
 	function setNature(next: Nature) {
 		if (next === 'off') update({ disable: true });
-		else update({ disable: false, constant: next === 'always' });
+		else update({ disable: false, constant: next === 'always',
+			...(next === 'always' && entry?.cardV3 ? { cardV3: { ...entry.cardV3, useRegex: false } } : {}) });
 	}
 
 	/** The leading dot flips the entry on/off without opening it. */
@@ -483,6 +485,15 @@
 					</div>
 				</div>
 
+				{#if entry.cardV3}
+					<div class="space-y-2 text-xs font-ui text-text-secondary">
+						<span class="ed-label section-label">V3 matching</span>
+						<label class="flex items-center gap-2"><input type="checkbox" checked={entry.cardV3.useRegex} onchange={(event) => update({ cardV3: { ...entry!.cardV3!, useRegex: event.currentTarget.checked }, ...(event.currentTarget.checked ? { constant: false } : {}) })} />Treat keys as regular expressions</label>
+						<label class="flex items-center gap-2"><input type="checkbox" checked={entry.cardV3.selective} disabled={entry.cardV3.useRegex} onchange={(event) => update({ cardV3: { ...entry!.cardV3!, selective: event.currentTarget.checked } })} />Apply secondary keys</label>
+						<label class="flex items-center gap-2">Budget priority<input class="w-20 rounded border border-border-subtle bg-bg-secondary px-2 py-1" type="number" value={typeof entry.cardV3.original.priority === 'number' ? entry.cardV3.original.priority : entry.order} onchange={(event) => update({ cardV3: { ...entry!.cardV3!, original: { ...entry!.cardV3!.original, priority: Number(event.currentTarget.value) } } })} /></label>
+						<p class="text-text-muted">{entry.cardV3.useRegex ? 'Regex mode ignores constant activation and secondary keys. Invalid patterns do not match.' : 'Keys are literal text, including keys written with slashes.'} Decorators in Content are applied during the scan.</p>
+					</div>
+				{/if}
 				{#if !entry.constant}
 					<!-- Triggers -->
 					<div>
@@ -502,8 +513,7 @@
 							</p>
 						{:else}
 							<p class="mt-1.5 text-xs font-ui text-text-muted">
-								Click a keyword to change how it matches. <code class="ed-macro">/pattern/i</code> is a
-								regular expression.
+								{#if entry.cardV3}V3 matching above decides whether keys are literal text or regex patterns.{:else}Click a keyword to change how it matches. <code class="ed-macro">/pattern/i</code> is a regular expression.{/if}
 							</p>
 						{/if}
 					</div>

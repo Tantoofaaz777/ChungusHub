@@ -181,6 +181,10 @@ export function toPromptCharacter(
 	return {
 		name: storyRoleName(entry.identity),
 		traits: (data ?? entry.data).traits,
+		...((data ?? entry.data).cardMetadata?.version === 3 ? {
+			greetings: [(data ?? entry.data).traits.firstMessage ?? '', ...((data ?? entry.data).alternateGreetings ?? [])],
+			userIconName: (data ?? entry.data).cardMetadata?.userIconName
+		} : {}),
 		pronouns: entry.type === 'persona' ? entry.identity.pronouns : undefined,
 		storyNotes: ''
 	};

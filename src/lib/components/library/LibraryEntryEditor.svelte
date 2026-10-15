@@ -8,6 +8,7 @@
 	import { chatPersonaEntry } from '$lib/utils/chat-setup';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import EntryFormFields from './EntryFormFields.svelte';
+	import CardMetadataPanel from './CardMetadataPanel.svelte';
 	import CharacterVersionMenu from './CharacterVersionMenu.svelte';
 	import LibraryStatsBar from './LibraryStatsBar.svelte';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
@@ -46,9 +47,6 @@
 					imageUrl: entry.identity.imageUrl,
 					portraitFocus: entry.identity.portraitFocus,
 					tags: entry.identity.tags,
-					gallery: entry.identity.gallery,
-					sprites: entry.identity.sprites,
-					defaultSprite: entry.identity.defaultSprite,
 					traits: entry.data.traits,
 					alternateGreetings: entry.data.alternateGreetings,
 					lorebookIds: entry.data.lorebookIds
@@ -180,43 +178,6 @@
 	function handleAlternateGreetingsChange(greetings: string[]) {
 		if (!entry) return;
 		characterLibraryStore.scheduleDataEdit(entry.id, { alternateGreetings: greetings });
-	}
-
-	async function handleGalleryAdd(files: File[]): Promise<void> {
-		if (!entry) return;
-		await characterLibraryStore.addGalleryImages(entry.id, files);
-	}
-
-	async function handleGalleryRemove(path: string): Promise<void> {
-		if (!entry) return;
-		await characterLibraryStore.removeGalleryImage(entry.id, path);
-	}
-
-	async function handleSpritesAdd(items: { file: File; label: string }[]): Promise<void> {
-		if (!entry) return;
-		const refused = await characterLibraryStore.addSprites(entry.id, items);
-		// Silently missing sprites would read as a failed upload, so name the ones that
-		// collided with a label this character already uses.
-		if (refused.length) {
-			toastStore.error(
-				`Skipped, those labels are already taken: ${refused.join(', ')}`
-			);
-		}
-	}
-
-	async function handleSpriteLabel(path: string, label: string): Promise<void> {
-		if (!entry) return;
-		await characterLibraryStore.setSpriteLabel(entry.id, path, label);
-	}
-
-	async function handleSpriteDefault(path: string): Promise<void> {
-		if (!entry) return;
-		await characterLibraryStore.setDefaultSprite(entry.id, path);
-	}
-
-	async function handleSpriteRemove(path: string): Promise<void> {
-		if (!entry) return;
-		await characterLibraryStore.removeSprite(entry.id, path);
 	}
 
 	let showDeleteConfirm = $state(false);
@@ -400,9 +361,6 @@
 					tags={data.tags}
 					traits={data.traits}
 					alternateGreetings={data.alternateGreetings}
-					gallery={data.gallery}
-					sprites={data.sprites}
-					defaultSprite={data.defaultSprite}
 					entityId={entryId}
 					onFieldChange={handleFieldChange}
 					onTraitChange={handleTraitChange}
@@ -412,14 +370,9 @@
 						characterLibraryStore.setPortraitFocus(entryId, focus)}
 					onTagsChange={handleTagsChange}
 					onAlternateGreetingsChange={handleAlternateGreetingsChange}
-					onGalleryAdd={handleGalleryAdd}
-					onGalleryRemove={handleGalleryRemove}
-					onSpritesAdd={handleSpritesAdd}
-					onSpriteLabel={handleSpriteLabel}
-					onSpriteDefault={handleSpriteDefault}
-					onSpriteRemove={handleSpriteRemove}
 					identityExtra={chatDefaultsPanel}
 			/>
+			<CardMetadataPanel {entry} />
 		</div>
 
 		<LibraryStatsBar {entry} />

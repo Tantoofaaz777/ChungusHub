@@ -3,6 +3,7 @@
 	import LibraryEntryMenu from './LibraryEntryMenu.svelte';
 	import TagList from './TagList.svelte';
 	import { imageService } from '$lib/services/imageService';
+	import { localizedCreatorNotes } from '$lib/services/characterCard';
 	import { portraitFocusAim } from '$lib/utils/portrait-focus';
 	import type { LibraryEntry } from '$lib/types/library';
 
@@ -59,7 +60,7 @@
 	let notes = $derived(
 		entry.type === 'persona'
 			? entry.data.traits.description || ''
-			: entry.data.traits.creatorNotes || ''
+			: localizedCreatorNotes(entry.data.cardMetadata?.creatorNotesMultilingual, entry.data.traits.creatorNotes || '')
 	);
 	let tags = $derived(entry.identity.tags || []);
 

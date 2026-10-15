@@ -209,8 +209,8 @@ describe('SillyTavern card export', () => {
 	});
 });
 
-describe('archive layout (bulk / pictures)', () => {
-	const TEXT_ONLY = { format: 'json' as const, includeGallery: false, includeSprites: false };
+describe('bulk archive layout', () => {
+	const TEXT_ONLY = { format: 'json' as const };
 
 	// Every stored picture answers as one byte of PNG: the layout is what these tests are about,
 	// and the bytes only have to survive into the entry.
@@ -249,54 +249,21 @@ describe('archive layout (bulk / pictures)', () => {
 		expect(files.map((f) => f.name)).toEqual(['Asami Sato.json']);
 	});
 
-	test('sprites land flat in the card folder under their labels, gallery one level below', async () => {
-		const entry = makeEntry({
-			identity: {
-				name: 'Asami',
-				tags: [],
-				gallery: ['images/characters/g1.jpg'],
-				sprites: [
-					{ path: 'images/characters/s1.png', label: 'neutral' },
-					{ path: 'images/characters/s2.png', label: 'quiet anger' }
-				]
-			}
-		});
-		const files = await buildCharacterFiles(entry, [], 'all', { format: 'json', includeGallery: true, includeSprites: true }, new Set());
-		// The flat folder is SillyTavern's sprite layout, so gallery art must not share it.
-		expect(files.map((f) => f.name)).toEqual([
-			'Asami.json',
-			'Asami/neutral.png',
-			'Asami/quiet anger.png',
-			'Asami/gallery/1.jpg'
-		]);
-	});
-
-	test('two labels that sanitize alike stay separate files', async () => {
-		const entry = makeEntry({
-			identity: {
-				name: 'Asami',
-				tags: [],
-				sprites: [
-					{ path: 'images/characters/s1.png', label: 'joy' },
-					{ path: 'images/characters/s2.png', label: 'joy!' }
-				]
-			}
-		});
-		const files = await buildCharacterFiles(entry, [], 'all', { format: 'json', includeGallery: false, includeSprites: true }, new Set());
-		expect(files.map((f) => f.name)).toEqual(['Asami.json', 'Asami/joy.png', 'Asami/joy(2).png']);
-	});
-
-	test('an unticked set is not fetched at all', async () => {
-		const entry = makeEntry({
-			identity: {
-				name: 'Asami',
-				tags: [],
-				gallery: ['images/characters/g1.jpg'],
-				sprites: [{ path: 'images/characters/s1.png', label: 'neutral' }]
-			}
-		});
-		const files = await buildCharacterFiles(entry, [], 'all', { format: 'json', includeGallery: false, includeSprites: true }, new Set());
-		expect(files.map((f) => f.name)).toEqual(['Asami.json', 'Asami/neutral.png']);
+	test('legacy image fields are inert and produce only the card', async () => {
+		const entry = makeEntry({ identity: {
+			name: 'Asami', gallery: ['images/characters/old-gallery.jpg'],
+			sprites: [{ path: 'images/characters/old-sprite.png', label: 'neutral' }],
+			defaultSprite: 'images/characters/old-sprite.png'
+		} });
+		let calls = 0;
+		const previous = globalThis.fetch;
+		globalThis.fetch = (async () => { calls++; throw new Error('Legacy art must not be fetched'); }) as typeof fetch;
+		try {
+			const files = await buildCharacterFiles(entry, [], 'all', TEXT_ONLY, new Set());
+			expect(files.map((file) => file.name)).toEqual(['Asami.json']);
+			expect(calls).toBe(0);
+			expect(entry.identity.gallery).toEqual(['images/characters/old-gallery.jpg']);
+		} finally { globalThis.fetch = previous; }
 	});
 });
 

@@ -56,6 +56,7 @@ import {
 import type { PresetFileData } from './files';
 import { fromOurOwnHost, fromOurOwnOrigin, isKnownHost } from './same-origin';
 import { requestClientIp } from './request-client';
+import { downloadCardAsset } from './card-assets';
 import { complete, fetchAccount, fetchAvailableModels, fetchModelEndpoints, isProvider, providerMetadata, resolvedBaseUrl, validateCredentials, type RoutingConfig } from './llm/registry';
 import * as promptLog from './promptLog';
 
@@ -709,6 +710,18 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 		return json({ ok: true });
 	}
 
+	if (path === '/api/card-assets/fetch' && req.method === 'POST') {
+		try {
+			const { url } = await req.json() as { url?: unknown };
+			if (typeof url !== 'string' || url.length > 8192) return json({ error: 'Invalid card asset address.' }, 400);
+			const asset = await downloadCardAsset(url);
+			return new Response(asset.bytes, { headers: { 'content-type': 'application/octet-stream',
+				'content-disposition': 'attachment', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' } });
+		} catch {
+			return json({ error: 'Card asset could not be downloaded from a public HTTPS address.' }, 400);
+		}
+	}
+
 	// ----- Backups -----
 	if (path === '/api/backups' && req.method === 'GET') {
 		const payload = backupService.payload();
@@ -1038,7 +1051,7 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
  * never come back: a phone whose browser is discarded loses the request id with the tab, and
  * the reply it paid for would sit unclaimed until its window ran out. Every other call keeps
  * its result client-side, and the difference is what the loss costs. Chat memory refires on
- * the next turn, a sprite is re-read, a spellcheck is a button press, and a continue extends
+ * the next turn, a spellcheck is a button press, and a continue extends
  * a turn that is already safe on disk and re-continues with one click. None of those is a
  * story the reader cannot get back, and giving each of them a commit path would be machinery
  * that only ever runs where nothing was at stake.

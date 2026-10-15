@@ -6,24 +6,17 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import AlternateGreetingsModal from './AlternateGreetingsModal.svelte';
-	import CharacterGallery from './CharacterGallery.svelte';
-	import CharacterSprites from './CharacterSprites.svelte';
-	import SpriteLabelDialog from './SpriteLabelDialog.svelte';
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
 	import { portraitFocusStyle, type PortraitFocus } from '$lib/utils/portrait-focus';
 	import { autoResize } from '$lib/actions/autoResize';
 	import {
 		PERMANENT_TRAITS,
 		BLOB_MACRO,
-		type CharacterSprite,
 		type CharacterTraits,
 		type TraitKey
 	} from '$lib/types/library';
 	import { presetService } from '$lib/services/presets.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import { spriteSortPref, SPRITE_SORT_OPTIONS } from '$lib/stores/spriteSort.svelte';
-	import type { SpriteSort } from '$lib/utils/sprites';
 	import { extractMacroNames } from '$lib/macros';
 
 	interface Props {
@@ -37,11 +30,6 @@
 		traits: CharacterTraits;
 		/** Alternate opening messages (characters only). */
 		alternateGreetings: string[] | undefined;
-		/** Extra image paths shown in the gallery section. */
-		gallery: string[] | undefined;
-		/** The character's sprites: their own image set, shown in their own section. */
-		sprites: CharacterSprite[] | undefined;
-		defaultSprite: string | undefined;
 
 		// Unique id for form element IDs
 		entityId: string;
@@ -59,12 +47,6 @@
 		onPortraitFocusChange: (focus: PortraitFocus | null) => Promise<void>;
 		onTagsChange: (tags: string[]) => void;
 		onAlternateGreetingsChange: (greetings: string[]) => void;
-		onGalleryAdd: (files: File[]) => Promise<void>;
-		onGalleryRemove: (path: string) => Promise<void>;
-		onSpritesAdd: (items: { file: File; label: string }[]) => Promise<void>;
-		onSpriteLabel: (path: string, label: string) => Promise<void>;
-		onSpriteDefault: (path: string) => Promise<void>;
-		onSpriteRemove: (path: string) => Promise<void>;
 	}
 
 	let {
@@ -75,9 +57,6 @@
 		tags,
 		traits,
 		alternateGreetings,
-		gallery,
-		sprites,
-		defaultSprite,
 		entityId,
 		identityExtra,
 		onFieldChange,
@@ -87,32 +66,7 @@
 		onPortraitFocusChange,
 		onTagsChange,
 		onAlternateGreetingsChange,
-		onGalleryAdd,
-		onGalleryRemove,
-		onSpritesAdd,
-		onSpriteLabel,
-		onSpriteDefault,
-		onSpriteRemove
 	}: Props = $props();
-
-	// The rename dialog is mounted here, once, rather than per tile inside the grid: one dialog
-	// for the whole list is one answer to what a legal label is.
-	let labelling = $state<{ path: string; label: string } | null>(null);
-	const takenLabels = $derived(
-		(sprites ?? []).filter((s) => s.path !== labelling?.path).map((s) => s.label)
-	);
-
-	async function commitLabel(label: string) {
-		const target = labelling;
-		labelling = null;
-		if (!target) return;
-		try {
-			await onSpriteLabel(target.path, label);
-		} catch (error) {
-			console.error('Renaming a sprite failed:', error);
-			toastStore.failed('rename that sprite', error);
-		}
-	}
 
 	// "Not sent to AI" is derived, never toggled: a field is sent when the active preset
 	// references either the whole-sheet {{character}} blob or the field's own macro. The set
@@ -152,25 +106,16 @@
 		onAlternateGreetingsChange(next);
 	}
 
-	// Section collapse state. Four fixed sections: the primary card, the metadata details,
-	// the gallery and the sprites. Card details defaults collapsed.
+	// The card and metadata details have independent collapse state.
 	let openSections = $state<Record<string, boolean>>({
 		card: true,
 		details: false,
-		gallery: false,
-		sprites: false
 	});
 	function toggleSection(id: string) {
 		openSections = { ...openSections, [id]: !(openSections[id] ?? true) };
 	}
 	let cardOpen = $derived(openSections.card ?? true);
 	let detailsOpen = $derived(openSections.details ?? false);
-	let galleryOpen = $derived(openSections.gallery ?? false);
-	let spritesOpen = $derived(openSections.sprites ?? false);
-	// The order picker belongs to the open grid, and on a single sprite it would be a control
-	// over nothing.
-	let showSpriteSort = $derived(spritesOpen && (sprites?.length ?? 0) > 1);
-
 	// Image handling state
 	let fileInputRef = $state<HTMLInputElement | null>(null);
 	let resolvedImageUrl = $derived(imageService.imageUrl(imageUrl));
@@ -488,21 +433,6 @@
 	</div>
 {/snippet}
 
-<!-- Sits at the right of the Sprites heading. Display only: the stored list keeps the order the
-     files arrived in, which is why upload order is one of the choices rather than a lost one. -->
-{#snippet spriteSortControl()}
-	<Select
-		variant="compact"
-		value={spriteSortPref.order}
-		onchange={(e) => spriteSortPref.set(e.currentTarget.value as SpriteSort)}
-		aria-label="Sort sprites"
-	>
-		{#each SPRITE_SORT_OPTIONS as option (option.id)}
-			<option value={option.id}>{option.label}</option>
-		{/each}
-	</Select>
-{/snippet}
-
 <!-- Sits next to the First Message label; opens the alternate-greetings manager. -->
 {#snippet greetingsButton()}
 	<button
@@ -712,34 +642,6 @@
 			{/if}
 		</div>
 
-		<!-- Gallery: extra art tied to this character. -->
-		<div class="space-y-3">
-			{@render sectionHeading('gallery', 'Gallery', 'image', galleryOpen)}
-			{#if galleryOpen}
-				<CharacterGallery {gallery} onAdd={onGalleryAdd} onRemove={onGalleryRemove} />
-			{/if}
-		</div>
-
-		<!-- Sprites: the pictures the engine picks between. Their own set, not gallery art. -->
-		<div class="space-y-3">
-			{@render sectionHeading(
-				'sprites',
-				'Sprites',
-				'image',
-				spritesOpen,
-				showSpriteSort ? spriteSortControl : undefined
-			)}
-			{#if spritesOpen}
-				<CharacterSprites
-					{sprites}
-					{defaultSprite}
-					onAddFiles={onSpritesAdd}
-					onEditLabel={(path, label) => (labelling = { path, label })}
-					onRemove={onSpriteRemove}
-					onSetDefault={onSpriteDefault}
-				/>
-			{/if}
-		</div>
 	</div>
 </div>
 
@@ -750,14 +652,6 @@
 	onChange={onAlternateGreetingsChange}
 	onMakeFirst={makeFirstGreeting}
 	onClose={() => (showGreetingsModal = false)}
-/>
-
-<SpriteLabelDialog
-	open={labelling !== null}
-	label={labelling?.label ?? ''}
-	taken={takenLabels}
-	onCommit={commitLabel}
-	onCancel={() => (labelling = null)}
 />
 
 {#if imageUrl}

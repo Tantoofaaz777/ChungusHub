@@ -85,21 +85,11 @@ describe('example characters', () => {
 		expect(existsSync(storedFile(lila!.identity.imageUrl!))).toBe(true);
 	});
 
-	test('the sprite pack arrives labelled from its filenames, with a default that names one of them', () => {
+	test('new installs seed portraits without gallery or sprite data', () => {
 		const lila = characters().find((e) => e.identity.name === 'Lila')!;
-		const sprites = lila.identity.sprites ?? [];
-		expect(sprites.length).toBeGreaterThan(1);
-		expect(sprites.map((s) => s.label)).toContain('neutral');
-		// Every label unique, case-insensitively: the engine answers with one and expects one
-		// picture back, so a duplicate would make the second sprite unreachable.
-		const labels = sprites.map((s) => s.label.toLowerCase());
-		expect(new Set(labels).size).toBe(labels.length);
-		for (const sprite of sprites) {
-			expect(existsSync(storedFile(sprite.path))).toBe(true);
-		}
-		// A character with sprites always has a default, and it names one of its own.
-		expect(sprites.some((s) => s.path === lila.identity.defaultSprite)).toBe(true);
-		expect(sprites.find((s) => s.path === lila.identity.defaultSprite)?.label).toBe('neutral');
+		expect(lila.identity.sprites).toBeUndefined();
+		expect(lila.identity.defaultSprite).toBeUndefined();
+		expect((lila.identity as Record<string, unknown>).gallery).toBeUndefined();
 	});
 
 	test('booting again seeds nothing: the ledger is what stops a second copy', () => {

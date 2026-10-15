@@ -2,8 +2,6 @@
 	import MessageList from './MessageList.svelte';
 	import InputArea from './InputArea.svelte';
 	import PortraitViewer from './PortraitViewer.svelte';
-	import SpriteLayer from './SpriteLayer.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
@@ -179,12 +177,6 @@
 		</div>
 	{/if}
 
-	<!-- Not on a phone: there the chat column is the whole screen, so a standing figure has
-	     nowhere to stand that is not on top of the story being read. The layer is also what
-	     asks the engine to read a reply, so a phone spends nothing on sprites either. -->
-	{#if !viewport.isMobile}
-		<SpriteLayer />
-	{/if}
 	<PortraitViewer />
 </div>
 

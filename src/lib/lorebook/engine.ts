@@ -39,6 +39,9 @@
  * the live token meters. Randomness is injectable (`rng`) for the same reason.
  */
 
+import { cardScanText, expandCardCbs } from '$lib/card-cbs';
+import { prepareCardV3Book, type CardLoreContext } from './card-v3';
+import { countTokens } from '$lib/tokenizer/count';
 import type {
 	Lorebook,
 	LorebookEntry,
@@ -78,6 +81,7 @@ import {
 interface MatchDefaults {
 	caseSensitive: boolean;
 	matchWholeWords: boolean;
+	useRegex?: boolean;
 }
 
 /** Characters of context kept on either side of a hit when quoting it back to the reader. */
@@ -247,15 +251,18 @@ function distinct(keys: string[]): string[] {
  * the book's resolved defaults (`null` inherits them), and each key's own rule overrides those
  * in turn (`resolveKeyMatch`).
  */
-function evaluateKeys(
+function evaluateBaseKeys(
 	entry: LorebookEntry,
 	sources: LorebookScanSource[],
 	bookDefaults: MatchDefaults
 ): KeyVerdict {
 	const defaults: MatchDefaults = {
 		caseSensitive: entry.caseSensitive ?? bookDefaults.caseSensitive,
-		matchWholeWords: entry.matchWholeWords ?? bookDefaults.matchWholeWords
+		matchWholeWords: entry.matchWholeWords ?? bookDefaults.matchWholeWords,
+		useRegex: entry.cardV3?.useRegex
 	};
+	if (entry.constant) return ALWAYS;
+	if (entry.cardV3?.useRegex && entry.key.some((key) => !compileKey(key, resolveKeyMatch(key, entry.keyRules, defaults)))) return NO_MATCH;
 	const primary = found(distinct(entry.key), sources, 'primary', entry.keyRules, defaults);
 	if (primary.length === 0) return NO_MATCH;
 	// Both the scan and the count below read the SAME deduped list: measuring `total` off the
@@ -284,6 +291,21 @@ function evaluateKeys(
 			fired = true;
 	}
 	return { fired, primaryHit: true, matches: [...primary, ...secondary] };
+}
+
+function evaluateKeys(entry: LorebookEntry, sources: LorebookScanSource[], defaults: MatchDefaults): KeyVerdict {
+	if (entry.v3Runtime?.force) return ALWAYS;
+	const verdict = evaluateBaseKeys(entry, sources, defaults);
+	if (!verdict.fired || !entry.v3Runtime) return verdict;
+	const matching = { ...defaults, caseSensitive: entry.caseSensitive ?? defaults.caseSensitive,
+		useRegex: entry.cardV3?.useRegex, matchWholeWords: false };
+	const additional = entry.v3Runtime.additionalKeys ?? [];
+	if (entry.cardV3?.useRegex && additional.flat().some((key) => !compileKey(key, resolveKeyMatch(key, undefined, matching)))) return { ...verdict, fired: false };
+	const excluded = entry.v3Runtime.excludeKeys ?? [];
+	const extra = additional.map((keys) => found(keys, sources, 'secondary', undefined, matching));
+	const excludeHits = found(excluded, sources, 'secondary', undefined, { ...matching, useRegex: false });
+	return { ...verdict, fired: extra.every((hits) => hits.length > 0) && excludeHits.length === 0,
+		matches: [...verdict.matches, ...extra.flat(), ...excludeHits] };
 }
 
 /** SillyTavern "Trigger %": a fired entry still has to pass its probability roll. */
@@ -416,6 +438,7 @@ function selectFromBooks(
 	const gate = (entry: LorebookEntry): LorebookStatus | null => {
 		if (entry.disable) return 'disabled';
 		if (!entry.content.trim()) return 'empty';
+		if (entry.v3Runtime?.blocked) return 'filtered';
 		if (!firesOnTrigger(entry.triggers, trigger)) return 'offTrigger';
 		// Delay counts the whole chat, not the entry's own scan window: it asks how far the
 		// story has come, which a narrow window would answer with a number about itself.
@@ -455,9 +478,7 @@ function selectFromBooks(
 			write(pooled, 'delayed');
 			continue;
 		}
-		const verdict = entry.constant
-			? ALWAYS
-			: evaluateKeys(entry, sourcesFor(entry, sources, knobs.scanDepth, false), matchDefaults(pooled));
+		const verdict = evaluateKeys(entry, sourcesFor(entry, sources, knobs.scanDepth, false), matchDefaults(pooled));
 		if (!verdict.primaryHit) {
 			write(pooled, 'noMatch');
 			continue;
@@ -509,7 +530,7 @@ function selectFromBooks(
 					entryId: entry.id,
 					title: entry.comment,
 					bookName: book.name,
-					text: expand(entry.content)
+					text: expand(cardScanText(entry.content, true))
 				});
 			}
 
@@ -523,11 +544,12 @@ function selectFromBooks(
 				// (re-rolling every round would inflate the effective chance to 1-(1-p)^rounds),
 				// and the gate's answers do not depend on the sources at all.
 				if (!REVISITABLE.includes(decided.status)) continue;
+				if (entry.v3Runtime?.blocked) continue;
 				const recursion = resolveEntryRecursion(entry);
 				if (recursion.excludeRecursion) continue;
 				if (recursion.delayLevel > level) continue;
 
-				if (entry.constant) {
+				if (entry.constant && !entry.v3Runtime) {
 					// The one constant that can still be undecided here is one held back by its
 					// delay. Recursion has now run, so it fires, and it fires without keys.
 					if (!passesProbability(entry, rng)) {
@@ -666,6 +688,7 @@ function resolveGroups(
 
 /** Everything one scan needs. */
 export interface LorebookScanInput {
+	cardContext?: Omit<CardLoreContext, 'messageCount' | 'history'>;
 	books: Lorebook[];
 	/** Everything readable, from {@link messageScanSources} and {@link fieldScanSources}. */
 	sources: LorebookScanSource[];
@@ -693,12 +716,16 @@ export function scanLorebooks(input: LorebookScanInput): LorebookSelection {
 	const history = input.history ?? [];
 	const settings = input.settings ?? DEFAULT_LOREBOOK_GLOBAL_SETTINGS;
 	const chatLength = input.sources.filter((s) => s.kind === 'message').length;
+	const books = input.books.map((book) => prepareCardV3Book(book, {
+		...input.cardContext, messageCount: chatLength, history
+	}));
+	const sources = input.sources.map((source) => ({ ...source, text: cardScanText(source.text) }));
 	const entries: LorebookEntry[] = [];
 	const records = new Map<string, LorebookEntryRecord>();
 	const run = (pool: Lorebook[], maxSteps: number) => {
 		const picked = selectFromBooks(
 			pool,
-			input.sources,
+			sources,
 			rng,
 			settings,
 			input.trigger ?? 'normal',
@@ -713,9 +740,9 @@ export function scanLorebooks(input: LorebookScanInput): LorebookSelection {
 	if (settings.crossBookRecursion) {
 		// One loop over everything in play. A shared loop cannot honour a cap each book set for
 		// itself, so the global one governs while books recurse together.
-		run(input.books, settings.maxRecursionSteps);
+		run(books, settings.maxRecursionSteps);
 	} else {
-		for (const book of input.books) {
+		for (const book of books) {
 			run([book], resolveBookActivation(book, settings).maxRecursionSteps);
 		}
 	}
@@ -729,6 +756,7 @@ export function scanLorebooks(input: LorebookScanInput): LorebookSelection {
 /** The injected block, the at-depth groups, and the records rendering itself updated. */
 export interface LorebookRender {
 	text: string;
+	fields?: Partial<Record<'before_desc' | 'after_desc' | 'personality' | 'scenario', string>>;
 	placed: LorebookPlacedGroup[];
 	records: LorebookEntryRecord[];
 }
@@ -762,9 +790,36 @@ export function renderLorebookBlock(
 	const trimmed = new Set<string>();
 	const blank = new Set<string>();
 	const placedAt = new Map<string, { role: LorebookRole; depth: number }>();
+	const fields: NonNullable<LorebookRender['fields']> = {};
+	const contents = new Map(selection.entries.map((entry) => [entry.id, expand(expandCardCbs(entry.content)).trim()]));
+	const bookSpent = new Map<string, number>();
+	const ranked = [...selection.entries].sort((a, b) =>
+		Number(!!a.v3Runtime?.ignoreOnMaxContext) - Number(!!b.v3Runtime?.ignoreOnMaxContext) ||
+		(b.v3Runtime?.priority ?? -b.order) - (a.v3Runtime?.priority ?? -a.order));
+	// Select by priority, then render in insertion order. Book limits remain independent.
+	let reserved = 0;
+	for (const entry of ranked) {
+		const runtime = entry.v3Runtime;
+		const content = contents.get(entry.id)!;
+		if (!content) continue;
+		const count = budget?.count ?? countTokens;
+		const cost = count(reserved > 0 ? `\n\n${content}` : content);
+		let bookCost = 0;
+		if (runtime?.bookId && runtime.bookTokenBudget !== undefined) {
+			const used = bookSpent.get(runtime.bookId) ?? 0;
+			bookCost = count(used > 0 ? `\n\n${content}` : content);
+			if (used + bookCost > runtime.bookTokenBudget) { trimmed.add(entry.id); continue; }
+		}
+		if (budget && selection.entries.some((e) => e.cardV3)) {
+			if (reserved + cost > budget.maxTokens) { trimmed.add(entry.id); continue; }
+			reserved += cost;
+		}
+		if (runtime?.bookId && bookCost > 0) bookSpent.set(runtime.bookId, (bookSpent.get(runtime.bookId) ?? 0) + bookCost);
+	}
 	let spent = 0;
 	for (const entry of selection.entries) {
-		const content = expand(entry.content).trim();
+		if (trimmed.has(entry.id)) continue;
+		const content = contents.get(entry.id)!;
 		if (!content) {
 			// Content that expanded to nothing: it fired, but there is nothing to inject.
 			blank.add(entry.id);
@@ -785,6 +840,11 @@ export function renderLorebookBlock(
 			}
 			spent += cost;
 		}
+		if (entry.v3Runtime?.position) {
+			const position = entry.v3Runtime.position;
+			fields[position] = [fields[position], content].filter(Boolean).join('\n\n');
+			continue;
+		}
 		if (atDepth) {
 			if (group) group.texts.push(content);
 			else groups.set(`${role} ${depth}`, { role, depth, text: '', texts: [content] });
@@ -803,6 +863,7 @@ export function renderLorebookBlock(
 	// {{lorebook}} (tags, lead-in), so the block composes instead of asserting itself.
 	return {
 		text: parts.join('\n\n'),
+		...(Object.keys(fields).length ? { fields } : {}),
 		placed: [...groups.values()].map(({ role, depth, texts }) => ({ role, depth, text: texts.join('\n\n') })),
 		records
 	};
@@ -811,6 +872,9 @@ export function renderLorebookBlock(
 /** What a context injects: the block, the turns to splice into the chat, and why. */
 export interface LorebookResolution {
 	text: string;
+	fields?: LorebookRender['fields'];
+	/** Reuses the same scan and rolls when the prompt must shed optional context. */
+	withoutOptional?: () => LorebookResolution;
 	placed: LorebookPlacedGroup[];
 	trace: LorebookTrace;
 }
@@ -822,6 +886,7 @@ export interface LorebookResolution {
  * trace stored on a turn names exactly the entries that shaped it.
  */
 export function resolveLorebooks(opts: {
+	cardContext?: LorebookScanInput['cardContext'];
 	books: Lorebook[];
 	/** The chat path macros read, oldest → newest, message contents only. */
 	messages: string[];
@@ -844,9 +909,10 @@ export function resolveLorebooks(opts: {
 	// Card fields go in FRONT of the chat: sources are searched from the back, so a key present
 	// in both is reported against the turn the reader is looking at, not the description. They
 	// are expanded like entry content, so a card writing {{char}} is scanned as it reads.
-	const fields = fieldScanSources(opts.fields).map((s) => ({ ...s, text: expand(s.text) }));
+	const fields = fieldScanSources(opts.fields).map((s) => ({ ...s, text: expand(cardScanText(s.text)) }));
 	const selection = scanLorebooks({
 		books: opts.books,
+		cardContext: opts.cardContext,
 		sources: [...fields, ...messageScanSources(opts.messages)],
 		rng: opts.rng,
 		settings: opts.settings,
@@ -857,7 +923,17 @@ export function resolveLorebooks(opts: {
 	const rendered = renderLorebookBlock(selection, expand, opts.budget, opts.placeAtDepth);
 	return {
 		text: rendered.text,
+		...(rendered.fields ? { fields: rendered.fields } : {}),
 		placed: rendered.placed,
-		trace: buildLorebookTrace(rendered.records)
+		trace: buildLorebookTrace(rendered.records),
+		...(selection.entries.some((entry) => entry.v3Runtime?.ignoreOnMaxContext) ? {
+			withoutOptional: () => {
+				const removed = new Set(selection.entries.filter((entry) => entry.v3Runtime?.ignoreOnMaxContext).map((entry) => entry.id));
+				const reduced = renderLorebookBlock({ entries: selection.entries.filter((entry) => !removed.has(entry.id)),
+					records: selection.records.map((record) => removed.has(record.entryId) ? { ...record, status: 'trimmed' as const } : record)
+				}, expand, opts.budget, opts.placeAtDepth);
+				return { text: reduced.text, fields: reduced.fields, placed: reduced.placed, trace: buildLorebookTrace(reduced.records) };
+			}
+		} : {})
 	};
 }

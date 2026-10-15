@@ -21,7 +21,6 @@ import { chatCastStore } from './chatCast.svelte';
 import { resolveMacroValues, substitute } from '$lib/macros';
 import { buildLiveMacroContext } from '$lib/utils/live-macro-context';
 import { memoryStore } from '$lib/memory/store.svelte';
-import { spriteStore } from './sprites.svelte';
 import { steeringStore } from './steering.svelte';
 import { steeringTargetForChat } from '$lib/types/steering';
 import type { LorebookTrigger } from '$lib/lorebook/types';
@@ -256,11 +255,6 @@ class MessageStore {
 		// leaves `edited_at` alone and nothing here may drop the summary either. It is their
 		// assertion, not ours: a typo and a retcon are the same two strings to us.
 		const rewritesArchived = action !== 'create_branch' && !opts.minor && memoryStore.enabled;
-		// The same staleness question, asked of the character's face. Same exemption for a
-		// MINOR save, and off by default because a re-read is a second call on a turn the
-		// user already paid for.
-		const rereadsSprite =
-			action !== 'create_branch' && !opts.minor && featurePromptsStore.spritesRereadOnEdit;
 
 		this.isProcessing = true;
 		try {
@@ -269,7 +263,6 @@ class MessageStore {
 					await db.updateMessageContent(messageId, newContent, { minor: opts.minor });
 					await db.touchChatActivity(state.chat.id);
 					if (rewritesArchived) await this.invalidateMemoryFor(state.chat.id, messageId);
-					if (rereadsSprite) await this.invalidateSpriteFor(messageId);
 					break;
 
 				case 'create_branch': {
@@ -313,17 +306,6 @@ class MessageStore {
 		} catch (e) {
 			console.error('[memory] invalidate after archived edit failed:', e);
 			toastStore.failed('update memory for this edit', e);
-		}
-	}
-
-	/** Drop the sprite reading over a rewritten turn so the engine reads it again. Never
-	 *  blocks the edit: the content is saved either way, and a face is presentation. */
-	private async invalidateSpriteFor(messageId: string): Promise<void> {
-		try {
-			await spriteStore.invalidateMessage(messageId);
-		} catch (e) {
-			console.error('[sprites] invalidate after edit failed:', e);
-			toastStore.failed('re-read the sprite for this turn', e);
 		}
 	}
 
@@ -815,11 +797,6 @@ class MessageStore {
 			// In-place rewrite contract (same as editMessage): archived turns hand the
 			// rewrite to memory. No-op for live turns, and the leaf is virtually always live.
 			if (memoryStore.enabled) await this.invalidateMemoryFor(state.chat.id, target.id);
-			// The turn ends somewhere else now, which is the only thing a sprite reading
-			// was ever about. But re-reading it is a second call, so it is the user's setting.
-			if (featurePromptsStore.spritesRereadOnContinue) {
-				await this.invalidateSpriteFor(target.id);
-			}
 
 			await chatStore.refreshChat(state.chat.id);
 
@@ -1086,8 +1063,7 @@ class MessageStore {
 			createdAt: Date.now(),
 			editedAt: null,
 			minorEditedAt: null,
-			// Always unread at birth: the Sprites engine reads a turn once it exists,
-			// never as part of writing it.
+			// New turns do not carry legacy sprite metadata.
 			spriteLabel: null,
 			model: data.model ?? null,
 			provider: data.provider ?? null,

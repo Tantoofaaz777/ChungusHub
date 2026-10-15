@@ -14,7 +14,7 @@
 	import type { ChatCastMember } from '$lib/stores/chatCast.svelte';
 	import { db } from '$lib/services/database';
 	import { imageService } from '$lib/services/imageService';
-	import { expandSelfRefs } from '$lib/macros';
+	import { displaySelfRefs } from '$lib/macros';
 	import { findActivePath } from '$lib/utils/message-tree';
 	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
 	import { formatDate } from '$lib/utils/date';
@@ -145,7 +145,7 @@
 			.replace(/\n+/g, ' ')
 			.trim();
 		return truncate(
-			expandSelfRefs(
+			displaySelfRefs(
 				stripped,
 				selfRefChar,
 				selfRefUser,

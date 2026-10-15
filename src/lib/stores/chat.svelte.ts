@@ -121,6 +121,7 @@ class ChatStore {
 		const personaId = options.personaId ?? entry?.defaultPersonaId ?? null;
 		const connectionId = entry?.defaultConnectionId ?? null;
 		const presetId = entry?.defaultPresetId ?? null;
+		const backgroundPath = entry ? characterLibraryStore.dataForVersion(entry, characterVersionId).cardMetadata?.backgroundPath : undefined;
 		const chat: Chat = {
 			id: crypto.randomUUID(),
 			title: this.generateChatTitle(characterId),
@@ -134,12 +135,13 @@ class ChatStore {
 			characterVersionId,
 			isFavorite: false,
 			featureState:
-				personaId || connectionId || presetId
+				personaId || connectionId || presetId || backgroundPath
 					? JSON.stringify({
 							...DEFAULT_CHAT_FEATURE_STATE,
 							persona: personaId,
 							connection: connectionId,
-							preset: presetId
+							preset: presetId,
+							...(backgroundPath ? { scene: { enabled: true, background: { path: backgroundPath, dim: 0.35, blur: 0 } } } : {})
 						})
 					: null
 		};

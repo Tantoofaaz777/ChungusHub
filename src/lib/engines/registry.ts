@@ -1,6 +1,6 @@
 /**
  * Engines are the app's built-in AI machinery: Chat Memory, Opening Scene,
- * Steering, Spellcheck, Impersonate, Sprites. Each engine is its own deep
+ * Steering, Spellcheck, Impersonate. Each engine is its own deep
  * system; this registry is their shared identity for the Engines settings
  * page: what the engine does, whether it makes model calls (every
  * calling engine is a routing point with its own concrete connection on the
@@ -26,8 +26,7 @@ export type EngineId =
 	| 'opening-scene'
 	| 'steering'
 	| 'spellcheck'
-	| 'impersonate'
-	| 'sprites';
+	| 'impersonate';
 
 export interface EnginePromptField {
 	key: FeaturePromptKey;
@@ -174,27 +173,6 @@ export const ENGINES: EngineDef[] = [
 		enabled: {
 			get: () => featurePromptsStore.impersonateEnabled,
 			set: (value) => featurePromptsStore.setImpersonateEnabled(value)
-		}
-	},
-	{
-		id: 'sprites',
-		name: 'Sprites',
-		icon: 'image',
-		summary: "Shows one of the character's sprites for the newest reply",
-		description:
-			"Reads the newest reply and picks one of the character's sprites for it, which is the picture shown beside the story. It spends a call on every reply, so it is off until you switch it on, and it stays idle for characters with no sprites.",
-		makesCalls: true,
-		prompts: [
-			{
-				key: 'sprites',
-				label: 'Sprite prompt',
-				hint: "Sent to read the newest reply. {{labels}} is this character's own sprite labels. How much story goes with it is yours: {{chatHistoryLast3}} for three turns, {{lastMessage}} for the reply alone.",
-				requires: ['{{labels}}']
-			}
-		],
-		enabled: {
-			get: () => featurePromptsStore.spritesEnabled,
-			set: (value) => featurePromptsStore.setSpritesEnabled(value)
 		}
 	}
 ];

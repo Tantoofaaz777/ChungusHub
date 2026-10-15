@@ -37,7 +37,7 @@
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { imageService } from '$lib/services/imageService';
 	import { countTokens, tokenCalibration } from '$lib/tokenizer';
-	import { cappedHistoryTurns, extractMacroNames, MACROS, SYSTEM_MACROS } from '$lib/macros';
+	import { cappedHistoryTurns, extractMacroNames, isBuiltinMacro, MACROS, SYSTEM_MACROS } from '$lib/macros';
 	import {
 		assemblePrompt,
 		buildMacroContext,
@@ -213,7 +213,7 @@
 	// stays quiet on the one that ships a literal to the model.
 	function unboundMacrosFor(content: string): string[] {
 		return extractMacroNames(content).filter(
-			(name) => cappedHistoryTurns(name) === undefined && !providedMacros.has(name)
+			(name) => !isBuiltinMacro(name) && !providedMacros.has(name)
 		);
 	}
 

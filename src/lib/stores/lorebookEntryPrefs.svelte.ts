@@ -5,7 +5,7 @@
  * order once and expects the next book to keep it, and re-picking it per book would cost
  * exactly the work this exists to save. Per book would also mean writing the preference onto
  * the book itself, which is stored data every install already holds. Rides the settings spine
- * like the browse-view, sprite and book-shelf prefs, so it survives a reload and follows the
+ * like the browse-view and book-shelf prefs, so it survives a reload and follows the
  * user to their other devices.
  *
  * Display only: `book.entries` is never reordered and nothing here reaches a prompt. The

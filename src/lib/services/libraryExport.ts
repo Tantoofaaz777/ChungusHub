@@ -34,6 +34,7 @@ export interface ExportedLibraryEntry {
 	type: LibraryEntry['type'];
 	identity: {
 		name: string;
+		alias?: string;
 		tags: string[];
 	};
 	/** The active variant's content: what a version-unaware reader should use. */

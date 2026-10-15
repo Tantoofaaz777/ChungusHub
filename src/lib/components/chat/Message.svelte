@@ -20,7 +20,7 @@
 	import { renderedHtml } from '$lib/actions/renderedHtml';
 	import { copyText } from '$lib/utils/clipboard';
 	import { previewContinuation } from '$lib/utils/continuation';
-	import { expandSelfRefs } from '$lib/macros';
+	import { displaySelfRefs } from '$lib/macros';
 	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
 	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
@@ -464,7 +464,7 @@
 			? previewContinuation(
 					message.content,
 					streamTail,
-					expandSelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns)
+					displaySelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns)
 				)
 			: message.content
 	);
@@ -483,7 +483,7 @@
 	// so the action below re-runs on exactly these inputs and nothing else.
 	const bodyHtml = $derived(
 		renderMarkdown(
-				expandSelfRefs(
+				displaySelfRefs(
 					regexRulesStore.forDisplay(displayedContent, message.role, depth, displayPreset),
 					selfRefChar,
 					selfRefUser,

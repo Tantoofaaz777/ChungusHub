@@ -7,7 +7,7 @@
  * order twice would cost exactly the work this exists to save. The other four belong to the
  * shelf alone, since the picker is a popover with one shape.
  *
- * Rides the settings spine like the browse-view and sprite prefs, so it survives a reload and
+ * Rides the settings spine like the browse-view prefs, so it survives a reload and
  * follows the user to their other devices. **The key is still `lorebookSort`**, which is what
  * every install already holds: a bare string there is a stored order from before the shelf had
  * anything else to remember, and it is read back as one rather than dropped.

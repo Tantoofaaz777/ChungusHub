@@ -114,6 +114,7 @@ export function insertTextChunk(
 		const len = chunkLength(png, offset);
 		const type = chunkType(png, offset);
 		const chunkEnd = offset + 12 + len;
+		if (chunkEnd > png.length) throw new Error('Truncated PNG chunk.');
 
 		if (type === 'IEND') {
 			parts.push(chunk);
@@ -159,6 +160,7 @@ export function readTextChunk(png: Uint8Array, keyword: string): string | null {
 		const type = chunkType(png, offset);
 		const dataStart = offset + 8;
 		const dataEnd = dataStart + len;
+		if (dataEnd + 4 > png.length) throw new Error('Truncated PNG chunk.');
 
 		if ((type === 'tEXt' || type === 'iTXt') && chunkKeyword(png, dataStart, dataEnd) === keyword) {
 			let textStart = dataStart + keyword.length + 1;
@@ -177,4 +179,26 @@ export function readTextChunk(png: Uint8Array, keyword: string): string | null {
 		if (type === 'IEND') break;
 	}
 	return null;
+}
+
+/** Remove card documents from the portrait while preserving PNG/APNG pixel and animation chunks. */
+export function stripCardChunks(png: Uint8Array): Uint8Array {
+	assertPng(png);
+	const parts: Uint8Array[] = [png.subarray(0, 8)];
+	let offset = 8;
+	let ended = false;
+	while (offset + 12 <= png.length) {
+		const end = offset + 12 + chunkLength(png, offset);
+		if (end > png.length) throw new Error('Truncated PNG chunk.');
+		const type = chunkType(png, offset);
+		const key = type === 'tEXt' || type === 'iTXt' ? chunkKeyword(png, offset + 8, end - 4) : '';
+		if (key !== 'chara' && key !== 'ccv3' && !key.startsWith('chara-ext-asset_:')) parts.push(png.subarray(offset, end));
+		offset = end;
+		if (type === 'IEND') { ended = true; break; }
+	}
+	if (!ended) throw new Error('PNG is missing its IEND chunk.');
+	const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+	let at = 0;
+	for (const part of parts) { output.set(part, at); at += part.length; }
+	return output;
 }

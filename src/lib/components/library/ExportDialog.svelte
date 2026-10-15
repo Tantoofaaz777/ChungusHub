@@ -9,10 +9,12 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
+	import { lorebookStore } from '$lib/lorebook/store.svelte';
 	import {
 		exportEntryAsSillyTavern,
 		exportEntriesAsSillyTavernZip,
 		type ExportFormat,
+		type CardSchema,
 		type ExportTarget,
 		type VersionSelection
 	} from '$lib/services/sillyTavernExport';
@@ -28,23 +30,17 @@
 
 	// A single target unlocks the per-version picker; several always export every version.
 	let single = $derived(targets.length === 1 ? targets[0] : null);
-	// Each picture opt-in only appears when at least one character actually has that set.
-	let hasGallery = $derived(targets.some((t) => (t.entry.identity.gallery?.length ?? 0) > 0));
-	let hasSprites = $derived(targets.some((t) => (t.entry.identity.sprites?.length ?? 0) > 0));
-
 	let format = $state<ExportFormat>('png');
+	let schema = $state<CardSchema>('v3');
 	let versionSel = $state<VersionSelection>('all');
-	let includeGallery = $state(false);
-	let includeSprites = $state(false);
 	let busy = $state(false);
 
 	// Reset the choices whenever the dialog reopens.
 	$effect(() => {
 		if (open) {
 			format = 'png';
+			schema = 'v3';
 			versionSel = 'all';
-			includeGallery = false;
-			includeSprites = false;
 		}
 	});
 
@@ -52,7 +48,7 @@
 		if (busy) return;
 		busy = true;
 		try {
-			const opts = { format, includeGallery, includeSprites };
+			const opts = { format, schema, lorebooks: lorebookStore.books };
 			if (single) {
 				await exportEntryAsSillyTavern(single.entry, single.versions, versionSel, opts);
 			} else {
@@ -73,7 +69,7 @@
 		<!-- Format -->
 		<div class="flex flex-col gap-2">
 			<span class="ex-label">Format</span>
-			<div class="ex-segment">
+			<div class="ex-segment" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
 				<button
 					type="button"
 					class="ex-seg-btn"
@@ -92,13 +88,25 @@
 					<Icon name="download" class="w-4 h-4" />
 					JSON
 				</button>
+				<button type="button" class="ex-seg-btn" class:is-active={format === 'charx'} onclick={() => { format = 'charx'; schema = 'v3'; }}>
+					<Icon name="download" class="w-4 h-4" /> CHARX
+				</button>
 			</div>
 			<p class="ex-hint">
-				{format === 'png'
-					? 'A SillyTavern card with the portrait as its art.'
-					: 'A SillyTavern JSON card: text only, no portrait.'}
+				{format === 'charx' ? 'The character and its assets together in one portable file.' : format === 'png'
+					? 'A character card with the portrait as its art.'
+					: 'A JSON character card with its portable metadata.'}
 			</p>
 		</div>
+		{#if format !== 'charx'}
+			<div class="flex flex-col gap-2">
+				<span class="ex-label">Card version</span>
+				<div class="ex-segment">
+					<button type="button" class="ex-seg-btn" class:is-active={schema === 'v3'} onclick={() => (schema = 'v3')}>V3</button>
+					<button type="button" class="ex-seg-btn" class:is-active={schema === 'v2'} onclick={() => (schema = 'v2')}>V2 compatibility</button>
+				</div>
+			</div>
+		{/if}
 
 		{#if single}
 			<!-- Version picker: versioned characters only -->
@@ -134,33 +142,6 @@
 				{targets.length} characters download as one <b>.zip</b>. Each keeps its latest version on
 				the surface and every version embedded for re-import.
 			</p>
-		{/if}
-
-		{#if hasGallery}
-			<label class="ex-radio" class:is-active={includeGallery}>
-				<input type="checkbox" bind:checked={includeGallery} />
-				<span class="ex-radio-body">
-					<span class="ex-radio-name">Include gallery images</span>
-					<span class="ex-radio-note">
-						{single
-							? 'Downloads as a .zip: the card plus a gallery folder beside it.'
-							: "Each character's gallery rides in its own folder inside the .zip."}
-					</span>
-				</span>
-			</label>
-		{/if}
-
-		{#if hasSprites}
-			<label class="ex-radio" class:is-active={includeSprites}>
-				<input type="checkbox" bind:checked={includeSprites} />
-				<span class="ex-radio-body">
-					<span class="ex-radio-name">Include sprites</span>
-					<span class="ex-radio-note">
-						A folder named after the card, one picture per label. SillyTavern reads it as
-						that character's sprites, and so does this app.
-					</span>
-				</span>
-			</label>
 		{/if}
 
 		<div class="flex gap-3 justify-end pt-1">

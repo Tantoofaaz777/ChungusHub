@@ -233,13 +233,7 @@
 		   width:100% takes over below that. See the dock branch below for the share
 		   it becomes once the docks are in play. */
 		--chat-col-max: var(--chat-content-max);
-		/* The bay: the empty margin beside the chat column, where the two bottom-left
-		   pictures stand (SpriteLayer, PortraitViewer). Derived from the column's own
-		   width rather than tuned per screen, so it follows the chat-width knob and
-		   holds at any resolution. Floored, because a window narrower than the column
-		   has no margin at all and the pictures have to overlap the story there, which
-		   is what the sprite layer's transparency and inertness are for; and held under
-		   70vw so that floor cannot swallow a phone. */
+		/* Space for the portrait viewer beside the chat column, capped on narrow screens. */
 		--picture-bay: min(70vw, max(18rem, (100vw - var(--chat-col-max)) / 2));
 		/* How tall a picture in that bay stands. A share of the window rather than a
 		   pixel size, so a character has the same presence on a laptop and on a 4K

@@ -1,5 +1,5 @@
 import { db } from '$lib/services/database';
-import { imageService, type ImageCategory } from '$lib/services/imageService';
+import { imageService } from '$lib/services/imageService';
 import type {
 	ChatDefaultKey,
 	CharacterSprite,
@@ -21,7 +21,6 @@ import {
 	isDefaultPortraitFocus,
 	type PortraitFocus
 } from '$lib/utils/portrait-focus';
-import { findLabelConflict, normalizeSpriteLabel, resolveDefaultSprite } from '$lib/utils/sprites';
 
 /** What a caller may change about an entry's data in one go. Traits are patched field by
  *  field (the editor sends one), everything else is replaced whole. */
@@ -200,129 +199,6 @@ class CharacterLibraryStore {
 		this.writer.schedule(id);
 	}
 
-	/** Route an entry's image upload to its own folder: characters vs. personas. */
-	private imageCategoryFor(id: string): ImageCategory {
-		return this.getEntryById(id)?.type === 'persona' ? 'personas' : 'characters';
-	}
-
-	/** Add files to the entry's gallery. Every image is already this entry's own copy
-	 *  (`imageService.saveImage` writes a new file), so nothing is shared. */
-	async addGalleryImages(id: string, files: File[]): Promise<void> {
-		const entry = this.getEntryById(id);
-		if (!entry || files.length === 0) return;
-
-		const uploaded: string[] = [];
-		for (const file of files) {
-			uploaded.push(await imageService.saveImage(file, this.imageCategoryFor(id)));
-		}
-		entry.identity = {
-			...entry.identity,
-			gallery: [...(entry.identity.gallery ?? []), ...uploaded]
-		};
-		await this.persistEntry(entry);
-	}
-
-	/** Drop one gallery image and delete its file. An entry's art is exclusively its own,
-	 *  so nothing else can still be pointing at it. Sprites are a separate set and cannot
-	 *  name this path, so there is nothing else to sweep. */
-	async removeGalleryImage(id: string, path: string): Promise<void> {
-		const entry = this.getEntryById(id);
-		if (!entry) return;
-
-		// Emptied out, the key goes rather than staying as []: an empty set is stored as no key
-		// at all, the same rule the sprite list and the assistant's own image writes follow.
-		const gallery = (entry.identity.gallery ?? []).filter((galleryPath) => galleryPath !== path);
-		entry.identity = {
-			...entry.identity,
-			gallery: gallery.length ? gallery : undefined
-		};
-		await this.persistEntry(entry);
-		await imageService.deleteImage(path);
-	}
-
-	/**
-	 * Upload pictures into the sprite set, each carrying its label from the same write. One
-	 * write per call, not per file: a SillyTavern sprite pack is dozens of images and a write
-	 * each would be dozens of broadcasts.
-	 *
-	 * Returns the labels it refused (a label the character already uses), so a bulk caller can
-	 * report them instead of leaving the user with silently missing sprites.
-	 */
-	async addSprites(id: string, items: { file: File; label: string }[]): Promise<string[]> {
-		const entry = this.getEntryById(id);
-		if (!entry) throw new Error('That entry no longer exists.');
-		if (items.length === 0) return [];
-
-		const sprites = [...(entry.identity.sprites ?? [])];
-		const refused: string[] = [];
-
-		for (const { file, label } of items) {
-			const clean = normalizeSpriteLabel(label);
-			if (!clean || findLabelConflict(sprites, clean)) {
-				refused.push(clean || file.name);
-				continue;
-			}
-			const path = await imageService.saveImage(file, this.imageCategoryFor(id));
-			sprites.push({ path, label: clean });
-		}
-
-		entry.identity = {
-			...entry.identity,
-			sprites: sprites.length ? sprites : undefined,
-			defaultSprite: resolveDefaultSprite(sprites, entry.identity.defaultSprite)
-		};
-		await this.persistEntry(entry);
-		return refused;
-	}
-
-	/** Rename one sprite. The picture and its place in the list stay exactly where they are. */
-	async setSpriteLabel(id: string, path: string, label: string): Promise<void> {
-		const entry = this.getEntryById(id);
-		if (!entry) throw new Error('That entry no longer exists.');
-		const existing = entry.identity.sprites ?? [];
-		if (!existing.some((sprite) => sprite.path === path)) {
-			throw new Error('That picture is not one of this character’s sprites.');
-		}
-		const clean = normalizeSpriteLabel(label);
-		if (!clean) throw new Error('A sprite needs a label.');
-		if (findLabelConflict(existing, clean, path)) {
-			throw new Error(`Another sprite is already “${clean}”.`);
-		}
-
-		entry.identity = {
-			...entry.identity,
-			sprites: existing.map((sprite) => (sprite.path === path ? { path, label: clean } : sprite))
-		};
-		await this.persistEntry(entry);
-	}
-
-	/** Drop one sprite and delete its file. The same shape as the gallery's own remove: a
-	 *  sprite's picture belongs to this entry alone, so the row and the file go together. */
-	async removeSprite(id: string, path: string): Promise<void> {
-		const entry = this.getEntryById(id);
-		if (!entry) return;
-
-		const sprites = (entry.identity.sprites ?? []).filter((sprite) => sprite.path !== path);
-		entry.identity = {
-			...entry.identity,
-			sprites: sprites.length ? sprites : undefined,
-			defaultSprite: resolveDefaultSprite(sprites, entry.identity.defaultSprite)
-		};
-		await this.persistEntry(entry);
-		await imageService.deleteImage(path);
-	}
-
-	/** Choose which sprite stands in before the engine has read anything. */
-	async setDefaultSprite(id: string, path: string): Promise<void> {
-		const entry = this.getEntryById(id);
-		if (!entry) throw new Error('That entry no longer exists.');
-		if (!(entry.identity.sprites ?? []).some((sprite) => sprite.path === path)) {
-			throw new Error('Only a sprite can be the default.');
-		}
-		entry.identity = { ...entry.identity, defaultSprite: path };
-		await this.persistEntry(entry);
-	}
-
 	getResolvedEntity(entryId: string): ResolvedLibraryEntity | null {
 		const entry = this.getEntryById(entryId);
 		if (!entry) return null;
@@ -390,11 +266,13 @@ class CharacterLibraryStore {
 		const plain = this.clone(entity);
 		const identity: LibraryEntryIdentity = {
 			name: plain.name ?? '',
+			...(plain.alias ? { alias: plain.alias } : {}),
 			imageUrl: plain.imageUrl,
 			tags: plain.tags ? [...plain.tags] : []
 		};
 		const data: LibraryEntryData = {
 			traits: plain.traits ?? this.getDefaultTraits(),
+			...(plain.cardMetadata ? { cardMetadata: plain.cardMetadata } : {}),
 			traitLabels: plain.traitLabels,
 			hiddenTraits: plain.hiddenTraits,
 			alternateGreetings: plain.alternateGreetings
@@ -491,7 +369,8 @@ class CharacterLibraryStore {
 			character.tags = [];
 		}
 
-		const entry = isPersona ? await this.savePersona(character) : await this.saveCharacter(character);
+		const created = isPersona ? await this.savePersona(character) : await this.saveCharacter(character);
+		const entry = this.getEntryById(created.id)!;
 
 		// A ChungusHub v2 export travels with every variant of a versioned character;
 		// rebuild the rows with fresh ids and land the entry on the variant it was on.
@@ -518,6 +397,23 @@ class CharacterLibraryStore {
 			entry.data = this.clone(this.getVersion(activeId)!.data);
 			await this.persistEntry(entry);
 		}
+
+		if (entry.data.cardMetadata && entry.identity.imageUrl) entry.data.cardMetadata.portraitPath = entry.identity.imageUrl;
+		for (const { asset, file } of importResult.assetImages ?? []) {
+			try {
+				if (asset.type === 'background') {
+					const path = await imageService.saveImage(file, 'backgrounds');
+					const metadata = entry.data.cardMetadata!;
+					const index = metadata.assets?.findIndex((candidate) => candidate.type === asset.type && candidate.name === asset.name && candidate.uri === asset.uri) ?? -1;
+					metadata.assetPaths = { ...metadata.assetPaths, [index]: path };
+					if (!metadata.backgroundPath || asset.name === 'main') metadata.backgroundPath = path;
+					await this.persistEntry(entry);
+				}
+			} catch {
+				toastStore.error(`Asset "${asset.name}" was preserved in the card but could not be added to its image controls.`);
+			}
+		}
+		if (entry.data.cardMetadata) await this.persistEntry(entry);
 
 		// The card's lorebook, but only when the caller opted in (import is user-confirmed).
 		// A book already on the shelf is linked; only one nothing here matches is shelved.
@@ -618,7 +514,7 @@ class CharacterLibraryStore {
 			return null;
 		}
 
-		const imagePath = await imageService.saveImage(file, this.imageCategoryFor(id));
+		const imagePath = await imageService.saveImage(file, entry.type === 'persona' ? 'personas' : 'characters');
 		entry.identity = {
 			...this.clone(entry.identity),
 			imageUrl: imagePath,
@@ -651,7 +547,7 @@ class CharacterLibraryStore {
 			copiedImageUrl = (await imageService.copyImage(original.identity.imageUrl)) ?? undefined;
 		}
 
-		// Gallery files get their own copies too: shared paths would break on delete.
+		// Legacy image references are retained for existing backups; copies own their files.
 		let copiedGallery: string[] | undefined;
 		if (original.identity.gallery?.length) {
 			copiedGallery = [];
@@ -660,10 +556,7 @@ class CharacterLibraryStore {
 				if (copiedPath) copiedGallery.push(copiedPath);
 			}
 		}
-		// Sprites are copied the same way and for the same reason, keeping their labels: a copy
-		// with the character's art but none of their sprites would be a different character. One
-		// whose file failed to copy is dropped rather than left naming the original's image,
-		// which the original's delete would take away.
+		// Keep legacy file ownership independent when duplicating existing data.
 		const copiedSprites: CharacterSprite[] = [];
 		const copiedSpritePathByOriginal = new Map<string, string>();
 		for (const sprite of original.identity.sprites ?? []) {
@@ -683,12 +576,9 @@ class CharacterLibraryStore {
 				imageUrl: copiedImageUrl,
 				gallery: copiedGallery,
 				sprites: copiedSprites.length ? copiedSprites : undefined,
-				defaultSprite: resolveDefaultSprite(
-					copiedSprites,
-					original.identity.defaultSprite
-						? copiedSpritePathByOriginal.get(original.identity.defaultSprite)
-						: undefined
-				)
+				defaultSprite: original.identity.defaultSprite
+					? copiedSpritePathByOriginal.get(original.identity.defaultSprite)
+					: undefined
 			},
 			data: this.clone(original.data),
 			isFavorite: false,

@@ -166,7 +166,7 @@ describe('getMessagesDelta', () => {
 		expect(d.chat.activeLeafId).toBe(user);
 	});
 
-	test('metadata writes move their row: branch label, sprite label, persona, continuation', () => {
+	test('metadata writes move their row: branch label, persona, continuation', () => {
 		const { chatId, user, reply } = seedChain();
 		let rev = delta(chatId, null)!.rev;
 		const one = (expected: string) => {
@@ -177,8 +177,6 @@ describe('getMessagesDelta', () => {
 		};
 
 		serverDb.updateMessageBranchLabel(reply, { name: 'Fork', color: 'amber' });
-		one(reply);
-		serverDb.updateMessageSpriteLabel(reply, 'smug');
 		one(reply);
 		serverDb.updateMessagePersona(user, null);
 		one(user);

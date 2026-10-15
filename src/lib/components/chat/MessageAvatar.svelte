@@ -20,8 +20,7 @@
 
 	let { role, name, imagePath, focus, ordinal = null, durationMs = null }: Props = $props();
 
-	/** Every portrait opens the bottom-left card, the character's own included: the sprite in
-	 *  that corner is ambient and the click is not, so it draws over the sprite until closed. */
+	/** Every avatar can open the full portrait viewer. */
 	const clickable = $derived(!!imagePath);
 
 	const durationLabel = $derived(durationMs != null ? formatDuration(durationMs) : null);

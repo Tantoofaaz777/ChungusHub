@@ -22,8 +22,7 @@ export type FeaturePromptKey =
 	| 'memoryPromote'
 	| 'steeringWrapper'
 	| 'spellcheck'
-	| 'impersonate'
-	| 'sprites';
+	| 'impersonate';
 
 const DEFAULT_OPENING_SCENE_PROMPT = `((OOC: Generate the opening scene. {{idea}}
 
@@ -44,17 +43,6 @@ const DEFAULT_IMPERSONATE_PROMPT = `((OOC: You are playing {{user}} in this role
 
 Draft: {{draft}}))`;
 
-// {{chatHistoryLast3}} rather than a hand-rolled excerpt: how much story the model reads is
-// the author's call, and turning three into one is how this engine gets cheap.
-const DEFAULT_SPRITES_PROMPT = `Read the roleplay excerpt below and decide which of {{char}}'s sprites fits the END of the last message. Judge {{char}}'s own state, not {{user}}'s and not the mood of the scene, and weigh how the last message finishes over how it began.
-
-Choose exactly one label from this list, copied verbatim:
-{{labels}}
-
-Reply with only this JSON and nothing else: {"sprite": "<label>"}
-
-{{chatHistoryLast3}}`;
-
 /** Shipped default template per feature: the fallback when the user hasn't overridden it. */
 export const FEATURE_PROMPT_DEFAULTS: Record<FeaturePromptKey, string> = {
 	openingScene: DEFAULT_OPENING_SCENE_PROMPT,
@@ -63,38 +51,17 @@ export const FEATURE_PROMPT_DEFAULTS: Record<FeaturePromptKey, string> = {
 	steeringWrapper: DEFAULT_STEERING_WRAPPER_PROMPT,
 	spellcheck: DEFAULT_SPELLCHECK_PROMPT,
 	impersonate: DEFAULT_IMPERSONATE_PROMPT,
-	sprites: DEFAULT_SPRITES_PROMPT
 };
 
 interface FeaturePromptsState {
 	/** Only true deviations from the shipped defaults. */
 	overrides: Partial<Record<FeaturePromptKey, string>>;
-	/** Per-engine app-wide on/off switches (Settings → Engines). All default on except
-	 *  Sprites, since disabling an engine is the new capability, not the normal state:
-	 *  Memory is the only other one with a standing per-turn cost, and the rest are on-demand
-	 *  (steering rides the primary generation for free, the others only run when triggered).
-	 *  Turning any off leaves that engine's stored data intact; only its runtime goes
-	 *  inert. */
+	/** App-wide engine switches. */
 	memoryEnabled: boolean;
 	openingSceneEnabled: boolean;
 	steeringEnabled: boolean;
 	spellcheckEnabled: boolean;
 	impersonateEnabled: boolean;
-	/** The one engine that ships OFF. It spends a call on every reply for as long as it is on,
-	 *  and unlike Memory that call buys presentation rather than the story's own continuity,
-	 *  so it is a cost the reader opts into, not one they discover. The Sprites section in the
-	 *  character editor says so where the sprites are, which is where someone who uploaded
-	 *  pictures and saw nothing happen is actually standing. */
-	spritesEnabled: boolean;
-	/**
-	 * When a turn that has already been read should be read AGAIN, because its text changed
-	 * under the reading. Both default **off**: a re-read is a second call on a turn the user
-	 * already paid for, and only they know whether their edit moved the mood or fixed a comma.
-	 * Off leaves the face exactly where it was, which is also what happens to a MINOR save
-	 * either way: that one is the user asserting the turn still says what it said.
-	 */
-	spritesRereadOnEdit: boolean;
-	spritesRereadOnContinue: boolean;
 	/** The placement every steering note inherits until it overrides one (a note's own
 	 *  `depth`/`role` are tri-state, `null` = inherit; see types/steering.ts). */
 	steeringDefaultDepth: number;
@@ -114,15 +81,12 @@ interface FeaturePromptsState {
 
 function normalize(raw: Partial<FeaturePromptsState> | null): FeaturePromptsState {
 	return {
-		overrides: raw?.overrides ?? {},
+		overrides: Object.fromEntries(Object.entries(raw?.overrides ?? {}).filter(([key]) => Object.hasOwn(FEATURE_PROMPT_DEFAULTS, key))),
 		memoryEnabled: raw?.memoryEnabled ?? true,
 		openingSceneEnabled: raw?.openingSceneEnabled ?? true,
 		steeringEnabled: raw?.steeringEnabled ?? true,
 		spellcheckEnabled: raw?.spellcheckEnabled ?? true,
 		impersonateEnabled: raw?.impersonateEnabled ?? true,
-		spritesEnabled: raw?.spritesEnabled ?? false,
-		spritesRereadOnEdit: raw?.spritesRereadOnEdit ?? false,
-		spritesRereadOnContinue: raw?.spritesRereadOnContinue ?? false,
 		steeringDefaultDepth: clampSteeringDepth(raw?.steeringDefaultDepth ?? 0),
 		steeringDefaultRole: STEERING_ROLES.includes(raw?.steeringDefaultRole as SteeringRole)
 			? (raw?.steeringDefaultRole as SteeringRole)
@@ -139,9 +103,6 @@ class FeaturePromptsStore {
 		steeringEnabled: true,
 		spellcheckEnabled: true,
 		impersonateEnabled: true,
-		spritesEnabled: false,
-		spritesRereadOnEdit: false,
-		spritesRereadOnContinue: false,
 		steeringDefaultDepth: 0,
 		steeringDefaultRole: 'system',
 		memoryDefaults: {}
@@ -192,18 +153,6 @@ class FeaturePromptsStore {
 
 	get impersonateEnabled(): boolean {
 		return this.state.impersonateEnabled;
-	}
-
-	get spritesEnabled(): boolean {
-		return this.state.spritesEnabled;
-	}
-
-	get spritesRereadOnEdit(): boolean {
-		return this.state.spritesRereadOnEdit;
-	}
-
-	get spritesRereadOnContinue(): boolean {
-		return this.state.spritesRereadOnContinue;
 	}
 
 	/** The effective template for a feature: the user's override or the shipped default. */
@@ -277,20 +226,6 @@ class FeaturePromptsStore {
 		this.persist();
 	}
 
-	setSpritesEnabled(value: boolean): void {
-		this.state = { ...this.state, spritesEnabled: value };
-		this.persist();
-	}
-
-	setSpritesRereadOnEdit(value: boolean): void {
-		this.state = { ...this.state, spritesRereadOnEdit: value };
-		this.persist();
-	}
-
-	setSpritesRereadOnContinue(value: boolean): void {
-		this.state = { ...this.state, spritesRereadOnContinue: value };
-		this.persist();
-	}
 }
 
 export const featurePromptsStore = new FeaturePromptsStore();

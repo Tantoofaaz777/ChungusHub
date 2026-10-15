@@ -109,9 +109,6 @@ class DatabaseService {
 	updateMessageBranchLabel(messageId: string, label: BranchLabel | null): Promise<void> {
 		return this.call('updateMessageBranchLabel', messageId, label);
 	}
-	updateMessageSpriteLabel(messageId: string, label: string | null): Promise<void> {
-		return this.call('updateMessageSpriteLabel', messageId, label);
-	}
 	deleteMessageOnly(messageId: string): Promise<void> { return this.call('deleteMessageOnly', messageId); }
 	deleteMessageAndDescendants(messageId: string): Promise<void> { return this.call('deleteMessageAndDescendants', messageId); }
 	deleteDescendants(messageId: string): Promise<void> { return this.call('deleteDescendants', messageId); }

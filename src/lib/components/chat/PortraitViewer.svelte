@@ -1,12 +1,4 @@
 <script lang="ts">
-	/**
-	 * The portrait a reader opened by clicking a message avatar: a card in the bottom-left,
-	 * floating above everything in that corner including the sprite (`SpriteLayer`).
-	 *
-	 * Every avatar opens it, the character's own included. The sprite in the same corner is
-	 * ambient and the click is deliberate, so the reader gets what they asked for; closing the
-	 * card hands the corner back.
-	 */
 	import { portraitViewerStore } from '$lib/stores/portraitViewer.svelte';
 	import { imageService } from '$lib/services/imageService';
 	import { focusTrap } from '$lib/actions/focusTrap';
@@ -25,7 +17,7 @@
 	 * It is the one fact CSS cannot get from an `<img>`, and the card needs it: the card has a
 	 * surface of its own, so it has to be exactly the size of the picture it holds. Given the
 	 * ratio it can be told to stand `--picture-height` tall and no wider than the bay, with
-	 * the shorter of the two deciding, which is the sprite layer's `contain` written as a box.
+	 * the shorter of the two deciding the resulting size.
 	 * Without it the card either freezes at one height and letterboxes everything that is not
 	 * the shape it expected, or hugs the picture and hands its size to whatever resolution the
 	 * file happens to be.
@@ -52,9 +44,7 @@
 <svelte:window on:keydown={handleKeydown} />
 
 {#if url}
-	<!-- The bay: the same box the sprite stands in, so the two pictures share a place on
-	     screen instead of each having their own idea of the corner. It spans that whole
-	     margin and passes every event through it; only the card itself is clickable. -->
+	<!-- The bay passes events through its empty margin; only the portrait is clickable. -->
 	<div class="portrait-bay">
 		<!-- Non-modal floating card: focus lands on the close button when it opens (and is
 		     given back on close), but Tab is NOT trapped, so the chat behind stays usable. -->
@@ -87,7 +77,7 @@
 		left: 0;
 		bottom: 0;
 		/* Below the docked side panels and the chat-area
-		   overlays, but above the chat column and the sprite layer (14): panels always
+		   overlays, but above the chat column: panels always
 		   win, and a portrait the reader opened wins its corner. */
 		z-index: 15;
 		width: var(--picture-bay);
@@ -99,8 +89,7 @@
 		--picture-room: calc(var(--picture-bay) - var(--picture-inset) * 2);
 		display: flex;
 		justify-content: center;
-		/* The bottom inset is what keeps this a card floating in the margin rather than
-		   the sprite's figure standing on the floor. */
+		/* Keep the floating portrait away from the screen edge. */
 		padding: 0 var(--picture-inset) clamp(0.75rem, 0.5rem + 1vw, 1.5rem);
 		/* Mostly empty margin, and the chat forwards the wheel from there: the box must
 		   not become the event target. The card takes its own events back. */

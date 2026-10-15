@@ -315,37 +315,6 @@
 		</section>
 	{/if}
 
-	<!-- Sprites' own card: a reply is read once, and these are the only two things that
-	     can change what it says afterwards. Both off by default: a re-read is a second call
-	     on a turn already paid for, and only the author knows whether their edit moved the
-	     mood or fixed a comma. A regenerated or swiped reply is a different turn, not a
-	     rewrite, so it is read on its own and needs no switch here. -->
-	{#if engine.id === 'sprites'}
-		<section class="card">
-			<div class="card-head">
-				<span class="card-title">Read a reply again</span>
-			</div>
-			<div class="card-body">
-				<div class="toggle-row" use:toggleRow>
-					<span class="slider-label">After I edit it</span>
-					<Toggle
-						checked={featurePromptsStore.spritesRereadOnEdit}
-						onchange={(v) => featurePromptsStore.setSpritesRereadOnEdit(v)}
-						label="Read a reply again after I edit it"
-					/>
-				</div>
-				<div class="toggle-row" use:toggleRow>
-					<span class="slider-label">After Continue extends it</span>
-					<Toggle
-						checked={featurePromptsStore.spritesRereadOnContinue}
-						onchange={(v) => featurePromptsStore.setSpritesRereadOnContinue(v)}
-						label="Read a reply again after Continue extends it"
-					/>
-				</div>
-			</div>
-		</section>
-	{/if}
-
 	<section class="card">
 		<div class="card-head">
 			<span class="card-title">Prompts</span>

@@ -27,7 +27,7 @@
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
-	import { expandSelfRefs } from '$lib/macros';
+	import { displaySelfRefs } from '$lib/macros';
 	import { branchColorHex } from '$lib/utils/branch-labels';
 	import {
 		buildSearchRegex,
@@ -97,7 +97,7 @@
 			.map((m) => ({
 				id: m.id,
 				role: m.role,
-				text: expandSelfRefs(m.content, selfRefChar, selfRefUser, selfRefPronouns)
+				text: displaySelfRefs(m.content, selfRefChar, selfRefUser, selfRefPronouns)
 			}));
 		return findBranchHits(offPath, regex, MAX_BRANCH_HITS);
 	});
@@ -155,7 +155,7 @@
 			for (let i = 0; i < hidden; i++) {
 				// Global regex: its cursor has to be rewound per turn.
 				regex.lastIndex = 0;
-				if (regex.test(expandSelfRefs(path[i].content, char, user, pronouns))) {
+				if (regex.test(displaySelfRefs(path[i].content, char, user, pronouns))) {
 					pendingGrowth = true;
 					loadThrough(i);
 					return;

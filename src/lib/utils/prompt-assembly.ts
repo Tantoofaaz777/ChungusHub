@@ -23,6 +23,7 @@ import type { PromptControl, PromptItem, PromptPreset } from '$lib/types/databas
 import type { Lorebook, LorebookGlobalSettings, LorebookTrace, LorebookTrigger } from '$lib/lorebook/types';
 import { EMPTY_LOREBOOK_TRACE, lorebookHistory, lorebookScanFields } from '$lib/lorebook/types';
 import { resolveLorebooks } from '$lib/lorebook/engine';
+import { cardLoreContext, cardLorePositions, withLorebookFields } from '$lib/macros';
 import {
 	expandMacros,
 	expandSelfRefs,
@@ -182,6 +183,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 				}
 			: undefined;
 	const base: MacroContext = {
+		cardLorePositions: cardLorePositions(input.preset?.items ?? []),
 		resolvedPersona: input.resolvedPersona,
 		resolvedCharacters: input.resolvedCharacters,
 		chatMessages,
@@ -197,6 +199,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 	// yet: that is what makes a stray {{lorebook}} inside an entry resolve to nothing instead of
 	// recursing, and it leaves ONE roll of the probabilistic entries per assembly.
 	const lore = resolveLorebooks({
+		cardContext: cardLoreContext(base),
 		books: input.lorebooks,
 		// An at-depth entry needs a chat to sit inside. Without {{chatHistory}} in the enabled
 		// preset there is no such sequence, so those entries join the block instead of landing
@@ -212,7 +215,9 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 		expand: (text) => expandMacros(text, base),
 		budget: lorebookBudget
 	});
-	return { ...base, lorebook: lore.text, lorebookTrace: lore.trace, lorebookPlaced: lore.placed };
+	const applyLore = (value: typeof lore): MacroContext => withLorebookFields({ ...base,
+		lorebook: value.text, lorebookTrace: value.trace, lorebookPlaced: value.placed }, value.fields);
+	return { ...applyLore(lore), ...(lore.withoutOptional ? { withoutOptionalLore: () => applyLore(lore.withoutOptional!()) } : {}) };
 }
 
 /** Tokens a macro-expanded template segment contributes: raw text → preset, the delta → context. */
@@ -500,20 +505,20 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 	let ctx: SplicedContext = buildMacroContext(input);
 	// Two kinds of turn ride inside the chat, and they share one placement rule. Lore is built
 	// first so that at a shared slot the background sits ahead of the reader's own direction.
-	const splices = [...buildLoreSplices(ctx, input.model), ...buildSteeringMessages(input, ctx, input.model)];
+	let splices = [...buildLoreSplices(ctx, input.model), ...buildSteeringMessages(input, ctx, input.model)];
 	// Every group splices into the injected chat, whatever its depth. Carrying them on ctx
 	// (instead of threading them through by hand) means the example-trim and history-trim
 	// re-resolves below (which rebuild ctx and re-run resolveEnabled) carry the splices
 	// forward automatically, always against that resolution's own filtered/dropped chat.
 	if (splices.length) ctx = { ...ctx, splices };
-	const tail = continuationTail(input, ctx);
+	let tail = continuationTail(input, ctx);
 	// A splice is fixed cost like the tail: priced once, added to every budget comparison
 	// below so history yields room for it and it is never itself trimmed. resolveStructural
 	// never counts a spliced message into a bucket of its own (see its ctx.splices check), so
 	// this is the ONLY place those tokens are added, whichever path ends up landing each
 	// group. No double-counting either way.
-	const spliceTokens = splices.reduce((sum, b) => sum + b.tokens, 0);
-	const fixedExtra = tail.tokens + spliceTokens;
+	let spliceTokens = splices.reduce((sum, b) => sum + b.tokens, 0);
+	let fixedExtra = tail.tokens + spliceTokens;
 
 	let { messages, breakdown } = resolveEnabled(preset, ctx, input.model);
 
@@ -521,6 +526,15 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 	let trimmedExampleBlocks = 0;
 	let overBudget = false;
 	const budget = input.contextBudget;
+	if (budget != null && breakdown.total + fixedExtra > budget && ctx.withoutOptionalLore) {
+		ctx = ctx.withoutOptionalLore();
+		splices = [...buildLoreSplices(ctx, input.model), ...buildSteeringMessages(input, ctx, input.model)];
+		if (splices.length) ctx = { ...ctx, splices };
+		tail = continuationTail(input, ctx);
+		spliceTokens = splices.reduce((sum, b) => sum + b.tokens, 0);
+		fixedExtra = tail.tokens + spliceTokens;
+		({ messages, breakdown } = resolveEnabled(preset, ctx, input.model));
+	}
 
 	// Example-block trim pass: examples are pushed out before chat history. Only relevant
 	// when the preset actually injects {{mesExamples}} and the bound character has blocks to

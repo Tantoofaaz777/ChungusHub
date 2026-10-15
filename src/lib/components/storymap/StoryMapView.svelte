@@ -15,7 +15,7 @@
 	import { memoryStore } from '$lib/memory/store.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
 	import { formatMessageTime, relativeClock } from '$lib/utils/time-format.svelte';
-	import { expandSelfRefs } from '$lib/macros';
+	import { displaySelfRefs } from '$lib/macros';
 	import { layoutStoryTree, type StoryMapNode } from '$lib/utils/story-map-layout';
 	import { findDeepestLeafFromNode } from '$lib/utils/message-tree';
 	import { branchColorHex } from '$lib/utils/branch-labels';
@@ -112,7 +112,7 @@
 	}
 
 	function expandText(text: string, cap: number): string {
-		const t = expandSelfRefs(text, selfRefChar, selfRefUser, selfRefPronouns);
+		const t = displaySelfRefs(text, selfRefChar, selfRefUser, selfRefPronouns);
 		return t.length > cap ? t.slice(0, cap) + '…' : t || '(empty)';
 	}
 
@@ -657,7 +657,7 @@
 		if (!q) return [];
 		return graph.nodes.filter(
 			(n) =>
-				expandSelfRefs(n.content, selfRefChar, selfRefUser, selfRefPronouns)
+				displaySelfRefs(n.content, selfRefChar, selfRefUser, selfRefPronouns)
 					.toLowerCase()
 					.includes(q) ||
 				(n.label?.name.toLowerCase().includes(q) ?? false)

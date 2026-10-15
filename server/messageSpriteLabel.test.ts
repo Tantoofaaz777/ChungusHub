@@ -1,11 +1,8 @@
 /**
  * What `messages.sprite_label` survives, against the REAL server database (bun:sqlite).
  *
- * The column holds the LABEL the chat resolves a turn's sprite from. **Nothing on the server ever
- * clears it**: whether a rewritten turn gets read again is the user's setting (Settings →
- * Engines → Sprites), so the decision belongs to the client call sites that know about it,
- * exactly like chat memory's summary invalidation. This file pins the server half: that
- * a content rewrite leaves the reading standing, and that writing a reading is not an edit.
+ * The engine and its write RPC have been removed. Old labels remain inert metadata,
+ * preserved by imports, edits and chat duplication without any new model calls.
  *
  * Same env dance as greetingRefresh.test.ts: CHUNGUS_DATA_DIR is pinned to a throwaway dir
  * before the first db call, so no test can silently write into the real user-data.
@@ -63,28 +60,28 @@ function makeReadTurn(label: string, content = 'She smiled.'): string {
 		parentId: null,
 		role: 'assistant',
 		content,
+		spriteLabel: label,
 		createdAt: clock++,
 		siblingIndex: 0
 	});
-	serverDb.updateMessageSpriteLabel(messageId, label);
 	return messageId;
 }
 
 const labelOf = (id: string) => serverDb.getMessage(id).spriteLabel;
 
-describe('the server never decides a reading is stale', () => {
+describe('inactive legacy sprite metadata', () => {
 	test('it round-trips as written', () => {
 		const id = makeReadTurn('joy');
 		expect(labelOf(id)).toBe('joy');
 	});
 
-	test('an ordinary edit leaves it standing: re-reading is the client’s gated choice', () => {
+	test('ordinary edits retain legacy metadata', () => {
 		const id = makeReadTurn('joy');
 		serverDb.updateMessageContent(id, 'She turned away.');
 		expect(labelOf(id)).toBe('joy');
 	});
 
-	test('so does a MINOR edit, which never re-reads under any setting', () => {
+	test('minor edits retain legacy metadata', () => {
 		const id = makeReadTurn('joy');
 		serverDb.updateMessageContent(id, 'She smiled!', { minor: true });
 		expect(labelOf(id)).toBe('joy');
@@ -102,23 +99,6 @@ describe('the server never decides a reading is stale', () => {
 			reasoningMs: null
 		});
 		expect(labelOf(id)).toBe('joy');
-	});
-
-	test('writing the reading itself touches neither edit stamp', () => {
-		const id = makeReadTurn('joy');
-		const before = serverDb.getMessage(id);
-		serverDb.updateMessageSpriteLabel(id, 'anger');
-		const after = serverDb.getMessage(id);
-		expect(after.spriteLabel).toBe('anger');
-		expect(after.editedAt).toBe(before.editedAt);
-		expect(after.minorEditedAt).toBe(before.minorEditedAt);
-		expect(after.content).toBe(before.content);
-	});
-
-	test('clearing it by hand is the one way it goes: what a gated re-read calls', () => {
-		const id = makeReadTurn('joy');
-		serverDb.updateMessageSpriteLabel(id, null);
-		expect(labelOf(id)).toBeNull();
 	});
 
 	test('a duplicated chat carries the readings, since it is the same story', () => {

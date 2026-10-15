@@ -2,8 +2,7 @@
  * The example characters the app ships, seeded into the library ONCE.
  *
  * `defaults/characters/` is read as a folder, the same way `defaults/presets/` is: `<id>.json`
- * is a character, `<id>.<image>` beside it is the portrait, and the `<id>/` folder beside it is
- * the sprite pack, one picture per label in SillyTavern's own layout. Dropping that set in is
+ * is a character and `<id>.<image>` beside it is the portrait. Dropping that set in is
  * the whole act of shipping a character, so there is no list to keep in step with the files.
  *
  * **What is different here is what happens after a delete.** A preset the user removes comes
@@ -22,28 +21,23 @@ import { randomUUID } from 'node:crypto';
 import { DEFAULT_CHARACTERS_DIR } from './config';
 import { IMAGE_EXT_RE, seedBundledImage } from './files';
 import { serverDb } from './db';
-import { labelFromFilename, normalizeSpriteLabel, resolveDefaultSprite } from '../shared/sprites';
 
 /** The ids this install has already been given. Never cleared, which is the whole point. */
 const LEDGER_KEY = 'seededDefaultCharacters';
 
 /** A bundled character's own file, which is the stored row's content and nothing else: no image
- *  paths, because a path is install-local and this is where the files it names come into
- *  existence. `defaultSprite` names a LABEL, since that is what the pack calls its pictures. */
+ *  paths, because a path is install-local and this is where its portrait is copied. */
 interface BundledCard {
 	name: string;
 	tags: string[];
 	traits: Record<string, unknown>;
 	alternateGreetings: string[];
-	defaultSprite?: string;
 }
 
 interface BundledCharacter {
 	id: string;
 	/** Portrait filename beside the card, or null when it ships faceless. */
 	portrait: string | null;
-	/** Sprite filenames inside `<id>/`, sorted so every machine reads the pack in one order. */
-	sprites: string[];
 }
 
 export function ensureDefaultCharacters(): void {
@@ -73,7 +67,6 @@ function bundledCharacters(): BundledCharacter[] {
 	// Sorted, so an id carrying two pictures resolves to the same one on every machine instead
 	// of following the filesystem's mood.
 	const images = entries.filter((e) => e.isFile() && IMAGE_EXT_RE.test(e.name)).map((e) => e.name).sort();
-	const folders = new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name));
 	return entries
 		.filter((e) => e.isFile() && e.name.endsWith('.json'))
 		.map((e) => e.name.replace(/\.json$/, ''))
@@ -81,15 +74,7 @@ function bundledCharacters(): BundledCharacter[] {
 		.map((id) => ({
 			id,
 			portrait: images.find((name) => name.replace(IMAGE_EXT_RE, '') === id) ?? null,
-			sprites: folders.has(id) ? spriteFilesIn(join(DEFAULT_CHARACTERS_DIR, id)) : []
 		}));
-}
-
-function spriteFilesIn(dir: string): string[] {
-	return readdirSync(dir, { withFileTypes: true })
-		.filter((e) => e.isFile() && IMAGE_EXT_RE.test(e.name))
-		.map((e) => e.name)
-		.sort();
 }
 
 /** Read a bundled card, refusing anything that would land as a nameless or contentless row. */
@@ -103,7 +88,6 @@ function readCard(id: string): BundledCard {
 		tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [],
 		traits: raw.traits as Record<string, unknown>,
 		alternateGreetings: Array.isArray(raw.alternateGreetings) ? raw.alternateGreetings.map(String) : [],
-		defaultSprite: typeof raw.defaultSprite === 'string' ? raw.defaultSprite : undefined
 	};
 }
 
@@ -123,14 +107,6 @@ function seedCharacter(bundle: BundledCharacter, seeded: Set<string>): void {
 	if (bundle.portrait) {
 		identity.imageUrl = seedBundledImage(join(DEFAULT_CHARACTERS_DIR, bundle.portrait), 'characters');
 	}
-	if (bundle.sprites.length > 0) {
-		const sprites = bundle.sprites.map((file) => ({
-			path: seedBundledImage(join(DEFAULT_CHARACTERS_DIR, bundle.id, file), 'characters'),
-			label: labelFromFilename(file)
-		}));
-		identity.sprites = sprites;
-		identity.defaultSprite = resolveDefaultSprite(sprites, pickDefaultSprite(card, sprites, bundle.id));
-	}
 
 	const data: Record<string, unknown> = { traits: card.traits };
 	if (card.alternateGreetings.length > 0) data.alternateGreetings = card.alternateGreetings;
@@ -149,24 +125,5 @@ function seedCharacter(bundle: BundledCharacter, seeded: Set<string>): void {
 		serverDb.setSetting(LEDGER_KEY, JSON.stringify([...seeded, bundle.id]));
 	});
 	seeded.add(bundle.id);
-	console.log(`[library] seeded the example character "${card.name}" (${bundle.sprites.length} sprite(s)).`);
-}
-
-/**
- * The path the card's `defaultSprite` label names, or undefined to let the pack's first picture
- * take the role. A label naming nothing throws: it is a typo in a file we ship, and the sprite
- * silently chosen instead would be whichever one happened to sort first.
- */
-function pickDefaultSprite(
-	card: BundledCard,
-	sprites: { path: string; label: string }[],
-	id: string
-): string | undefined {
-	if (!card.defaultSprite) return undefined;
-	const wanted = normalizeSpriteLabel(card.defaultSprite).toLowerCase();
-	const match = sprites.find((s) => s.label.toLowerCase() === wanted);
-	if (!match) {
-		throw new Error(`defaults/characters/${id}.json names default sprite "${card.defaultSprite}", which no picture in ${id}/ carries`);
-	}
-	return match.path;
+	console.log(`[library] seeded the example character "${card.name}".`);
 }

@@ -1,7 +1,7 @@
 /**
  * Pulling a JSON object out of a model's reply.
  *
- * Shared by every engine that asks for structured output (Chat Memory, Sprites), because
+ * Shared by engines that ask for structured output (Chat Memory), because
  * a small model wraps its JSON in a fence or a sentence of preamble and each engine inventing
  * its own tolerance is how two engines end up disagreeing about what a valid answer looks like.
  */

@@ -303,11 +303,7 @@ export interface Message {
 	 *  turn would record differently. Kept apart from `editedAt` so the transcript can still
 	 *  show the turn as edited without costing the summary that covers it. */
 	minorEditedAt: number | null;
-	/** The sprite label the Sprites engine read this turn as, or null when it has not been read
-	 *  (every user/system turn, and every assistant turn written while the engine was off or the
-	 *  character had no sprites). Deliberately the LABEL and not an image path: a sprite can be
-	 *  re-pointed or removed without falsifying what the turn was read as, and a label with no
-	 *  sprite behind it is simply inert. */
+	/** Inactive legacy metadata retained for existing messages and backups. */
 	spriteLabel: string | null;
 	model: string | null;
 	provider: string | null;

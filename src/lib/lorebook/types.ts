@@ -119,10 +119,12 @@ export interface ResolvedKeyMatch {
 export function resolveKeyMatch(
 	key: string,
 	rules: LorebookKeyRules | undefined,
-	defaults: { caseSensitive: boolean; matchWholeWords: boolean }
+	defaults: { caseSensitive: boolean; matchWholeWords: boolean; useRegex?: boolean }
 ): ResolvedKeyMatch {
-	const regex = parseRegexKey(key);
+	const regex = defaults.useRegex === false ? null : parseRegexKey(key);
 	if (regex) return { mode: 'regex', caseSensitive: !regex.flags.includes('i'), regex };
+	if (defaults.useRegex === true) return { mode: 'regex', caseSensitive: defaults.caseSensitive,
+		regex: { pattern: key, flags: defaults.caseSensitive ? '' : 'i' } };
 	const rule = rules?.[key] ?? {};
 	// A key with whitespace never INHERITS whole-word: SillyTavern applies that flag to
 	// single-word keys only, and a phrase quietly gaining word boundaries would change what
@@ -353,6 +355,15 @@ export function firesOnTrigger(triggers: string[] | undefined, current: Lorebook
 }
 
 export interface LorebookEntry {
+	/** V3 matching rules and optional original fields, retained across native exports. */
+	cardV3?: { useRegex: boolean; selective: boolean; original: Record<string, unknown> };
+	/** Computed per scan; never persisted. */
+	v3Runtime?: {
+		additionalKeys?: string[][]; excludeKeys?: string[]; blocked?: boolean; force?: boolean;
+		position?: 'before_desc' | 'after_desc' | 'personality' | 'scenario';
+		disableUiPrompt?: string[]; ignoreOnMaxContext?: boolean;
+		bookId?: string; bookTokenBudget?: number; priority?: number;
+	};
 	/** Our stable id. SillyTavern's per-book `uid` is positional and regenerated on export. */
 	id: string;
 	/** Title / memo. Organizational only, never sent to the model. */

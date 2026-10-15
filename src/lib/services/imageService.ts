@@ -208,7 +208,7 @@ class ImageService {
 	}
 
 	/** Synchronous full-size URL, the pair to `thumbnailUrl`. For the surfaces that draw a
-	 *  picture large enough that a thumbnail would be the wrong file (the chat's sprite). */
+	 *  picture large enough that a thumbnail would be the wrong file. */
 	imageUrl(relativePath: string | undefined): string | null {
 		if (!relativePath) return null;
 		return fileUrl(relativePath);

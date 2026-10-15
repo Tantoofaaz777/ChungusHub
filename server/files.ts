@@ -57,7 +57,7 @@ export function imageContentType(path: string): string | null {
 }
 
 /** What counts as a picture in a bundled folder: workspace backgrounds, the cover art sitting
- *  beside a default preset, and an example character's portrait and sprites. */
+ *  beside a default preset, and an example character's portrait. */
 export const IMAGE_EXT_RE = new RegExp(`(${IMAGE_EXTENSIONS.map((e) => `\\${e}`).join('|')})$`, 'i');
 
 /**

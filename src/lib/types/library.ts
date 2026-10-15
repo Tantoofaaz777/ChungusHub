@@ -1,11 +1,11 @@
 /** Domain types for the character/persona library. Lorebooks live in `$lib/lorebook`. */
 import type { PortraitFocus } from '$lib/utils/portrait-focus';
+import type { CharacterCardMetadata } from './character-card';
 
 /** Type discriminator for library entries */
 export type LibraryEntryType = 'character' | 'persona';
 
-/** One sprite. `path` is the picture, `label` is what the Sprites engine answers with to
- *  choose it. */
+/** Legacy image reference retained when reading existing library data. */
 export interface CharacterSprite {
 	path: string;
 	label: string;
@@ -24,8 +24,8 @@ export interface PersonaPronouns {
 export interface LibraryEntryIdentity {
 	name: string;
 	/**
-	 * Chungus-only in-story name for characters and personas. The library and card exports keep using
-	 * `name`; prompt macros and chat speaker labels use this when it is non-blank.
+	 * In-story name for characters and personas; exported as V3 nickname.
+	 * The library uses `name`; prompt macros and speaker labels use this when non-blank.
 	 */
 	alias?: string;
 	/** Chungus-only persona pronouns. Absent personas read as the neutral defaults. */
@@ -34,22 +34,9 @@ export interface LibraryEntryIdentity {
 	imageUrl?: string;
 	/** User-defined tags for organization */
 	tags?: string[];
-	/** Extra image paths shown in the editor's gallery. Lives on identity so it is, like the portrait, NOT versioned. */
+	/** Inactive legacy image fields. Retained for old data; no gallery or sprite runtime. */
 	gallery?: string[];
-	/**
-	 * The pictures the Sprites engine picks between, each with the label it answers by. Its own
-	 * image set, disjoint from `gallery`: a path lives in one list or the other, since a picture
-	 * in both would draw in both grids and a delete from either would take the file out from
-	 * under the other. Labels are free text with a suggested vocabulary; nothing validates them
-	 * against a fixed set.
-	 */
 	sprites?: CharacterSprite[];
-	/**
-	 * The sprite shown before the engine has picked anything, and whenever a stored pick names
-	 * a label no sprite carries. A character with sprites ALWAYS has one (see the library
-	 * store's sprite methods): without it, switching the engine on would leave an empty
-	 * corner until the next reply and read as broken.
-	 */
 	defaultSprite?: string;
 	/**
 	 * Where every avatar box aims inside the portrait (`$lib/utils/portrait-focus`). Absent
@@ -69,6 +56,8 @@ export function storyRoleName(identity: Pick<LibraryEntryIdentity, 'name' | 'ali
 /** Data payload for a library entry */
 export interface LibraryEntryData {
 	traits: CharacterTraits;
+	/** Portable card metadata and assets, versioned with the character's content. */
+	cardMetadata?: CharacterCardMetadata;
 	/** Custom labels for default traits - overrides the default label text */
 	traitLabels?: Partial<Record<TraitKey, string>>;
 	/** Default traits that have been hidden/deleted */
@@ -234,6 +223,8 @@ export const BLOB_MACRO: Record<LibraryEntryType, string> = {
 export interface LibrarySeed {
 	id: string;
 	name: string;
+	alias?: string;
+	cardMetadata?: CharacterCardMetadata;
 	/** Path to image stored in app data folder */
 	imageUrl?: string;
 	/** User-defined tags for organization in library */

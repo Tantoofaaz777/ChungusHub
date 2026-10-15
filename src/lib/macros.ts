@@ -25,6 +25,7 @@ import type { PromptControl } from '$lib/types/database';
 import type { LorebookPlacedGroup, LorebookTrace } from '$lib/lorebook/types';
 import { formatControlForPrompt } from '$lib/utils/prompt-controls';
 import { personaPronouns } from '$lib/utils/persona-pronouns';
+import { expandCardCbs, resolveCardCbs, type CardTextMode } from '$lib/card-cbs';
 
 // ============================================================================
 // Registry: definitions + the shared substitution primitive
@@ -79,6 +80,13 @@ export interface MacroDef {
  * same camelCase shape so the registry reads as one system rather than two conventions.
  */
 export const MACROS: readonly MacroDef[] = [
+	{ name: 'random:values', description: 'Choose an item from a comma-separated list; escape commas with a backslash.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'pick:values', description: 'Choose a stable item from a comma-separated list.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'roll:N', description: 'Roll a die with N sides, for example {{roll:d6}}.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'reverse:text', description: 'Reverse the supplied text.', engine: true, parameterized: true, group: 'context' },
+	{ name: '// text', description: 'A hidden comment, excluded from prompts and lorebook scans.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'hidden_key:text', description: 'A hidden keyword available only to recursive lorebook scans.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'comment:text', description: 'An inline comment shown in the story but excluded from prompts and scans.', engine: true, parameterized: true, group: 'context' },
 	// ----- Engine-owned (resolved from real story + chat state, everywhere) -----
 	{ name: 'user', description: 'Persona / protagonist name.', engine: true, group: 'names' },
 	{ name: 'char', description: 'Character name (resolved per-character inside their own fields).', engine: true, group: 'names' },
@@ -147,7 +155,7 @@ export const STRUCTURAL_MACROS: readonly string[] = MACROS.filter((m) => m.struc
 );
 
 /** Matches {{name}} and {{name.sub}}, the one macro shape used everywhere. */
-export const MACRO_REGEX = /\{\{(\w+(?:\.\w+)?)\}\}/g;
+export const MACRO_REGEX = /\{\{\s*(\/\/[^{}]*?|\w+(?:\.\w+)?(?::[^{}]*?)?)\s*\}\}/g;
 
 /** Heads each example-dialogue block when the preset names no `exampleSeparator` of its own
  *  (SillyTavern's <START> marker becomes this). An empty separator is a real choice, meaning
@@ -162,15 +170,23 @@ export const DEFAULT_EXAMPLE_SEPARATOR = '***';
  */
 export function substitute(template: string, values: Record<string, string>): string {
 	if (!template) return '';
-	return template.replace(MACRO_REGEX, (match, name: string) =>
-		name in values ? values[name] : match
-	);
+	return template.replace(MACRO_REGEX, (match, name: string) => {
+		if (name in values) return values[name];
+		const canonical = SYSTEM_MACROS.find((key) => key.toLowerCase() === name.toLowerCase());
+		if (canonical && canonical in values) return values[canonical];
+		return resolveCardCbs(name, { seed: template }) ?? match;
+	});
+}
+
+export function isBuiltinMacro(name: string): boolean {
+	return SYSTEM_MACROS.some((key) => key.toLowerCase() === name.toLowerCase()) ||
+		cappedHistoryTurns(name) !== undefined || resolveCardCbs(name, { rng: () => 0 }) !== undefined;
 }
 
 /** Parses a {{chatHistoryLastN}} macro name into N, or undefined for any other name.
  *  The one place the parameterized shape is defined. */
 export function cappedHistoryTurns(name: string): number | undefined {
-	const match = name.match(/^chatHistoryLast(\d+)$/);
+	const match = name.match(/^chatHistoryLast(\d+)$/i);
 	return match ? Number(match[1]) : undefined;
 }
 
@@ -333,6 +349,9 @@ export interface MacroContext {
 	/** The lore that asked to sit at a depth inside the chat rather than in the block. Another
 	 *  resolution OUTPUT, spliced by assembly the way steering is; no macro reads it either. */
 	lorebookPlaced?: LorebookPlacedGroup[];
+	/** A second render of the same scan, used only if optional V3 lore must yield space. */
+	withoutOptionalLore?: () => MacroContext;
+	cardLorePositions?: string[];
 	chatMessages?: Message[]; // Full chat path for the history and last-turn macros
 	/** Pre-rendered chat-memory recall block, injected via {{memory}} (empty when off). */
 	memory?: string;
@@ -407,9 +426,42 @@ function formatIsoDate(): string {
 export interface PromptCharacter {
 	name: string;
 	traits: CharacterTraits;
+	greetings?: string[];
+	userIconName?: string;
 	/** Present for personas; absent data resolves through the neutral pronoun defaults. */
 	pronouns?: Partial<PersonaPronouns>;
 	storyNotes?: string;
+}
+
+/** Context-dependent V3 conditions share the same inputs in generation and previews. */
+export function cardLoreContext(context: MacroContext) {
+	const messages = context.chatMessages ?? [];
+	const greetings = context.resolvedCharacters?.[0]?.greetings;
+	const index = greetings?.findIndex((greeting) => greeting.trim() === messages[0]?.content.trim());
+	return {
+		positions: context.cardLorePositions,
+		assistantCount: messages.filter((message) => message.role === 'assistant').length,
+		greetingIndex: index !== undefined && index >= 0 ? index : undefined,
+		userIconName: context.resolvedPersona?.userIconName
+	};
+}
+
+export function cardLorePositions(items: { enabled: boolean; content: string }[]): string[] {
+	const content = items.filter((item) => item.enabled).map((item) => item.content).join('\n');
+	const has = (name: string) => new RegExp(`\\{\\{\\s*(?:character|${name})\\s*\\}\\}`, 'i').test(content);
+	return [...(has('description') ? ['before_desc', 'after_desc'] : []),
+		...(has('personality') ? ['personality'] : []), ...(has('scenario') ? ['scenario'] : [])];
+}
+
+export function withLorebookFields(context: MacroContext, fields?: Partial<Record<'before_desc' | 'after_desc' | 'personality' | 'scenario', string>>): MacroContext {
+	if (!fields || !context.resolvedCharacters?.length) return context;
+	const [character, ...others] = context.resolvedCharacters;
+	const traits = { ...character.traits };
+	traits.description = [fields.before_desc, traits.description, fields.after_desc].filter(Boolean).join('\n\n');
+	for (const key of ['personality', 'scenario'] as const) {
+		if (fields[key]) traits[key] = [traits[key], fields[key]].filter(Boolean).join('\n\n');
+	}
+	return { ...context, resolvedCharacters: [{ ...character, traits }, ...others] };
 }
 
 /**
@@ -470,6 +522,10 @@ export function expandMacros(text: string, context: MacroContext): string {
  * The Prompt Builder flags such a control in the UI as well.
  */
 function resolveMacro(name: string, context: MacroContext): string | undefined {
+	const cbs = resolveCardCbs(name, { seed: context.chatMessages?.map((message) => message.id).join('|') ?? '' });
+	if (cbs !== undefined) return cbs;
+	const canonical = MACROS.find((macro) => macro.engine && macro.name.toLowerCase() === name.toLowerCase())?.name;
+	if (canonical && canonical !== name) return resolveMacro(canonical, context);
 	const { resolvedPersona, resolvedCharacters } = context;
 
 	// Structural macros belong to prompt-assembly, which preserves their native roles. Empty
@@ -655,12 +711,14 @@ export function expandSelfRefs(
 	text: string,
 	charName: string,
 	userName: string,
-	userPronouns?: Partial<PersonaPronouns>
+	userPronouns?: Partial<PersonaPronouns>,
+	mode: CardTextMode = 'prompt'
 ): string {
 	if (!text) return text;
-	let expanded = text
-		.replace(/\{\{\s*char\s*\}\}/gi, charName)
-		.replace(/\{\{\s*user\s*\}\}/gi, userName);
+	let expanded = expandCardCbs(text, { mode, seed: text })
+		.replace(/\{\{\s*char\s*\}\}/gi, () => charName)
+		.replace(/<(?:char|bot)>/gi, () => charName)
+		.replace(/\{\{\s*user\s*\}\}/gi, () => userName);
 	if (userPronouns === undefined) return expanded;
 	const pronouns = personaPronouns(userPronouns);
 	expanded = expanded
@@ -670,6 +728,11 @@ export function expandSelfRefs(
 		.replace(/\{\{\s*ref\s*\}\}/gi, pronouns.reflexive.trim())
 		.replace(/\{\{\s*poss_p\s*\}\}/gi, pronouns.possessivePronoun.trim());
 	return expanded;
+}
+
+/** Display keeps inline comments visible; prompts and lorebook matching use the core above. */
+export function displaySelfRefs(text: string, char: string, user: string, pronouns?: Partial<PersonaPronouns>): string {
+	return expandSelfRefs(text, char, user, pronouns, 'display');
 }
 
 /** Split a raw example-dialogue field into individual blocks on <START> markers

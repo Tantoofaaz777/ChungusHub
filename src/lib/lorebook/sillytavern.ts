@@ -180,6 +180,7 @@ function scanFieldFlags(entry: LorebookEntry, shape: 'native' | 'card'): Record<
  * regenerated on export, so they don't ride in `rest` either.
  */
 const MODELLED_KEYS = new Set([
+	'chungus_card_v3',
 	'uid', 'selective',
 	'key', 'keysecondary', 'selectiveLogic', 'comment', 'content', 'constant', 'disable',
 	'order', 'probability', 'useProbability', 'caseSensitive', 'matchWholeWords',
@@ -204,6 +205,12 @@ const MODELLED_BOOK_KEYS = new Set([
 
 /** Native World Info entry → our model. Everything unmapped is preserved verbatim in `rest`. */
 function fromNativeEntry(raw: Record<string, unknown>): LorebookEntry {
+	const v3 = raw.chungus_card_v3 as LorebookEntry['cardV3'];
+	if (v3 !== undefined && (!v3 || typeof v3 !== 'object' || Array.isArray(v3) ||
+		typeof v3.useRegex !== 'boolean' || typeof v3.selective !== 'boolean' ||
+		!v3.original || typeof v3.original !== 'object' || Array.isArray(v3.original))) {
+		throw new Error('Invalid V3 lorebook matching metadata.');
+	}
 	const rest: Record<string, unknown> = {};
 	for (const [k, v] of Object.entries(raw)) {
 		if (!MODELLED_KEYS.has(k)) rest[k] = v;
@@ -237,12 +244,13 @@ function fromNativeEntry(raw: Record<string, unknown>): LorebookEntry {
 		depth: asNumber(raw.depth, DEFAULT_LOREBOOK_DEPTH),
 		role: asNumberOrNull(raw.role),
 		...asRecursionFlags(raw),
+		...(v3 ? { cardV3: v3 } : {}),
 		rest
 	};
 }
 
 /** character_book entry → our model. The spec's renamed fields map onto the native names. */
-function fromCharacterBookEntry(raw: Record<string, unknown>): LorebookEntry {
+function fromCharacterBookEntry(raw: Record<string, unknown>, v3 = false): LorebookEntry {
 	const ext: Record<string, unknown> =
 		raw.extensions && typeof raw.extensions === 'object' ? { ...(raw.extensions as Record<string, unknown>) } : {};
 	// These live in extensions in the card spec but are modelled fields for us. Lift them
@@ -294,6 +302,7 @@ function fromCharacterBookEntry(raw: Record<string, unknown>): LorebookEntry {
 	for (const field of LOREBOOK_SCAN_FIELDS) delete ext[field.card];
 	return {
 		id: crypto.randomUUID(),
+		...(v3 ? { cardV3: { useRegex: raw.use_regex === true, selective: raw.selective === true, original: { ...raw } } } : {}),
 		comment: asString(raw.comment) || asString(raw.name),
 		key: asKeyList(raw.keys),
 		keysecondary: asKeyList(raw.secondary_keys),
@@ -317,7 +326,7 @@ function fromCharacterBookEntry(raw: Record<string, unknown>): LorebookEntry {
 }
 
 /** A character_book object (the value of `character_book` / `data.character_book`) → Lorebook. */
-export function lorebookFromCharacterBook(cb: Record<string, unknown>, fallbackName: string): Lorebook {
+export function lorebookFromCharacterBook(cb: Record<string, unknown>, fallbackName: string, v3 = false): Lorebook {
 	const book = createEmptyLorebook(asString(cb.name) || fallbackName);
 	// Absent = inherit our global setting, the same "use the app default" the card meant.
 	book.scanDepth = asNumberOrNull(cb.scan_depth);
@@ -329,7 +338,7 @@ export function lorebookFromCharacterBook(cb: Record<string, unknown>, fallbackN
 	liftBookOverrides(book, bookExt);
 	book.extensions = bookExt;
 	const entries = Array.isArray(cb.entries) ? (cb.entries as Record<string, unknown>[]) : [];
-	book.entries = entries.map(fromCharacterBookEntry);
+	book.entries = entries.map((entry) => fromCharacterBookEntry(entry, v3 || bookExt.chungus_card_v3 === true));
 	return book;
 }
 
@@ -341,13 +350,17 @@ export function lorebookFromCharacterBook(cb: Record<string, unknown>, fallbackN
 export function parseLorebook(raw: unknown, fallbackName: string): Lorebook {
 	if (!raw || typeof raw !== 'object') throw new Error('Not a lorebook: expected a JSON object.');
 	const obj = raw as Record<string, unknown>;
+	if (obj.spec === 'lorebook_v3') {
+		if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) throw new Error('Invalid V3 lorebook data.');
+		return lorebookFromCharacterBook(obj.data as Record<string, unknown>, fallbackName, true);
+	}
 
 	// A full character card with an embedded book.
 	const embedded =
 		(obj.character_book as Record<string, unknown> | undefined) ??
 		((obj.data as Record<string, unknown> | undefined)?.character_book as Record<string, unknown> | undefined);
 	if (embedded && typeof embedded === 'object') {
-		return lorebookFromCharacterBook(embedded, fallbackName);
+		return lorebookFromCharacterBook(embedded, fallbackName, obj.spec === 'chara_card_v3');
 	}
 
 	const entries = obj.entries;
@@ -407,6 +420,7 @@ function toNativeEntry(entry: LorebookEntry, uid: number): Record<string, unknow
 		// The recursion flags are written below from the resolved value, so any copy an older
 		// import left behind is dropped rather than shipped beside a value that contradicts it.
 		...withoutStoredRecursion(entry.rest),
+		...(entry.cardV3 ? { chungus_card_v3: entry.cardV3 } : {}),
 		uid,
 		key: [...entry.key],
 		keysecondary: [...entry.keysecondary],
@@ -466,13 +480,15 @@ export function toNativeWorldInfo(book: Lorebook): Record<string, unknown> {
 function toCharacterBookEntry(entry: LorebookEntry, i: number): Record<string, unknown> {
 	const position = entry.position ?? LOREBOOK_POSITION_BLOCK;
 	return {
-		id: i,
+		...entry.cardV3?.original,
+		id: entry.cardV3?.original.id ?? i,
 		keys: [...entry.key],
 		secondary_keys: [...entry.keysecondary],
 		comment: entry.comment,
 		content: entry.content,
+		use_regex: entry.cardV3?.useRegex ?? (entry.key.length > 0 && entry.key.every((key) => /^\/.+\/[dgimsuvy]*$/.test(key))),
 		constant: entry.constant,
-		selective: entry.keysecondary.length > 0,
+		selective: entry.cardV3?.selective ?? entry.keysecondary.length > 0,
 		insertion_order: entry.order,
 		enabled: !entry.disable,
 		position: position === 1 ? 'after_char' : 'before_char',
@@ -517,7 +533,7 @@ export function toCharacterBook(book: Lorebook): Record<string, unknown> {
 		description,
 		token_budget,
 		recursive_scanning: book.recursiveScanning ?? undefined,
-		extensions: { ...ext, ...bookOverrideExtensions(book) },
+		extensions: { ...ext, ...bookOverrideExtensions(book), ...(book.entries.some((entry) => entry.cardV3) ? { chungus_card_v3: true } : {}) },
 		entries: book.entries.map(toCharacterBookEntry)
 	};
 }

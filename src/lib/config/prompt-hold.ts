@@ -4,7 +4,7 @@
  * glyph it wears, so a gate reads identically in the settings card, in the review's head and
  * on the button that lets the request go.
  *
- * Background work (memory, sprites) is deliberately absent. It fires on its own schedule, so
+ * Background work (memory) is deliberately absent. It fires on its own schedule, so
  * holding it would build a queue of prompts nobody pressed anything to see.
  *
  * Glyphs are SOURCED, not chosen: each is what its action already draws elsewhere (the

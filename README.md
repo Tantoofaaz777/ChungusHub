@@ -72,6 +72,7 @@ ChungusHub is under active development. So there might be some rough edges. Plea
 ### Story state
 
 - **Character versions:** save a variant of a character without duplicating the whole card.
+- **Character Card V3:** import PNG/APNG, JSON and CHARX; export V3 PNG/JSON/CHARX or V2 compatibility cards. Preserves nickname, translated creator notes, sources, greetings, lorebooks and asset bytes.
 - **Lorebooks:** standalone, shareable, keyword-triggered world info in SillyTavern's own format, with scan and budget knobs.
 - **Steering:** guidance notes that ride the prompt, scoped globally, per character or per chat.
 - **Chat memory:** old scenes fold into summaries so long stories fit the context window, and each branch keeps its own.

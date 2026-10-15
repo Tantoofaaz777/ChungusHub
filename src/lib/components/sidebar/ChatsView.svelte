@@ -35,7 +35,7 @@
 	import { duplicateAsksAboutMemory } from '$lib/types/chat';
 	import type { Chat, ChatListStats, ChatMemoryFootprint } from '$lib/types/chat';
 	import { db } from '$lib/services/database';
-	import { expandSelfRefs } from '$lib/macros';
+	import { displaySelfRefs } from '$lib/macros';
 	import { storyRoleName } from '$lib/types/library';
 	import { buildSearchRegex } from '$lib/utils/chat-search';
 	import { dayBucket } from '$lib/utils/date';
@@ -332,7 +332,7 @@
 		// pane resolves with, so one chat can't read two different names in one panel.
 		const persona = chatCastStore.personaForChat(chat.id);
 		const userName = persona?.name?.trim() || 'You';
-		return expandSelfRefs(
+		return displaySelfRefs(
 			raw.replace(/\s+/g, ' ').trim(),
 			charName,
 			userName,
