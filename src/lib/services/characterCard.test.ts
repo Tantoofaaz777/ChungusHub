@@ -11,6 +11,8 @@ import { crc32 } from './crc32';
 import { localizedCreatorNotes } from './characterCard';
 
 const PNG = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5xkAAAAASUVORK5CYII=', 'base64'));
+// Generated one-pixel JPEG: independent of any user-supplied character artwork.
+const JPEG = new Uint8Array(Buffer.from('/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCrRRRXvngn/9k=', 'base64'));
 function fixture(): CharacterCardV3 {
 	return { spec: 'chara_card_v3', spec_version: '3.0', data: {
 		name: 'Álice 🐇', nickname: 'Ali', description: '{{CHAR}} lives here.', personality: 'curious', scenario: 'Wonderland',
@@ -87,6 +89,48 @@ describe('Character Card V3 interchange', () => {
 		expect(result.warnings).toEqual([]);
 		expect(dataUrlBytes(result.character.cardMetadata!.assets![1].uri)?.bytes).toEqual(new Uint8Array([0, 255, 13, 10]));
 		expect(result.imageFile?.type).toBe('image/png');
+	});
+	test.each(['image', 'images'])('CHARX finds a main JFIF portrait in %s without an asset manifest', async (folder) => {
+		const card = fixture(); delete card.data.assets;
+		const file = new File([createZip([
+			{ name: 'card.json', data: new TextEncoder().encode(JSON.stringify(card)) },
+			{ name: `assets/icon/${folder}/main.jfif`, data: JPEG }
+		])], 'portrait.charx');
+		const result = await importSillyTavernCard(file);
+		expect(result.warnings).toEqual([]);
+		expect(result.imageFile?.type).toBe('image/jpeg');
+		expect(new Uint8Array(await result.imageFile!.arrayBuffer())).toEqual(JPEG);
+		const exported = buildCharacterCardV3(entryFrom(result), [], 'all');
+		const icon = exported.data.assets!.find((asset) => asset.type === 'icon' && asset.name === 'main')!;
+		expect(icon.ext).toBe('jfif');
+		expect(dataUrlBytes(icon.uri)?.bytes).toEqual(JPEG);
+		const again = await importSillyTavernCard(new File([buildCharx(exported)], 'again.charx'));
+		expect(again.imageFile?.type).toBe('image/jpeg');
+	});
+	test.each([{ assets: [] }, { assets: [{ type: 'icon', name: 'main', uri: 'ccdefault:', ext: 'png' }] }])('CHARX resolves empty or default assets against its main portrait', async ({ assets }) => {
+		const card = fixture(); card.data.assets = assets;
+		const result = await importSillyTavernCard(new File([createZip([
+			{ name: 'card.json', data: new TextEncoder().encode(JSON.stringify(card)) },
+			{ name: 'assets/icon/images/main.png', data: PNG }
+		])], 'default.charx'));
+		expect(result.imageFile?.type).toBe('image/png');
+		expect(new Uint8Array(await result.imageFile!.arrayBuffer())).toEqual(PNG);
+	});
+	test('an explicit main icon takes precedence over the conventional archive portrait', async () => {
+		const result = await importSillyTavernCard(new File([createZip([
+			{ name: 'card.json', data: new TextEncoder().encode(JSON.stringify(fixture())) },
+			{ name: 'assets/icon/image/main.jfif', data: JPEG }
+		])], 'explicit.charx'));
+		expect(result.imageFile?.type).toBe('image/png');
+		expect(new Uint8Array(await result.imageFile!.arrayBuffer())).toEqual(PNG);
+	});
+	test('a missing main portrait does not pick unrelated background images', async () => {
+		const card = fixture(); delete card.data.assets;
+		const result = await importSillyTavernCard(new File([createZip([
+			{ name: 'card.json', data: new TextEncoder().encode(JSON.stringify(card)) },
+			{ name: 'assets/background/image/main.jfif', data: JPEG }
+		])], 'no-portrait.charx'));
+		expect(result.imageFile).toBeNull();
 	});
 	test('embedded PNG asset chunks load without being carried into the portrait', async () => {
 		const card = fixture(); card.data.assets![1].uri = '__asset:assets/audio/theme.wav';

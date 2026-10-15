@@ -263,7 +263,7 @@ export function buildCharx(card: CharacterCardV3): Blob {
 		if (!decoded) continue;
 		const extension = /^[a-z0-9]+$/.test(asset.ext) ? asset.ext : 'bin';
 		const type = /^[a-z0-9_]+$/.test(asset.type) ? asset.type : 'other';
-		const kind = /^(png|apng|jpe?g|gif|webp|avif|svg)$/.test(extension) ? 'images' :
+		const kind = /^(png|apng|jpe?g|jfif|gif|webp|avif|svg)$/.test(extension) ? 'images' :
 			/^(mp3|wav|ogg|flac|m4a)$/.test(extension) ? 'audio' : 'other';
 		const path = `assets/${type}/${kind}/${i}.${extension}`;
 		files.push({ name: path, data: decoded.bytes });

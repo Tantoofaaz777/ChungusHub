@@ -12,6 +12,15 @@ import type { CardAsset } from '$lib/types/character-card';
 import { cardMetadata, cardObject, validateCharacterCard } from './characterCard';
 import { bytesDataUrl, dataUrlBytes, MAX_CARD_BYTES, readCharx, safeAssetPath } from './charx';
 
+/** Some CHARX exporters omit the asset manifest but keep a conventional main portrait. */
+function defaultCharxIcon(archive: Map<string, Uint8Array>): CardAsset | undefined {
+	const paths = [...archive.keys()].filter((path) =>
+		/^assets\/icon\/images?\/main\.(png|apng|jpe?g|jfif|webp|gif|avif)$/i.test(path)
+	).sort();
+	const path = paths.find((candidate) => candidate.startsWith('assets/icon/images/')) ?? paths[0];
+	return path ? { type: 'icon', name: 'main', uri: `embeded://${path}`, ext: path.split('.').pop()!.toLowerCase() } : undefined;
+}
+
 /** SillyTavern character card V2 format */
 interface SillyTavernCharacter {
 	name?: string;
@@ -241,10 +250,16 @@ export async function importSillyTavernCard(file: File): Promise<ImportResult> {
 	const warnings: string[] = [];
 	const assetImages: NonNullable<ImportResult['assetImages']> = [];
 	const assets = metadata.assets ?? (root.spec === 'chara_card_v3' ? [{ type: 'icon', uri: 'ccdefault:', name: 'main', ext: 'png' }] : []);
+	const archiveIcon = archive && defaultCharxIcon(archive);
+	if (archiveIcon) {
+		const main = assets.find((asset) => asset.type === 'icon' && asset.name === 'main');
+		if (!main) assets.unshift(archiveIcon);
+		else if (main.uri === 'ccdefault:') Object.assign(main, archiveIcon);
+	}
 	let assetBytes = 0;
 	for (const asset of assets) {
 		let content: { bytes: Uint8Array; mime: string } | null = null;
-		const mime = ({ png: 'image/png', apng: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif' } as Record<string, string>)[asset.ext.toLowerCase()] ?? 'application/octet-stream';
+		const mime = ({ png: 'image/png', apng: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jfif: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif' } as Record<string, string>)[asset.ext.toLowerCase()] ?? 'application/octet-stream';
 		try {
 			if (assetBytes >= MAX_CARD_BYTES) throw new Error('Combined character assets exceed 128 MiB.');
 			if (asset.uri === 'ccdefault:' && asset.type === 'icon' && portraitBytes) content = { bytes: portraitBytes, mime: 'image/png' };

@@ -8,7 +8,6 @@
 	import { chatPersonaEntry } from '$lib/utils/chat-setup';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import EntryFormFields from './EntryFormFields.svelte';
-	import CardMetadataPanel from './CardMetadataPanel.svelte';
 	import CharacterVersionMenu from './CharacterVersionMenu.svelte';
 	import LibraryStatsBar from './LibraryStatsBar.svelte';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
@@ -372,7 +371,6 @@
 					onAlternateGreetingsChange={handleAlternateGreetingsChange}
 					identityExtra={chatDefaultsPanel}
 			/>
-			<CardMetadataPanel {entry} />
 		</div>
 
 		<LibraryStatsBar {entry} />
