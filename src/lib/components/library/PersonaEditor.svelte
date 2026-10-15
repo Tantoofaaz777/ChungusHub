@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
@@ -9,7 +8,7 @@
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { imageService, imageRejectionReason } from '$lib/services/imageService';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
-	import LibraryStatsBar from './LibraryStatsBar.svelte';
+	import FieldTokenCount from './FieldTokenCount.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
 	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
@@ -334,27 +333,29 @@
 		>
 			{#snippet badge()}
 				{#if isActive && !isNew}
-					<span class="shrink-0 text-[10px] font-ui px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
-						Default
+					<span class="persona-default shrink-0 text-[10px] font-ui px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30" aria-label="Default persona" title="Default persona">
+						<span class="persona-mobile-icon"><Icon name="check" class="w-3.5 h-3.5" /></span>
+						<span class="persona-header-label">Default</span>
 					</span>
 				{/if}
 			{/snippet}
 			{#snippet primaryAction()}
 				{#if !isActive}
-					<Button variant="secondary" size="sm" onclick={handleSetActive}>
+					<button type="button" class="persona-activate" onclick={handleSetActive}
+						aria-label="Start new chats as this" title="Start new chats as this">
 						<Icon name="user" class="w-4 h-4" />
-						Start new chats as this
-					</Button>
+						<span class="persona-header-label">Start new chats as this</span>
+					</button>
 				{/if}
 			{/snippet}
 		</LibraryEditorHeader>
 
 		<div class="flex-1 panel-scroll">
-			<div class="grid grid-cols-1 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] gap-6 p-6">
-				<!-- Identity pane: portrait + names, matching the character editor's layout. -->
-				<div class="space-y-4 lg:sticky lg:top-6 lg:self-start">
+			<div class="persona-form">
+				<!-- Compact identity header; pronouns and description use the full width below. -->
+				<div class="persona-identity">
 					<div
-						class="portrait-frame relative w-full max-w-[15rem] lg:max-w-none mx-auto lg:mx-0 aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
+						class="portrait-frame relative w-full aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
 						role="button"
 						tabindex="0"
 						onclick={handleImageClick}
@@ -401,6 +402,7 @@
 						{/if}
 					</div>
 
+					<div class="persona-basics">
 					<div>
 						<label for="persona-name-{entry.id}" class="block text-sm font-ui font-medium text-text-primary mb-1.5">
 							Name
@@ -421,23 +423,21 @@
 						</label>
 						<input
 							id="persona-alias-{entry.id}"
+							aria-describedby="persona-alias-hint-{entry.id}"
 							type="text"
 							value={snapshot.alias ?? ''}
 							oninput={(e) => handleIdentityChange('alias', (e.target as HTMLInputElement).value)}
 							placeholder={snapshot.name || 'Persona name'}
 							class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted"
 						/>
-						<p class="mt-1.5 text-xs font-ui text-text-muted">
+						<p id="persona-alias-hint-{entry.id}" class="persona-alias-hint mt-1.5 text-xs font-ui text-text-muted">
 							Used for {'{{user}}'} and as the name shown in chats. Leave blank to use Name.
 						</p>
 					</div>
+					</div>
 				</div>
 
-				<!-- Fields pane: the single description field. The rule between the panes is drawn
-				     on this side and only once the grid is side by side, the character editor's own
-				     rule: stacked, the panes follow each other down the page and a line across the
-				     middle would read as a divider inside the identity. -->
-				<div class="min-w-0 space-y-5 lg:border-l lg:border-border-subtle lg:pl-6">
+				<div class="min-w-0 space-y-5">
 					<div class="space-y-3">
 						<div class="w-full flex items-center gap-1.5 py-0.5">
 							<Icon name="user" class="w-3.5 h-3.5 text-accent" />
@@ -495,10 +495,11 @@
 						</div>
 
 						<div class="rounded-[var(--radius-lg)] border border-border-subtle bg-bg-secondary/40 transition-colors hover:border-border">
-							<div class="flex items-center gap-2 px-3 pt-2.5 pb-1">
+							<div class="flex flex-wrap items-center gap-2 px-3 pt-2.5 pb-1">
 								<span class="flex-1 min-w-0 truncate text-sm font-ui font-medium text-text-primary">
 									Persona Description
 								</span>
+								<FieldTokenCount value={snapshot.traits.description ?? ''} label="Persona Description" entityId={entry.id} />
 								{#if !personaSent}
 									<span
 										class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-ui font-medium rounded-[var(--radius-sm)] bg-warning/15 text-warning shrink-0"
@@ -530,7 +531,6 @@
 			</div>
 		</div>
 
-		<LibraryStatsBar {entry} />
 	</div>
 
 	{#if snapshot.imageUrl}
@@ -557,3 +557,29 @@
 		onCancel={() => (showDeleteConfirm = false)}
 	/>
 {/if}
+
+<style>
+	.persona-form { display: flex; flex-direction: column; gap: 1.5rem; padding: 1.5rem; min-width: 0; }
+	.persona-identity { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); align-items: start; gap: 1.25rem; }
+	.persona-basics { display: grid; gap: 1rem; min-width: 0; }
+	.persona-mobile-icon { display: none; }
+	.persona-activate { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+		height: 2.25rem; padding: 0 0.7rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md);
+		background: var(--color-bg-tertiary); color: var(--color-text-secondary); font-family: var(--font-ui); font-size: 0.74rem; font-weight: 600; }
+	.persona-activate:hover { color: var(--color-text-primary); border-color: var(--color-accent); }
+	.persona-activate:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+	@media (max-width: 640px) {
+		.persona-header-label { display: none; }
+		.persona-mobile-icon { display: inline-flex; }
+		.persona-default { display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem; }
+		.persona-activate { width: 2.25rem; padding: 0; }
+	}
+	@media (max-width: 560px) {
+		.persona-form { padding: 1rem; gap: 1.25rem; }
+		.persona-identity { grid-template-columns: clamp(6rem, 28vw, 7rem) minmax(0, 1fr); gap: 0.75rem; }
+		.persona-basics { gap: 0.625rem; }
+		.persona-basics label { margin-bottom: 0.25rem; }
+		.persona-basics input { min-height: 2.25rem; padding: 0.375rem 0.625rem; font-size: 1rem; line-height: 1.25; }
+		.persona-alias-hint { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+	}
+</style>

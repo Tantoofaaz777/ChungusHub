@@ -1,8 +1,8 @@
 <script lang="ts">
 	/**
-	 * Shared header bar for the character/persona editors. Characters keep versions
-	 * and lorebooks on the left; personas retain their name and badge. Save state
-	 * stays beside those controls, with favorite, overflow and close on the right.
+	 * Shared header bar for the character/persona editors. Versions, badges,
+	 * lorebooks and token counts lead the bar. Save state stays beside those
+	 * controls, with favorite, overflow and close on the right.
 	 * New entries use explicit Save/Discard. Labels drop on narrow screens.
 	 */
 	import type { Snippet } from 'svelte';
@@ -143,16 +143,10 @@
 	</button>
 {/snippet}
 
-<header class="editor-header" class:character-header={entryType === 'character'}>
+<header class="editor-header entry-header" aria-label={name || fallbackName}>
 	<div class="editor-header-identity">
-		{#if entryType === 'persona'}
-			<span class="editor-header-glyph" aria-hidden="true">
-				<Icon name="user" class="w-4 h-4" strokeWidth={1.5} />
-			</span>
-			<h2 class="editor-header-name" class:is-untitled={!name && isNew}>{name || fallbackName}</h2>
-		{/if}
 		{@render badge?.()}
-		{#if entryType === 'character'}{@render lorebookControl()}{/if}
+		{@render lorebookControl()}
 		{#if onCountTokens}
 			<button type="button" class="edh-chip edh-token-count" onclick={onCountTokens}
 				aria-haspopup="dialog" aria-label="Total tokens" title="Total tokens">
@@ -178,8 +172,6 @@
 		{#if !isNew}
 			{@render primaryAction?.()}
 		{/if}
-
-		{#if entryType === 'persona'}{@render lorebookControl()}{/if}
 
 		{#if isNew}
 			<span class="editor-header-divider"></span>
@@ -286,8 +278,8 @@
 	   are the shared .editor-header language in app.css, so this header and the open
 	   lorebook's are one surface. What is below belongs to a library entry alone. */
 
-	.character-header { position: relative; }
-	.character-header .editor-header-identity { flex-wrap: wrap; row-gap: 0.4rem; }
+	.entry-header { position: relative; }
+	.entry-header .editor-header-identity { flex-wrap: wrap; row-gap: 0.4rem; }
 	.edh-token-count { white-space: nowrap; }
 	.edh-mobile-icon { display: none; }
 
@@ -484,17 +476,17 @@
 	/* ---- Narrow screens: labels drop, icons stay, one row holds. ---- */
 
 	@media (max-width: 640px) {
-		.character-header .editor-header-identity { flex-wrap: nowrap; gap: 0.4rem; }
+		.entry-header .editor-header-identity { flex-wrap: nowrap; gap: 0.4rem; }
 
 		.edh-status-text,
 		.edh-chip-label,
-		.character-header .edh-btn-label {
+		.entry-header .edh-btn-label {
 			display: none;
 		}
 
-		.character-header .edh-mobile-icon { display: inline-flex; }
-		.character-header .edh-btn { width: 2.25rem; padding: 0; justify-content: center; }
-		.character-header .edh-chip { min-width: 2.25rem; justify-content: center; }
+		.entry-header .edh-mobile-icon { display: inline-flex; }
+		.entry-header .edh-btn { width: 2.25rem; padding: 0; justify-content: center; }
+		.entry-header .edh-chip { min-width: 2.25rem; justify-content: center; }
 
 		.edh-chip {
 			padding: 0 0.55rem;

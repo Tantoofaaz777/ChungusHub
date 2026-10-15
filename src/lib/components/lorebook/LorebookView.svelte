@@ -32,12 +32,12 @@
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { chatLorebookClaim } from '$lib/utils/chat-setup';
+	import { createEntryDisplayOrder } from '$lib/lorebook/entry-display-order';
 	import {
 		activationSummary,
 		lorebookDeleteMessage,
 		natureOf,
 		resolveBookActivation,
-		sortEntries,
 		type LorebookEntry
 	} from '$lib/lorebook/types';
 	import {
@@ -176,7 +176,7 @@
 	// ===== the cover =====
 
 	let coverPath = $derived(selectedBook?.cover);
-	/** The thumbnail, not the stored file: this box is 17rem at its widest, and the server
+	/** The thumbnail, not the stored file: this is a compact cover, and the server
 	 *  answers with the original where a thumbnail was never written. The framing dialog
 	 *  reads the original instead, since that is the screen the picture is judged on. */
 	let coverUrl = $derived(imageService.thumbnailUrl(coverPath));
@@ -270,12 +270,18 @@
 		);
 	}
 
-	let entries = $derived(
-		selectedBook
-			? sortEntries(selectedBook.entries.filter(matches), lorebookEntryPrefs.sort)
-			: []
-	);
+	const displayOrder = createEntryDisplayOrder();
+	let orderRevision = $state(0);
+	// Apply filtering after retaining positions, so a search never replaces the full order.
+	let orderedEntries = $derived(displayOrder(selectedBook?.entries ?? [], bookId, lorebookEntryPrefs.sort, orderRevision));
+	let entries = $derived(orderedEntries.filter(matches));
 	let total = $derived(selectedBook?.entries.length ?? 0);
+
+	function closeEditor() {
+		// Closing also commits the display order if the fade is interrupted by a quick reopen.
+		orderRevision += 1;
+		onClose();
+	}
 
 	/** Search hits in the other books, capped so the section stays a hint. */
 	let elsewhere = $derived.by(() => {
@@ -495,7 +501,7 @@
 			// The editor is the top-most surface, so the last rung closes IT and leaves the
 			// shelf standing, rather than falling through to the workspace and taking the
 			// whole Library with it.
-			else onClose();
+			else closeEditor();
 			e.preventDefault();
 			return;
 		}
@@ -575,7 +581,7 @@
 				<button
 					type="button"
 					class="editor-header-btn"
-					onclick={onClose}
+					onclick={closeEditor}
 					aria-label="Close lorebook"
 					title="Close (Esc)"
 				>
@@ -583,8 +589,7 @@
 				</button>
 			</div>
 		</header>
-		<!-- One scroll, two columns once the panel can hold them: what the book IS on the left,
-		     what it HOLDS on the right, the split the character editor's identity pane uses. -->
+		<!-- Compact cover and identity at the top; bindings and book contents use the width below. -->
 		<div class="lb-page panel-scroll">
 			<div class="lb-rail">
 				<!-- The cover, in the slot the other two editors open a portrait in: press to
@@ -661,7 +666,7 @@
 
 					<!-- Binding, from the book's end: it writes through the same doors the cards and
 					     chats use, so there is one binding and not a second kind of one. -->
-					<div class="lb-bind">
+					<div>
 						<button
 							type="button"
 							class="lb-bind-add"
@@ -674,9 +679,12 @@
 							<Icon name="plus" class="w-3.5 h-3.5" />
 							<span>Bind to…</span>
 						</button>
+					</div>
+				</div>
 
+					<div class="lb-bind">
+						<span class="section-label">Bound to</span>
 						{#if carriers.length > 0}
-							<span class="section-label">Bound to</span>
 							<div class="lb-chips">
 								{#each shownCarriers as carrier (carrier.id)}
 									<button
@@ -707,16 +715,13 @@
 									</button>
 								{/if}
 							</div>
-						{:else if !selectedBook.global}
-							<!-- Held back while the book is in every chat: a book reaching every chat
-							     must not read as one reaching nothing. -->
-							<p class="lb-bind-none">Not linked</p>
+						{:else}
+							<p class="lb-bind-none">{selectedBook.global ? 'Every chat' : 'Not linked'}</p>
 						{/if}
 					</div>
-				</div>
 			</div>
 
-			<!-- What the book holds: the second column, and the whole page on a narrow panel. -->
+			<!-- Entries and settings always use the full width. -->
 			<div class="lb-page-inner">
 				<div class="lb-strips">
 					<section class="lb-strip">
@@ -848,6 +853,11 @@
 									</div>
 								</div>
 							</BrowsePopover>
+
+							<button type="button" class="brw-btn" onclick={() => (orderRevision += 1)}
+								aria-label="Refresh entry order" title="Refresh entry order">
+								<Icon name="refresh" class="w-4 h-4" />
+							</button>
 
 							<button
 								type="button"
@@ -1118,7 +1128,7 @@
 />
 
 <style>
-	/* ===== one scroll, one or two columns ===== */
+	/* ===== one scroll, compact identity above full-width contents ===== */
 
 	.lb-page {
 		flex: 1;
@@ -1127,37 +1137,15 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		align-content: start;
-		gap: 0.75rem;
-		padding: 0.75rem 0.75rem 3rem;
-	}
-
-	/* A container query and not a viewport one: this panel is as wide as the chat column, so
-	   a wide window with both docks open must not be told it has room for two columns. */
-	@container browse (min-width: 860px) {
-		.lb-page {
-			grid-template-columns: minmax(0, 17rem) minmax(0, 1fr);
-			gap: 1.5rem;
-			padding: 1.5rem 1.5rem 3rem;
-		}
-
-		.lb-rail {
-			position: sticky;
-			top: 0;
-			align-self: start;
-		}
-
-		/* The rule between the panes, drawn only side by side: stacked, a line across the
-		   middle reads as a divider inside the book's identity. */
-		.lb-page-inner {
-			border-left: 1px solid var(--color-border-subtle);
-			padding-left: 1.5rem;
-		}
+		gap: 1.5rem;
+		padding: 1.5rem 1.5rem 3rem;
 	}
 
 	.lb-rail {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
+		display: grid;
+		grid-template-columns: 7.5rem minmax(0, 1fr);
+		align-items: start;
+		gap: 1.25rem;
 		min-width: 0;
 	}
 
@@ -1218,14 +1206,12 @@
 
 	/* ===== the book's identity, at the head of the rail ===== */
 
-	/* Capped and centred while the panes are stacked: at full width a 3:4 plate would be
-	   taller than the phone it is on. */
+	/* Same compact portrait proportions as the character and persona editors. */
 	.lb-plate {
 		position: relative;
 		display: grid;
 		width: 100%;
-		max-width: 15rem;
-		margin: 0 auto 0.5rem;
+		margin: 0;
 		aspect-ratio: 3 / 4;
 		place-items: center;
 		overflow: hidden;
@@ -1327,18 +1313,12 @@
 		color: #fff;
 	}
 
-	@container browse (min-width: 860px) {
-		.lb-plate {
-			max-width: none;
-			margin-inline: 0;
-		}
-	}
-
 	.lb-ident {
 		display: flex;
 		flex-direction: column;
 		align-items: stretch;
-		gap: 0.35rem;
+		gap: 1rem;
+		min-width: 0;
 	}
 
 	/* The three natures, in the entry rows' own colours. Worn by the funnel's Show switches,
@@ -1362,15 +1342,12 @@
 		background: var(--color-border);
 	}
 
-	/* The rule above this block is what stops it reading as one more field of the name: what
-	   the book is called and what carries it are two questions. */
+	/* Bindings start below the cover and can use the entire row. */
 	.lb-bind {
+		grid-column: 1 / -1;
 		display: flex;
 		flex-direction: column;
 		gap: 0.35rem;
-		margin-top: 0.5rem;
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--color-border-subtle);
 	}
 
 	/* Quiet and full width: it is an add affordance in a rail, not the page's action. Its
@@ -1381,7 +1358,7 @@
 		justify-content: center;
 		gap: 0.35rem;
 		width: 100%;
-		height: 1.9rem;
+		height: 2.25rem;
 		border: 1px solid var(--color-border-raised);
 		border-radius: var(--radius-md);
 		background: color-mix(in srgb, var(--color-bg-tertiary) 55%, transparent);
@@ -1404,6 +1381,14 @@
 		.lb-bind-add {
 			height: 2.4rem;
 		}
+	}
+
+	@media (max-width: 560px) {
+		.lb-page { padding: 1rem 1rem 3rem; gap: 1.25rem; }
+		.lb-rail { grid-template-columns: clamp(6rem, 28vw, 7rem) minmax(0, 1fr); gap: 0.75rem; }
+		.lb-ident { gap: 0.625rem; }
+		.lb-ident label { margin-bottom: 0.25rem; }
+		.lb-ident input { min-height: 2.25rem; padding: 0.375rem 0.625rem; font-size: 1rem; line-height: 1.25; }
 	}
 
 	.lb-bind-none {
