@@ -135,11 +135,12 @@
 		class:is-open={open}
 		aria-haspopup="dialog"
 		aria-expanded={open}
+		aria-label={activeVersion ? `Versions: ${activeVersion.name}` : 'Versions'}
 		title={activeVersion ? `Version: ${activeVersion.name}` : 'Versions'}
 	>
 		<Icon name="branch" class="w-3.5 h-3.5" />
 		<span class="version-chip-label">{activeVersion ? activeVersion.name : 'Versions'}</span>
-		<Icon name="chevronDown" class="w-3 h-3" />
+		<span class="version-chip-chevron"><Icon name="chevronDown" class="w-3 h-3" /></span>
 	</button>
 
 	<Dialog {open} onClose={closeMenu} title="Versions" titleAlign="left" size="sm" placement="center" bare>
@@ -298,6 +299,13 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.version-chip-chevron { display: inline-flex; }
+
+	@media (max-width: 640px) {
+		.version-chip { width: 2.25rem; height: 2.25rem; padding: 0; justify-content: center; }
+		.version-chip-label, .version-chip-chevron { display: none; }
 	}
 
 	.version-row {

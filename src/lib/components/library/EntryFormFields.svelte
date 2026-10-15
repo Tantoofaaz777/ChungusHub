@@ -520,13 +520,14 @@
 			</label>
 			<input
 				id="alias-{entityId}"
+				aria-describedby="alias-hint-{entityId}"
 				type="text"
 				value={alias ?? ''}
 				oninput={(e) => onFieldChange('alias', (e.target as HTMLInputElement).value)}
 				placeholder={name || 'Character name'}
 				class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm placeholder:text-text-muted"
 			/>
-			<p class="mt-1.5 text-xs font-ui text-text-muted">
+			<p id="alias-hint-{entityId}" class="identity-alias-hint mt-1.5 text-xs font-ui text-text-muted">
 				Used for {'{{char}}'} and as the name shown in chats. Leave blank to use Name.
 			</p>
 		</div>
@@ -695,7 +696,11 @@
 
 	@media (max-width: 560px) {
 		.entry-form { padding: 1rem; gap: 1.25rem; }
-		.entry-identity { grid-template-columns: 5rem minmax(0, 1fr); gap: 0.875rem; }
-		.identity-basics { gap: 0.75rem; }
+		.entry-identity { grid-template-columns: clamp(6rem, 28vw, 7rem) minmax(0, 1fr); gap: 0.75rem; }
+		.identity-basics { gap: 0.625rem; }
+		.identity-basics label { margin-bottom: 0.25rem; }
+		.identity-basics input { min-height: 2.25rem; padding: 0.375rem 0.625rem; font-size: 1rem; line-height: 1.25; }
+		/* Keep the alias guidance available to assistive technology without stretching the identity row. */
+		.identity-alias-hint { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 	}
 </style>

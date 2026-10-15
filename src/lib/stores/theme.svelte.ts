@@ -86,8 +86,9 @@ function writePaintCache(vars: Record<string, string>, attrs: Record<string, str
 const RADIUS_BASE = { sm: 0.5, md: 0.8, lg: 1.1, xl: 1.45 };
 const GLASS_BLUR: Record<GlassLevel, number> = { off: 0, subtle: 8, full: 16 };
 /* Frosted panels (Workspace overlays/docks) trade translucency for blur; with less
-   blur they must turn more opaque or the background behind turns into noise. */
-const PANEL_ALPHA: Record<GlassLevel, number> = { off: 96, subtle: 72, full: 58 };
+   blur they must turn more opaque or the background behind turns into noise.
+   With glass off, panels are fully opaque so underlying content cannot bleed through. */
+const PANEL_ALPHA: Record<GlassLevel, number> = { off: 100, subtle: 72, full: 58 };
 /* Interior surfaces (cards, inputs, raised rows painted ON a frosted panel).
    They never carry their own backdrop-filter (the panel already blurred the
    backdrop), so all they need is translucency that follows the glass level.

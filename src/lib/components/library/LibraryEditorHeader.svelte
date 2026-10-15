@@ -132,6 +132,7 @@
 		onclick={() => (lorebookOpen = !lorebookOpen)}
 		aria-haspopup="dialog"
 		aria-expanded={lorebookOpen}
+		aria-label="Linked lorebooks"
 		title="Linked lorebooks"
 	>
 		<Icon name="bookOpen" class="w-4 h-4" />
@@ -154,8 +155,8 @@
 		{#if entryType === 'character'}{@render lorebookControl()}{/if}
 		{#if onCountTokens}
 			<button type="button" class="edh-chip edh-token-count" onclick={onCountTokens}
-				aria-haspopup="dialog" title="Total tokens">
-				<span aria-hidden="true">#</span> Total tokens
+				aria-haspopup="dialog" aria-label="Total tokens" title="Total tokens">
+				<span aria-hidden="true">#</span><span class="edh-chip-label">Total tokens</span>
 			</button>
 		{/if}
 		{#if isNew}
@@ -182,12 +183,15 @@
 
 		{#if isNew}
 			<span class="editor-header-divider"></span>
-			<button type="button" class="edh-btn" disabled={busy} onclick={onDiscardNew}>
-				Discard
+			<button type="button" class="edh-btn" disabled={busy} onclick={onDiscardNew}
+				aria-label="Discard" title="Discard">
+				<span class="edh-mobile-icon"><Icon name="close" class="w-4 h-4" /></span>
+				<span class="edh-btn-label">Discard</span>
 			</button>
-			<button type="button" class="edh-btn is-primary" disabled={busy} onclick={onSaveNew}>
+			<button type="button" class="edh-btn is-primary" disabled={busy} onclick={onSaveNew}
+				aria-label="Save" title="Save">
 				<Icon name="check" class="w-4 h-4" />
-				Save
+				<span class="edh-btn-label">Save</span>
 			</button>
 		{:else}
 			<button
@@ -285,6 +289,7 @@
 	.character-header { position: relative; }
 	.character-header .editor-header-identity { flex-wrap: wrap; row-gap: 0.4rem; }
 	.edh-token-count { white-space: nowrap; }
+	.edh-mobile-icon { display: none; }
 
 
 	/* ---- Identity cluster ---- */
@@ -479,10 +484,17 @@
 	/* ---- Narrow screens: labels drop, icons stay, one row holds. ---- */
 
 	@media (max-width: 640px) {
+		.character-header .editor-header-identity { flex-wrap: nowrap; gap: 0.4rem; }
+
 		.edh-status-text,
-		.edh-chip-label {
+		.edh-chip-label,
+		.character-header .edh-btn-label {
 			display: none;
 		}
+
+		.character-header .edh-mobile-icon { display: inline-flex; }
+		.character-header .edh-btn { width: 2.25rem; padding: 0; justify-content: center; }
+		.character-header .edh-chip { min-width: 2.25rem; justify-content: center; }
 
 		.edh-chip {
 			padding: 0 0.55rem;
