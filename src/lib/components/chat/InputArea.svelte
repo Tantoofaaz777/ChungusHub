@@ -1138,7 +1138,7 @@
 							     role glyphs MessageAvatar draws, so a row reads the same here as it
 							     does in the transcript. -->
 							<div class="composer-dialog-menu py-1">
- <button type="button" class="composer-menu-item" disabled={isStreaming || !memoryStore.loaded || !memoryStore.path.length} onclick={() => { menuOpen = false; memoryStore.startSelection(); }}><Icon name="brain" class="w-4 h-4" />Summarize scene</button>
+ <button type="button" class="composer-menu-item" disabled={isStreaming || !memoryStore.loaded || !memoryStore.path.length} onclick={() => { menuOpen = false; memoryStore.startSelection(); }}><Icon name="brain" class="w-4 h-4" />Select chapter range</button>
 								<button
 									type="button"
 									class="composer-menu-item"
@@ -1381,7 +1381,7 @@
 											<span class="token-row-val">{contextTokens.toLocaleString()}</span>
 										</div>
 										{#if memoryTokens > 0}
-											<div class="token-row" title="Chat memory recall: the scene summaries in play on this branch">
+											<div class="token-row" title="Chat memory: the chapters in play on this branch">
 												<span class="token-dot bg-violet-400"></span>
 												<span class="token-row-name">Memory</span>
 												<span class="token-row-val">{memoryTokens.toLocaleString()}</span>

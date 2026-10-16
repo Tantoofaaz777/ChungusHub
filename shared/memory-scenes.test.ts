@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { captureScene, resolveScenes, sceneHistory, scenePath, type MemoryScene, type SceneMessage } from './memory-scenes';
+import { chapterTitle, captureScene, resolveScenes, sceneHistory, scenePath, type MemoryScene, type SceneMessage } from './memory-scenes';
 const path: SceneMessage[] = [
  { id:'a', parentId:null, role:'assistant', content:'Before' },
  { id:'b', parentId:'a', role:'user', content:'We visit the library.' },
@@ -59,4 +59,15 @@ describe('manual scene replacement', () => {
   expect(sceneHistory(hidden,[saved]).map((m) => m.id)).toEqual(['a','scene:s','d']);
   expect(resolveScenes([saved],path)[0].status).toBe('review');
  });
+});
+
+
+test('chapter names preserve custom titles and old stored data while presenting generated scene titles consistently', () => {
+ const old = scene(undefined,{title:'Scene 2–3'});
+ expect(chapterTitle(old.title)).toBe('Chapter 2–3');
+ expect(chapterTitle('Scene 2-3')).toBe('Chapter 2-3');
+ expect(chapterTitle('The final scene')).toBe('The final scene');
+ expect(chapterTitle('Scene 2–3: a custom title')).toBe('Scene 2–3: a custom title');
+ expect(sceneHistory(path,[old])[1].content).toBe('[Chapter: Chapter 2–3]\nThey found a letter in the library.\n[End of chapter]');
+ expect(old.title).toBe('Scene 2–3');
 });

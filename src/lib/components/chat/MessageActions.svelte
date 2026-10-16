@@ -107,12 +107,12 @@
 	{#if onMemoryStart && onMemoryEnd}
 		<button type="button" class="action-btn" class:action-btn-active={memoryStart}
 			onclick={onMemoryStart} disabled={disabled || memoryDisabled}
-			aria-label="Start summary range" aria-pressed={memoryStart} title="Start summary here ↓">
+			aria-label="Start chapter range" aria-pressed={memoryStart} title="Start chapter here ↓">
 			<Icon name="chevronDown" class="w-3.5 h-3.5" strokeWidth={1.75} />
 		</button>
 		<button type="button" class="action-btn" class:action-btn-active={memoryEnd}
 			onclick={onMemoryEnd} disabled={disabled || memoryDisabled}
-			aria-label="End summary range" aria-pressed={memoryEnd} title="End summary here ↑">
+			aria-label="End chapter range" aria-pressed={memoryEnd} title="End chapter here ↑">
 			<Icon name="chevronUp" class="w-3.5 h-3.5" strokeWidth={1.75} />
 		</button>
 	{/if}

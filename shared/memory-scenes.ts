@@ -31,6 +31,12 @@ export interface SaveMemoryScene {
 export type SceneStatus = 'active' | 'review' | 'other-branch';
 export interface ResolvedScene { scene: MemoryScene; status: SceneStatus; reason: string; start: number; end: number }
 
+/** Present titles generated before chapters were named, preserving custom titles
+ *  and the stored data. An explicit edit/save can persist the new default name. */
+export function chapterTitle(title: string): string {
+	return title.replace(/^Scene (\d+[–-]\d+)$/, 'Chapter $1');
+}
+
 /** A synchronous 64-bit content fingerprint, not a security primitive. IDs are separate so
  *  copies can remap them without changing signatures. Visibility is part of the input. */
 export function sceneSignature(message: SceneMessage): string {
@@ -64,14 +70,14 @@ export function resolveScenes(scenes: MemoryScene[], path: SceneMessage[], all: 
 	const resolved = scenes.map((scene): ResolvedScene => {
 		const result = { scene, start: -1, end: -1 };
 		if (scene.reviewReason) return { ...result, status: 'review', reason: scene.reviewReason };
-		if (!scene.source.length || !scene.content.trim()) return { ...result, status: 'review', reason: 'This summary has no valid source or text.' };
+		if (!scene.source.length || !scene.content.trim()) return { ...result, status: 'review', reason: 'This chapter has no valid source or text.' };
 		for (const source of scene.source) {
 			const message = byId.get(source.id);
 			if (!message) return { ...result, status: 'review', reason: 'A source message was deleted.' };
 			if (sceneSignature(message) !== source.signature) return { ...result, status: 'review', reason: 'Source text, images or visibility changed.' };
 		}
 		const indices = scene.source.map((source) => positions.get(source.id));
-		if (indices.some((index) => index === undefined)) return { ...result, status: 'other-branch', reason: 'This scene belongs to another branch.' };
+		if (indices.some((index) => index === undefined)) return { ...result, status: 'other-branch', reason: 'This chapter belongs to another branch.' };
 		const start = indices[0]!;
 		if (indices.some((index, offset) => index !== start + offset)) return { ...result, status: 'review', reason: 'The source range changed. Select its boundaries again.' };
 		if (!path.slice(start, start + indices.length).some((m) => !m.excludedFromPrompt)) return { ...result, status: 'review', reason: 'Every source message is hidden from the prompt.' };
@@ -81,7 +87,7 @@ export function resolveScenes(scenes: MemoryScene[], path: SceneMessage[], all: 
 	const active = resolved.filter((item) => item.status === 'active').sort((a, b) => a.start - b.start);
 	for (let i = 0; i < active.length; i++) for (let j = i + 1; j < active.length && active[j].start <= active[i].end; j++) {
 		active[i].status = active[j].status = 'review';
-		active[i].reason = active[j].reason = 'This scene overlaps another summary. Review the ranges.';
+		active[i].reason = active[j].reason = 'This chapter overlaps another chapter. Review the ranges.';
 	}
 	return resolved;
 }
@@ -94,7 +100,7 @@ export function sceneHistory<T extends SceneMessage>(path: T[], scenes: MemorySc
 		const item = starts.get(i);
 		if (item) {
 			history.push({ ...path[i], id: `scene:${item.scene.id}`, role: 'system',
-				content: `[Scene summary: ${item.scene.title}]\n${item.scene.content}\n[End of scene summary]`,
+				content: `[Chapter: ${chapterTitle(item.scene.title)}]\n${item.scene.content}\n[End of chapter]`,
 				attachments: null, lorebook: null, thinking: null, excludedFromPrompt: false, memorySceneId: item.scene.id });
 			i = item.end;
 		} else if (!path[i].excludedFromPrompt) history.push(path[i]);

@@ -2876,11 +2876,11 @@ class ServerDatabase {
 		if (!input || typeof input.chatId !== 'string' || typeof input.title !== 'string' || typeof input.content !== 'string' ||
 			!input.content.trim() || !input.title.trim() || input.title.length > 200 || input.content.length > 500_000 ||
 			!Array.isArray(input.source) || !input.source.length || input.source.length > 10000 ||
-			input.source.some((s) => !s || typeof s.id !== 'string' || typeof s.signature !== 'string')) throw new Error('Invalid scene summary or source range.');
+			input.source.some((s) => !s || typeof s.id !== 'string' || typeof s.signature !== 'string')) throw new Error('Invalid chapter or source range.');
 		return this.inTransaction(() => {
 			const scenes = this.getMemoryScenes(input.chatId);
 			const previous = input.id ? scenes.find((scene) => scene.id === input.id) : null;
-			if (input.id && (!previous || previous.revision !== input.expectedRevision)) throw new Error('This summary changed on another device. Reopen it before saving.');
+			if (input.id && (!previous || previous.revision !== input.expectedRevision)) throw new Error('This chapter changed on another device. Reopen it before saving.');
 			const chat = this.getChat(input.chatId) as { activeLeafId: string | null } | null;
 			if (!chat) throw new Error('Chat not found');
 			const all = this.getMessagesByChat(input.chatId) as SceneMessage[];
@@ -2890,9 +2890,9 @@ class ServerDatabase {
 				source: input.source.map((s) => ({ id: s.id, signature: s.signature })), createdAt: previous?.createdAt ?? now,
 				updatedAt: now, revision: (previous?.revision ?? 0) + 1, reviewReason: null };
 			const candidate = resolveScenes([scene], path, all)[0];
-			if (candidate.status !== 'active') throw new Error(`The selected scene changed: ${candidate.reason} Select the range again.`);
+			if (candidate.status !== 'active') throw new Error(`The selected chapter changed: ${candidate.reason} Select the range again.`);
 			for (const other of resolveScenes(scenes.filter((s) => s.id !== scene.id), path, all)) {
-				if (other.status === 'active' && other.start <= candidate.end && candidate.start <= other.end) throw new Error('This range overlaps an existing summary. Edit or remove that summary first.');
+				if (other.status === 'active' && other.start <= candidate.end && candidate.start <= other.end) throw new Error('This range overlaps an existing chapter. Edit or remove that chapter first.');
 			}
 			this.execute(`INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -2906,7 +2906,7 @@ class ServerDatabase {
 	deleteMemoryScene(chatId: string, id: string, expectedRevision: number): void {
 		this.inTransaction(() => {
 			const scene = this.getMemoryScenes(chatId).find((item) => item.id === id);
-			if (!scene || scene.revision !== expectedRevision) throw new Error('This summary changed. Reload Memory before removing it.');
+			if (!scene || scene.revision !== expectedRevision) throw new Error('This chapter changed. Reload Memory before removing it.');
 			this.execute('DELETE FROM memory_scenes WHERE id = ? AND chat_id = ?', [id, chatId]);
 		});
 	}

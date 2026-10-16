@@ -1,4 +1,4 @@
-# Manual scene memory
+# Manual chapter memory
 
 The live Chat Memory flow uses `scene-store.svelte.ts` and `shared/memory-scenes.ts`.
 It no longer runs extraction/compaction after turns, and does not depend on lorebooks,
@@ -6,13 +6,13 @@ keywords, a verbatim tail or the `{{memory}}` macro. The old pipeline and its st
 remain for compatibility; its panel is unmounted and its store is no longer used by runtime consumers.
 
 1. Use ↓ (start) and ↑ (end) directly in each message’s actions. Either endpoint can be marked first.
-   Memory → New summary and Chat actions → Summarize scene also open this selection mode.
+   Chat actions → Select chapter range also opens this selection mode.
 2. Mark both boundaries on the same message for a single turn. Adjust either arrow to change the range;
-   crossing the other boundary clears it. The selected range is highlighted, with Summarize and Cancel above.
-3. Generate, review/edit, then Save summary. Cancel never changes the prompt.
-4. The saved summary replaces that contiguous range at its original chronological position.
+   crossing the other boundary clears it. The selected range is highlighted, with Generate chapter and Cancel above.
+3. Generate, review/edit, then Save chapter. Cancel never changes the prompt.
+4. The saved chapter replaces that contiguous range at its original chronological position.
    Original rows, attachments and branches remain saved and visible with the hidden-message dim.
-5. Review/edit or regenerate from Memory or the summary marker above the scene. Regeneration
+5. Review/edit or regenerate from Memory or the chapter marker above the selected messages. Regeneration
    stays in the draft until saved. Removing a summary restores its original messages.
 
 Generation uses the Memory engine's routed connection and generation settings. Switching that
@@ -38,3 +38,11 @@ are copied once into scenes, without model calls and without deleting legacy dat
 legacy memory is marked for review. Overlapping legacy ranges are conservatively held for review.
 Chat duplication remaps scene source ids, preserves text needing review, and can omit memory.
 Deletion of a chat cascades to its scenes and migration marker. Backups include the new SQL tables.
+
+
+The Memory panel groups saved items under **Chapters**, leaving room for future compaction levels.
+Each chapter preview starts collapsed and expands through its native disclosure header (tap/click or
+keyboard). Its token count measures saved text with the chat model's encoding, recalculating only
+when that text or model changes. The prompt also includes a small chapter/title wrapper, so this text
+count is not the entire Memory prompt bucket. Existing storage/API names remain compatible.
+Old generated titles `Scene N–M` display as `Chapter N–M`; custom titles and stored rows are preserved.

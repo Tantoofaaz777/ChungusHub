@@ -8,7 +8,7 @@ import { expandSelfRefs } from '$lib/macros';
 import { EMPTY_IMPACT } from './branching';
 import { markSceneBoundary } from './scene-selection';
 import type { ChatCtx } from './store.svelte';
-import { captureScene, resolveScenes, scenePath, sceneSignature, type MemoryScene, type SceneSource } from '../../../shared/memory-scenes';
+import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, type MemoryScene, type SceneSource } from '../../../shared/memory-scenes';
 
 interface Draft {
 	chatId: string; sceneId?: string; expectedRevision?: number;
@@ -35,9 +35,9 @@ class SceneMemoryStore {
 	get archivedMessageIds() { return new Set(this.resolved.filter((r) => r.status === 'active').flatMap((r) => r.scene.source.map((s) => s.id))); }
 	get activeScenes() { return this.resolved.filter((r) => r.status === 'active').map((r) => r.scene); }
 	get standing(): { kind: 'idle' | 'working' | 'behind' | 'error'; label: string; outstanding: number } {
-		if (this.draft?.phase === 'generating') return { kind: 'working', label: 'Summarizing selected scene', outstanding: 1 };
+		if (this.draft?.phase === 'generating') return { kind: 'working', label: 'Generating chapter', outstanding: 1 };
 		const reviews = this.resolved.filter((r) => r.status === 'review').length;
-		return { kind: reviews ? 'behind' : 'idle', label: reviews ? `${reviews} summaries need review` : 'Manual scene summaries', outstanding: reviews };
+		return { kind: reviews ? 'behind' : 'idle', label: reviews ? `${reviews} ${reviews === 1 ? 'chapter needs' : 'chapters need'} review` : 'Manual chapters', outstanding: reviews };
 	}
 	get selectedMessages() {
 		const s = this.selection;
@@ -48,7 +48,7 @@ class SceneMemoryStore {
 	get selectionError() {
 		const ids = new Set(this.selectedMessages.map((m) => m.id));
 		return this.resolved.some((r) => r.status === 'active' && r.scene.id !== this.selection?.sceneId && r.scene.source.some((s) => ids.has(s.id)))
-			? 'This range overlaps a saved summary. Review or remove that summary first.' : '';
+			? 'This range overlaps a saved chapter. Review or remove that chapter first.' : '';
 	}
 
 	async loadForChat(chatId: string) {
@@ -89,7 +89,7 @@ class SceneMemoryStore {
 		const previous = this.scenes.find((s) => s.id === selection.sceneId);
 		const index = this.path.findIndex((m) => m.id === range[0].id);
 		this.draft = { chatId: selection.chatId, sceneId: selection.sceneId, expectedRevision: selection.seed?.expectedRevision ?? previous?.revision,
-			title: selection.seed?.title ?? previous?.title ?? `Scene ${index + 1}–${index + range.length}`, content: selection.seed?.content ?? previous?.content ?? '',
+			title: selection.seed?.title ?? (previous ? chapterTitle(previous.title) : undefined) ?? `Chapter ${index + 1}–${index + range.length}`, content: selection.seed?.content ?? previous?.content ?? '',
 			source: captureScene(range), phase: 'ready', error: '' };
 		this.selection = null;
 		if (!selection.seed?.content.trim()) await this.generateDraft();
@@ -107,7 +107,7 @@ class SceneMemoryStore {
 		const wanted = new Set(scene.source.map((s) => s.id));
 		const range = this.path.filter((m) => wanted.has(m.id));
 		this.draft = { chatId: scene.chatId, sceneId: scene.id, expectedRevision: scene.revision,
-			title: scene.title, content: scene.content,
+			title: chapterTitle(scene.title), content: scene.content,
 			source: range.length === scene.source.length ? captureScene(range) : scene.source.map((s) => ({ ...s })),
 			phase: 'ready', error: '' };
 	}
@@ -118,10 +118,10 @@ class SceneMemoryStore {
 		const controller = this.abort = new AbortController();
 		draft.phase = 'generating'; draft.error = '';
 		try {
-			if (!featurePromptsStore.memoryEnabled) throw new Error('Enable Chat Memory in Settings → Engines to generate a summary, or write one below.');
+			if (!featurePromptsStore.memoryEnabled) throw new Error('Enable Chat Memory in Settings → Engines to generate a chapter, or write one below.');
 			const all = new Map(this.path.map((m) => [m.id, m]));
 			const source = draft.source.map((s) => all.get(s.id));
-			if (source.some((m, i) => !m || sceneSignature(m) !== draft.source[i].signature)) throw new Error('Source messages are unavailable on this branch. Select the scene again.');
+			if (source.some((m, i) => !m || sceneSignature(m) !== draft.source[i].signature)) throw new Error('Source messages are unavailable on this branch. Select the chapter range again.');
 			const messages = source.filter((m) => m && !m.excludedFromPrompt);
 			const entry = characterLibraryStore.entries.find((e) => e.id === this.ctx?.characterId);
 			const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, this.ctx?.characterVersionId ?? null)) : null;
@@ -130,9 +130,9 @@ class SceneMemoryStore {
 			const transcript = messages.map((m) => `[${m!.role === 'assistant' ? charName : m!.role === 'user' ? userName : 'System'}]\n${expandSelfRefs(m!.content, charName, userName, persona?.pronouns ?? {})}`).join('\n\n');
 			const result = await llmService.complete({ engine: 'memory' }, { source: 'memory', signal: controller.signal,
 				messages: [{ role: 'system', content: featurePromptsStore.promptFor('memoryScene') },
-					{ role: 'user', content: `Summarize this scene:\n\n${transcript}` }] });
+					{ role: 'user', content: `Create a chapter summarizing these messages:\n\n${transcript}` }] });
 			if (controller.signal.aborted || this.abort !== controller || this.draft !== draft) return;
-			if (!result.content.trim()) throw new Error('The model returned no summary. Check the connection’s output limit or write one below.');
+			if (!result.content.trim()) throw new Error('The model returned no chapter. Check the connection’s output limit or write one below.');
 			draft.content = result.content.trim(); draft.phase = 'ready';
 		} catch (error) {
 			if (controller.signal.aborted || this.draft !== draft) return;
@@ -147,7 +147,11 @@ class SceneMemoryStore {
 		try {
 			const saved = await database.saveMemoryScene({ id: draft.sceneId, chatId: draft.chatId, title: draft.title,
 				content: draft.content, source: $state.snapshot(draft.source), expectedRevision: draft.expectedRevision });
-			if (this.activeChatId === saved.chatId) this.scenes = [...this.scenes.filter((s) => s.id !== saved.id), saved];
+			if (this.activeChatId === saved.chatId) {
+				this.scenes = this.scenes.some((chapter) => chapter.id === saved.id)
+					? this.scenes.map((chapter) => chapter.id === saved.id ? saved : chapter)
+					: [...this.scenes, saved];
+			}
 			if (this.draft === draft) this.draft = null;
 		} catch (error) { draft.error = error instanceof Error ? error.message : String(error); }
 		finally { this.saving = false; }
