@@ -57,11 +57,13 @@
 	--glass-border: var(--theme-glass-border);
 	--color-float-bg: var(--theme-float-bg);
 
-	--radius-sm: var(--theme-radius-sm, 0.5rem);
-	--radius-md: var(--theme-radius-md, 0.8rem);
-	--radius-lg: var(--theme-radius-lg, 1.1rem);
-	--radius-xl: var(--theme-radius-xl, 1.45rem);
-	--radius-full: var(--theme-radius-full, 9999px);
+	/* Fixed at 30% of the original surface scale, including before settings load.
+	   Old cached --theme-radius-* values no longer affect these tokens. */
+	--radius-sm: 0.15rem;
+	--radius-md: 0.24rem;
+	--radius-lg: 0.33rem;
+	--radius-xl: 0.435rem;
+	--radius-full: 9999px;
 }
 
 /* First-paint fallback: Graphite × Indigo with default knobs. The runtime
@@ -131,9 +133,9 @@
 	--user-bubble-width: 1;
 
 	/* Message card shape + chrome (Settings → Chat). */
-	--msg-radius: 1.59rem;
-	--msg-radius-notch: 0.58rem;
-	--msg-radius-card: 1.1rem;
+	--msg-radius: 0.575rem;
+	--msg-radius-notch: 0.575rem;
+	--msg-radius-card: 0.33rem;
 	--msg-pad-x: 0.98rem;
 	--msg-pad-top: 0.72rem;
 	--msg-pad-bottom: 0.95rem;
@@ -2217,6 +2219,28 @@
 			font-size: 1rem;
 		}
 	}
+}
+
+/* One authoring font across the app, independent of each field's UI/story styling.
+   Important so component styles and font utilities cannot give individual text fields
+   different fonts. Non-text controls keep their interface typography. */
+textarea,
+input:not(
+	[type='button'],
+	[type='submit'],
+	[type='reset'],
+	[type='checkbox'],
+	[type='radio'],
+	[type='range'],
+	[type='file'],
+	[type='color'],
+	[type='image'],
+	[type='hidden']
+),
+[contenteditable='true'],
+[contenteditable='plaintext-only'],
+[contenteditable=''] {
+	font-family: var(--font-mono) !important;
 }
 
 /* ===== Touch: no form control renders below 16px =====

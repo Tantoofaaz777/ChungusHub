@@ -27,8 +27,8 @@
 	import { backgroundStore } from '$lib/stores/background.svelte';
 	import { chatSceneStore } from '$lib/stores/chatScene.svelte';
 	import { DEFAULT_BACKGROUND } from '$lib/types/background';
-	import { DEFAULT_APPEARANCE } from '$lib/themes/presets';
 	import { rangeReset } from '$lib/actions/rangeReset';
+	import { anchorTo } from '$lib/actions/anchorTo';
 	import { toggleRow } from '$lib/actions/toggleRow';
 	import type { ContrastLevel, GlassLevel, PaletteMode } from '$lib/types/theme';
 
@@ -172,7 +172,7 @@
 	});
 </script>
 
-<svelte:window onpointerdown={handleWindowPointerDown} onkeydown={handleWindowKeydown} />
+<svelte:window onpointerdown={handleWindowPointerDown} onkeydowncapture={handleWindowKeydown} />
 
 <div class="iface">
 	<section class="card" data-setting="palette">
@@ -184,6 +184,57 @@
 		</div>
 
 		<div class="card-body">
+			<div class="sub-block" data-setting="accent">
+				<div class="slider-label-wrap">
+					<span class="slider-label">Accent</span>
+					<InfoTip text="One hue over the palette, tuned for dark and light on its own." />
+				</div>
+				<div class="accent-row" role="radiogroup" aria-label="Accent color">
+					{#each themeStore.accents as accent (accent.id)}
+						<button
+							type="button"
+							role="radio"
+							aria-checked={appearance.accent === accent.id}
+							class="accent-swatch"
+							class:active={appearance.accent === accent.id}
+							style="background: {themeStore.accentSwatch(accent)}"
+							title={accent.name}
+							aria-label={accent.name}
+							onclick={() => themeStore.update({ accent: accent.id })}
+						></button>
+					{/each}
+					<span class="accent-custom-wrap">
+						<button
+							type="button"
+							bind:this={customAnchor}
+							class="accent-swatch accent-custom"
+							class:active={appearance.accent === 'custom'}
+							style="background: {appearance.accent === 'custom'
+								? appearance.customAccent
+								: 'transparent'}"
+							title="Custom color"
+							aria-label="Custom accent color"
+							aria-expanded={customOpen}
+							onclick={toggleCustom}
+						>
+							{#if appearance.accent !== 'custom'}<span class="accent-plus">+</span>{/if}
+						</button>
+						{#if customOpen}
+							<div
+								class="accent-popover surface-float"
+								bind:this={customPopover}
+								use:anchorTo={customAnchor}
+							>
+								<ColorPicker
+									value={appearance.customAccent}
+									oninput={(hex) => themeStore.update({ accent: 'custom', customAccent: hex })}
+								/>
+							</div>
+						{/if}
+					</span>
+				</div>
+			</div>
+
 			<div class="palette-grid" role="radiogroup" aria-label="Base palette">
 				{#each themeStore.palettes as palette (palette.id)}
 					<div class="palette-slot">
@@ -257,65 +308,21 @@
 		{/key}
 	{/if}
 
-	<section class="card" data-setting="accent">
+
+	<section class="card" data-setting="surfaces">
 		<div class="card-head">
-			<span class="card-title">Accent</span>
-			<InfoTip text="One hue over the palette, tuned for dark and light on its own." />
+			<span class="card-title">Surfaces</span>
+			<InfoTip
+				text="Interface typography, glass blur and animation settings."
+			/>
 		</div>
 
 		<div class="card-body">
-			<div class="accent-row" role="radiogroup" aria-label="Accent color">
-				{#each themeStore.accents as accent (accent.id)}
-					<button
-						type="button"
-						role="radio"
-						aria-checked={appearance.accent === accent.id}
-						class="accent-swatch"
-						class:active={appearance.accent === accent.id}
-						style="background: {themeStore.accentSwatch(accent)}"
-						title={accent.name}
-						aria-label={accent.name}
-						onclick={() => themeStore.update({ accent: accent.id })}
-					></button>
-				{/each}
-				<span class="accent-custom-wrap">
-					<button
-						type="button"
-						bind:this={customAnchor}
-						class="accent-swatch accent-custom"
-						class:active={appearance.accent === 'custom'}
-						style="background: {appearance.accent === 'custom'
-							? appearance.customAccent
-							: 'transparent'}"
-						title="Custom color"
-						aria-label="Custom accent color"
-						aria-expanded={customOpen}
-						onclick={toggleCustom}
-					>
-						{#if appearance.accent !== 'custom'}<span class="accent-plus">+</span>{/if}
-					</button>
-					{#if customOpen}
-						<div class="accent-popover surface-float slide-up" bind:this={customPopover}>
-							<ColorPicker
-								value={appearance.customAccent}
-								oninput={(hex) => themeStore.update({ accent: 'custom', customAccent: hex })}
-							/>
-						</div>
-					{/if}
-				</span>
-			</div>
-		</div>
-	</section>
-
-	<section class="card" data-setting="interface-type">
-		<div class="card-head">
-			<span class="card-title">Interface Type</span>
-			<InfoTip text="Fonts other than the default download the first time you pick them." />
-		</div>
-
-		<div class="card-body">
-			<div class="slider-block">
-				<label for="interface-font" class="slider-label">Interface font</label>
+			<div class="slider-block" data-setting="interface-type">
+				<div class="slider-label-wrap">
+					<label for="interface-font" class="slider-label">Interface font</label>
+					<InfoTip text="Fonts other than the default download the first time you pick them." />
+				</div>
 				<Select
 					id="interface-font"
 					variant="compact"
@@ -327,43 +334,6 @@
 						<option value={font.id}>{font.label}</option>
 					{/each}
 				</Select>
-			</div>
-		</div>
-	</section>
-
-	<section class="card" data-setting="surfaces">
-		<div class="card-head">
-			<span class="card-title">Surfaces</span>
-			<InfoTip
-				text="How every surface in the app is cut and how heavy it feels. Turn the last two down on a weaker device."
-			/>
-		</div>
-
-		<div class="card-body">
-			<div class="slider-block">
-				<div class="slider-top">
-					<div class="slider-label-wrap">
-						<label for="corners" class="slider-label">Corners</label>
-						<InfoTip
-							text="Rounds every surface there is, the message card included. The card carries a second rounding of its own on top, under Chat."
-						/>
-					</div>
-					<span class="slider-value">{pct(appearance.radius)}</span>
-				</div>
-				<input
-					id="corners"
-					type="range"
-					class="slider"
-					min="0"
-					max="1.35"
-					step="0.05"
-					value={appearance.radius}
-					oninput={(e) => themeStore.update({ radius: parseFloat(e.currentTarget.value) })}
-					use:rangeReset={{
-						defaultValue: DEFAULT_APPEARANCE.radius,
-						apply: (v) => themeStore.update({ radius: v })
-					}}
-				/>
 			</div>
 
 			<div class="sub-block">
@@ -765,7 +735,6 @@
 	}
 
 	.accent-custom-wrap {
-		position: relative;
 		display: inline-flex;
 	}
 
@@ -784,12 +753,13 @@
 		pointer-events: none;
 	}
 
-	/* Floating popover over panel content, carrying .surface-float in markup. */
+	/* anchorTo portals to the viewport, escaping the settings panel's clipping. */
 	.accent-popover {
-		position: absolute;
-		top: calc(100% + 0.5rem);
-		right: 0;
-		z-index: 30;
+		z-index: 1000;
+		width: max-content;
+		max-width: calc(100vw - 16px);
+		max-height: calc(100dvh - 16px);
+		overflow: auto;
 		padding: 0.75rem;
 		border-radius: var(--radius-lg);
 		box-shadow: var(--shadow-md);

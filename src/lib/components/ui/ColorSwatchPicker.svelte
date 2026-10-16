@@ -151,8 +151,7 @@
 		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent-muted) 70%, transparent);
 	}
 
-	/* Fixed small radius, deliberately not --radius-sm: at a high Corners setting
-	   that token would round this 13px square back into a blob. */
+	/* The small color chip keeps its own fixed rounding. */
 	.swatch-chip {
 		flex-shrink: 0;
 		width: 0.82rem;

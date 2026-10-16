@@ -358,7 +358,6 @@ export const DEFAULT_APPEARANCE: AppearanceState = {
 	lineHeight: 1.72,
 	paragraphSpacing: 1.05,
 	chatWidth: 1,
-	radius: 1,
 	chatStyle: 'bubbles',
 	bubbleRadius: 1,
 	bubblePadding: 'normal',
@@ -427,7 +426,6 @@ export const APPEARANCE_SCOPE: Record<keyof AppearanceState, AppearanceScope> = 
 	customAccent: 'interface',
 	contrast: 'interface',
 	uiFont: 'interface',
-	radius: 'interface',
 	glass: 'interface',
 	motion: 'interface',
 

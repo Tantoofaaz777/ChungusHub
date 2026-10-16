@@ -83,7 +83,10 @@ function writePaintCache(vars: Record<string, string>, attrs: Record<string, str
 	localStorage.setItem(PAINT_CACHE_KEY, JSON.stringify({ vars, attrs }));
 }
 
-const RADIUS_BASE = { sm: 0.5, md: 0.8, lg: 1.1, xl: 1.45 };
+// Surface corners are fixed at 30% in app.css. Message cards retain their separate
+// chat-specific multiplier over that same fixed base.
+const SURFACE_RADIUS_SCALE = 0.3;
+const RADIUS_BASE = { lg: 1.1, xl: 1.45 };
 const GLASS_BLUR: Record<GlassLevel, number> = { off: 0, subtle: 8, full: 16 };
 /* Frosted panels (Workspace overlays/docks) trade translucency for blur; with less
    blur they must turn more opaque or the background behind turns into noise.
@@ -210,7 +213,6 @@ function normalize(raw: Partial<AppearanceState> | null, known: PaletteDef[]): A
 		lineHeight: clamp(raw?.lineHeight, 1.4, 2.1, d.lineHeight),
 		paragraphSpacing: clamp(raw?.paragraphSpacing, 0.4, 1.8, d.paragraphSpacing),
 		chatWidth: clamp(raw?.chatWidth, 0.75, 1.2, d.chatWidth),
-		radius: clamp(raw?.radius, 0, 1.35, d.radius),
 		chatStyle: oneOf<ChatStyle>(
 			raw?.chatStyle,
 			['bubbles', 'flat', 'portrait', 'manuscript'],
@@ -568,8 +570,6 @@ class ThemeStore {
 		ensureFontLoaded(bodyFont.bundledFont);
 		ensureFontLoaded(uiFont.bundledFont);
 
-		const rem = (base: number) => `${(base * a.radius).toFixed(3)}rem`;
-
 		// Every surface alpha passes through here, so light mode can never inherit a
 		// dark palette's translucency by accident (see LIGHT_GLASS_KEEP).
 		const glassAlpha = (alpha: number) =>
@@ -637,11 +637,9 @@ class ThemeStore {
 						: `0 1px 3px rgb(60 45 30 / ${cardAlpha(10)}%)`;
 
 		// The card's own radius, and the tighter notch on the corner nearest the
-		// speaker. The notch tracks bubbleRadius only (the global Corners knob has
-		// always left it at a flat 0.58rem, and shrinking it twice reads as a bug),
-		// but it is capped at the card radius: a notch ROUNDER than the other corners
-		// (sharp Corners × a wide card radius) inverts the whole point of it.
-		const bubbleRadiusRem = (RADIUS_BASE.xl * a.radius + 0.14) * a.bubbleRadius;
+		// speaker. The notch tracks bubbleRadius only, capped at the card radius so
+		// it never becomes rounder than the other corners.
+		const bubbleRadiusRem = (RADIUS_BASE.xl * SURFACE_RADIUS_SCALE + 0.14) * a.bubbleRadius;
 		const notchRem = Math.min(0.58 * a.bubbleRadius, bubbleRadiusRem);
 
 		const vars: Record<string, string> = {
@@ -750,12 +748,6 @@ class ThemeStore {
 			'--theme-font-ui': uiFont.stack,
 			'--theme-font-mono': FONT_MONO,
 
-			'--theme-radius-sm': rem(RADIUS_BASE.sm),
-			'--theme-radius-md': rem(RADIUS_BASE.md),
-			'--theme-radius-lg': rem(RADIUS_BASE.lg),
-			'--theme-radius-xl': rem(RADIUS_BASE.xl),
-			'--theme-radius-full': '9999px',
-
 			'--user-font-scale': String(a.fontScale),
 			'--user-line-height': String(a.lineHeight),
 			'--user-paragraph-spacing': `${a.paragraphSpacing}em`,
@@ -766,7 +758,7 @@ class ThemeStore {
 			// into those components are the same numbers, for first paint. ---
 			'--msg-radius': `${bubbleRadiusRem.toFixed(3)}rem`,
 			'--msg-radius-notch': `${notchRem.toFixed(3)}rem`,
-			'--msg-radius-card': `${(RADIUS_BASE.lg * a.radius * a.bubbleRadius).toFixed(3)}rem`,
+			'--msg-radius-card': `${(RADIUS_BASE.lg * SURFACE_RADIUS_SCALE * a.bubbleRadius).toFixed(3)}rem`,
 			'--msg-pad-x': pad.x,
 			'--msg-pad-top': pad.top,
 			'--msg-pad-bottom': pad.bottom,

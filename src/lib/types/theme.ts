@@ -127,8 +127,6 @@ export interface AppearanceState {
 
 	/** Multiplier over the chat column width cap (1 = default). */
 	chatWidth: number;
-	/** Multiplier over the corner-radius scale (0 = sharp, 1 = default). */
-	radius: number;
 	chatStyle: ChatStyle;
 
 	/* --- Message card shape. Manuscript draws no card, so these are inert there;

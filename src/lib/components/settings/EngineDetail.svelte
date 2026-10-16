@@ -18,6 +18,7 @@
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import PillRow from '$lib/components/ui/PillRow.svelte';
+	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import { STEERING_ROLES, type SteeringRole } from '$lib/types/steering';
 	import { engineById, type EngineId } from '$lib/engines/registry';
 	import {
@@ -229,7 +230,7 @@
 				{@const missing = (field.requires ?? []).filter((m) => !(drafts[field.key] ?? '').includes(m))}
 				<div class="prompt-field">
 					<div class="prompt-head">
-						<span class="prompt-label">{field.label}</span>
+						<label class="prompt-label" for={`engine-prompt-${field.key}`}>{field.label}</label>
 						<InfoTip text={field.hint} />
 						{#if isModified(field.key)}
 							<span class="modified-badge" title="Differs from the shipped default">Modified</span>
@@ -243,14 +244,32 @@
 							Reset
 						</button>
 					</div>
-					<textarea
-						class="input-base prompt-input"
-						class:is-broken={missing.length > 0}
-						spellcheck="false"
-						rows={promptRows(drafts[field.key] ?? '')}
-						bind:value={drafts[field.key]}
-						oninput={queueCommit}
-					></textarea>
+					{#if engine.id === 'memory'}
+						<ExpandableTextarea
+							id={`engine-prompt-${field.key}`}
+							value={drafts[field.key] ?? ''}
+							onValueChange={(value) => {
+								drafts[field.key] = value;
+								queueCommit();
+							}}
+							dialogTitle={`${engine.name} · ${field.label}`}
+							expandLabel={`Expand ${field.label} prompt`}
+							spellcheck={false}
+							rows={promptRows(drafts[field.key] ?? '')}
+							class={`input-base prompt-input${missing.length ? ' is-broken' : ''}`}
+							expandedClass="font-mono text-sm text-text-primary"
+						/>
+					{:else}
+						<textarea
+							id={`engine-prompt-${field.key}`}
+							class="input-base prompt-input"
+							class:is-broken={missing.length > 0}
+							spellcheck="false"
+							rows={promptRows(drafts[field.key] ?? '')}
+							bind:value={drafts[field.key]}
+							oninput={queueCommit}
+						></textarea>
+					{/if}
 					<!-- Said here as well as thrown at run time: by the time the engine refuses,
 					     the user is looking at a failed generation, not at the edit that caused it. -->
 					{#if missing.length}
@@ -408,7 +427,7 @@
 
 	/* Surface, border and focus ring come from .input-base like every other settings
 	   input; only the monospace prompt sizing is local. */
-	.prompt-input {
+	.prompt-field :global(.prompt-input) {
 		width: 100%;
 		resize: vertical;
 		padding: 0.55rem 0.65rem;
@@ -417,7 +436,7 @@
 		font-size: 0.76rem;
 		line-height: 1.5;
 	}
-	.prompt-input.is-broken {
+	.prompt-field :global(.prompt-input.is-broken) {
 		border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
 	}
 

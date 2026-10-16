@@ -163,6 +163,7 @@
 		flex-direction: column;
 		gap: 0.6rem;
 		width: 13.5rem;
+		max-width: 100%;
 	}
 
 	.pad {

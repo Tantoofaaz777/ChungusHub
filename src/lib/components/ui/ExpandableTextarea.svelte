@@ -169,6 +169,8 @@
 
 	.expanded-mirror,
 	.expanded-textarea {
+		/* The visible mirror and native caret must use the same global authoring font. */
+		font-family: var(--font-mono) !important;
 		width: 100%;
 		height: 100%;
 		min-height: 0;
