@@ -7,11 +7,12 @@ import { personaEntryFor, toPromptCharacter } from '$lib/utils/chat-setup';
 import { expandSelfRefs } from '$lib/macros';
 import { EMPTY_IMPACT } from './branching';
 import { markSceneBoundary } from './scene-selection';
+import { parseChapterResponse } from './chapter-response';
 import type { ChatCtx } from './store.svelte';
-import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, type MemoryScene, type SceneSource } from '../../../shared/memory-scenes';
+import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, sceneLevel, memoryLabel, prepareCompaction, type MemoryScene, type SceneSource, type MemoryLevel, type CompactionLevel, type MemoryChild } from '../../../shared/memory-scenes';
 
 interface Draft {
-	chatId: string; sceneId?: string; expectedRevision?: number;
+	chatId: string; sceneId?: string; expectedRevision?: number; level: MemoryLevel; children: MemoryChild[];
 	title: string; content: string; source: SceneSource[];
 	phase: 'ready' | 'generating' | 'error'; error: string;
 }
@@ -26,6 +27,7 @@ class SceneMemoryStore {
 	autoExtract = false;
 	recall = '';
 	selection = $state<{ chatId: string; startId: string | null; endId: string | null; sceneId?: string; seed?: Pick<Draft, 'title' | 'content' | 'expectedRevision'> } | null>(null);
+	compaction = $state<{ level: CompactionLevel; ids: string[]; sceneId?: string; seed?: Pick<Draft, 'title' | 'content' | 'expectedRevision'> } | null>(null);
 	draft = $state<Draft | null>(null);
 	saving = $state(false);
 	private currentPath = $derived(this.ctx ? scenePath(this.ctx.allMessages, this.ctx.leafId) : []);
@@ -35,9 +37,9 @@ class SceneMemoryStore {
 	get archivedMessageIds() { return new Set(this.resolved.filter((r) => r.status === 'active').flatMap((r) => r.scene.source.map((s) => s.id))); }
 	get activeScenes() { return this.resolved.filter((r) => r.status === 'active').map((r) => r.scene); }
 	get standing(): { kind: 'idle' | 'working' | 'behind' | 'error'; label: string; outstanding: number } {
-		if (this.draft?.phase === 'generating') return { kind: 'working', label: 'Generating chapter', outstanding: 1 };
+		if (this.draft?.phase === 'generating') return { kind: 'working', label: `Generating ${this.draft.level}`, outstanding: 1 };
 		const reviews = this.resolved.filter((r) => r.status === 'review').length;
-		return { kind: reviews ? 'behind' : 'idle', label: reviews ? `${reviews} ${reviews === 1 ? 'chapter needs' : 'chapters need'} review` : 'Manual chapters', outstanding: reviews };
+		return { kind: reviews ? 'behind' : 'idle', label: reviews ? `${reviews} ${reviews === 1 ? 'memory needs' : 'memories need'} review` : 'Manual memory', outstanding: reviews };
 	}
 	get selectedMessages() {
 		const s = this.selection;
@@ -53,13 +55,13 @@ class SceneMemoryStore {
 
 	async loadForChat(chatId: string) {
 		const ticket = ++this.ticket;
-		if (this.activeChatId !== chatId) { this.cancelDraft(); this.selection = null; this.ctx = null; this.scenes = []; }
+		if (this.activeChatId !== chatId) { this.cancelDraft(); this.compaction = null; this.selection = null; this.ctx = null; this.scenes = []; }
 		this.activeChatId = chatId; this.loaded = false;
 		const scenes = await database.getMemoryScenes(chatId);
 		if (ticket !== this.ticket || this.activeChatId !== chatId) return;
 		this.scenes = scenes; this.loaded = true;
 	}
-	clear() { ++this.ticket; this.cancelDraft(); this.activeChatId = null; this.ctx = null; this.scenes = []; this.selection = null; this.loaded = false; }
+	clear() { ++this.ticket; this.cancelDraft(); this.compaction = null; this.activeChatId = null; this.ctx = null; this.scenes = []; this.selection = null; this.loaded = false; }
 	async syncForPath(ctx: ChatCtx) {
 		if (this.activeChatId !== ctx.chatId) await this.loadForChat(ctx.chatId);
 		if (this.activeChatId === ctx.chatId) this.ctx = ctx;
@@ -73,7 +75,7 @@ class SceneMemoryStore {
 	impactOf(..._args: unknown[]) { return EMPTY_IMPACT; }
 	startSelection(sceneId?: string) {
 		if (!this.activeChatId) return;
-		this.cancelDraft();
+		this.cancelDraft(); this.compaction = null;
 		this.selection = { chatId: this.activeChatId, startId: null, endId: null, sceneId };
 	}
 	setBoundary(boundary: 'start' | 'end', id: string) {
@@ -88,7 +90,7 @@ class SceneMemoryStore {
 		if (!selection || this.selectionError || !range.some((m) => !m.excludedFromPrompt)) return;
 		const previous = this.scenes.find((s) => s.id === selection.sceneId);
 		const index = this.path.findIndex((m) => m.id === range[0].id);
-		this.draft = { chatId: selection.chatId, sceneId: selection.sceneId, expectedRevision: selection.seed?.expectedRevision ?? previous?.revision,
+		this.draft = { level: 'chapter', children: [], chatId: selection.chatId, sceneId: selection.sceneId, expectedRevision: selection.seed?.expectedRevision ?? previous?.revision,
 			title: selection.seed?.title ?? (previous ? chapterTitle(previous.title) : undefined) ?? `Chapter ${index + 1}–${index + range.length}`, content: selection.seed?.content ?? previous?.content ?? '',
 			source: captureScene(range), phase: 'ready', error: '' };
 		this.selection = null;
@@ -98,6 +100,11 @@ class SceneMemoryStore {
 		const draft = this.draft;
 		if (!draft) return;
 		const seed = { title: draft.title, content: draft.content, expectedRevision: draft.expectedRevision };
+		if (draft.level !== 'chapter') {
+			this.openCompaction(draft.level);
+			this.compaction = { level: draft.level, ids: draft.children.map(c => c.id), sceneId: draft.sceneId, seed };
+			return;
+		}
 		this.startSelection(draft.sceneId);
 		if (this.selection) this.selection = { ...this.selection, seed };
 	}
@@ -106,10 +113,50 @@ class SceneMemoryStore {
 		// Review binds to what is on screen now. Saving still verifies that snapshot on the server.
 		const wanted = new Set(scene.source.map((s) => s.id));
 		const range = this.path.filter((m) => wanted.has(m.id));
-		this.draft = { chatId: scene.chatId, sceneId: scene.id, expectedRevision: scene.revision,
+		this.compaction = null; this.selection = null;
+		const level = sceneLevel(scene);
+		let source = range.length === scene.source.length ? captureScene(range) : scene.source.map(s => ({ ...s }));
+		let children = (scene.children ?? []).map(c => ({ ...c }));
+		if (level !== 'chapter') {
+			try { ({ source, children } = prepareCompaction(level, children.map(c => c.id), this.scenes, this.path, this.ctx?.allMessages, scene.id)); }
+			catch { /* Keep the old references visible for review; reselect can repair missing sources. */ }
+		}
+		this.draft = { level, children, chatId: scene.chatId, sceneId: scene.id, expectedRevision: scene.revision,
 			title: chapterTitle(scene.title), content: scene.content,
-			source: range.length === scene.source.length ? captureScene(range) : scene.source.map((s) => ({ ...s })),
+			source,
 			phase: 'ready', error: '' };
+	}
+	openCompaction(level: CompactionLevel) {
+		if (!this.activeChatId || !this.loaded || this.saving) return;
+		this.cancelDraft(); this.selection = null;
+		this.compaction = { level, ids: [] };
+	}
+	get compactionCandidates() {
+		const c = this.compaction;
+		if (!c) return [];
+		const lower = c.level === 'arc' ? 'chapter' : 'arc';
+		return resolveScenes(this.scenes.filter(s => s.id !== c.sceneId), this.path, this.ctx?.allMessages)
+			.filter(r => sceneLevel(r.scene) === lower && r.status === 'active').sort((a, b) => a.start - b.start);
+	}
+	toggleCompactionSource(id: string) {
+		const c = this.compaction;
+		if (c) c.ids = c.ids.includes(id) ? c.ids.filter(v => v !== id) : [...c.ids, id];
+	}
+	get compactionError() {
+		const c = this.compaction;
+		if (!c) return '';
+		try { prepareCompaction(c.level, c.ids, this.scenes, this.path, this.ctx?.allMessages, c.sceneId); return ''; }
+		catch (error) { return error instanceof Error ? error.message : String(error); }
+	}
+	async createCompaction(generate: boolean) {
+		const c = this.compaction;
+		if (!c || !this.activeChatId || this.saving || this.compactionError) return;
+		const { source, children } = prepareCompaction(c.level, c.ids, this.scenes, this.path, this.ctx?.allMessages, c.sceneId);
+		this.draft = { level: c.level, children, source, chatId: this.activeChatId, sceneId: c.sceneId,
+			expectedRevision: c.seed?.expectedRevision, title: c.seed?.title ?? `${memoryLabel(c.level)} ${this.scenes.filter(s => sceneLevel(s) === c.level).length + 1}`,
+			content: c.seed?.content ?? '', phase: 'ready', error: '' };
+		this.compaction = null;
+		if (generate) await this.generateDraft();
 	}
 	async generateDraft() {
 		const draft = this.draft;
@@ -118,22 +165,31 @@ class SceneMemoryStore {
 		const controller = this.abort = new AbortController();
 		draft.phase = 'generating'; draft.error = '';
 		try {
-			if (!featurePromptsStore.memoryEnabled) throw new Error('Enable Chat Memory in Settings → Engines to generate a chapter, or write one below.');
-			const all = new Map(this.path.map((m) => [m.id, m]));
-			const source = draft.source.map((s) => all.get(s.id));
-			if (source.some((m, i) => !m || sceneSignature(m) !== draft.source[i].signature)) throw new Error('Source messages are unavailable on this branch. Select the chapter range again.');
-			const messages = source.filter((m) => m && !m.excludedFromPrompt);
-			const entry = characterLibraryStore.entries.find((e) => e.id === this.ctx?.characterId);
-			const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, this.ctx?.characterVersionId ?? null)) : null;
-			const persona = toPromptCharacter(personaEntryFor(this.ctx?.personaId ?? null));
-			const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
-			const transcript = messages.map((m) => `[${m!.role === 'assistant' ? charName : m!.role === 'user' ? userName : 'System'}]\n${expandSelfRefs(m!.content, charName, userName, persona?.pronouns ?? {})}`).join('\n\n');
+			if (!featurePromptsStore.memoryEnabled) throw new Error(`Enable Chat Memory in Settings → Engines to generate a ${draft.level}, or write one below.`);
+			let transcript: string;
+			if (draft.level === 'chapter') {
+				const all = new Map(this.path.map((m) => [m.id, m]));
+				const source = draft.source.map((s) => all.get(s.id));
+				if (source.some((m, i) => !m || sceneSignature(m) !== draft.source[i].signature)) throw new Error('Source messages are unavailable on this branch. Select the chapter range again.');
+				const messages = source.filter((m) => m && !m.excludedFromPrompt);
+				const entry = characterLibraryStore.entries.find((e) => e.id === this.ctx?.characterId);
+				const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, this.ctx?.characterVersionId ?? null)) : null;
+				const persona = toPromptCharacter(personaEntryFor(this.ctx?.personaId ?? null));
+				const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
+				transcript = messages.map((m) => `[${m!.role === 'assistant' ? charName : m!.role === 'user' ? userName : 'System'}]\n${expandSelfRefs(m!.content, charName, userName, persona?.pronouns ?? {})}`).join('\n\n');
+			} else {
+				const prepared = prepareCompaction(draft.level, draft.children.map(c => c.id), this.scenes, this.path, this.ctx?.allMessages, draft.sceneId);
+				if (JSON.stringify(prepared.children) !== JSON.stringify(draft.children) || JSON.stringify(prepared.source) !== JSON.stringify(draft.source)) throw new Error('Source memories changed. Reselect the sources before generating.');
+				transcript = draft.children.map(c => this.scenes.find(s => s.id === c.id)!).map(s => `[${memoryLabel(sceneLevel(s))}: ${chapterTitle(s.title)}]\n${s.content}`).join('\n\n');
+			}
+			const promptKey = draft.level === 'chapter' ? 'memoryScene' : draft.level === 'arc' ? 'memoryArc' : 'memoryVolume';
 			const result = await llmService.complete({ engine: 'memory' }, { source: 'memory', signal: controller.signal,
-				messages: [{ role: 'system', content: featurePromptsStore.promptFor('memoryScene') },
-					{ role: 'user', content: `Create a chapter summarizing these messages:\n\n${transcript}` }] });
+				messages: [{ role: 'system', content: featurePromptsStore.promptFor(promptKey) },
+					{ role: 'user', content: `Create a ${draft.level} summarizing these ${draft.level === 'chapter' ? 'messages' : draft.level === 'arc' ? 'chapters' : 'arcs'}:\n\n${transcript}` }] });
 			if (controller.signal.aborted || this.abort !== controller || this.draft !== draft) return;
-			if (!result.content.trim()) throw new Error('The model returned no chapter. Check the connection’s output limit or write one below.');
-			draft.content = result.content.trim(); draft.phase = 'ready';
+			const chapter = parseChapterResponse(result.content, memoryLabel(draft.level));
+			if (chapter.title !== undefined) draft.title = chapter.title;
+			draft.content = chapter.content; draft.phase = 'ready';
 		} catch (error) {
 			if (controller.signal.aborted || this.draft !== draft) return;
 			draft.error = error instanceof Error ? error.message : String(error); draft.phase = 'error';
@@ -146,7 +202,8 @@ class SceneMemoryStore {
 		this.saving = true; draft.error = '';
 		try {
 			const saved = await database.saveMemoryScene({ id: draft.sceneId, chatId: draft.chatId, title: draft.title,
-				content: draft.content, source: $state.snapshot(draft.source), expectedRevision: draft.expectedRevision });
+				content: draft.content, source: $state.snapshot(draft.source), expectedRevision: draft.expectedRevision,
+				level: draft.level, children: $state.snapshot(draft.children) });
 			if (this.activeChatId === saved.chatId) {
 				this.scenes = this.scenes.some((chapter) => chapter.id === saved.id)
 					? this.scenes.map((chapter) => chapter.id === saved.id ? saved : chapter)

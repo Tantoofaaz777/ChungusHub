@@ -16,6 +16,7 @@ import { describe, test, expect, beforeAll, beforeEach, afterAll, mock } from 'b
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { captureScene, resolveScenes, type MemoryScene } from '../../../shared/memory-scenes';
 
 const identity = <T>(value?: T): T | undefined => value;
 (globalThis as unknown as { $state: unknown }).$state = Object.assign(identity, { raw: identity });
@@ -73,16 +74,21 @@ mock.module('$lib/services/database', () => ({
 	)
 }));
 mock.module('$lib/services/transport', () => ({ ...realTransport, llmStatus: async () => [], stopGeneration: () => {} }));
-mock.module('$lib/memory/scene-store.svelte', () => ({
-	...realMemory,
-	memoryStore: {
-		activeChatId: null,
-		loadForChat: async () => {},
-		syncForPath: async () => {},
-		clear: () => {},
-		invalidateMessage: async () => false
-	}
-}));
+const fakeMemory = {
+	activeChatId: null as string | null,
+	loaded: true,
+	scenes: [] as MemoryScene[],
+	get archivedMessageIds(): Set<string> {
+		const state = chatStore.currentChatState;
+		return new Set(resolveScenes(fakeMemory.scenes, state?.activePath ?? [], state?.allMessages ?? [])
+			.filter(r => r.status === 'active').flatMap(r => r.scene.source.map(s => s.id)));
+	},
+	loadForChat: async (id: string) => { fakeMemory.activeChatId = id; },
+	syncForPath: async () => {},
+	clear: () => { fakeMemory.activeChatId = null; fakeMemory.scenes = []; },
+	invalidateMessage: async () => false
+};
+mock.module('$lib/memory/scene-store.svelte', () => ({ ...realMemory, memoryStore: fakeMemory }));
 
 const { chatStore } = await import('./chat.svelte');
 const { messageStore } = await import('./messages.svelte');
@@ -130,6 +136,8 @@ async function open(leaf: string): Promise<void> {
 }
 
 beforeEach(() => {
+	fakeMemory.clear();
+	fakeMemory.loaded = true;
 	chatId = crypto.randomUUID();
 	idOf.clear();
 	labelOf.clear();
@@ -173,5 +181,105 @@ describe('deleting from the transcript', () => {
 		await messageStore.deleteMessage(idOf.get('user')!, 'with_descendants');
 		frame();
 		expect(frames).toEqual(['greeting>user>reply', 'greeting>other>other-reply']);
+	});
+});
+
+/** Exercise all swipe entry points against real rows; blocked actions never reach an LLM. */
+describe('swipes belong to the last visible assistant', () => {
+	test('the last response navigates immediately, including back to the first swipe', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		await open('reply');
+		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
+		frame();
+		expect(frames).toEqual(['greeting>user>reply', 'greeting>user>swipe']);
+		await messageStore.navigateToSibling(idOf.get('swipe')!, 'prev');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('reply'));
+	});
+
+	test('an older response with alternatives cannot change the current conversation', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		add('next-user', 'reply', 'user');
+		add('next-reply', 'next-user', 'assistant');
+		await open('next-reply');
+		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
+		await messageStore.retryMessageResponse(idOf.get('reply')!, 'branch');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('next-reply'));
+	});
+
+	test('a hidden last response blocks navigation and /swipe without falling back to an older turn', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		await open('reply');
+		await messageStore.setExcludedFromPrompt(idOf.get('reply')!, true);
+		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
+		await messageStore.regenerateLastResponse('branch');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('reply'));
+		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(4);
+	});
+
+	test('including the last response again restores navigation to its saved alternatives', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		await open('reply');
+		await messageStore.setExcludedFromPrompt(idOf.get('reply')!, true);
+		await messageStore.setExcludedFromPrompt(idOf.get('reply')!, false);
+		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('swipe'));
+	});
+
+	test('a hidden root greeting cannot generate another opening through a separate entry point', async () => {
+		await open('greeting');
+		await messageStore.setExcludedFromPrompt(idOf.get('greeting')!, true);
+		await messageStore.generateOpeningScene('A different beginning');
+		await messageStore.regenerateLastResponse('branch');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('greeting'));
+		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(3);
+	});
+
+	test('a last user message cannot swipe even when it has siblings', async () => {
+		add('other-user', 'greeting', 'user', 1);
+		await open('user');
+		await messageStore.navigateToSibling(idOf.get('user')!, 'next');
+		await messageStore.regenerateLastResponse('branch');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('user'));
+		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(4);
+	});
+
+	test('a chapter covering the last response blocks both directions and new alternatives', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		await open('swipe');
+		const scene = serverDb.saveMemoryScene({ chatId, title: 'Chapter 2–3', content: 'They spoke.',
+			source: captureScene(chatStore.currentChatState!.activePath.slice(1)) });
+		fakeMemory.scenes = [scene];
+		await messageStore.navigateToSibling(idOf.get('swipe')!, 'prev');
+		await messageStore.regenerateLastResponse('branch');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('swipe'));
+		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(4);
+	});
+
+	test('generation checks chapters saved since this device last loaded memory', async () => {
+		await open('reply');
+		serverDb.saveMemoryScene({ chatId, title: 'Chapter 2–3', content: 'They spoke.',
+			source: captureScene(chatStore.currentChatState!.activePath.slice(1)) });
+		// The cached chapter list is still empty, so only the fresh check can reject this.
+		await messageStore.regenerateLastResponse('branch');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('reply'));
+		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(3);
+	});
+
+	test('a new visible reply after a chapter has its own swipes', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		await open('reply');
+		fakeMemory.scenes = [serverDb.saveMemoryScene({ chatId, title: 'Chapter 1–1', content: 'The beginning.',
+			source: captureScene(chatStore.currentChatState!.activePath.slice(0, 1)) })];
+		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('swipe'));
+	});
+
+	test('swipes wait until chapter coverage has loaded', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		await open('reply');
+		fakeMemory.loaded = false;
+		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
+		await messageStore.regenerateLastResponse('branch');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('reply'));
 	});
 });

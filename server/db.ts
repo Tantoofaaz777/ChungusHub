@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { IMAGES_ROOT, resolveDbPath } from './config';
 import { deleteImage } from './files';
 import type { SyncScope } from '../shared/sync';
-import { captureScene, resolveScenes, scenePath, type MemoryScene, type SaveMemoryScene, type SceneMessage } from '../shared/memory-scenes';
+import { captureScene, resolveScenes, scenePath, sceneLevel, MEMORY_LEVELS, type MemoryScene, type SaveMemoryScene, type SceneMessage } from '../shared/memory-scenes';
 
 /** Short stable digest, the chat-tree fingerprint's building block. Truncated SHA-1:
  *  64 bits is far past what "are these two chats the same" needs, and it only ever
@@ -528,6 +528,12 @@ const MIGRATIONS: Migration[] = [
 		CREATE TABLE memory_scene_migrations (
 			chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE
 		);`
+	},
+	{
+		version: 48,
+		name: 'memory_arcs_volumes',
+		sql: `ALTER TABLE memory_scenes ADD COLUMN level TEXT NOT NULL DEFAULT 'chapter' CHECK (level IN ('chapter', 'arc', 'volume'));
+		ALTER TABLE memory_scenes ADD COLUMN children_json TEXT NOT NULL DEFAULT '[]';`
 	}
 ];
 
@@ -918,10 +924,14 @@ class ServerDatabase {
 	 *  transaction. */
 	private copyChatMemory(fromChatId: string, toChatId: string, messageIds: Map<string, string>): void {
 		const sourceScenes = this.getMemoryScenes(fromChatId);
+		const sceneIds = new Map(sourceScenes.map(scene => [scene.id, randomUUID()]));
+		const oldScenes = new Map(sourceScenes.map(scene => [scene.id, scene]));
 		for (const scene of sourceScenes) {
 			const source = scene.source.map((entry) => ({ ...entry, id: messageIds.get(entry.id) ?? `missing:${randomUUID()}` }));
-			this.execute('INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)',
-				[randomUUID(), toChatId, scene.title, scene.content, JSON.stringify(source), scene.createdAt, Date.now(), scene.reviewReason]);
+			const children = (scene.children ?? []).map(ref => ({ id: sceneIds.get(ref.id) ?? `missing:${randomUUID()}`,
+				revision: oldScenes.get(ref.id)?.revision === ref.revision ? 1 : 0 }));
+			this.execute('INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason, level, children_json) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)',
+				[sceneIds.get(scene.id)!, toChatId, scene.title, scene.content, JSON.stringify(source), scene.createdAt, Date.now(), scene.reviewReason, sceneLevel(scene), JSON.stringify(children)]);
 		}
 		this.execute('INSERT INTO memory_scene_migrations (chat_id) VALUES (?)', [toChatId]);
 		// Retain compatible legacy rows for backup/older tools. Stale rows have already been
@@ -2868,19 +2878,22 @@ class ServerDatabase {
 		return this.select<Record<string, any>[]>('SELECT * FROM memory_scenes WHERE chat_id = ? ORDER BY created_at, rowid', [chatId]).map((row) => ({
 			id: row.id, chatId: row.chat_id, title: row.title, content: row.content,
 			source: JSON.parse(row.source_json), createdAt: row.created_at, updatedAt: row.updated_at,
-			revision: row.revision, reviewReason: row.review_reason ?? null
+			revision: row.revision, reviewReason: row.review_reason ?? null, level: row.level, children: JSON.parse(row.children_json)
 		}));
 	}
 
 	saveMemoryScene(input: SaveMemoryScene): MemoryScene {
 		if (!input || typeof input.chatId !== 'string' || typeof input.title !== 'string' || typeof input.content !== 'string' ||
 			!input.content.trim() || !input.title.trim() || input.title.length > 200 || input.content.length > 500_000 ||
+			!MEMORY_LEVELS.includes(input.level ?? 'chapter') ||
+			(input.children !== undefined && (!Array.isArray(input.children) || input.children.length > 10000 || input.children.some(c => !c || typeof c.id !== 'string' || !Number.isInteger(c.revision) || c.revision < 1))) ||
 			!Array.isArray(input.source) || !input.source.length || input.source.length > 10000 ||
 			input.source.some((s) => !s || typeof s.id !== 'string' || typeof s.signature !== 'string')) throw new Error('Invalid chapter or source range.');
 		return this.inTransaction(() => {
 			const scenes = this.getMemoryScenes(input.chatId);
 			const previous = input.id ? scenes.find((scene) => scene.id === input.id) : null;
-			if (input.id && (!previous || previous.revision !== input.expectedRevision)) throw new Error('This chapter changed on another device. Reopen it before saving.');
+			if (input.id && (!previous || previous.revision !== input.expectedRevision)) throw new Error('This memory changed on another device. Reopen it before saving.');
+			if (previous && sceneLevel(previous) !== (input.level ?? 'chapter')) throw new Error('A saved memory cannot change its level.');
 			const chat = this.getChat(input.chatId) as { activeLeafId: string | null } | null;
 			if (!chat) throw new Error('Chat not found');
 			const all = this.getMessagesByChat(input.chatId) as SceneMessage[];
@@ -2888,17 +2901,15 @@ class ServerDatabase {
 			const now = Date.now();
 			const scene: MemoryScene = { id: input.id ?? randomUUID(), chatId: input.chatId, title: input.title.trim(), content: input.content.trim(),
 				source: input.source.map((s) => ({ id: s.id, signature: s.signature })), createdAt: previous?.createdAt ?? now,
-				updatedAt: now, revision: (previous?.revision ?? 0) + 1, reviewReason: null };
-			const candidate = resolveScenes([scene], path, all)[0];
-			if (candidate.status !== 'active') throw new Error(`The selected chapter changed: ${candidate.reason} Select the range again.`);
-			for (const other of resolveScenes(scenes.filter((s) => s.id !== scene.id), path, all)) {
-				if (other.status === 'active' && other.start <= candidate.end && candidate.start <= other.end) throw new Error('This range overlaps an existing chapter. Edit or remove that chapter first.');
-			}
-			this.execute(`INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+				updatedAt: now, revision: (previous?.revision ?? 0) + 1, reviewReason: null, level: input.level ?? 'chapter',
+				children: (input.children ?? []).map(c => ({ id: c.id, revision: c.revision })) };
+			const candidate = resolveScenes([...scenes.filter(s => s.id !== scene.id), scene], path, all).find(r => r.scene.id === scene.id)!;
+			if (candidate.status !== 'active' && candidate.status !== 'covered') throw new Error(`The selected memory changed: ${candidate.reason} Select the sources again.`);
+			this.execute(`INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason, level, children_json)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
 				ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, source_json=excluded.source_json,
-				updated_at=excluded.updated_at, revision=excluded.revision, review_reason=NULL`,
-				[scene.id, scene.chatId, scene.title, scene.content, JSON.stringify(scene.source), scene.createdAt, now, scene.revision]);
+				updated_at=excluded.updated_at, revision=excluded.revision, review_reason=NULL, level=excluded.level, children_json=excluded.children_json`,
+				[scene.id, scene.chatId, scene.title, scene.content, JSON.stringify(scene.source), scene.createdAt, now, scene.revision, scene.level!, JSON.stringify(scene.children)]);
 			return scene;
 		});
 	}
@@ -2906,7 +2917,7 @@ class ServerDatabase {
 	deleteMemoryScene(chatId: string, id: string, expectedRevision: number): void {
 		this.inTransaction(() => {
 			const scene = this.getMemoryScenes(chatId).find((item) => item.id === id);
-			if (!scene || scene.revision !== expectedRevision) throw new Error('This chapter changed. Reload Memory before removing it.');
+			if (!scene || scene.revision !== expectedRevision) throw new Error('This memory changed. Reload Memory before removing it.');
 			this.execute('DELETE FROM memory_scenes WHERE id = ? AND chat_id = ?', [id, chatId]);
 		});
 	}

@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { captureScene, resolveScenes, scenePath, type MemoryScene, type SceneMessage } from '../shared/memory-scenes';
+import { captureScene, resolveScenes, scenePath, sceneHistory, prepareCompaction, type CompactionLevel, type MemoryScene, type SceneMessage } from '../shared/memory-scenes';
 let dir: string;
 let db: typeof import('./db').serverDb;
 beforeAll(async () => {
@@ -110,4 +110,80 @@ test('malformed legacy source data preserves its text for review and does not bl
  expect(scenes[0].reviewReason).toBeTruthy();
  const copyId = db.duplicateChat({chatId,title:'Preserved',includeMemory:true});
  expect(db.getMemoryScenes(copyId)[0].content).toBe('Preserve this memory');
+});
+
+function hierarchyFixture() {
+ const {chatId, messages} = fixture();
+ const chapters = messages.slice(0,4).map((m,i) => save(chatId,[m],{title:`Chapter ${i+1}`}));
+ const compact = (level:CompactionLevel, selected:MemoryScene[], extra:Partial<MemoryScene> = {}) => db.saveMemoryScene({chatId,level,title:`A ${level}`,content:`${level} summary`,
+  ...prepareCompaction(level,selected.map(s => s.id),db.getMemoryScenes(chatId),messages),...extra});
+ const arcs = [compact('arc',chapters.slice(0,2)),compact('arc',chapters.slice(2))];
+ const volume = compact('volume',arcs);
+ return {chatId,messages,chapters,arcs,volume,compact};
+}
+
+describe('arc and volume persistence', () => {
+ test('stores all three levels and replaces their source range only once', () => {
+  const {chatId,messages,volume} = hierarchyFixture();
+  const rows = db.getMemoryScenes(chatId);
+  expect(rows).toHaveLength(7);
+  expect(rows.find(s => s.id === volume.id)?.children).toHaveLength(2);
+  expect(sceneHistory(messages,rows).map(m => m.id)).toEqual([`scene:${volume.id}`,messages[4].id]);
+  expect(db.getMessagesByChat(chatId)).toHaveLength(5);
+ });
+ test('edits to covered chapters require review of their arc and volume, preserving all text', () => {
+  const {chatId,messages,chapters,arcs,volume} = hierarchyFixture();
+  const c = chapters[0];
+  db.saveMemoryScene({...c, content:'Revised chapter',expectedRevision:c.revision});
+  const rows = db.getMemoryScenes(chatId), states = resolveScenes(rows,messages);
+  expect(states.find(r => r.scene.id === arcs[0].id)?.status).toBe('review');
+  expect(states.find(r => r.scene.id === volume.id)?.status).toBe('review');
+  expect(rows.find(s => s.id === volume.id)?.content).toBe(volume.content);
+  expect(sceneHistory(messages,rows).map(m => m.id)).toEqual([`scene:${c.id}`,`scene:${chapters[1].id}`,`scene:${arcs[1].id}`,messages[4].id]);
+ });
+ test('removing a parent restores its sources without deleting any child memory', () => {
+  const {chatId,messages,arcs,volume} = hierarchyFixture();
+  db.deleteMemoryScene(chatId,volume.id,volume.revision);
+  expect(db.getMemoryScenes(chatId)).toHaveLength(6);
+  expect(sceneHistory(messages,db.getMemoryScenes(chatId)).map(m => m.id)).toEqual([`scene:${arcs[0].id}`,`scene:${arcs[1].id}`,messages[4].id]);
+ });
+ test('stale child revisions, malformed hierarchy and second parents are refused transactionally', () => {
+  const {chatId,messages,chapters,arcs,volume} = hierarchyFixture();
+  const original = db.getMemoryScenes(chatId);
+  expect(() => db.saveMemoryScene({...arcs[0],id:undefined,expectedRevision:undefined})).toThrow('overlaps');
+  expect(() => db.saveMemoryScene({...volume,id:undefined,children:chapters.slice(0,2).map(c => ({id:c.id,revision:c.revision}))})).toThrow('source memory');
+  expect(() => db.saveMemoryScene({...arcs[0],expectedRevision:arcs[0].revision,children:arcs[0].children!.map(c => ({...c,revision:99}))})).toThrow('source memory');
+  expect(() => db.saveMemoryScene({...chapters[0],level:'volume',expectedRevision:chapters[0].revision})).toThrow('level');
+  expect(db.getMemoryScenes(chatId)).toEqual(original);
+  expect(sceneHistory(messages,original)[0].id).toBe(`scene:${volume.id}`);
+ });
+ test('chat duplication remaps message and child ids throughout the hierarchy', () => {
+  const {chatId} = hierarchyFixture();
+  const original = db.getMemoryScenes(chatId);
+  const copyId = db.duplicateChat({chatId,title:'Hierarchy copy',includeMemory:true});
+  const copies = db.getMemoryScenes(copyId);
+  const all = db.getMessagesByChat(copyId) as SceneMessage[];
+  const chat = db.getChat(copyId) as {activeLeafId:string};
+  expect(copies).toHaveLength(7);
+  expect(copies.every(s => !original.some(o => o.id === s.id))).toBe(true);
+  expect(copies.every(s => (s.children ?? []).every(c => copies.some(other => other.id === c.id && other.revision === c.revision)))).toBe(true);
+  expect(resolveScenes(copies,scenePath(all,chat.activeLeafId),all).filter(r => r.status === 'active').map(r => r.scene.level)).toEqual(['volume']);
+ });
+ test('duplication keeps stale parents stale even though copied revisions restart at one', () => {
+  const {chatId,chapters} = hierarchyFixture();
+  db.saveMemoryScene({...chapters[0],content:'Edited later',expectedRevision:1});
+  const copyId = db.duplicateChat({chatId,title:'Stale hierarchy copy',includeMemory:true});
+  const copies = db.getMemoryScenes(copyId);
+  const all = db.getMessagesByChat(copyId) as SceneMessage[];
+  const chat = db.getChat(copyId) as {activeLeafId:string};
+  const states = resolveScenes(copies,scenePath(all,chat.activeLeafId),all);
+  expect(states.find(r => r.scene.level === 'volume')?.status).toBe('review');
+  expect(states.filter(r => r.scene.level === 'arc' && r.status === 'review')).toHaveLength(1);
+ });
+ test('old chapter rows receive the chapter level and no child references', () => {
+  const {chatId,messages} = fixture();
+  const c = save(chatId,messages.slice(0,2));
+  expect(db.getMemoryScenes(chatId)[0].level).toBe('chapter');
+  expect(c.children).toEqual([]);
+ });
 });

@@ -21,6 +21,12 @@ written in the review dialog. The model receives selected visible text with reso
 names. Images are not sent to the summarizer in this first flow; the summary replaces those turns'
 images too, so relevant visual facts should be added during review.
 
+The default memory prompt requests a JSON object with two non-empty strings, `title` and `content`.
+Generation reads both into the review draft; only those fields are consumed, and nothing is saved
+until Save chapter. JSON fences and a leading explanation are tolerated through the shared JSON
+extractor. Invalid structured output shows an error without overwriting the previous draft fields.
+Custom prompts remain unchanged: plain-text responses still fill content and keep the draft title.
+
 Prompt assembly substitutes scenes before regex transforms, lorebook scanning, last-turn macros,
 Impersonate and token counting. Summaries count in Memory, originals leave Chat. They are fixed
 context cost when budgeting; raw history is trimmed first and over-budget remains visible if the
@@ -46,3 +52,32 @@ keyboard). Its token count measures saved text with the chat model's encoding, r
 when that text or model changes. The prompt also includes a small chapter/title wrapper, so this text
 count is not the entire Memory prompt bucket. Existing storage/API names remain compatible.
 Old generated titles `Scene N–M` display as `Chapter N–M`; custom titles and stored rows are preserved.
+
+Only the last message on the active path can show response swipes, and only when it is an assistant
+message included in the prompt and outside any active chapter. Hiding that last message does not
+move its swipe bar to an earlier turn. Keyboard arrows and `/swipe` obey the same rule. Saved
+alternatives remain stored; a later visible assistant reply can have swipes normally. Initial opening
+scene generation in an empty chat and the separate Replace action retain their existing behavior.
+
+
+Memory has three manual levels: Chapters summarize message ranges, Arcs summarize selected
+consecutive Chapters, and Volumes summarize selected consecutive Arcs. The chat's Memory panel
+has a section for each level; Create arc / Create volume open a centered source picker. Select at
+least two valid unconsumed sources, then generate with the Memory connection or write manually.
+All levels use the same title/content JSON reader, review dialog, collapsed preview and token count.
+Each has its own editable prompt in Settings → Engines → Chat Memory. Nothing runs automatically.
+
+A saved parent replaces its children at their original chronological position. Covered children remain
+stored as Compacted; only the highest valid summary enters history, so there is no double injection.
+Removing a parent restores its source summaries, not a second copy of raw messages. Underlying
+message rows remain untouched. Active parent coverage also suppresses response swipes.
+
+Migration 48 adds a level and child references to memory_scenes; existing rows default to Chapters.
+Parents capture ordered child ids/revisions and the full underlying message range/signatures. The
+resolver validates Chapters, then Arcs, then Volumes. Changes/deletions to messages or child
+summaries invalidate dependent parents recursively without deleting saved text. Remaining valid
+summaries and raw turns fill the history. The save transaction verifies levels, contiguous ranges,
+child revisions, overlaps and optimistic revisions; changing a saved item's level is refused.
+Chat duplication remaps both message references and the complete child graph. Stale dependencies
+remain stale even though copied summary revisions restart at one. Database snapshots include the
+new columns through the existing schema and migration path.

@@ -72,10 +72,14 @@ export const ENGINES: EngineDef[] = [
 		id: 'memory',
 		name: 'Chat Memory',
 		icon: 'brain',
-		summary: 'Creates chapters from selected messages',
-		description: 'Select a range of messages, generate and review a chapter, then save it to replace the original turns in the prompt. Saved chapters remain active even when this generation engine is off.',
+		summary: 'Creates chapters, arcs and volumes',
+		description: 'Select a range of messages, generate and review a chapter, then save it to replace the original turns in the prompt. Combine chapters into arcs and arcs into volumes from Memory. Saved summaries remain active even when this generation engine is off.',
 		makesCalls: true,
-		prompts: [{ key: 'memoryScene', label: 'Chapter', hint: 'Instructions sent with the selected messages.' }],
+		prompts: [
+			{ key: 'memoryScene', label: 'Chapter', hint: 'Instructions sent with the selected messages.' },
+			{ key: 'memoryArc', label: 'Arc', hint: 'Instructions sent with the selected chapters.' },
+			{ key: 'memoryVolume', label: 'Volume', hint: 'Instructions sent with the selected arcs.' }
+		],
 		enabled: {
 			get: () => featurePromptsStore.memoryEnabled,
 			set: (value) => featurePromptsStore.setMemoryEnabled(value)

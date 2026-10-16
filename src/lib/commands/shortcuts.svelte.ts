@@ -253,7 +253,7 @@ export const SHORTCUTS: ShortcutDef[] = [
 	// Every row here is owned by the focused turn itself (`Message.svelte`), which is what
 	// lets them be bare letters: the keyboard is on a card, not in a box that takes text.
 	{ id: 'turn-move', group: 'turns', label: 'Move between turns', chips: ['↑', '↓'] },
-	{ id: 'turn-swipe', group: 'turns', label: "Swipe this turn's alternates", chips: ['←', '→'] },
+	{ id: 'turn-swipe', group: 'turns', label: "Swipe the latest response", chips: ['←', '→'] },
 	{ id: 'turn-edit', group: 'turns', label: 'Edit', chips: ['E'] },
 	{ id: 'turn-branch', group: 'turns', label: 'Branch', chips: ['B'] },
 	{ id: 'turn-regenerate', group: 'turns', label: 'Regenerate', chips: ['R'] },

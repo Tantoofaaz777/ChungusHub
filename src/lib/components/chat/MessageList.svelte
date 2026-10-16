@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { chapterTitle } from '../../../../shared/memory-scenes';
+	import { chapterTitle, memoryLabel, sceneLevel } from '../../../../shared/memory-scenes';
 	import SceneSelectionBar from '$lib/components/memory/SceneSelectionBar.svelte';
 	import type { Message } from '$lib/types/chat';
 	import MessageComponent from './Message.svelte';
@@ -483,7 +483,7 @@
 				{@const siblings = siblingGroups.get(message.parentId) ?? [message]}
 				{@const siblingIndex = siblings.findIndex(m => m.id === message.id)}
 				{#if sceneStarts.has(message.id)}
-					<button type="button" class="scene-marker" onclick={() => memoryStore.editScene(sceneStarts.get(message.id)!)}><Icon name="brain" class="w-3 h-3" />Chapter · {chapterTitle(sceneStarts.get(message.id)!.title)}</button>
+					<button type="button" class="scene-marker" onclick={() => memoryStore.editScene(sceneStarts.get(message.id)!)}><Icon name="brain" class="w-3 h-3" />{memoryLabel(sceneLevel(sceneStarts.get(message.id)!))} · {chapterTitle(sceneStarts.get(message.id)!.title)}</button>
 				{/if}
 					<MessageComponent
 						{message}

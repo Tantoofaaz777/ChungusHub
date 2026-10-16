@@ -257,7 +257,7 @@
 	}
 
 	async function handleBranchNavigate(direction: 'prev' | 'next') {
-		if (messageStore.busy) return;
+		if (!showSwipes || messageStore.busy) return;
 		try {
 			if (direction === 'next' && canGenerateSwipe && siblingIndex >= siblingCount - 1) {
 				await messageStore.retryMessageResponse(message.id, 'branch');
@@ -308,10 +308,10 @@
 				chatCursor.step(1);
 				break;
 			case 'arrowleft':
-				if (siblingIndex > 0) void handleBranchNavigate('prev');
+				if (showSwipes && siblingIndex > 0) void handleBranchNavigate('prev');
 				break;
 			case 'arrowright':
-				if (siblingIndex < siblingCount - 1 || canGenerateSwipe) void handleBranchNavigate('next');
+				if (showSwipes && (siblingIndex < siblingCount - 1 || canGenerateSwipe)) void handleBranchNavigate('next');
 				break;
 			// Every one of these is this row's own button and never a second path to the act:
 			// Delete opens its menu; regeneration replaces the swipes directly.
@@ -388,14 +388,19 @@
 	const speakerFocus = $derived(
 		message.role === 'user' ? userPersona?.portraitFocus : assistantSpeaker?.portraitFocus
 	);
-	// Creation belongs to the last turn. Older alternatives remain navigable so removing
-	// the map never strands an existing continuation. Roots use the Opening Scene engine.
+	// Only the actual last message owns swipes; hiding it never moves the bar to an older turn.
+	// Wait for chapter coverage before exposing navigation on a newly opened chat.
+	const showSwipes = $derived(
+		isLast && message.role === 'assistant' && !message.excludedFromPrompt && !archived &&
+		memoryStore.loaded && memoryStore.activeChatId === message.chatId
+	);
 	const canWriteOpening = $derived(
 		isLast && message.parentId === null && message.role === 'assistant' && featurePromptsStore.openingSceneEnabled
 	);
 	let openingDialogOpen = $state(false);
 
 	function handleGenerateOpening(direction: string) {
+		if (!showSwipes) return;
 		// The store toasts its own generation failures; only its throw-guards reach here, and
 		// the button is gated on the one this row can see.
 		void messageStore.generateOpeningScene(direction).catch((error) => {
@@ -406,7 +411,7 @@
 	const showRegenerate = $derived(
 		isLast && (message.role === 'user' || (message.role === 'assistant' && (message.parentId !== null || canWriteOpening)))
 	);
-	const canGenerateSwipe = $derived(isLast && message.role === 'assistant' && (message.parentId !== null || canWriteOpening));
+	const canGenerateSwipe = $derived(showSwipes && (message.parentId !== null || canWriteOpening));
 	// Continue extends a reply in place, so it belongs to the newest turn and nowhere else.
 	// A seeded greeting qualifies where Retry refuses one: a continuation works from the reply
 	// itself, while a re-roll needs the prompt that wrote it, and a greeting has none.
@@ -780,15 +785,12 @@
 									</div>
 								{/if}
 							</div>
-							{#if siblingCount > 1 || (isLast && message.role === 'assistant')}
+							{#if showSwipes}
 								<div
-									class="message-pager-slot"
+									class="message-pager-slot message-pager-always"
 									class:message-actions-visible={showActions || cursored || openingDialogOpen}
-									class:message-pager-always={isLast && message.role === 'assistant'}
 								>
-									{#if siblingCount > 1 || (isLast && message.role === 'assistant')}
-										<BranchNavigator current={siblingIndex} total={siblingCount} canGenerate={canGenerateSwipe} disabled={messageStore.busy} onNavigate={handleBranchNavigate} />
-									{/if}
+									<BranchNavigator current={siblingIndex} total={siblingCount} canGenerate={canGenerateSwipe} disabled={messageStore.busy} onNavigate={handleBranchNavigate} />
 									{#if canWriteOpening}
 										<div class="opening-trigger">
 											<button

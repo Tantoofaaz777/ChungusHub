@@ -25,6 +25,7 @@ import { steeringStore } from './steering.svelte';
 import { steeringTargetForChat } from '$lib/types/steering';
 import type { LorebookTrigger } from '$lib/lorebook/types';
 import { countMessages, tokenCalibration } from '$lib/tokenizer';
+import { resolveScenes, type MemoryScene } from '../../../shared/memory-scenes';
 
 /**
  * The texts of the one-shot notes the commit REALLY spent, for the chat's reuse list.
@@ -525,6 +526,24 @@ class MessageStore {
 		await chatStore.refreshCurrentChat();
 	}
 
+	/** Swipes belong to the last assistant message, never a hidden or chapter-covered source.
+	 * Cached rows keep arrow navigation immediate; generation rechecks fresh rows and chapters. */
+	private canSwipe(messageId: string, messages?: Message[], scenes?: MemoryScene[]): boolean {
+		const state = chatStore.currentChatState;
+		if (!state || !memoryStore.loaded || memoryStore.activeChatId !== state.chat.id || state.chat.activeLeafId !== messageId || state.activePath.at(-1)?.id !== messageId) return false;
+		const path = messages ? findActivePath(messages, messageId) : state.activePath;
+		const last = path.at(-1);
+		if (last?.id !== messageId || last.role !== 'assistant' || last.excludedFromPrompt) return false;
+		if (!messages || !scenes) return !memoryStore.archivedMessageIds.has(messageId);
+		return !resolveScenes(scenes, path, messages).some(r => r.status === 'active' && r.scene.source.some(s => s.id === messageId));
+	}
+
+	private async canSwipeFresh(chatId: string, messageId: string, messages?: Message[]): Promise<boolean> {
+		const fresh = messages ?? await chatStore.freshMessages(chatId);
+		const scenes = await db.getMemoryScenes(chatId);
+		return chatStore.currentChatState?.chat.id === chatId && this.canSwipe(messageId, fresh, scenes);
+	}
+
 	async navigateToSibling(messageId: string, direction: 'prev' | 'next'): Promise<void> {
 		if (this.warnIfBusy()) return;
 		const state = chatStore.currentChatState;
@@ -540,8 +559,9 @@ class MessageStore {
 			return;
 		}
 
-		// Fresh siblings, every role: the arrows walk all branches at this point, forks
-		// included, mirroring findSiblings (see architecture/chat-sessions.md).
+		if (!this.canSwipe(messageId)) return;
+
+		// Existing alternatives stay saved, but only the last visible assistant can navigate them.
 		const siblings = messages
 			.filter((m) => m.parentId === message.parentId)
 			.sort((a, b) => a.siblingIndex - b.siblingIndex);
@@ -563,6 +583,7 @@ class MessageStore {
 		const state = chatStore.currentChatState;
 		if (!state || state.activePath.at(-1)?.id !== messageId) return;
 		const current = state.activePath.at(-1)!;
+		if (action === 'branch' && !this.canSwipe(messageId)) return;
 		if (current.role === 'assistant' && current.parentId === null) {
 			await this.generateOpeningScene('', action);
 			return;
@@ -571,12 +592,14 @@ class MessageStore {
 		try {
 			const messages = await chatStore.freshMessages(state.chat.id);
 			const message = messages.find(m => m.id === messageId);
+			if (action === 'branch' && !await this.canSwipeFresh(state.chat.id, messageId, messages)) return;
 			if (!message || (message.role !== 'user' && message.role !== 'assistant')) return;
 			const parentId = message.role === 'user' ? message.id : message.parentId;
 			if (!parentId) return;
 			const prompt = await this.prepareFromLeaf('regenerate', state.chat.id, parentId, 'swipe');
 			if (!prompt) return;
 			const fresh = await chatStore.freshMessages(state.chat.id);
+			if (action === 'branch' && !await this.canSwipeFresh(state.chat.id, messageId, fresh)) return;
 			// Keep the selected reply and every alternative until the server commits success.
 			// Only the siblings present when this request leaves may be replaced.
 			await this.generateResponse(state.chat.id, parentId, prompt, {
@@ -765,6 +788,8 @@ class MessageStore {
 	 */
 	async generateOpeningScene(direction: string, action: RegenerateAction = 'branch'): Promise<void> {
 		if (this.busy) return;
+		const last = chatStore.currentChatState?.activePath.at(-1);
+		if (action === 'branch' && last && (last.parentId !== null || !this.canSwipe(last.id))) return;
 		// The Opening Scene engine can be switched off app-wide (Settings → Engines). Every
 		// trigger hides or refuses when it's off; fail loud if something calls in anyway.
 		if (!featurePromptsStore.openingSceneEnabled) throw new Error('Opening Scene is turned off in Settings → Engines');
@@ -784,6 +809,7 @@ class MessageStore {
 		try {
 			const chat = await db.getChat(state.chat.id);
 			if (!chat) throw new Error('Chat not found');
+			if (action === 'branch' && openingLeaf && !await this.canSwipeFresh(state.chat.id, openingLeaf.id)) return;
 
 			// Create a virtual user message for {{chatHistory}} to inject (not saved to DB)
 			const sceneIdea = direction.trim() || 'Surprise me with a compelling opening scene.';
@@ -840,6 +866,7 @@ class MessageStore {
 			// root claim both resolved against fresh rows inside the commit's own transaction
 			// rather than read here and used a paragraph later. No user turn is saved: the
 			// direction was context, not something the reader said in the story.
+			if (action === 'branch' && openingLeaf && !await this.canSwipeFresh(state.chat.id, openingLeaf.id)) return;
 			const result = await llmService.complete(callTarget, {
 				messages,
 				source: 'opening-scene',

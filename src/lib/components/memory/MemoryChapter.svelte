@@ -2,7 +2,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { countTokens } from '$lib/tokenizer';
-	import { chapterTitle, type MemoryScene, type ResolvedScene } from '../../../../shared/memory-scenes';
+	import { chapterTitle, sceneLevel, type MemoryScene, type ResolvedScene } from '../../../../shared/memory-scenes';
 
 	let { item, model, onEdit, onRemove }: {
 		item: ResolvedScene;
@@ -11,6 +11,7 @@
 		onRemove: (chapter: MemoryScene) => void;
 	} = $props();
 	let title = $derived(chapterTitle(item.scene.title));
+	let level = $derived(sceneLevel(item.scene));
 	// Only saved content and the chat's model affect this count. Expanding a preview
 	// or typing in the review dialog does not tokenize the chapter again.
 	let tokens = $derived(countTokens(item.scene.content, model));
@@ -18,15 +19,15 @@
 
 <article class="chapter-card">
 	<details class="chapter-preview">
-		<summary aria-label={`Preview chapter: ${title}`}>
+		<summary aria-label={`Preview ${level}: ${title}`}>
 			<div class="chapter-heading">
 				<h4>{title}</h4>
-				<span class="chapter-status" class:needs-review={item.status === 'review'}>{item.status === 'active' ? 'In prompt' : item.status === 'review' ? 'Needs review' : 'Other branch'}</span>
+				<span class="chapter-status" class:needs-review={item.status === 'review'}>{item.status === 'active' ? 'In prompt' : item.status === 'review' ? 'Needs review' : item.status === 'covered' ? 'Compacted' : 'Other branch'}</span>
 				<Icon name="chevronDown" class="chapter-chevron w-4 h-4" />
 			</div>
 			<div class="chapter-meta">
-				<span>{item.scene.source.length} {item.scene.source.length === 1 ? 'message' : 'messages'}</span>
-				<span class="chapter-tokens" title={`Estimated chapter text tokens${model ? ` · ${model}` : ''}`}># {tokens.toLocaleString()} tokens</span>
+				<span>{#if level !== 'chapter'}{item.scene.children?.length ?? 0} {level === 'arc' ? 'chapters' : 'arcs'}{' · '}{/if}{item.scene.source.length} {item.scene.source.length === 1 ? 'message' : 'messages'}</span>
+				<span class="chapter-tokens" title={`Estimated ${level} text tokens${model ? ` · ${model}` : ''}`}># {tokens.toLocaleString()} tokens</span>
 			</div>
 		</summary>
 		<div class="chapter-content"><p>{item.scene.content}</p></div>
@@ -34,7 +35,7 @@
 	{#if item.reason}<p class="chapter-reason">{item.reason}</p>{/if}
 	<div class="chapter-actions">
 		<Button variant="ghost" size="sm" onclick={() => onEdit(item.scene)}>Review / edit</Button>
-		<Button variant="ghost" size="sm" onclick={() => onRemove(item.scene)} aria-label={`Remove chapter: ${title}`}><Icon name="trash" class="w-4 h-4" /></Button>
+		<Button variant="ghost" size="sm" onclick={() => onRemove(item.scene)} aria-label={`Remove ${level}: ${title}`}><Icon name="trash" class="w-4 h-4" /></Button>
 	</div>
 </article>
 
