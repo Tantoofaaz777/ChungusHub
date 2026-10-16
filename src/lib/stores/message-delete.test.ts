@@ -29,7 +29,7 @@ let serverDb: any;
 
 const realDatabase = { ...(await import('$lib/services/database')) };
 const realTransport = { ...(await import('$lib/services/transport')) };
-const realMemory = { ...(await import('$lib/memory/store.svelte')) };
+const realMemory = { ...(await import('$lib/memory/scene-store.svelte')) };
 
 beforeAll(async () => {
 	dataDir = mkdtempSync(join(tmpdir(), 'chungus-message-delete-'));
@@ -41,7 +41,7 @@ beforeAll(async () => {
 afterAll(() => {
 	mock.module('$lib/services/database', () => realDatabase);
 	mock.module('$lib/services/transport', () => realTransport);
-	mock.module('$lib/memory/store.svelte', () => realMemory);
+	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
 	serverDb.closeForTests();
 	try {
 		rmSync(dataDir, { recursive: true, force: true });
@@ -73,7 +73,7 @@ mock.module('$lib/services/database', () => ({
 	)
 }));
 mock.module('$lib/services/transport', () => ({ ...realTransport, llmStatus: async () => [], stopGeneration: () => {} }));
-mock.module('$lib/memory/store.svelte', () => ({
+mock.module('$lib/memory/scene-store.svelte', () => ({
 	...realMemory,
 	memoryStore: {
 		activeChatId: null,

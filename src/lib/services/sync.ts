@@ -17,7 +17,7 @@ import { inputDraftStore } from '$lib/stores/inputDraft.svelte';
 import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
 import { presetService } from '$lib/services/presets.svelte';
 import { reloadAllSyncedSettings } from '$lib/services/syncedSetting';
-import { memoryStore } from '$lib/memory/store.svelte';
+import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { backupStore } from '$lib/stores/backups.svelte';
 import type { SyncScope } from '$shared/sync';
 

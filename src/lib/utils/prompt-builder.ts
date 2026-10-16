@@ -16,7 +16,7 @@ import { resolveLorebookLinks } from '$lib/lorebook/types';
 import { db } from '$lib/services/database';
 import { presetService } from '$lib/services/presets.svelte';
 import { readPresetControlValues } from '$lib/stores/presetControls.svelte';
-import { memoryStore } from '$lib/memory/store.svelte';
+import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
 import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';

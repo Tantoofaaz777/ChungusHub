@@ -27,6 +27,8 @@ type Delta =
  *  decides which read comes back first. The chat row is taken when the call arrives,
  *  as the server's one read takes it. */
 let owed: { resolve: (delta: Delta) => void }[] = [];
+let memoryGate: Promise<void> | null = null;
+let memoryLeaves: (string | null)[] = [];
 let writes: { leafId: string; resolve: () => void; reject: (error: Error) => void }[] = [];
 
 const CHAT = { id: 'chat-1', title: 'Overlap', activeLeafId: 'reply', rootMessageId: 'greeting' };
@@ -49,12 +51,12 @@ let chatReadApart: typeof serverChat | null = null;
  */
 const realDatabase = { ...(await import('$lib/services/database')) };
 const realTransport = { ...(await import('$lib/services/transport')) };
-const realMemory = { ...(await import('$lib/memory/store.svelte')) };
+const realMemory = { ...(await import('$lib/memory/scene-store.svelte')) };
 
 afterAll(() => {
 	mock.module('$lib/services/database', () => realDatabase);
 	mock.module('$lib/services/transport', () => realTransport);
-	mock.module('$lib/memory/store.svelte', () => realMemory);
+	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
 });
 
 mock.module('$lib/services/database', () => ({
@@ -76,9 +78,10 @@ mock.module('$lib/services/transport', () => ({
 	llmStatus: async () => [],
 	stopGeneration: () => {}
 }));
-mock.module('$lib/memory/store.svelte', () => ({
+mock.module('$lib/memory/scene-store.svelte', () => ({
 	...realMemory,
-	memoryStore: { activeChatId: null, loadForChat: async () => {}, syncForPath: async () => {}, clear: () => {} }
+	memoryStore: { activeChatId: null, loadForChat: async () => { await memoryGate; },
+		syncForPath: async (ctx: { leafId: string | null }) => { memoryLeaves.push(ctx.leafId); }, clear: () => {} }
 }));
 
 const { chatStore } = await import('./chat.svelte');
@@ -96,6 +99,8 @@ const BASE = [row('greeting', null, 'assistant'), row('user', 'greeting', 'user'
 const EDITED_USER = row('user', 'greeting', 'user', 'rewritten');
 
 beforeEach(() => {
+	memoryGate = null;
+	memoryLeaves = [];
 	owed = [];
 	writes = [];
 	serverChat = { ...CHAT };
@@ -339,4 +344,32 @@ describe('a delete that takes the leaf', () => {
 
 		expect(pathIds()).toEqual(['greeting', 'user']);
 	});
+});
+
+
+describe('scene-memory publication', () => {
+ test('a reactive wrapper around the published array does not prevent memory from loading', async () => {
+  let release!: () => void;
+  memoryGate = new Promise<void>((resolve) => { release = resolve; });
+  const load = chatStore.loadChatState(CHAT.id);
+  await settle();
+  owed[0].resolve({rev:6,full:true,messages:[...BASE]});
+  await load;
+  const state = chatStore.currentChatState!;
+  state.allMessages = new Proxy(state.allMessages, {});
+  release(); await settle();
+  expect(memoryLeaves).toEqual(['reply']);
+ });
+ test('a memory read finishing after a swipe cannot restore the previous path', async () => {
+  let release!: () => void;
+  memoryGate = new Promise<void>((resolve) => { release = resolve; });
+  const load = chatStore.loadChatState(CHAT.id);
+  await settle();
+  owed[0].resolve({rev:6,full:true,messages:[...BASE,row('reply-2','user','assistant')]});
+  await load;
+  const move = chatStore.navigateToLeaf('reply-2');
+  release(); await settle();
+  expect(memoryLeaves).toEqual(['reply-2']);
+  writes[0].resolve(); await move;
+ });
 });

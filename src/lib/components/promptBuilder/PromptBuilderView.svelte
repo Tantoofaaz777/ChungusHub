@@ -45,7 +45,7 @@
 		DEFAULT_CONTINUE_PROMPT,
 		type AssembleInput
 	} from '$lib/utils/prompt-assembly';
-	import { memoryStore } from '$lib/memory/store.svelte';
+	import { memoryStore } from '$lib/memory/scene-store.svelte';
 	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
 	import { fade } from 'svelte/transition';
 	import { untrack } from 'svelte';
@@ -147,7 +147,7 @@
 		controls: currentPreset?.controls ?? [],
 		customFields: presetControlsStore.valuesFor(currentPreset?.id ?? null),
 		chatMessages: chatStore.currentChatState?.activePath ?? [],
-		recall: { text: memoryStore.recall || null, archivedIds: memoryStore.archivedMessageIds },
+		recall: { text: memoryStore.recall || null, archivedIds: memoryStore.archivedMessageIds, scenes: memoryStore.scenes },
 		model: promptTarget.model,
 		postProcessing: promptTarget.postProcessing,
 		contextBudget: promptTarget.contextBudget,

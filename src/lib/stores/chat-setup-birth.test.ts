@@ -51,12 +51,12 @@ const copy = <T>(value: T): T => structuredClone(value);
  */
 const realDatabase = { ...(await import('$lib/services/database')) };
 const realTransport = { ...(await import('$lib/services/transport')) };
-const realMemory = { ...(await import('$lib/memory/store.svelte')) };
+const realMemory = { ...(await import('$lib/memory/scene-store.svelte')) };
 
 afterAll(() => {
 	mock.module('$lib/services/database', () => realDatabase);
 	mock.module('$lib/services/transport', () => realTransport);
-	mock.module('$lib/memory/store.svelte', () => realMemory);
+	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
 });
 
 mock.module('$lib/services/database', () => ({
@@ -142,7 +142,7 @@ mock.module('$lib/services/transport', () => ({
 	apiSend: async () => ({})
 }));
 
-mock.module('$lib/memory/store.svelte', () => ({
+mock.module('$lib/memory/scene-store.svelte', () => ({
 	...realMemory,
 	memoryStore: {
 		activeChatId: null,

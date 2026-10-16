@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SceneSelectionBar from '$lib/components/memory/SceneSelectionBar.svelte';
 	import type { Message } from '$lib/types/chat';
 	import MessageComponent from './Message.svelte';
 	import StreamingIndicator from './StreamingIndicator.svelte';
@@ -8,7 +9,7 @@
 	import { chatCursor } from '$lib/stores/chatCursor.svelte';
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
-	import { memoryStore } from '$lib/memory/store.svelte';
+	import { memoryStore } from '$lib/memory/scene-store.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
@@ -64,25 +65,10 @@
 		return groups;
 	});
 
-	// Chat-memory ghosting: archived messages render dimmed, with a single boundary
-	// marker between the memory-folded prefix and the live tail. Archived ids form a
-	// contiguous prefix of the active path, so the count doubles as the boundary index.
-	// The ghost tag claims "recalled, not re-sent verbatim", which is only true when the
-	// active preset injects {{memory}}, so the store already empties this set when the
-	// macro is absent (memoryStore.active), the same condition prompt assembly uses to
-	// filter history. Reading it here keeps one boundary with one owner.
+	// Scene summaries can cover any range; their original messages keep the dim treatment.
 	let archivedIds = $derived(memoryStore.archivedMessageIds);
-	// Count only the leading run that's actually archived, which stays robust to a stale
-	// set (e.g. mid-navigation), so the boundary never lands in the middle of live turns.
-	let archivedPrefix = $derived.by(() => {
-		let n = 0;
-		for (const [index, m] of messages.entries()) {
-			if (m.excludedFromPrompt) continue;
-			if (archivedIds.has(m.id)) n = index + 1;
-			else break;
-		}
-		return n;
-	});
+	let sceneStarts = $derived(new Map(memoryStore.resolved.filter((r) => r.status === 'active').map((r) => [r.scene.source[0].id, r.scene])));
+	let selectedIds = $derived(new Set(memoryStore.selectedMessages.map((m) => m.id)));
 
 	let openingDialogOpen = $state(false);
 
@@ -419,6 +405,7 @@
 </script>
 
 <div class="message-list-wrap">
+<SceneSelectionBar />
 <div
 	bind:this={listElement}
 	class="message-list panel-scroll"
@@ -494,16 +481,12 @@
 				{@const index = windowStart + offset}
 				{@const siblings = siblingGroups.get(message.parentId) ?? [message]}
 				{@const siblingIndex = siblings.findIndex(m => m.id === message.id)}
-				{#if archivedPrefix > 0 && archivedPrefix < messages.length && index === archivedPrefix}
-						<div class="memory-boundary" aria-hidden="true">
-							<span class="memory-boundary-line"></span>
-							<span class="memory-boundary-label">
-								<Icon name="brain" class="w-3 h-3" />
-								Earlier turns are in memory
-							</span>
-							<span class="memory-boundary-line"></span>
-						</div>
-					{/if}
+				{#if sceneStarts.has(message.id)}
+					<button type="button" class="scene-marker" onclick={() => memoryStore.editScene(sceneStarts.get(message.id)!)}><Icon name="brain" class="w-3 h-3" />Summary · {sceneStarts.get(message.id)!.title}</button>
+				{/if}
+				{#if memoryStore.selection}
+					<button type="button" class="scene-pick" class:picked={selectedIds.has(message.id) || memoryStore.selection.startId === message.id} aria-pressed={selectedIds.has(message.id) || memoryStore.selection.startId === message.id} onclick={() => memoryStore.pickMessage(message.id)}>Select message {index + 1}</button>
+				{/if}
 					<MessageComponent
 						{message}
 						ordinal={index + 1}
@@ -550,6 +533,9 @@
 </div>
 
 <style>
+	.scene-marker,.scene-pick { display:flex; align-items:center; gap:.4rem; margin:.65rem 1rem; padding:.4rem .65rem; border:1px solid var(--color-border); border-radius:var(--radius-md); font-family:var(--font-ui); font-size:.75rem; color:var(--color-text-secondary); cursor:pointer; }
+	.scene-marker,.scene-pick.picked { color:var(--color-accent); border-color:var(--color-accent); }
+
 	.message-list-wrap {
 		position: relative;
 		flex: 1;
@@ -658,37 +644,8 @@
 	}
 
 	/* The line between the memory-folded prefix and the live tail. */
-	.memory-boundary {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		margin: 0.5rem auto 0.9rem;
-		padding: 0 clamp(0.6rem, 0.4rem + 1vw, 1.4rem);
-		max-width: calc(var(--reading-measure) * var(--user-chat-width, 1));
-	}
 
-	.memory-boundary-line {
-		flex: 1;
-		height: 1px;
-		background: linear-gradient(
-			to right,
-			transparent,
-			color-mix(in srgb, var(--color-accent) 30%, transparent),
-			transparent
-		);
-	}
 
-	.memory-boundary-label {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-		flex-shrink: 0;
-		font-family: var(--font-ui);
-		font-size: 0.7rem;
-		font-weight: 600;
-		letter-spacing: 0.02em;
-		color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text-muted));
-	}
 
 	.message-empty-wrap {
 		min-height: 100%;

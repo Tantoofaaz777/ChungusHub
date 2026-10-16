@@ -9,6 +9,7 @@ import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta }
 import type { CharacterVersion, LibraryEntry } from '$lib/types/library';
 import type { Lorebook } from '$lib/lorebook/types';
 import type { SteeringNote } from '$lib/types/steering';
+import type { MemoryScene, SaveMemoryScene } from '../../../shared/memory-scenes';
 import type { BatchResult, Episode, MemoryState, PromotionResult } from '$lib/memory/types';
 import type { UserStats } from '$lib/types/stats';
 import { connectWs, dbRpc } from '$lib/services/transport';
@@ -189,6 +190,9 @@ class DatabaseService {
 	deleteSteeringNote(id: string): Promise<void> { return this.call('deleteSteeringNote', id); }
 
 	// ===== SESSION MEMORY =====
+	getMemoryScenes(chatId: string): Promise<MemoryScene[]> { return this.call('getMemoryScenes', chatId); }
+	saveMemoryScene(input: SaveMemoryScene): Promise<MemoryScene> { return this.call('saveMemoryScene', input); }
+	deleteMemoryScene(chatId: string, id: string, expectedRevision: number): Promise<void> { return this.call('deleteMemoryScene', chatId, id, expectedRevision); }
 	memGetState(chatId: string): Promise<MemoryState | null> { return this.call('memGetState', chatId); }
 	memListEpisodes(chatId: string): Promise<Episode[]> { return this.call('memListEpisodes', chatId); }
 	memSetState(chatId: string, patch: Partial<Pick<MemoryState, 'enabled' | 'autoExtract' | 'config'>>): Promise<void> {

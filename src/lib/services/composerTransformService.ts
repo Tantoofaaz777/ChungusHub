@@ -61,7 +61,7 @@ export function buildComposerTransformPrompt(params: ComposerTransformParams): L
 	return shapeComposerTransform({
 		kind,
 		filled,
-		chatMessages,
+		chatMessages: ctx.chatMessages ?? [],
 		charName: ctx.resolvedCharacters?.[0]?.name || 'Narrator',
 		userName: ctx.resolvedPersona?.name || 'User',
 		userPronouns: ctx.resolvedPersona ? ctx.resolvedPersona.pronouns ?? {} : undefined,

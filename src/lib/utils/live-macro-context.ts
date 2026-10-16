@@ -1,3 +1,5 @@
+import { sceneHistory } from '../../../shared/memory-scenes';
+import { memoryStore } from '$lib/memory/scene-store.svelte';
 /**
  * Live MacroContext from the current stores: how the substitute-level surfaces
  * (the opening scene, Continue, the composer transforms) resolve the global engine
@@ -51,8 +53,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 		? characterLibraryStore.dataForVersion(characterEntry, chatStore.activeChat?.characterVersionId ?? null)
 		: null;
 	const character = toPromptCharacter(characterEntry, characterData);
-	const chatMessages = (opts.chatMessages ?? chatStore.currentChatState?.activePath ?? [])
-		.filter((m) => !m.excludedFromPrompt);
+	const chatMessages = sceneHistory(opts.chatMessages ?? chatStore.currentChatState?.activePath ?? [], memoryStore.scenes);
 	const preset = chatPreset(chatStore.activeChat);
 	// Same budget derivation as buildMacroContext (share of the prompt budget, counted with
 	// the active model's encoding), so these surfaces inject the same block the prompt does.

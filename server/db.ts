@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { IMAGES_ROOT, resolveDbPath } from './config';
 import { deleteImage } from './files';
 import type { SyncScope } from '../shared/sync';
+import { captureScene, resolveScenes, scenePath, type MemoryScene, type SaveMemoryScene, type SceneMessage } from '../shared/memory-scenes';
 
 /** Short stable digest, the chat-tree fingerprint's building block. Truncated SHA-1:
  *  64 bits is far past what "are these two chats the same" needs, and it only ever
@@ -513,6 +514,20 @@ const MIGRATIONS: Migration[] = [
 		version: 46,
 		name: 'message_prompt_exclusion',
 		sql: `ALTER TABLE messages ADD COLUMN excluded_from_prompt INTEGER NOT NULL DEFAULT 0;`
+	},
+	{
+		version: 47,
+		name: 'manual_memory_scenes',
+		sql: `CREATE TABLE memory_scenes (
+			id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+			title TEXT NOT NULL, content TEXT NOT NULL, source_json TEXT NOT NULL,
+			created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+			revision INTEGER NOT NULL DEFAULT 1, review_reason TEXT
+		);
+		CREATE INDEX idx_memory_scenes_chat ON memory_scenes(chat_id);
+		CREATE TABLE memory_scene_migrations (
+			chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE
+		);`
 	}
 ];
 
@@ -902,17 +917,16 @@ class ServerDatabase {
 	 *  its coverage against a tree it no longer belongs to. Runs inside duplicateChat's
 	 *  transaction. */
 	private copyChatMemory(fromChatId: string, toChatId: string, messageIds: Map<string, string>): void {
-		// A reference that doesn't remap means the source's memory points at a message that
-		// no longer exists, a real state but a transient one: the source heals it the next
-		// time the chat is opened and the dead episode is reaped (architecture/memory.md). Quietly
-		// dropping those references would NOT reproduce it, it would invent a different
-		// state that happens to be internally valid and can therefore never heal: an episode
-		// whose coverage silently shrank still claims the turns it lost. Refuse instead, and
-		// let the caller tell the user to open the chat once (or copy the story alone).
-		//
-		// This gate is right for MESSAGE references and only for them. A column naming rows
-		// the promotion deletes in its own transaction is dangling by construction, so
-		// sending one through here would fail every copy of a chat past its first promotion.
+		const sourceScenes = this.getMemoryScenes(fromChatId);
+		for (const scene of sourceScenes) {
+			const source = scene.source.map((entry) => ({ ...entry, id: messageIds.get(entry.id) ?? `missing:${randomUUID()}` }));
+			this.execute('INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)',
+				[randomUUID(), toChatId, scene.title, scene.content, JSON.stringify(source), scene.createdAt, Date.now(), scene.reviewReason]);
+		}
+		this.execute('INSERT INTO memory_scene_migrations (chat_id) VALUES (?)', [toChatId]);
+		// Retain compatible legacy rows for backup/older tools. Stale rows have already been
+		// preserved as reviewable scenes above and must not block copying the conversation.
+
 		const remapMsgId = (id: string): string => {
 			const mapped = messageIds.get(id);
 			if (!mapped) throw new Error('mem-copy-stale: memory points at a message that is gone');
@@ -940,6 +954,9 @@ class ServerDatabase {
 		// insertion order must survive ties).
 		const episodes = this.select<Record<string, unknown>[]>('SELECT * FROM memory_episodes WHERE chat_id = ? ORDER BY rowid', [fromChatId]);
 		for (const episode of episodes) {
+			let refs: string[];
+			try { const value = JSON.parse(String(episode.source_message_ids ?? '[]')); if (!Array.isArray(value)) continue; refs = value.filter((id): id is string => typeof id === 'string'); } catch { continue; }
+			if (refs.some((id) => !messageIds.has(id)) || (typeof episode.anchor_message_id === 'string' && !messageIds.has(episode.anchor_message_id))) continue;
 			this.execute(
 				`INSERT INTO memory_episodes (id, chat_id, layer, content, source_message_ids, anchor_message_id, created_at)
 				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -1596,8 +1613,10 @@ class ServerDatabase {
 	 *  the duplicate dialog asks the user before anything is copied. */
 	getChatMemoryFootprint(chatId: string): { enabled: boolean; episodes: number } {
 		const state = this.select<{ enabled: number }[]>('SELECT enabled FROM memory_state WHERE chat_id = ?', [chatId])[0];
-		const episodes =
-			this.select<{ n: number }[]>('SELECT COUNT(*) AS n FROM memory_episodes WHERE chat_id = ?', [chatId])[0]?.n ?? 0;
+		const migrated = this.select<{ chat_id: string }[]>('SELECT chat_id FROM memory_scene_migrations WHERE chat_id = ?', [chatId]).length > 0;
+		const episodes = this.select<{ n: number }[]>(migrated
+			? 'SELECT COUNT(*) AS n FROM memory_scenes WHERE chat_id = ?'
+			: 'SELECT COUNT(*) AS n FROM memory_episodes WHERE chat_id = ?', [chatId])[0]?.n ?? 0;
 		return { enabled: !!state?.enabled, episodes };
 	}
 
@@ -1796,7 +1815,7 @@ class ServerDatabase {
 				personas: shelf('persona'),
 				lorebooks: scalar('SELECT COUNT(*) AS n FROM lorebooks'),
 				lorebookEntries,
-				memoryEpisodes: scalar('SELECT COUNT(*) AS n FROM memory_episodes')
+				memoryEpisodes: scalar('SELECT (SELECT COUNT(*) FROM memory_scenes) + (SELECT COUNT(*) FROM memory_episodes WHERE chat_id NOT IN (SELECT chat_id FROM memory_scene_migrations)) AS n')
 			},
 			effort,
 			story,
@@ -2815,6 +2834,83 @@ class ServerDatabase {
 		};
 	}
 
+	private importLegacyScenes(chatId: string): void {
+		if (this.select<{ chat_id: string }[]>('SELECT chat_id FROM memory_scene_migrations WHERE chat_id = ?', [chatId]).length) return;
+		this.inTransaction(() => {
+			if (!this.getChat(chatId)) throw new Error('Chat not found');
+			if (this.select<{ chat_id: string }[]>('SELECT chat_id FROM memory_scene_migrations WHERE chat_id = ?', [chatId]).length) return;
+			const all = this.getMessagesByChat(chatId) as (SceneMessage & { editedAt?: number | null })[];
+			const byId = new Map(all.map((message) => [message.id, message]));
+			const enabled = this.select<{ enabled: number }[]>('SELECT enabled FROM memory_state WHERE chat_id = ?', [chatId])[0]?.enabled === 1;
+			const episodes = this.select<Record<string, any>[]>('SELECT * FROM memory_episodes WHERE chat_id = ? ORDER BY rowid', [chatId]);
+			for (const [index, episode] of episodes.entries()) {
+				let ids: string[] = [];
+				try { const value = JSON.parse(episode.source_message_ids ?? '[]'); if (Array.isArray(value)) ids = value.filter((id) => typeof id === 'string'); } catch { /* Preserve as reviewable text. */ }
+				const wanted = new Set(ids);
+				const ordered = scenePath(all, episode.anchor_message_id ?? ids.at(-1) ?? null).filter((m) => wanted.has(m.id));
+				const source = captureScene(ordered);
+				for (const id of ids) if (!source.some((s) => s.id === id)) source.push({ id, signature: '' });
+				const stale = !enabled || !ids.length || ids.length !== ordered.length || ids.some((id) => {
+					const message = byId.get(id);
+					return !message || message.excludedFromPrompt || (message.editedAt ?? 0) >= episode.created_at;
+				});
+				this.execute('INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)', [
+					randomUUID(), chatId, `Imported memory ${index + 1}`, episode.content, JSON.stringify(source), episode.created_at, Date.now(),
+					stale ? 'Imported memory needs review before it can replace messages.' : null
+				]);
+			}
+			this.execute('INSERT INTO memory_scene_migrations (chat_id) VALUES (?)', [chatId]);
+		});
+	}
+
+	getMemoryScenes(chatId: string): MemoryScene[] {
+		this.importLegacyScenes(chatId);
+		return this.select<Record<string, any>[]>('SELECT * FROM memory_scenes WHERE chat_id = ? ORDER BY created_at, rowid', [chatId]).map((row) => ({
+			id: row.id, chatId: row.chat_id, title: row.title, content: row.content,
+			source: JSON.parse(row.source_json), createdAt: row.created_at, updatedAt: row.updated_at,
+			revision: row.revision, reviewReason: row.review_reason ?? null
+		}));
+	}
+
+	saveMemoryScene(input: SaveMemoryScene): MemoryScene {
+		if (!input || typeof input.chatId !== 'string' || typeof input.title !== 'string' || typeof input.content !== 'string' ||
+			!input.content.trim() || !input.title.trim() || input.title.length > 200 || input.content.length > 500_000 ||
+			!Array.isArray(input.source) || !input.source.length || input.source.length > 10000 ||
+			input.source.some((s) => !s || typeof s.id !== 'string' || typeof s.signature !== 'string')) throw new Error('Invalid scene summary or source range.');
+		return this.inTransaction(() => {
+			const scenes = this.getMemoryScenes(input.chatId);
+			const previous = input.id ? scenes.find((scene) => scene.id === input.id) : null;
+			if (input.id && (!previous || previous.revision !== input.expectedRevision)) throw new Error('This summary changed on another device. Reopen it before saving.');
+			const chat = this.getChat(input.chatId) as { activeLeafId: string | null } | null;
+			if (!chat) throw new Error('Chat not found');
+			const all = this.getMessagesByChat(input.chatId) as SceneMessage[];
+			const path = scenePath(all, chat.activeLeafId);
+			const now = Date.now();
+			const scene: MemoryScene = { id: input.id ?? randomUUID(), chatId: input.chatId, title: input.title.trim(), content: input.content.trim(),
+				source: input.source.map((s) => ({ id: s.id, signature: s.signature })), createdAt: previous?.createdAt ?? now,
+				updatedAt: now, revision: (previous?.revision ?? 0) + 1, reviewReason: null };
+			const candidate = resolveScenes([scene], path, all)[0];
+			if (candidate.status !== 'active') throw new Error(`The selected scene changed: ${candidate.reason} Select the range again.`);
+			for (const other of resolveScenes(scenes.filter((s) => s.id !== scene.id), path, all)) {
+				if (other.status === 'active' && other.start <= candidate.end && candidate.start <= other.end) throw new Error('This range overlaps an existing summary. Edit or remove that summary first.');
+			}
+			this.execute(`INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+				ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, source_json=excluded.source_json,
+				updated_at=excluded.updated_at, revision=excluded.revision, review_reason=NULL`,
+				[scene.id, scene.chatId, scene.title, scene.content, JSON.stringify(scene.source), scene.createdAt, now, scene.revision]);
+			return scene;
+		});
+	}
+
+	deleteMemoryScene(chatId: string, id: string, expectedRevision: number): void {
+		this.inTransaction(() => {
+			const scene = this.getMemoryScenes(chatId).find((item) => item.id === id);
+			if (!scene || scene.revision !== expectedRevision) throw new Error('This summary changed. Reload Memory before removing it.');
+			this.execute('DELETE FROM memory_scenes WHERE id = ? AND chat_id = ?', [id, chatId]);
+		});
+	}
+
 	memGetState(chatId: string): unknown {
 		const rows = this.select<Record<string, unknown>[]>('SELECT * FROM memory_state WHERE chat_id = ?', [chatId]);
 		return rows[0] ? this.mapMemoryState(rows[0]) : null;
@@ -3113,7 +3209,9 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	memApplyPromotion: 'memory',
 	memReapEpisodes: 'memory',
 	memUpdateEpisodeContent: 'memory',
-	memReset: 'memory'
+	memReset: 'memory',
+	saveMemoryScene: 'memory',
+	deleteMemoryScene: 'memory'
 };
 
 // Every method the bridge is allowed to dispatch (reads + mutations).
@@ -3127,7 +3225,7 @@ const READ_METHODS = [
 	'getAllCharacterVersions', 'getCharacterVersion',
 	'getAllLorebooks', 'getLorebook',
 	'getAllSteeringNotes',
-	'memGetState', 'memListEpisodes'
+	'memGetState', 'memListEpisodes', 'getMemoryScenes'
 ];
 
 export const ALLOWED_DB_METHODS = new Set([...READ_METHODS, ...Object.keys(MUTATION_SCOPES)]);

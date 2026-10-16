@@ -1,3 +1,4 @@
+import { captureScene, type MemoryScene } from '../../../shared/memory-scenes';
 /**
  * Smoke tests for the pure prompt assembler. Run with `bun test`.
  *
@@ -1296,4 +1297,44 @@ describe('the lorebook trace assembly hands back', () => {
 			expect(a.messages[0].content).toBe(a.messages[1].content);
 		}
 	});
+});
+
+
+describe('manual scene summaries', () => {
+ const range = CHAT.slice(1,3);
+ const summary: MemoryScene = { id:'scene', chatId:'chat', title:'Castle scene', content:'The castle was explored.', source:captureScene(range), createdAt:1, updatedAt:1, revision:1, reviewReason:null };
+ test('inserts a saved scene chronologically without requiring the memory macro', () => {
+  const assembled = assemblePrompt(input(preset([item('{{chatHistory}}')]), { chatMessages:CHAT,
+   recall:{text:'LEGACY RECALL MUST NOT DUPLICATE',archivedIds:new Set(CHAT.map((m) => m.id)),scenes:[summary]}, postProcessing:{mode:'none'} }));
+  expect(assembled.messages.map((m) => m.content)).toEqual([CHAT[0].content,`[Scene summary: Castle scene]\nThe castle was explored.\n[End of scene summary]`,CHAT[3].content,CHAT[4].content]);
+  expect(assembled.breakdown.memory).toBeGreaterThan(0);
+  expect(assembled.breakdown.total).toBe(assembled.breakdown.preset+assembled.breakdown.context+assembled.breakdown.memory+assembled.breakdown.chat);
+ });
+ test('obsolete memory placeholders are empty and source text cannot leak through inline macros', () => {
+  const assembled = assemblePrompt(input(preset([item('{{memory}}'),item('{{chatHistory}}'),item('Last: {{chatHistoryLast10}}')]), {chatMessages:CHAT,recall:{text:'Old memory',archivedIds:new Set(),scenes:[summary]},postProcessing:{mode:'none'}}));
+  const text = assembled.messages.map((m) => m.content).join('\n');
+  expect(text).toContain('The castle was explored.');
+  expect(text).not.toContain(CHAT[1].content);
+  expect(text).not.toContain(CHAT[2].content);
+  expect(text).not.toContain('Old memory');
+ });
+ test('saved summaries remain pinned when the context budget trims raw messages', () => {
+  const assembled = assemblePrompt(input(preset([item('{{chatHistory}}')]), {chatMessages:CHAT,recall:{text:null,archivedIds:new Set(),scenes:[summary]},contextBudget:1,postProcessing:{mode:'none'}}));
+  expect(assembled.messages.some((m) => m.content.includes('The castle was explored.'))).toBe(true);
+  expect(assembled.overBudget).toBe(true);
+  expect(assembled.trimmedMessages).toBe(3);
+ });
+ test('a stale summary returns originals to prompt and their tokens to the Chat bucket', () => {
+  const changed = CHAT.map((m) => m.id === range[0].id ? {...m,content:'Changed scene'} : m);
+  const actual = assemblePrompt(input(preset([item('{{chatHistory}}')]), {chatMessages:changed,recall:{text:null,archivedIds:new Set(),scenes:[summary]},postProcessing:{mode:'none'}}));
+  expect(actual.messages.map((m) => m.content)).toEqual(changed.map((m) => m.content));
+  expect(actual.breakdown.memory).toBe(0);
+ });
+ test('summarized source keywords cannot activate lorebooks; summary keywords can', () => {
+  const book = createEmptyLorebook('Memory scanning');
+  book.entries = [{...createEmptyLorebookEntry(),content:'LORE FROM SOURCE',key:['halls']},{...createEmptyLorebookEntry(),content:'LORE FROM SUMMARY',key:['explored']}];
+  const actual = assemblePrompt(input(preset([item('{{lorebook}}'),item('{{chatHistory}}')]),{chatMessages:CHAT,lorebooks:[book],recall:{text:null,archivedIds:new Set(),scenes:[summary]},postProcessing:{mode:'none'}}));
+  const text = actual.messages.map((m) => m.content).join('\n');
+  expect(text).not.toContain('LORE FROM SOURCE'); expect(text).toContain('LORE FROM SUMMARY');
+ });
 });

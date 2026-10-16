@@ -23,7 +23,7 @@ import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 import { lorebookStore } from '$lib/lorebook/store.svelte';
 import { chatCastStore } from '$lib/stores/chatCast.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
-import { memoryStore } from '$lib/memory/store.svelte';
+import { memoryStore } from '$lib/memory/scene-store.svelte';
 
 /** A reply being written for a chat by someone other than this page. */
 type ForeignGeneration = { chatId: string; requestId: string; startedAt: number };
@@ -480,9 +480,16 @@ class ChatStore {
 		}
 	}
 
+	private memoryRefreshTicket = 0;
 	private async refreshMemory(chat: Chat, messages: Message[]): Promise<void> {
+		const ticket = ++this.memoryRefreshTicket;
+		// Compare publication order rather than raw/proxied message-array identity.
+		const stillCurrent = () => ticket === this.memoryRefreshTicket && this.currentChatState?.chat.id === chat.id &&
+			this.currentChatState.chat.activeLeafId === chat.activeLeafId;
 		try {
+			if (!stillCurrent()) return;
 			if (memoryStore.activeChatId !== chat.id) await memoryStore.loadForChat(chat.id);
+			if (!stillCurrent()) return;
 			await memoryStore.syncForPath({
 				chatId: chat.id,
 				allMessages: messages,

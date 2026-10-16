@@ -1,3 +1,5 @@
+> **Retired runtime:** the current manual scene flow is documented in [manual-memory.md](manual-memory.md). This document describes the preserved legacy pipeline.
+
 # Chat memory: architecture & maintenance
 
 A long-term memory layer for roleplay chats. As a chat grows, old messages are summarised scene by scene and dropped from the verbatim prompt, so the token cost of context stays roughly flat no matter how long the story runs, and nothing is lost: every message is either still shown raw in the prompt **or** covered by a summary that is recalled on every turn, never in between.

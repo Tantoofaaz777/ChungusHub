@@ -278,6 +278,8 @@ export interface MessageAttachment {
 }
 
 export interface Message {
+	/** Prompt-only synthetic scene marker; never persisted as a message. */
+	memorySceneId?: string;
 	id: string;
 	chatId: string;
 	parentId: string | null;

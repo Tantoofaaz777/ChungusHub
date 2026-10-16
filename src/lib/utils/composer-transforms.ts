@@ -45,9 +45,9 @@ export function shapeComposerTransform(input: TransformShapeInput): LLMMessage[]
 	// the filled template closes the prompt as the final user turn so the task and draft
 	// sit where generation begins instead of decaying with chat length.
 	const history: LLMMessage[] = chatMessages
-		.filter((m) => !m.excludedFromPrompt && (m.role === 'user' || m.role === 'assistant'))
+		.filter((m) => !m.excludedFromPrompt && (m.role === 'user' || m.role === 'assistant' || m.memorySceneId))
 		.map((m) => ({
-			role: m.role === 'user' ? ('assistant' as const) : ('user' as const),
+			role: m.memorySceneId ? ('system' as const) : m.role === 'user' ? ('assistant' as const) : ('user' as const),
 			content: expandSelfRefs(m.content, charName, userName, userPronouns)
 		}));
 

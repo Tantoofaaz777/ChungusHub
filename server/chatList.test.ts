@@ -407,27 +407,21 @@ describe('duplicateChat', () => {
 		expect(() => serverDb.duplicateChat({ chatId: 'nope', title: 'x', includeMemory: false })).toThrow();
 	});
 
-	test('refuses to carry memory that points at deleted messages, and copies the story anyway', () => {
+	test('carries stale legacy memory as a reviewable scene without losing its text', () => {
 		const { chatId, ids } = seedBranchedChat('Stale memory');
 		serverDb.memSetState(chatId, { enabled: true });
-		serverDb.memApplyBatch(chatId, {
-			supersedeEpisodeIds: [],
-			episode: { content: 'They knocked.', sourceMessageIds: [ids.user], anchorMessageId: ids.reply }
-		});
-		// The turn memory is anchored to is deleted; the source heals this the next time
-		// it is opened, but until then the copy has nothing to point those anchors at.
+		serverDb.memApplyBatch(chatId, { supersedeEpisodeIds: [], episode: {
+			content: 'They knocked.', sourceMessageIds: [ids.reply], anchorMessageId: ids.reply
+		} });
 		serverDb.deleteMessageAndDescendants(ids.reply);
-
-		expect(() => serverDb.duplicateChat({ chatId, title: 'Stale copy', includeMemory: true })).toThrow(
-			/mem-copy-stale/
-		);
-		// The refusal rolls back whole: no half-copied chat left behind.
-		expect((serverDb.getAllChats() as any[]).filter((c) => c.title === 'Stale copy').length).toBe(0);
-
-		// Story-only still works, the way out the panel offers the user.
-		const copyId = serverDb.duplicateChat({ chatId, title: 'Stale copy', includeMemory: false });
-		expect(serverDb.memGetState(copyId)).toBeNull();
+		const copyId = serverDb.duplicateChat({ chatId, title: 'Stale copy', includeMemory: true });
+		const scenes = serverDb.getMemoryScenes(copyId);
+		expect(scenes).toHaveLength(1);
+		expect(scenes[0].content).toBe('They knocked.');
+		expect(scenes[0].reviewReason).toBeTruthy();
 		expect((serverDb.getMessagesByChat(copyId) as any[]).length).toBe(4);
+		const storyOnly = serverDb.duplicateChat({ chatId, title: 'Story only', includeMemory: false });
+		expect(serverDb.getMemoryScenes(storyOnly)).toEqual([]);
 	});
 });
 

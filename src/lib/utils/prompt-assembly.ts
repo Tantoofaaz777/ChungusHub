@@ -15,6 +15,7 @@
  * what is actually sent, and the logic stays unit-testable.
  */
 
+import { sceneHistory, type MemoryScene } from '../../../shared/memory-scenes';
 import type { LLMMessage, PromptPostProcessingMode } from '$lib/types/llm';
 import { DEFAULT_PROMPT_PLACEHOLDER } from '$lib/types/llm';
 import type { Message } from '$lib/types/chat';
@@ -47,8 +48,9 @@ export const DEFAULT_SYSTEM_PROMPT =
 export const DEFAULT_CONTINUE_PROMPT =
 	'((OOC: Continue your previous message. Your reply will be appended to the end of that message exactly as you send it, so write only the new text: no repetition, no rephrasing, no lead-in, and do not acknowledge this instruction. If the message broke off mid-sentence, finish that sentence first. If it already ends cleanly, continue the scene from that exact moment with what happens next. Keep the same tense, point of view, and voice.))';
 
-/** Resolved chat-memory recall: the {{memory}} text plus the ids it folded away. */
+/** Saved scenes for manual replacement. Optional legacy fields keep old import/engine tooling compatible. */
 export interface PromptRecall {
+	scenes?: MemoryScene[];
 	text: string | null;
 	archivedIds: Set<string>;
 }
@@ -166,7 +168,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 	// Prompt-scope regex rules rewrite the chat turns HERE, before anything derives
 	// from them: structural injection, lorebook scanning and the budget trim all
 	// read ctx.chatMessages, so every surface prices exactly what is sent.
-	const chatMessages = applyPromptRegex(input.chatMessages.filter((m) => !m.excludedFromPrompt), input.regexRules);
+	const chatMessages = applyPromptRegex(input.recall.scenes ? sceneHistory(input.chatMessages, input.recall.scenes) : input.chatMessages.filter((m) => !m.excludedFromPrompt), input.regexRules);
 	// What the ENABLED preset actually injects. Two behaviors hang off this: archived turns
 	// only leave {{chatHistory}} when {{memory}} recalls them somewhere, and only turns
 	// {{chatHistory}} renders can be dropped by the budget trim.
@@ -189,8 +191,8 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 		chatMessages,
 		controls: input.controls,
 		customFields: input.customFields,
-		memory: input.recall.text ?? '',
-		archivedMessageIds: memoryReferenced ? input.recall.archivedIds : undefined,
+		memory: input.recall.scenes ? '' : input.recall.text ?? '',
+		archivedMessageIds: !input.recall.scenes && memoryReferenced ? input.recall.archivedIds : undefined,
 		injectsHistory: injects('{{chatHistory}}'),
 		pruneEmptyBlocks: input.preset?.pruneEmptyBlocks ?? false,
 		exampleSeparator: input.preset?.exampleSeparator ?? undefined
@@ -280,6 +282,7 @@ const STRUCTURAL_TAG_RE = new RegExp(`\\{\\{(?:${STRUCTURAL_ALTERNATION})\\}\\}`
 /** A chat Message as an injected LLM turn: native role + attachment images.
  *  Identity refs (names and persona pronouns) are resolved live against the active persona/character
  *  here, never baked into the stored row, so changing persona reflows old turns too. */
+const sceneInjectedMessages = new WeakSet<LLMMessage>();
 function toInjectedMessage(m: Message, ctx: MacroContext): LLMMessage {
 	const images = m.attachments?.filter((a) => a.kind === 'image').map((a) => a.path);
 	const content = expandSelfRefs(
@@ -288,7 +291,9 @@ function toInjectedMessage(m: Message, ctx: MacroContext): LLMMessage {
 		ctx.resolvedPersona?.name || 'User',
 		ctx.resolvedPersona ? ctx.resolvedPersona.pronouns ?? {} : undefined
 	);
-	return { role: m.role, content, ...(images?.length ? { images } : {}) };
+	const message: LLMMessage = { role: m.role, content, ...(images?.length ? { images } : {}) };
+	if (m.memorySceneId) sceneInjectedMessages.add(message);
+	return message;
 }
 
 /** MacroContext plus the depth placements (steering groups and at-depth lorebook entries),
@@ -409,7 +414,8 @@ function resolveStructural(item: PromptItem, ctx: SplicedContext, raw: number, m
 				// here as an ordinary history turn. Matched by identity, so a coincidental text
 				// match can't fool it.
 				if (ctx.splices?.some((s) => s.message === msg)) continue;
-				chat += countTokens(msg.content, model);
+				if (sceneInjectedMessages.has(msg)) memory += countTokens(msg.content, model);
+				else chat += countTokens(msg.content, model);
 			}
 		}
 	}
@@ -564,7 +570,7 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 			// regex-transformed turns that resolveStructural actually injects, hence the
 			// same call. The continuation tail and steering are fixed cost, so they weigh
 			// against history's budget.
-			const history = historyTurns(ctx.chatMessages, ctx.archivedMessageIds);
+			const history = historyTurns(ctx.chatMessages, ctx.archivedMessageIds).filter((m) => !m.memorySceneId);
 			const historyTokens = history.reduce((sum, m) => sum + countTokens(m.content, input.model), 0);
 			const historyBudget = budget - (breakdown.total + fixedExtra - historyTokens);
 			// Keep the newest contiguous run that fits: a gapped keep would break the conversation.

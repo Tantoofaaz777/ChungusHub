@@ -72,24 +72,10 @@ export const ENGINES: EngineDef[] = [
 		id: 'memory',
 		name: 'Chat Memory',
 		icon: 'brain',
-		summary: 'Summarizes old scenes and recalls them later',
-		description:
-			'Summarizes scenes once they fall out of the context window and recalls them into later prompts, so a long chat keeps its thread at a flat cost. It runs on its own as the story grows.',
+		summary: 'Summarizes scenes you select',
+		description: 'Select a scene, generate and review its summary, then save it to replace the original turns in the prompt. Saved summaries remain active even when this generation engine is off.',
 		makesCalls: true,
-		prompts: [
-			{
-				key: 'memoryExtract',
-				label: 'Summarizing',
-				hint: 'Turns a batch of old turns into one scene summary.',
-				requires: ['{{batch}}']
-			},
-			{
-				key: 'memoryPromote',
-				label: 'Compaction',
-				hint: 'Merges older scene summaries into tighter ones.',
-				requires: ['{{episodes}}']
-			}
-		],
+		prompts: [{ key: 'memoryScene', label: 'Scene summary', hint: 'Instructions sent with the selected scene.' }],
 		enabled: {
 			get: () => featurePromptsStore.memoryEnabled,
 			set: (value) => featurePromptsStore.setMemoryEnabled(value)

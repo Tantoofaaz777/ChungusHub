@@ -5,8 +5,7 @@
 	import { uiStore, type OverlayType } from '$lib/stores/ui.svelte';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
-	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { memoryStore } from '$lib/memory/store.svelte';
+	import { memoryStore } from '$lib/memory/scene-store.svelte';
 
 	let activeOverlay = $derived(uiStore.activeOverlay);
 	let settingsOpen = $derived(uiStore.settingsOpen);
@@ -41,11 +40,7 @@
 		{ overlay: 'memory', icon: 'brain', label: 'Memory', title: 'Memory' }
 	];
 
-	// One entry a setting can retire: with the Chat Memory engine globally off the panel
-	// has nothing to run, so the button is filtered out rather than opening a dead surface.
-	let nav = $derived(
-		NAV.filter((item) => item.overlay !== 'memory' || featurePromptsStore.memoryEnabled)
-	);
+	const nav = NAV;
 
 	// Whether the buttons carry their labels is decided against ONE width: the dock
 	// regime's column at the current window width (`--chat-col-docked`, measured off
@@ -86,17 +81,7 @@
 		};
 	});
 
-	// Memory is the one entry here that does work on its own, so its button carries that work:
-	// MemoryNavStatus renders the glyph and lights it while a pass runs, and the tooltip states
-	// it, both from the store's single `standing` derivation, the same line the panel's status
-	// row prints, never a second copy.
-	// The store holds one chat at a time, so this is always the open chat, and the wording
-	// never claims otherwise. Silent when there is nothing to say, back to the plain name.
-	//
-	// It also rides `aria-label`, because the indicator itself is aria-hidden and the bar's
-	// icons-only mode drops the visible label: without it the button would fall back to the
-	// tooltip at one width and to a hidden status line at the other. The label always opens
-	// with the button's own name, so the visible word stays part of the accessible one.
+	// Requested generation and summaries needing review share the panel's status.
 	let memoryStanding = $derived(memoryStore.standing);
 	function titleFor(item: NavItem): string {
 		if (item.overlay !== 'memory' || memoryStanding.kind === 'idle') return item.title;

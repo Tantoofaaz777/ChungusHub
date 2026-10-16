@@ -24,7 +24,7 @@
 	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
 	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { memoryStore } from '$lib/memory/store.svelte';
+	import { memoryStore } from '$lib/memory/scene-store.svelte';
 	import { describeMemoryImpact } from '$lib/memory/impact-copy';
 	import { canSpliceMessage, collectSubtree, subtreeBlastRadius } from '$lib/utils/message-tree';
 	import { countTokens } from '$lib/tokenizer';

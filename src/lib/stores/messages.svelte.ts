@@ -20,7 +20,7 @@ import {
 import { chatCastStore } from './chatCast.svelte';
 import { resolveMacroValues, substitute } from '$lib/macros';
 import { buildLiveMacroContext } from '$lib/utils/live-macro-context';
-import { memoryStore } from '$lib/memory/store.svelte';
+import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { steeringStore } from './steering.svelte';
 import { steeringTargetForChat } from '$lib/types/steering';
 import type { LorebookTrigger } from '$lib/lorebook/types';
