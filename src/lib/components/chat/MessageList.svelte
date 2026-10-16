@@ -484,9 +484,6 @@
 				{#if sceneStarts.has(message.id)}
 					<button type="button" class="scene-marker" onclick={() => memoryStore.editScene(sceneStarts.get(message.id)!)}><Icon name="brain" class="w-3 h-3" />Summary · {sceneStarts.get(message.id)!.title}</button>
 				{/if}
-				{#if memoryStore.selection}
-					<button type="button" class="scene-pick" class:picked={selectedIds.has(message.id) || memoryStore.selection.startId === message.id} aria-pressed={selectedIds.has(message.id) || memoryStore.selection.startId === message.id} onclick={() => memoryStore.pickMessage(message.id)}>Select message {index + 1}</button>
-				{/if}
 					<MessageComponent
 						{message}
 						ordinal={index + 1}
@@ -496,6 +493,7 @@
 						isLast={index === messages.length - 1}
 						{allMessages}
 						archived={archivedIds.has(message.id)}
+						memorySelected={selectedIds.has(message.id)}
 						onNavigateBranch={handleNavigateBranch}
 						streamReplacement={replacingMessageId === message.id}
 						streamTail={continuingMessageId === message.id || replacingMessageId === message.id ? streamingContent : null}
@@ -533,8 +531,8 @@
 </div>
 
 <style>
-	.scene-marker,.scene-pick { display:flex; align-items:center; gap:.4rem; margin:.65rem 1rem; padding:.4rem .65rem; border:1px solid var(--color-border); border-radius:var(--radius-md); font-family:var(--font-ui); font-size:.75rem; color:var(--color-text-secondary); cursor:pointer; }
-	.scene-marker,.scene-pick.picked { color:var(--color-accent); border-color:var(--color-accent); }
+	.scene-marker { display:flex; align-items:center; gap:.4rem; margin:.65rem 1rem; padding:.4rem .65rem; border:1px solid var(--color-border); border-radius:var(--radius-md); font-family:var(--font-ui); font-size:.75rem; color:var(--color-text-secondary); cursor:pointer; }
+	.scene-marker { color:var(--color-accent); border-color:var(--color-accent); }
 
 	.message-list-wrap {
 		position: relative;

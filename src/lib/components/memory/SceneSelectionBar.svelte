@@ -5,7 +5,7 @@
 </script>
 {#if memoryStore.selection}
  <div class="scene-selection-bar" role="region" aria-label="Select scene">
-  <span>{count ? `${count} messages selected` : memoryStore.selection.startId ? 'Select the last message (or the same message for a single turn).' : 'Select the first message of the scene.'}</span>
+  <span>{count ? `${count} messages selected` : memoryStore.selection.startId ? 'Choose the last message with ↑ in its actions.' : memoryStore.selection.endId ? 'Choose the first message with ↓ in its actions.' : 'Mark the first message with ↓ and the last with ↑ in their actions.'}</span>
   {#if memoryStore.selectionError}<p role="alert">{memoryStore.selectionError}</p>{/if}
   <div><Button variant="ghost" size="sm" onclick={() => memoryStore.selection = null}>Cancel</Button><Button size="sm" disabled={!!memoryStore.selectionError || !memoryStore.selectedMessages.some((m) => !m.excludedFromPrompt)} onclick={() => memoryStore.summarizeSelection()}>Summarize</Button></div>
  </div>

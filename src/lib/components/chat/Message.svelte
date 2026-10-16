@@ -55,6 +55,7 @@
 		onNavigateBranch: (messageId: string) => void;
 		/** This message has been folded into chat memory (a "ghost": recalled, not sent verbatim). */
 		archived?: boolean;
+		memorySelected?: boolean;
 		/** Live continuation streaming into this turn (continue flow): the partial tail
 		 *  renders as part of the bubble; the stored row is only written when it completes. */
 		streamTail?: string | null;
@@ -73,6 +74,7 @@
 		allMessages,
 		onNavigateBranch,
 		archived = false,
+		memorySelected = false,
 		streamTail = null,
 		streamTailThinking = null,
 		streamReplacement = false
@@ -502,6 +504,7 @@
 	id="msg-{message.id}"
 	class="message-row group fade-in"
 	class:message-archived={!streamReplacement && (archived || message.excludedFromPrompt)}
+	class:message-memory-selected={memorySelected}
 	class:message-excluded={!streamReplacement && message.excludedFromPrompt}
 	class:message-editing={isEditing}
 	class:message-row-cursor={cursored}
@@ -658,12 +661,17 @@
 						<div class="message-toolbar">
 							<div
 								class="message-actions-slot"
-								class:message-actions-visible={showActions || cursored || showDeleteMenu}
+								class:message-actions-visible={showActions || cursored || showDeleteMenu || memoryStore.selection !== null}
 							>
 								<MessageActions
 									onEdit={handleEditClick}
 									onDelete={handleDeleteClick}
 									onCopy={handleCopy}
+									onMemoryStart={() => memoryStore.setBoundary('start', message.id)}
+									onMemoryEnd={() => memoryStore.setBoundary('end', message.id)}
+									memoryStart={memoryStore.selection?.chatId === message.chatId && memoryStore.selection.startId === message.id}
+									memoryEnd={memoryStore.selection?.chatId === message.chatId && memoryStore.selection.endId === message.id}
+									memoryDisabled={!memoryStore.loaded || memoryStore.saving}
 									onTogglePrompt={() => messageStore.setExcludedFromPrompt(message.id, !message.excludedFromPrompt)}
 									excludedFromPrompt={!!message.excludedFromPrompt}
 									onRegenerate={showRegenerate ? handleRegenerateClick : undefined}
@@ -834,6 +842,12 @@
 {/if}
 
 <style>
+	.message-memory-selected {
+		background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+		box-shadow: inset 2px 0 0 var(--color-accent);
+		border-radius: var(--radius-lg);
+	}
+
 	/* Everything shaped by Settings → Chat reads a --msg-* / --user-* var
 	   here; the fallback in each is the shipped default, so the transcript paints
 	   correctly before the theme store has stamped anything on <html>. */

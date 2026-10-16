@@ -7,6 +7,11 @@
 		onDelete: () => void;
 		onCopy: () => Promise<void>;
 		onTogglePrompt?: () => void;
+		onMemoryStart?: () => void;
+		onMemoryEnd?: () => void;
+		memoryStart?: boolean;
+		memoryEnd?: boolean;
+		memoryDisabled?: boolean;
 		excludedFromPrompt?: boolean;
 		onRegenerate?: () => void;
 		showRegenerate?: boolean;
@@ -29,6 +34,11 @@
 		onDelete,
 		onCopy,
 		onTogglePrompt,
+		onMemoryStart,
+		onMemoryEnd,
+		memoryStart = false,
+		memoryEnd = false,
+		memoryDisabled = false,
 		excludedFromPrompt = false,
 		onRegenerate,
 		showRegenerate = false,
@@ -91,6 +101,19 @@
 		>
 			<Icon name="refresh" class="w-3.5 h-3.5" strokeWidth={1.75} />
 			<span class="action-label">{regenerateLabel}</span>
+		</button>
+	{/if}
+
+	{#if onMemoryStart && onMemoryEnd}
+		<button type="button" class="action-btn" class:action-btn-active={memoryStart}
+			onclick={onMemoryStart} disabled={disabled || memoryDisabled}
+			aria-label="Start summary range" aria-pressed={memoryStart} title="Start summary here ↓">
+			<Icon name="chevronDown" class="w-3.5 h-3.5" strokeWidth={1.75} />
+		</button>
+		<button type="button" class="action-btn" class:action-btn-active={memoryEnd}
+			onclick={onMemoryEnd} disabled={disabled || memoryDisabled}
+			aria-label="End summary range" aria-pressed={memoryEnd} title="End summary here ↑">
+			<Icon name="chevronUp" class="w-3.5 h-3.5" strokeWidth={1.75} />
 		</button>
 	{/if}
 

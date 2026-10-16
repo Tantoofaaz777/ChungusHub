@@ -6,6 +6,7 @@ import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 import { personaEntryFor, toPromptCharacter } from '$lib/utils/chat-setup';
 import { expandSelfRefs } from '$lib/macros';
 import { EMPTY_IMPACT } from './branching';
+import { markSceneBoundary } from './scene-selection';
 import type { ChatCtx } from './store.svelte';
 import { captureScene, resolveScenes, scenePath, sceneSignature, type MemoryScene, type SceneSource } from '../../../shared/memory-scenes';
 
@@ -75,10 +76,12 @@ class SceneMemoryStore {
 		this.cancelDraft();
 		this.selection = { chatId: this.activeChatId, startId: null, endId: null, sceneId };
 	}
-	pickMessage(id: string) {
-		if (!this.selection) return;
-		if (!this.selection.startId || this.selection.endId) this.selection = { ...this.selection, startId: id, endId: null };
-		else this.selection = { ...this.selection, endId: id };
+	setBoundary(boundary: 'start' | 'end', id: string) {
+		if (!this.activeChatId || !this.loaded || this.saving || this.draft) return;
+		const selection = this.selection?.chatId === this.activeChatId ? this.selection : null;
+		const bounds = markSceneBoundary(this.path, selection, boundary, id);
+		if (!bounds) return;
+		this.selection = { ...selection, chatId: this.activeChatId, ...bounds };
 	}
 	async summarizeSelection() {
 		const range = this.selectedMessages, selection = this.selection;

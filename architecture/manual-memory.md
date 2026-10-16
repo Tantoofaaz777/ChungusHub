@@ -5,8 +5,10 @@ It no longer runs extraction/compaction after turns, and does not depend on lore
 keywords, a verbatim tail or the `{{memory}}` macro. The old pipeline and its stored tables
 remain for compatibility; its panel is unmounted and its store is no longer used by runtime consumers.
 
-1. Open Memory → New summary (or Chat actions → Summarize scene).
-2. Select the first and last messages. Select the same message twice for a single turn.
+1. Use ↓ (start) and ↑ (end) directly in each message’s actions. Either endpoint can be marked first.
+   Memory → New summary and Chat actions → Summarize scene also open this selection mode.
+2. Mark both boundaries on the same message for a single turn. Adjust either arrow to change the range;
+   crossing the other boundary clears it. The selected range is highlighted, with Summarize and Cancel above.
 3. Generate, review/edit, then Save summary. Cancel never changes the prompt.
 4. The saved summary replaces that contiguous range at its original chronological position.
    Original rows, attachments and branches remain saved and visible with the hidden-message dim.
