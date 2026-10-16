@@ -91,7 +91,6 @@
 	// leaves a verbatim duplicate sibling behind every time you back out.
 	let isEditing = $state(false);
 	let editorMode = $state<EditAction>('save_only');
-	let showActions = $state(false);
 	let showDeleteMenu = $state(false);
 	/** The delete the user has been asked to confirm, or null while the menu offers choices. */
 	let confirmingDelete = $state<DeleteAction | null>(null);
@@ -520,8 +519,6 @@
 	data-hint
 	onfocus={handleRowFocus}
 	onkeydown={handleRowKeydown}
-	onmouseenter={() => (showActions = true)}
-	onmouseleave={() => (showActions = false)}
 	aria-label="{message.role} message{streamReplacement ? ' (generating)' : message.excludedFromPrompt ? ' (excluded from prompt)' : archived ? ' (in memory)' : ''}"
 >
 	<div class="message-inner">
@@ -667,10 +664,7 @@
 				{#if !isEditing}
 					<div class="message-toolbar-shell {isUser ? 'message-toolbar-shell-user' : 'message-toolbar-shell-assistant'}">
 						<div class="message-toolbar">
-							<div
-								class="message-actions-slot"
-								class:message-actions-visible={showActions || cursored || showDeleteMenu || memoryStore.selection !== null}
-							>
+							<div class="message-actions-slot">
 								<MessageActions
 									onEdit={handleEditClick}
 									onDelete={handleDeleteClick}
@@ -789,10 +783,7 @@
 								{/if}
 							</div>
 							{#if showSwipes}
-								<div
-									class="message-pager-slot message-pager-always"
-									class:message-actions-visible={showActions || cursored || openingDialogOpen}
-								>
+								<div class="message-pager-slot">
 									<BranchNavigator current={siblingIndex} total={siblingCount} canGenerate={canGenerateSwipe} disabled={messageStore.busy} onNavigate={handleBranchNavigate} />
 									{#if canWriteOpening}
 										<div class="opening-trigger">
@@ -1169,15 +1160,10 @@
 		max-width: 100%;
 	}
 
-	/* Idle visibility of the action icons and the branch pager both come from
-	   Settings → Chat; hover and focus-within always reveal, so the tray
-	   stays reachable by keyboard and not just by mouse. */
+	/* Actions and swipes stay visible at every viewport size. */
 	.message-actions-slot {
 		min-width: 0;
 		max-width: 100%;
-		opacity: var(--msg-actions-idle-opacity, 0);
-		pointer-events: var(--msg-actions-idle-events, none);
-		transition: opacity 120ms ease;
 	}
 
 	.message-pager-slot {
@@ -1185,12 +1171,8 @@
 		flex-shrink: 0;
 		margin-left: auto;
 		gap: 0.25rem;
-		opacity: var(--msg-pager-idle-opacity, 1);
-		pointer-events: var(--msg-pager-idle-events, auto);
-		transition: opacity 120ms ease, filter 160ms ease;
+		transition: filter 160ms ease;
 	}
-
-	.message-pager-slot.message-pager-always { opacity: 1; pointer-events: auto; }
 
 	.opening-trigger {
 		display: inline-flex;
@@ -1245,13 +1227,6 @@
 		}
 	}
 
-	.message-actions-visible,
-	.message-actions-slot:focus-within,
-	.message-pager-slot:focus-within {
-		opacity: 1;
-		pointer-events: auto;
-	}
-
 	/* Keep DOM order for every role and chat style: actions first, swipes on the right.
 	   Only the action buttons scroll when space is tight; menus stay outside that scroller. */
 
@@ -1292,16 +1267,6 @@
 			padding-inline: min(0.86rem, var(--msg-pad-x, 0.98rem));
 		}
 
-	}
-
-	/* On touch the action icons and pager stay visible. Dimming uses the same strength
-	   at every width. "Hidden" actions still win, since that is a display rule. */
-	@media (hover: none) {
-		.message-actions-slot,
-		.message-pager-slot {
-			opacity: 1;
-			pointer-events: auto;
-		}
 	}
 
 	/* ===== Chat style: Flat =====
@@ -1405,8 +1370,8 @@
 	}
 
 	/* ===== Chat style: Manuscript =====
-	   Bare reading flow, with an optional compact portrait in the shared header.
-	   With portraits off, the original speaker label and prose stay unchanged. */
+	   Full-width cards with a small-caps speaker header and optional compact portrait.
+	   Fill, outline, shadow and padding use the shared card settings. */
 	:global([data-chat-style='manuscript']) .message-main-user {
 		flex-direction: row;
 	}
@@ -1420,36 +1385,9 @@
 		width: 100%;
 	}
 
-	/* No card, no clip: the bubble's rounded-corner overflow clipping would
-	   softly shave the speaker label sitting 0.2rem from the corner. */
-	:global([data-chat-style='manuscript']) .message-bubble {
-		background: transparent;
-		border-color: transparent;
-		box-shadow: none;
-		border-radius: 0;
-		overflow: visible;
-	}
-
+	:global([data-chat-style='manuscript']) .message-bubble,
 	:global([data-chat-style='manuscript']) .message-bubble-shell::before {
-		display: none;
-	}
-
-	:global([data-chat-style='manuscript']) .message-bubble-user,
-	:global([data-chat-style='manuscript']) .message-bubble-assistant {
-		background: transparent;
-	}
-
-	:global([data-chat-style='manuscript']) .message-content {
-		padding-left: 0.2rem;
-		padding-right: 0.2rem;
-	}
-
-	:global([data-chat-style='manuscript']) .message-thinking {
-		padding-left: 0.2rem;
-	}
-
-	:global([data-chat-style='manuscript']) .message-row {
-		padding-block: 0.3rem;
+		border-radius: var(--msg-radius-card, var(--radius-lg));
 	}
 
 	/* Left-packed line: footnotes hug the left edge, actions take the inner end. */
@@ -1472,9 +1410,8 @@
 	   own, which is what makes it work in every chat style at once and keeps the card's
 	   geometry identical whether or not the cursor is on it.
 
-	   It sits BELOW the manuscript block on purpose, same specificity and so source order
-	   decides: that block hides the ring outright, and a cursor written up beside the other
-	   ring rules would be invisible in the one style that draws no card. */
+	   The cursor treatment follows the style blocks so the outline keeps each style's
+	   card geometry, including Manuscript's full-width, evenly rounded card. */
 	.message-row-cursor .message-bubble-shell::before {
 		display: block;
 		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);

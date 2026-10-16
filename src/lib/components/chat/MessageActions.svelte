@@ -194,21 +194,19 @@
 		display: none;
 	}
 
-	/* Padding, gap and the word labels ride the Compact actions setting; the phone
-	   rule below sets the same properties later in source, so narrow screens stay
-	   icon-only whatever the setting says. */
+	/* Compact, icon-only actions at every viewport size. */
 	.action-btn {
 		flex-shrink: 0;
 		height: 1.6rem;
 		min-width: 1.6rem;
-		padding: var(--msg-action-pad, 0 0.5rem);
+		padding: 0 0.4rem;
 		border: 1px solid transparent;
 		border-radius: var(--radius-md);
 		background: transparent;
 		color: var(--color-text-secondary);
 		display: inline-flex;
 		align-items: center;
-		gap: var(--msg-action-gap, 0.3rem);
+		gap: 0;
 		font-family: var(--font-ui);
 		font-size: 0.68rem;
 		font-weight: 600;
@@ -241,20 +239,9 @@
 	}
 
 	.action-label {
-		display: var(--msg-action-label, inline);
+		display: none;
 		line-height: 1;
 		white-space: nowrap;
-	}
-
-	@media (max-width: 900px) {
-		.action-btn {
-			padding: 0 0.4rem;
-			gap: 0;
-		}
-
-		.action-label {
-			display: none;
-		}
 	}
 
 	/* Keep every touch target taller than desktop, including on a touch laptop. */
@@ -265,8 +252,7 @@
 		}
 	}
 
-	/* On a narrow touch screen the labels are hidden by the width rule above, so
-	   equal square buttons can align the icons without clipping desktop labels. */
+	/* Equal square targets keep the icons aligned on narrow touch screens. */
 	@media (pointer: coarse) and (max-width: 900px) {
 		.message-actions {
 			gap: 0.08rem;

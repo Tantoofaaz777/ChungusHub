@@ -144,13 +144,6 @@
 	--msg-shadow: 0 2px 12px rgb(0 0 0 / 24%);
 	--msg-row-gap: clamp(0.45rem, 0.36rem + 0.42vw, 0.75rem);
 	--msg-hidden-brightness: 0.6;
-	--msg-actions-idle-opacity: 0;
-	--msg-actions-idle-events: none;
-	--msg-action-label: inline;
-	--msg-action-pad: 0 0.5rem;
-	--msg-action-gap: 0.3rem;
-	--msg-pager-idle-opacity: 1;
-	--msg-pager-idle-events: auto;
 
 	--avatar-ratio: 2 / 3;
 	--avatar-radius: calc(var(--radius-xl) - 0.12rem);

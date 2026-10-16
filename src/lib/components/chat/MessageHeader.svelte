@@ -32,7 +32,12 @@
 		display: flex;
 		align-items: center;
 		gap: 0.65rem;
-		padding: 0.15rem 0.2rem 0.35rem;
+		padding: var(--msg-pad-top, 0.72rem) var(--msg-pad-x, 0.98rem) 0.35rem;
 		min-width: 0;
+	}
+	@media (max-width: 900px) {
+		.manuscript-header {
+			padding-inline: min(0.86rem, var(--msg-pad-x, 0.98rem));
+		}
 	}
 </style>

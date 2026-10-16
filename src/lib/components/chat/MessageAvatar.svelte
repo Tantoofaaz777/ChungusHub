@@ -126,27 +126,25 @@
 			color-mix(in srgb, var(--color-bg-secondary) 90%, transparent);
 	}
 
-	.avatar-ordinal {
-		margin-top: 0.28rem;
+	/* Match the token-count typography used by MessageMeta. */
+	.avatar-ordinal,
+	.avatar-duration {
 		text-align: center;
 		font-family: var(--font-ui);
-		font-size: 0.64rem;
+		font-size: 0.66rem;
 		font-weight: 600;
 		letter-spacing: 0.02em;
-		font-variant-numeric: tabular-nums;
+		font-variant-numeric: lining-nums tabular-nums;
 		color: var(--color-text-muted);
+		white-space: nowrap;
 	}
 
-	/* Sits under the ordinal (or alone when numbers are off / while streaming);
-	   lighter than #N so the badge stays the anchor of the little stack. */
+	.avatar-ordinal {
+		margin-top: 0.28rem;
+	}
+
 	.avatar-duration {
 		margin-top: 0.14rem;
-		text-align: center;
-		font-family: var(--font-ui);
-		font-size: 0.62rem;
-		letter-spacing: 0.02em;
-		font-variant-numeric: tabular-nums;
-		color: var(--color-text-muted);
 	}
 
 	/* Phones square every silhouette up to keep rows short, and only the radius follows

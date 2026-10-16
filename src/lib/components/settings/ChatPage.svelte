@@ -16,8 +16,8 @@
 	 * read. Nothing on this page touches a component directly.
 	 *
 	 * A control with nothing left to style is HIDDEN, not shown inert, the same rule
-	 * the chat-width slider follows on phones. Manuscript draws no card,
-	 * so the card shape and color settings drop out and a note says why. Message dimming also applies to
+	 * the chat-width slider follows on phones. Message cards apply to every style;
+	 * Manuscript keeps its full-width layout. Message dimming also applies to
 	 * manually excluded messages, independently of the Chat Memory engine.
 	 *
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
@@ -35,7 +35,6 @@
 	import { rangeReset } from '$lib/actions/rangeReset';
 	import { toggleRow } from '$lib/actions/toggleRow';
 	import type {
-		ActionVisibility,
 		AvatarShape,
 		BubbleBorder,
 		BubblePadding,
@@ -43,9 +42,7 @@
 		ChatStyle,
 		ClockFormat,
 		MessageSpacing,
-		PagerVisibility,
 		ProseColorSource,
-		SpeakerLabel,
 		TimestampFormat
 	} from '$lib/types/theme';
 
@@ -86,7 +83,7 @@
 		{
 			value: 'manuscript',
 			label: 'Manuscript',
-			hint: 'Prose like a book page, with optional speaker portraits.'
+			hint: 'Full-width cards, small-caps speakers and optional compact portraits.'
 		}
 	];
 
@@ -118,21 +115,6 @@
 		{ value: 'portrait', label: 'Portrait', title: 'Tall 2:3 frame' },
 		{ value: 'square', label: 'Square' },
 		{ value: 'circle', label: 'Circle' }
-	];
-
-	const SPEAKER_LABELS = [
-		{ value: 'pill', label: 'Pill', title: 'An outlined chip around the name' },
-		{ value: 'plain', label: 'Plain', title: 'Just the name, no chrome' }
-	];
-
-	const ACTION_OPTIONS = [
-		{ value: 'hover', label: 'On hover' },
-		{ value: 'always', label: 'Always' }
-	];
-
-	const PAGER_OPTIONS = [
-		{ value: 'always', label: 'Always' },
-		{ value: 'hover', label: 'On hover' }
 	];
 
 	const TIMESTAMP_FORMATS = [
@@ -420,10 +402,12 @@
 								</span>
 							</span>
 						{:else}
-							<span class="sp-line sp-name"></span>
-							<span class="sp-line"></span>
-							<span class="sp-line"></span>
-							<span class="sp-line sp-short"></span>
+							<span class="sp-manuscript-card">
+								<span class="sp-line sp-name"></span>
+								<span class="sp-line"></span>
+								<span class="sp-line"></span>
+								<span class="sp-line sp-short"></span>
+							</span>
 						{/if}
 					</span>
 					<span class="style-name">{style.label}</span>
@@ -433,195 +417,189 @@
 		</div>
 	</section>
 
-	{#if isManuscript}
-		<p class="style-note">
-			Manuscript draws no cards, so card shape and color settings are hidden until you pick another style.
-		</p>
-	{:else}
-		<section class="card" data-setting="message-shape">
-			<div class="card-head">
-				<span class="card-title">Message Shape</span>
-				<InfoTip text="The geometry of a message card, before any color lands on it." />
+	<section class="card" data-setting="message-shape">
+		<div class="card-head">
+			<span class="card-title">Message Shape</span>
+			<InfoTip text="The geometry of a message card, before any color lands on it." />
+		</div>
+
+		<div class="card-body">
+			<div class="slider-block">
+				<div class="slider-top">
+					<label for="bubble-radius" class="slider-label">Card corners</label>
+					<span class="slider-value">{pct(appearance.bubbleRadius)}</span>
+				</div>
+				<input
+					id="bubble-radius"
+					type="range"
+					class="slider"
+					min="0"
+					max="1.6"
+					step="0.05"
+					value={appearance.bubbleRadius}
+					oninput={(e) => themeStore.update({ bubbleRadius: parseFloat(e.currentTarget.value) })}
+					use:rangeReset={{
+						defaultValue: DEFAULT_APPEARANCE.bubbleRadius,
+						apply: (v) => themeStore.update({ bubbleRadius: v })
+					}}
+				/>
 			</div>
 
-			<div class="card-body">
+			<div class="sub-block">
+				<span class="section-label">Inner padding</span>
+				<PillRow
+					options={PADDING_OPTIONS}
+					current={appearance.bubblePadding}
+					onpick={(v) => themeStore.update({ bubblePadding: v as BubblePadding })}
+					label="Inner padding"
+				/>
+			</div>
+
+			<div class="sub-block">
+				<span class="section-label">Outline</span>
+				<PillRow
+					options={BORDER_OPTIONS}
+					current={appearance.bubbleBorder}
+					onpick={(v) => themeStore.update({ bubbleBorder: v as BubbleBorder })}
+					label="Outline"
+				/>
+			</div>
+
+			<div class="sub-block">
+				<span class="section-label">Shadow</span>
+				<PillRow
+					options={SHADOW_OPTIONS}
+					current={appearance.bubbleShadow}
+					onpick={(v) => themeStore.update({ bubbleShadow: v as BubbleShadow })}
+					label="Shadow"
+				/>
+			</div>
+
+			<!-- Lives here rather than under Message Colors: it decides whether there
+			     is a card at all, which is shape's business, and the outline and
+			     shadow above it fade along with the fill. -->
+			<div class="slider-block">
+				<div class="slider-top">
+					<label for="bubble-opacity" class="slider-label">Card opacity</label>
+					<span class="slider-value">{pct(appearance.bubbleOpacity)}</span>
+				</div>
+				<input
+					id="bubble-opacity"
+					type="range"
+					class="slider"
+					min="0"
+					max="1"
+					step="0.01"
+					value={appearance.bubbleOpacity}
+					oninput={(e) => themeStore.update({ bubbleOpacity: parseFloat(e.currentTarget.value) })}
+					use:rangeReset={{
+						defaultValue: DEFAULT_APPEARANCE.bubbleOpacity,
+						apply: (v) => themeStore.update({ bubbleOpacity: v })
+					}}
+				/>
+				<p class="field-hint">
+					Fill, outline and shadow fade together, so the whole card dissolves at zero
+					and comes back as you set it. Rides on top of the Glass setting.
+				</p>
+			</div>
+
+			<!-- Portraits cards are always full width by design. -->
+			{#if bubbleLike}
 				<div class="slider-block">
 					<div class="slider-top">
-						<label for="bubble-radius" class="slider-label">Card corners</label>
-						<span class="slider-value">{pct(appearance.bubbleRadius)}</span>
+						<label for="bubble-width" class="slider-label">Card width</label>
+						<span class="slider-value">{pct(appearance.bubbleWidth)}</span>
 					</div>
 					<input
-						id="bubble-radius"
+						id="bubble-width"
 						type="range"
 						class="slider"
-						min="0"
-						max="1.6"
-						step="0.05"
-						value={appearance.bubbleRadius}
-						oninput={(e) => themeStore.update({ bubbleRadius: parseFloat(e.currentTarget.value) })}
-						use:rangeReset={{
-							defaultValue: DEFAULT_APPEARANCE.bubbleRadius,
-							apply: (v) => themeStore.update({ bubbleRadius: v })
-						}}
-					/>
-				</div>
-
-				<div class="sub-block">
-					<span class="section-label">Inner padding</span>
-					<PillRow
-						options={PADDING_OPTIONS}
-						current={appearance.bubblePadding}
-						onpick={(v) => themeStore.update({ bubblePadding: v as BubblePadding })}
-						label="Inner padding"
-					/>
-				</div>
-
-				<div class="sub-block">
-					<span class="section-label">Outline</span>
-					<PillRow
-						options={BORDER_OPTIONS}
-						current={appearance.bubbleBorder}
-						onpick={(v) => themeStore.update({ bubbleBorder: v as BubbleBorder })}
-						label="Outline"
-					/>
-				</div>
-
-				<div class="sub-block">
-					<span class="section-label">Shadow</span>
-					<PillRow
-						options={SHADOW_OPTIONS}
-						current={appearance.bubbleShadow}
-						onpick={(v) => themeStore.update({ bubbleShadow: v as BubbleShadow })}
-						label="Shadow"
-					/>
-				</div>
-
-				<!-- Lives here rather than under Message Colors: it decides whether there
-				     is a card at all, which is shape's business, and the outline and
-				     shadow above it fade along with the fill. -->
-				<div class="slider-block">
-					<div class="slider-top">
-						<label for="bubble-opacity" class="slider-label">Card opacity</label>
-						<span class="slider-value">{pct(appearance.bubbleOpacity)}</span>
-					</div>
-					<input
-						id="bubble-opacity"
-						type="range"
-						class="slider"
-						min="0"
+						min="0.55"
 						max="1"
 						step="0.01"
-						value={appearance.bubbleOpacity}
-						oninput={(e) => themeStore.update({ bubbleOpacity: parseFloat(e.currentTarget.value) })}
+						value={appearance.bubbleWidth}
+						oninput={(e) => themeStore.update({ bubbleWidth: parseFloat(e.currentTarget.value) })}
 						use:rangeReset={{
-							defaultValue: DEFAULT_APPEARANCE.bubbleOpacity,
-							apply: (v) => themeStore.update({ bubbleOpacity: v })
+							defaultValue: DEFAULT_APPEARANCE.bubbleWidth,
+							apply: (v) => themeStore.update({ bubbleWidth: v })
 						}}
 					/>
-					<p class="field-hint">
-						Fill, outline and shadow fade together, so the whole card dissolves at zero
-						and comes back as you set it. Rides on top of the Glass setting.
-					</p>
 				</div>
+			{/if}
+		</div>
+	</section>
 
-				<!-- Portraits cards are always full width by design. -->
-				{#if bubbleLike}
-					<div class="slider-block">
-						<div class="slider-top">
-							<label for="bubble-width" class="slider-label">Card width</label>
-							<span class="slider-value">{pct(appearance.bubbleWidth)}</span>
-						</div>
-						<input
-							id="bubble-width"
-							type="range"
-							class="slider"
-							min="0.55"
-							max="1"
-							step="0.01"
-							value={appearance.bubbleWidth}
-							oninput={(e) => themeStore.update({ bubbleWidth: parseFloat(e.currentTarget.value) })}
-							use:rangeReset={{
-								defaultValue: DEFAULT_APPEARANCE.bubbleWidth,
-								apply: (v) => themeStore.update({ bubbleWidth: v })
-							}}
+	<section class="card" data-setting="message-colors">
+		<div class="card-head">
+			<span class="card-title">Message Colors</span>
+			<InfoTip text="Tints mix into the palette's own color instead of replacing it, so a theme switch carries them along and text never lands on an unreadable card." />
+		</div>
+
+		<div class="card-body">
+			<div class="slider-block">
+				<div class="slider-top">
+					<label for="user-tint" class="slider-label">Your message tint</label>
+					<!-- Swatch rides the right rail beside the amount, not the end of the
+					     label: label lengths differ, so there it landed at a different x on
+					     every row and read as something dropped in the gap. Here the two
+					     rows line up and the pair says "this color, this much". -->
+					<span class="slider-trailing">
+						<ColorSwatchPicker
+							value={appearance.userBubbleTint}
+							oninput={(hex) => themeStore.update({ userBubbleTint: hex })}
+							label="Your message tint color"
 						/>
-					</div>
-				{/if}
-			</div>
-		</section>
-
-		<section class="card" data-setting="message-colors">
-			<div class="card-head">
-				<span class="card-title">Message Colors</span>
-				<InfoTip text="Tints mix into the palette's own color instead of replacing it, so a theme switch carries them along and text never lands on an unreadable card." />
-			</div>
-
-			<div class="card-body">
-				<div class="slider-block">
-					<div class="slider-top">
-						<label for="user-tint" class="slider-label">Your message tint</label>
-						<!-- Swatch rides the right rail beside the amount, not the end of the
-						     label: label lengths differ, so there it landed at a different x on
-						     every row and read as something dropped in the gap. Here the two
-						     rows line up and the pair says "this color, this much". -->
-						<span class="slider-trailing">
-							<ColorSwatchPicker
-								value={appearance.userBubbleTint}
-								oninput={(hex) => themeStore.update({ userBubbleTint: hex })}
-								label="Your message tint color"
-							/>
-							<span class="slider-value">{pct(appearance.userBubbleTintStrength)}</span>
-						</span>
-					</div>
-					<input
-						id="user-tint"
-						type="range"
-						class="slider"
-						min="0"
-						max="1"
-						step="0.01"
-						value={appearance.userBubbleTintStrength}
-						oninput={(e) =>
-							themeStore.update({ userBubbleTintStrength: parseFloat(e.currentTarget.value) })}
-						use:rangeReset={{
-							defaultValue: DEFAULT_APPEARANCE.userBubbleTintStrength,
-							apply: (v) => themeStore.update({ userBubbleTintStrength: v })
-						}}
-					/>
+						<span class="slider-value">{pct(appearance.userBubbleTintStrength)}</span>
+					</span>
 				</div>
-
-				<div class="slider-block">
-					<div class="slider-top">
-						<label for="assistant-tint" class="slider-label">Character message tint</label>
-						<span class="slider-trailing">
-							<ColorSwatchPicker
-								value={appearance.assistantBubbleTint}
-								oninput={(hex) => themeStore.update({ assistantBubbleTint: hex })}
-								label="Character message tint color"
-							/>
-							<span class="slider-value">{pct(appearance.assistantBubbleTintStrength)}</span>
-						</span>
-					</div>
-					<input
-						id="assistant-tint"
-						type="range"
-						class="slider"
-						min="0"
-						max="1"
-						step="0.01"
-						value={appearance.assistantBubbleTintStrength}
-						oninput={(e) =>
-							themeStore.update({ assistantBubbleTintStrength: parseFloat(e.currentTarget.value) })}
-						use:rangeReset={{
-							defaultValue: DEFAULT_APPEARANCE.assistantBubbleTintStrength,
-							apply: (v) => themeStore.update({ assistantBubbleTintStrength: v })
-						}}
-					/>
-				</div>
-
+				<input
+					id="user-tint"
+					type="range"
+					class="slider"
+					min="0"
+					max="1"
+					step="0.01"
+					value={appearance.userBubbleTintStrength}
+					oninput={(e) =>
+						themeStore.update({ userBubbleTintStrength: parseFloat(e.currentTarget.value) })}
+					use:rangeReset={{
+						defaultValue: DEFAULT_APPEARANCE.userBubbleTintStrength,
+						apply: (v) => themeStore.update({ userBubbleTintStrength: v })
+					}}
+				/>
 			</div>
-		</section>
-	{/if}
+
+			<div class="slider-block">
+				<div class="slider-top">
+					<label for="assistant-tint" class="slider-label">Character message tint</label>
+					<span class="slider-trailing">
+						<ColorSwatchPicker
+							value={appearance.assistantBubbleTint}
+							oninput={(hex) => themeStore.update({ assistantBubbleTint: hex })}
+							label="Character message tint color"
+						/>
+						<span class="slider-value">{pct(appearance.assistantBubbleTintStrength)}</span>
+					</span>
+				</div>
+				<input
+					id="assistant-tint"
+					type="range"
+					class="slider"
+					min="0"
+					max="1"
+					step="0.01"
+					value={appearance.assistantBubbleTintStrength}
+					oninput={(e) =>
+						themeStore.update({ assistantBubbleTintStrength: parseFloat(e.currentTarget.value) })}
+					use:rangeReset={{
+						defaultValue: DEFAULT_APPEARANCE.assistantBubbleTintStrength,
+						apply: (v) => themeStore.update({ assistantBubbleTintStrength: v })
+					}}
+				/>
+			</div>
+
+		</div>
+	</section>
 
 	<section class="card" data-setting="message-avatars">
 		<div class="card-head">
@@ -777,8 +755,8 @@
 
 	<section class="card" data-setting="message-chrome">
 		<div class="card-head">
-			<span class="card-title">Speaker &amp; Controls</span>
-			<InfoTip text="The name above a turn and the controls under it. Manuscript uses its own speaker header." />
+			<span class="card-title">Speaker &amp; Visibility</span>
+			<InfoTip text="Show the speaker name and dim messages excluded from the prompt." />
 		</div>
 
 		<div class="card-body">
@@ -791,82 +769,30 @@
 				/>
 			</div>
 
-			{#if appearance.showSpeakerName}
-				<div class="sub-block">
-					<span class="section-label">Name style</span>
-					<PillRow
-						options={SPEAKER_LABELS}
-						current={appearance.speakerLabel}
-						onpick={(v) => themeStore.update({ speakerLabel: v as SpeakerLabel })}
-						label="Name style"
-					/>
+			<div class="slider-block">
+				<div class="slider-top">
+					<label for="hidden-message-dim" class="slider-label">Hidden message dim</label>
+					<span class="slider-value">{pct(1 - appearance.archivedOpacity)}</span>
 				</div>
-
-				<!-- Casing is its own switch, not a third pill: it combines with either
-				     chrome, and an enum made "pill in small caps" unreachable. -->
-				<div class="toggle-row" use:toggleRow>
-					<span class="slider-label">Small caps</span>
-					<Toggle
-						checked={appearance.speakerCaps}
-						label="Small caps"
-						onchange={(on) => themeStore.update({ speakerCaps: on })}
-					/>
-				</div>
-			{/if}
-
-			<div class="sub-block">
-				<span class="section-label">Message actions</span>
-				<PillRow
-					options={ACTION_OPTIONS}
-					current={appearance.messageActions}
-					onpick={(v) => themeStore.update({ messageActions: v as ActionVisibility })}
-					label="Message actions"
+				<input
+					id="hidden-message-dim"
+					type="range"
+					class="slider"
+					min="0"
+					max="1"
+					step="0.01"
+					value={1 - appearance.archivedOpacity}
+					oninput={(e) => themeStore.update({ archivedOpacity: 1 - parseFloat(e.currentTarget.value) })}
+					use:rangeReset={{
+						defaultValue: 1 - DEFAULT_APPEARANCE.archivedOpacity,
+						apply: (v) => themeStore.update({ archivedOpacity: 1 - v })
+					}}
 				/>
+				<p class="field-hint">
+					Darkens messages excluded from the prompt or folded into chat memory.
+					Includes images, action buttons and swipes. Higher values make them darker.
+				</p>
 			</div>
-
-			<div class="toggle-row" use:toggleRow>
-				<span class="slider-label">Compact actions</span>
-				<Toggle
-					checked={appearance.compactActions}
-					label="Compact actions"
-					onchange={(on) => themeStore.update({ compactActions: on })}
-				/>
-			</div>
-
-			<div class="sub-block">
-				<span class="section-label">Branch arrows</span>
-				<PillRow
-					options={PAGER_OPTIONS}
-					current={appearance.branchPager}
-					onpick={(v) => themeStore.update({ branchPager: v as PagerVisibility })}
-					label="Branch arrows"
-				/>
-			</div>
-
-				<div class="slider-block">
-					<div class="slider-top">
-						<label for="hidden-message-dim" class="slider-label">Hidden message dim</label>
-						<span class="slider-value">{pct(1 - appearance.archivedOpacity)}</span>
-					</div>
-					<input
-						id="hidden-message-dim"
-						type="range"
-						class="slider"
-						min="0"
-						max="1"
-						step="0.01"
-						value={1 - appearance.archivedOpacity}
-						oninput={(e) => themeStore.update({ archivedOpacity: 1 - parseFloat(e.currentTarget.value) })}
-						use:rangeReset={{
-							defaultValue: 1 - DEFAULT_APPEARANCE.archivedOpacity,
-							apply: (v) => themeStore.update({ archivedOpacity: 1 - v })
-						}}
-					/>
-					<p class="field-hint">
-						Darkens messages excluded from the prompt or folded into chat memory.
-						Includes images, action buttons and swipes. Higher values make them darker.
-					</p>
-				</div>
 		</div>
 	</section>
 
@@ -1116,17 +1042,6 @@
 		color: var(--color-text-muted);
 	}
 
-	.style-note {
-		margin: 0;
-		padding: 0.7rem 0.85rem;
-		border-radius: var(--radius-md);
-		border: 1px dashed color-mix(in srgb, var(--color-border) 70%, transparent);
-		background: color-mix(in srgb, var(--color-bg-tertiary) 35%, transparent);
-		font-family: var(--font-ui);
-		font-size: 0.72rem;
-		line-height: 1.5;
-		color: var(--color-text-muted);
-	}
 
 	/* --- Chat style cards --- */
 	.style-grid {
@@ -1197,6 +1112,16 @@
 		display: flex;
 		gap: 0.32rem;
 		align-items: stretch;
+	}
+
+	.sp-manuscript-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.22rem;
+		padding: 0.35rem;
+		border: 1px solid var(--color-border-subtle);
+		border-radius: var(--radius-md);
+		background: var(--color-assistant-bubble);
 	}
 
 	.sp-portrait {

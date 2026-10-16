@@ -145,7 +145,7 @@
 				title="Which lorebook entries this turn was built with"
 			>
 				<Icon name="bookOpen" class="w-3 h-3" />
-				<span>{loreCount}</span>
+				<span class="message-lore-count">{loreCount}</span>
 			</button>
 		{/if}
 
@@ -180,39 +180,27 @@
 		justify-content: flex-start;
 	}
 
+	/* Speaker names are always plain and set in small caps. */
 	.message-role {
 		display: inline-flex;
 		align-items: center;
-		height: 1.36rem;
-		padding: 0 0.58rem;
-		border-radius: var(--radius-full);
-		border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-		background: color-mix(in srgb, var(--color-bg-secondary) 65%, transparent);
+		height: auto;
+		padding: 0;
+		border: 0;
+		background: transparent;
 		color: var(--color-text-secondary);
-		font-size: 0.7rem;
-		font-weight: 650;
-		letter-spacing: 0.02em;
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.13em;
+		text-transform: uppercase;
 	}
 
 	.message-role-user {
-		color: color-mix(in srgb, var(--color-accent) 82%, var(--color-text-primary) 18%);
-		border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border) 72%);
-		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		color: color-mix(in srgb, var(--color-accent) 78%, var(--color-text-muted) 22%);
 	}
 
-	.message-date {
-		font-size: 0.68rem;
-		color: var(--color-text-muted);
-		letter-spacing: 0.01em;
-		white-space: nowrap;
-	}
-
-	/* The portrait's #N badge, relocated here when portraits are off. */
+	.message-date,
 	.message-ordinal {
-		font-size: 0.66rem;
-		font-weight: 600;
-		letter-spacing: 0.02em;
-		font-variant-numeric: tabular-nums;
 		color: var(--color-text-muted);
 	}
 
@@ -231,11 +219,16 @@
 		color: var(--color-text-secondary);
 	}
 
-	.message-generation-count {
+	/* One type treatment for all numeric message details. Lining digits keep scan
+	   counts such as 9 on the same baseline as the other readouts. */
+	.message-date,
+	.message-ordinal,
+	.message-generation-count,
+	.message-lore-count {
 		font-size: 0.66rem;
 		font-weight: 600;
 		letter-spacing: 0.02em;
-		font-variant-numeric: tabular-nums;
+		font-variant-numeric: lining-nums tabular-nums;
 		white-space: nowrap;
 	}
 
@@ -272,12 +265,15 @@
 		border: 1px solid var(--color-border-subtle);
 		background: transparent;
 		color: var(--color-text-muted);
-		font-size: 0.66rem;
-		font-weight: 650;
-		font-variant-numeric: tabular-nums;
-		line-height: 1.4;
+		font-family: var(--font-ui);
+		line-height: 1;
 		cursor: pointer;
 		transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+	}
+
+	.message-lore-count {
+		display: block;
+		line-height: 1;
 	}
 
 	.message-lore-tag:hover {
@@ -320,36 +316,6 @@
 		}
 	}
 
-	/* Name style (Settings → Chat → Speaker & Controls). Chrome and casing are
-	   two INDEPENDENT attributes, so all four combinations are reachable: a pill in
-	   small caps is a real thing people want, and folding casing into the chrome enum
-	   made it unreachable. Deliberately placed BEFORE the manuscript block: those
-	   selectors carry the same specificity, so source order lets Manuscript keep its
-	   own label, since a pill would contradict a style that draws no chrome at all. */
-	:global([data-speaker-label='plain']) .message-role {
-		height: auto;
-		padding: 0;
-		border: 0;
-		background: transparent;
-	}
-
-	:global([data-speaker-label='plain']) .message-role-user {
-		color: color-mix(in srgb, var(--color-accent) 78%, var(--color-text-muted) 22%);
-	}
-
-	:global([data-speaker-caps='on']) .message-role {
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.13em;
-		text-transform: uppercase;
-	}
-
-	/* Letter-spacing trails after the last glyph, which reads as a lopsided chip;
-	   give the pill's right edge the same slack back. */
-	:global([data-speaker-label='pill'][data-speaker-caps='on']) .message-role {
-		padding-right: calc(0.58rem + 0.13em);
-	}
-
 	/* Chat style: Flat. Bubbles' header, with the user's row un-mirrored so both
 	   speakers read left-to-right. */
 	:global([data-chat-style='flat']) .message-meta-user {
@@ -357,7 +323,7 @@
 		justify-content: flex-start;
 	}
 
-	/* Chat style: Portraits. Same header as Bubbles (pill and all), just
+	/* Chat style: Portraits. Same plain header as Bubbles, just
 	   left-aligned for both roles and no divider. */
 	:global([data-chat-style='portrait']) .message-meta {
 		flex-direction: row;
@@ -368,7 +334,6 @@
 	:global([data-chat-style='manuscript']) .message-meta {
 		flex-direction: row;
 		justify-content: flex-start;
-		padding: 0.15rem 0.2rem 0;
 	}
 
 	:global([data-chat-style='manuscript']) .message-role {
@@ -420,10 +385,6 @@
 	:global([data-chat-style='manuscript']) .message-meta-stacked .message-role {
 		order: 1;
 		max-width: 100%;
-		font-size: 0.85rem;
-		letter-spacing: normal;
-		text-transform: none;
-		color: var(--color-text-primary);
 		overflow-wrap: anywhere;
 	}
 

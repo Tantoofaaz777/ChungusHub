@@ -16,7 +16,6 @@ import type {
 	AppearanceScope,
 	AppearanceState,
 	AccentDef,
-	ActionVisibility,
 	AvatarShape,
 	BubbleBorder,
 	BubblePadding,
@@ -27,11 +26,9 @@ import type {
 	GlassLevel,
 	MessageSpacing,
 	MotionLevel,
-	PagerVisibility,
 	PaletteDef,
 	PaletteMode,
 	ProseColorSource,
-	SpeakerLabel,
 	TimestampFormat
 } from '$lib/types/theme';
 import {
@@ -298,15 +295,6 @@ function normalize(raw: Partial<AppearanceState> | null, known: PaletteDef[]): A
 		showReasoningTokenCount: bool(raw?.showReasoningTokenCount, d.showReasoningTokenCount),
 		showGenerationTime: bool(raw?.showGenerationTime, d.showGenerationTime),
 		showSpeakerName: bool(raw?.showSpeakerName, d.showSpeakerName),
-		speakerLabel: oneOf<SpeakerLabel>(raw?.speakerLabel, ['pill', 'plain'], d.speakerLabel),
-		speakerCaps: bool(raw?.speakerCaps, d.speakerCaps),
-		messageActions: oneOf<ActionVisibility>(
-			raw?.messageActions,
-			['hover', 'always'],
-			d.messageActions
-		),
-		compactActions: bool(raw?.compactActions, d.compactActions),
-		branchPager: oneOf<PagerVisibility>(raw?.branchPager, ['always', 'hover'], d.branchPager),
 		glass: oneOf<GlassLevel>(raw?.glass, ['off', 'subtle', 'full'], d.glass),
 		motion: oneOf<MotionLevel>(raw?.motion, ['full', 'reduced'], d.motion),
 		shadeOpacity: clamp(raw?.shadeOpacity, 0, 1, d.shadeOpacity)
@@ -771,13 +759,6 @@ class ThemeStore {
 			'--user-bubble-width': String(a.bubbleWidth),
 			'--msg-row-gap': MESSAGE_SPACING[a.messageSpacing],
 			'--msg-hidden-brightness': String(a.archivedOpacity),
-			'--msg-actions-idle-opacity': a.messageActions === 'always' ? '1' : '0',
-			'--msg-actions-idle-events': a.messageActions === 'always' ? 'auto' : 'none',
-			'--msg-action-label': a.compactActions ? 'none' : 'inline',
-			'--msg-action-pad': a.compactActions ? '0 0.4rem' : '0 0.5rem',
-			'--msg-action-gap': a.compactActions ? '0' : '0.3rem',
-			'--msg-pager-idle-opacity': a.branchPager === 'always' ? '1' : '0',
-			'--msg-pager-idle-events': a.branchPager === 'always' ? 'auto' : 'none',
 
 			'--avatar-ratio': avatar.ratio,
 			'--avatar-radius': avatar.radius,
@@ -796,21 +777,13 @@ class ThemeStore {
 			'--prose-shadow': proseShadow
 		};
 
-		// Attributes rather than vars, for two different reasons. `data-speaker-label`
-		// and `-caps` each swing half a dozen properties, so one selector per state beats
-		// a dozen vars, and they are two attributes because chrome and casing are two
-		// combinable choices. The six story faces swing one property each and are
-		// attributes because an attribute can declare NOTHING: a var has to spell its
-		// neutral answer out, and `font-style: normal` on strong text cancels the emphasis
-		// it sits inside, while `***word***` is one run wearing both accents. The base
-		// rules in app.css ARE the shipped faces; each attribute states only its departure.
+		// Story-face attributes state only departures from the shipped prose styles,
+		// so nested emphasis is preserved instead of forcing a neutral value.
 		const attrs: Record<string, string> = {
 			'data-theme': p.id,
 			'data-mode': p.mode,
 			'data-motion': a.motion,
 			'data-chat-style': a.chatStyle,
-			'data-speaker-label': a.speakerLabel,
-			'data-speaker-caps': a.speakerCaps ? 'on' : 'off',
 			'data-quote-bold': a.quoteBold ? 'on' : 'off',
 			'data-quote-italic': a.quoteItalic ? 'on' : 'off',
 			'data-em-bold': a.emphasisBold ? 'on' : 'off',

@@ -139,7 +139,7 @@
 	   and the turn it becomes must be indistinguishable (coupling in
 	   architecture/chat-sessions.md). */
 	.stream-row {
-		padding: var(--msg-row-gap, clamp(0.55rem, 0.43rem + 0.58vw, 1rem))
+		padding: var(--msg-row-gap, clamp(0.45rem, 0.36rem + 0.42vw, 0.75rem))
 			clamp(0.55rem, 0.4rem + 0.5vw, 0.95rem);
 	}
 
@@ -288,10 +288,6 @@
 		border-top-left-radius: var(--msg-radius-card, var(--radius-lg));
 	}
 
-	:global([data-chat-style='manuscript']) .stream-bubble-shell::before {
-		display: none;
-	}
-
 	/* Same bubble-grade opacity as the portrait cards in Message.svelte; same
 	   overflow: visible too, since sticky is inert inside any clipping ancestor. */
 	:global([data-chat-style='portrait']) .stream-bubble {
@@ -307,22 +303,9 @@
 		min-width: 0;
 	}
 
-	/* Same as Message.svelte: kill the invisible card's corner clipping. */
-	:global([data-chat-style='manuscript']) .stream-bubble {
-		background: transparent;
-		border-color: transparent;
-		box-shadow: none;
-		border-radius: 0;
-		overflow: visible;
-	}
-
-	:global([data-chat-style='manuscript']) .stream-content {
-		padding-left: 0.2rem;
-		padding-right: 0.2rem;
-	}
-
-	:global([data-chat-style='manuscript']) .stream-thinking,
-	:global([data-chat-style='manuscript']) .stream-tokens-row {
-		padding-left: 0.2rem;
+	/* Same full-width card and shared appearance settings as a settled manuscript turn. */
+	:global([data-chat-style='manuscript']) .stream-bubble,
+	:global([data-chat-style='manuscript']) .stream-bubble-shell::before {
+		border-radius: var(--msg-radius-card, var(--radius-lg));
 	}
 </style>

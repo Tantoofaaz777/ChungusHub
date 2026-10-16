@@ -66,7 +66,7 @@ export type GlassLevel = 'off' | 'subtle' | 'full';
 export type MotionLevel = 'full' | 'reduced';
 /**
  * How chat turns render: cozy bubbles, the same bubbles with both speakers down
- * the left (`flat`), forum-style portrait cards, or bare manuscript prose.
+ * the left (`flat`), forum-style portrait cards, or full-width manuscript cards.
  * `flat` shares every card knob with `bubbles`: it only un-mirrors the user turn.
  */
 export type ChatStyle = 'bubbles' | 'flat' | 'portrait' | 'manuscript';
@@ -80,11 +80,6 @@ export type BubbleShadow = 'none' | 'soft' | 'lifted';
 export type MessageSpacing = 'compact' | 'cozy' | 'roomy';
 /** Portrait frame silhouette. Circle forces a square ratio. */
 export type AvatarShape = 'portrait' | 'square' | 'circle';
-/** Chrome around the speaker's name. Casing is a separate, orthogonal knob
- *  (`speakerCaps`) so an outlined chip can also be set in small caps. */
-export type SpeakerLabel = 'pill' | 'plain';
-export type ActionVisibility = 'hover' | 'always';
-export type PagerVisibility = 'always' | 'hover';
 /** Where a prose accent color comes from. `off` leaves the run the color of the
  *  prose around it (the markup still renders, it just stops being tinted), `default`
  *  keeps the shipped derivation, `accent` follows the theme accent live, `custom` is
@@ -129,8 +124,8 @@ export interface AppearanceState {
 	chatWidth: number;
 	chatStyle: ChatStyle;
 
-	/* --- Message card shape. Manuscript draws no card, so these are inert there;
-	   `bubbleWidth` is Bubbles-only (Portraits cards are always full width). --- */
+	/* --- Message card shape. All styles share these settings; `bubbleWidth` applies
+	   to Bubbles and Flat, while Portraits and Manuscript stay full width. --- */
 	/** Multiplier over the message card's own corner radius (1 = default). */
 	bubbleRadius: number;
 	bubblePadding: BubblePadding;
@@ -178,7 +173,7 @@ export interface AppearanceState {
 	archivedOpacity: number;
 
 	/* --- Portraits. Shape is Bubbles-only: the Portraits chat style owns its
-	   in-card 2:3 frame, and Manuscript draws no portrait at all. --- */
+	   in-card 2:3 frame, while Manuscript uses a compact portrait in its header. --- */
 	showAvatars: boolean;
 	avatarShape: AvatarShape;
 	/** Multiplier over the portrait frame's width (1 = default). */
@@ -200,14 +195,6 @@ export interface AppearanceState {
 	/** Show how long each reply took to generate: live while streaming, then locked to the turn. */
 	showGenerationTime: boolean;
 	showSpeakerName: boolean;
-	/** Applies to Bubbles, Flat and Portraits; Manuscript keeps its own label. */
-	speakerLabel: SpeakerLabel;
-	/** Letter-spaced uppercase, independent of `speakerLabel`'s chrome. */
-	speakerCaps: boolean;
-	messageActions: ActionVisibility;
-	/** Icons only: drops the Edit/Copy/Retry/Delete word labels. */
-	compactActions: boolean;
-	branchPager: PagerVisibility;
 
 	glass: GlassLevel;
 	motion: MotionLevel;
