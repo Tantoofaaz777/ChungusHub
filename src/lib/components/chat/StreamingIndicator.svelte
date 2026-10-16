@@ -6,6 +6,7 @@
 	import MessageReasoning from './MessageReasoning.svelte';
 	import MessageAvatar from './MessageAvatar.svelte';
 	import MessageMeta from './MessageMeta.svelte';
+	import MessageHeader from './MessageHeader.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
@@ -54,9 +55,9 @@
 	const isPortraitStyle = $derived(themeStore.appearance.chatStyle === 'portrait');
 	// Same rule as Message.svelte: with no portrait column the live timer falls back
 	// into the meta row instead of disappearing.
-	const avatarsHidden = $derived(
-		!themeStore.appearance.showAvatars || themeStore.appearance.chatStyle === 'manuscript'
-	);
+	const isManuscript = $derived(themeStore.appearance.chatStyle === 'manuscript');
+	const avatarsHidden = $derived(!themeStore.appearance.showAvatars);
+	const metaReadouts = $derived(avatarsHidden || isManuscript);
 
 	// Live generation timer: ticks against mount time (the indicator mounts when the
 	// request starts). The persisted number is measured in messageStore around the LLM
@@ -72,7 +73,7 @@
 
 <div class="stream-row fade-in">
 	<div class="stream-main">
-		{#if !isPortraitStyle && !avatarsHidden}
+		{#if !isPortraitStyle && !isManuscript && !avatarsHidden}
 			<MessageAvatar
 				role="assistant"
 				name={speakerName}
@@ -96,12 +97,15 @@
 						</div>
 					{/if}
 					<div class="stream-card-col">
-						<MessageMeta
-							name={speakerName}
-							timestamp={themeStore.appearance.showTimestamps ? startedAt : null}
-							durationMs={avatarsHidden && showGenerationTime ? nowTick - startedAt : null}
-							streaming={true}
-						/>
+						<MessageHeader role="assistant" name={speakerName} imagePath={speakerImagePath} focus={speakerFocus}>
+							<MessageMeta
+								name={speakerName}
+								timestamp={themeStore.appearance.showTimestamps ? startedAt : null}
+								tokens={isManuscript && !avatarsHidden && themeStore.appearance.showTokenCount && streamingTokens > 0 ? `~${streamingTokens} tok` : null}
+								durationMs={metaReadouts && showGenerationTime ? nowTick - startedAt : null}
+								streaming={true}
+							/>
+						</MessageHeader>
 
 						{#if hasReasoning}
 							<div class="stream-thinking">
@@ -118,7 +122,7 @@
 
 						<!-- Toggle first: while it's off the lazy streamingTokens derived never
 						     runs, so the per-tick countTokens estimate is skipped entirely. -->
-						{#if themeStore.appearance.showTokenCount && streamingTokens > 0}
+						{#if !(isManuscript && !avatarsHidden) && themeStore.appearance.showTokenCount && streamingTokens > 0}
 							<div class="stream-tokens-row">
 								<span class="stream-tokens" title="Estimated tokens">~{streamingTokens}</span>
 							</div>

@@ -53,6 +53,7 @@
 	// here rather than drilled through every caller. Visibility stays a prop: the
 	// caller passes null, which skips the formatting entirely.
 	const appearance = $derived(themeStore.appearance);
+	const stacked = $derived(appearance.chatStyle === 'manuscript' && appearance.showAvatars);
 	const formattedDate = $derived(
 		timestamp != null
 			? formatMessageTime(
@@ -97,63 +98,65 @@
 </script>
 
 {#if hasContent}
-<div class="message-meta {isUser ? 'message-meta-user' : ''}">
+<div class="message-meta {isUser ? 'message-meta-user' : ''}" class:message-meta-stacked={stacked}>
 	{#if appearance.showSpeakerName}
 		<span class="message-role {isUser ? 'message-role-user' : ''}">{name}</span>
 	{/if}
 
-	<!-- Both of these normally live under the portrait; they fall back to this row
-	     when there is no portrait column (see Message.svelte). -->
-	{#if ordinal !== null}
-		<span class="message-ordinal">#{ordinal}</span>
-	{/if}
+	<div class="message-details">
+		<!-- Both of these normally live under the portrait; they fall back to this row
+		     when there is no portrait column (see Message.svelte). -->
+		{#if ordinal !== null}
+			<span class="message-ordinal">#{ordinal}</span>
+		{/if}
 
-	{#if formattedDate}
-		<span class="message-date">{formattedDate}</span>
-	{/if}
+		{#if formattedDate}
+			<span class="message-date">{formattedDate}</span>
+		{/if}
 
-	{#if durationLabel}
-		<span class="message-date" title="Generation time">{durationLabel}</span>
-	{/if}
+		{#if durationLabel}
+			<span class="message-date" title="Generation time">{durationLabel}</span>
+		{/if}
 
-	{#if tokens}
-		<span class="message-generation message-generation-count">{tokens}</span>
-	{/if}
+		{#if tokens}
+			<span class="message-generation message-generation-count">{tokens}</span>
+		{/if}
 
-	{#if generationTitle}
-		<InfoTip text={generationTitle} />
-	{/if}
+		{#if generationTitle}
+			<InfoTip text={generationTitle} />
+		{/if}
 
-	{#if edited}
-		<span class="message-edited">Edited</span>
-	{/if}
+		{#if edited}
+			<span class="message-edited">Edited</span>
+		{/if}
 
-	{#if archived}
-		<span class="message-ghost-tag" title="This turn has been folded into chat memory: it's recalled as memory, not re-sent verbatim.">
-			<Icon name="brain" class="w-3 h-3" />
-			<span>In memory</span>
-		</span>
-	{/if}
+		{#if archived}
+			<span class="message-ghost-tag" title="This turn has been folded into chat memory: it's recalled as memory, not re-sent verbatim.">
+				<Icon name="brain" class="w-3 h-3" />
+				<span>In memory</span>
+			</span>
+		{/if}
 
-	{#if lorebook && onLorebook}
-		<button
-			type="button"
-			class="message-lore-tag"
-			onclick={onLorebook}
-			title="Which lorebook entries this turn was built with"
-		>
-			<Icon name="bookOpen" class="w-3 h-3" />
-			<span>{loreCount}</span>
-		</button>
-	{/if}
+		{#if lorebook && onLorebook}
+			<button
+				type="button"
+				class="message-lore-tag"
+				onclick={onLorebook}
+				title="Which lorebook entries this turn was built with"
+			>
+				<Icon name="bookOpen" class="w-3 h-3" />
+				<span>{loreCount}</span>
+			</button>
+		{/if}
 
-	{#if streaming}
-		<span class="message-dots" aria-label="Generating response">
-			<span class="message-dot"></span>
-			<span class="message-dot" style="animation-delay: 120ms"></span>
-			<span class="message-dot" style="animation-delay: 240ms"></span>
-		</span>
-	{/if}
+		{#if streaming}
+			<span class="message-dots" aria-label="Generating response">
+				<span class="message-dot"></span>
+				<span class="message-dot" style="animation-delay: 120ms"></span>
+				<span class="message-dot" style="animation-delay: 240ms"></span>
+			</span>
+		{/if}
+	</div>
 </div>
 {/if}
 
@@ -387,4 +390,41 @@
 	:global([data-chat-style='manuscript']) .message-role-user {
 		color: color-mix(in srgb, var(--color-accent) 75%, var(--color-text-muted) 25%);
 	}
+	/* Without portraits this wrapper has no layout box: the original inline row stays intact. */
+	.message-details {
+		display: contents;
+	}
+
+	/* Compact manuscript header: diagnostics on top, speaker name beneath, both left-aligned. */
+	:global([data-chat-style='manuscript']) .message-meta-stacked {
+		flex: 1;
+		min-width: 0;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.15rem;
+		padding: 0;
+	}
+
+	.message-meta-stacked .message-details {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.25rem 0.5rem;
+		max-width: 100%;
+	}
+
+	.message-meta-stacked .message-details:empty {
+		display: none;
+	}
+
+	:global([data-chat-style='manuscript']) .message-meta-stacked .message-role {
+		order: 1;
+		max-width: 100%;
+		font-size: 0.85rem;
+		letter-spacing: normal;
+		text-transform: none;
+		color: var(--color-text-primary);
+		overflow-wrap: anywhere;
+	}
+
 </style>

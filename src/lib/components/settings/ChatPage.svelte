@@ -16,8 +16,8 @@
 	 * read. Nothing on this page touches a component directly.
 	 *
 	 * A control with nothing left to style is HIDDEN, not shown inert, the same rule
-	 * the chat-width slider follows on phones. Manuscript draws no card and no portrait,
-	 * so three whole cards drop out and a note says why. Message dimming also applies to
+	 * the chat-width slider follows on phones. Manuscript draws no card,
+	 * so the card shape and color settings drop out and a note says why. Message dimming also applies to
 	 * manually excluded messages, independently of the Chat Memory engine.
 	 *
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
@@ -86,7 +86,7 @@
 		{
 			value: 'manuscript',
 			label: 'Manuscript',
-			hint: 'No cards, no avatars, just prose like a book page.'
+			hint: 'Prose like a book page, with optional speaker portraits.'
 		}
 	];
 
@@ -435,8 +435,7 @@
 
 	{#if isManuscript}
 		<p class="style-note">
-			Manuscript draws no cards and no portraits, so the shape, color and portrait
-			settings have nothing to style and are hidden until you pick another style.
+			Manuscript draws no cards, so card shape and color settings are hidden until you pick another style.
 		</p>
 	{:else}
 		<section class="card" data-setting="message-shape">
@@ -622,61 +621,61 @@
 
 			</div>
 		</section>
+	{/if}
 
-		<section class="card" data-setting="message-avatars">
-			<div class="card-head">
-				<span class="card-title">Portraits</span>
-				<InfoTip text="The speaker portrait beside each turn. With it off, the message number and generation timer move into the meta row instead of vanishing." />
+	<section class="card" data-setting="message-avatars">
+		<div class="card-head">
+			<span class="card-title">Portraits</span>
+			<InfoTip text="The speaker portrait beside each turn. With it off, the message number and generation timer move into the meta row instead of vanishing." />
+		</div>
+
+		<div class="card-body">
+			<div class="toggle-row" use:toggleRow>
+				<span class="slider-label">Show portraits</span>
+				<Toggle
+					checked={appearance.showAvatars}
+					label="Show portraits"
+					onchange={(on) => themeStore.update({ showAvatars: on })}
+				/>
 			</div>
 
-			<div class="card-body">
-				<div class="toggle-row" use:toggleRow>
-					<span class="slider-label">Show portraits</span>
-					<Toggle
-						checked={appearance.showAvatars}
-						label="Show portraits"
-						onchange={(on) => themeStore.update({ showAvatars: on })}
-					/>
-				</div>
-
-				{#if appearance.showAvatars}
-					<!-- The Portraits chat style owns its in-card 2:3 frame; only size applies there. -->
-					{#if bubbleLike}
-						<div class="sub-block">
-							<span class="section-label">Shape</span>
-							<PillRow
-								options={AVATAR_SHAPES}
-								current={appearance.avatarShape}
-								onpick={(v) => themeStore.update({ avatarShape: v as AvatarShape })}
-								label="Portrait shape"
-							/>
-						</div>
-					{/if}
-
-					<div class="slider-block">
-						<div class="slider-top">
-							<label for="avatar-size" class="slider-label">Size</label>
-							<span class="slider-value">{pct(appearance.avatarSize)}</span>
-						</div>
-						<input
-							id="avatar-size"
-							type="range"
-							class="slider"
-							min="0.7"
-							max="1.6"
-							step="0.05"
-							value={appearance.avatarSize}
-							oninput={(e) => themeStore.update({ avatarSize: parseFloat(e.currentTarget.value) })}
-							use:rangeReset={{
-								defaultValue: DEFAULT_APPEARANCE.avatarSize,
-								apply: (v) => themeStore.update({ avatarSize: v })
-							}}
+			{#if appearance.showAvatars}
+				<!-- The Portraits chat style owns its in-card 2:3 frame; only size applies there. -->
+				{#if bubbleLike || isManuscript}
+					<div class="sub-block">
+						<span class="section-label">Shape</span>
+						<PillRow
+							options={AVATAR_SHAPES}
+							current={appearance.avatarShape}
+							onpick={(v) => themeStore.update({ avatarShape: v as AvatarShape })}
+							label="Portrait shape"
 						/>
 					</div>
 				{/if}
-			</div>
-		</section>
-	{/if}
+
+				<div class="slider-block">
+					<div class="slider-top">
+						<label for="avatar-size" class="slider-label">Size</label>
+						<span class="slider-value">{pct(appearance.avatarSize)}</span>
+					</div>
+					<input
+						id="avatar-size"
+						type="range"
+						class="slider"
+						min="0.7"
+						max="1.6"
+						step="0.05"
+						value={appearance.avatarSize}
+						oninput={(e) => themeStore.update({ avatarSize: parseFloat(e.currentTarget.value) })}
+						use:rangeReset={{
+							defaultValue: DEFAULT_APPEARANCE.avatarSize,
+							apply: (v) => themeStore.update({ avatarSize: v })
+						}}
+					/>
+				</div>
+			{/if}
+		</div>
+	</section>
 
 	<section class="card" data-setting="story-text">
 		<div class="card-head">
@@ -779,7 +778,7 @@
 	<section class="card" data-setting="message-chrome">
 		<div class="card-head">
 			<span class="card-title">Speaker &amp; Controls</span>
-			<InfoTip text="The name above a turn and the controls under it. Manuscript keeps its own small-caps speaker label whatever you pick here." />
+			<InfoTip text="The name above a turn and the controls under it. Manuscript uses its own speaker header." />
 		</div>
 
 		<div class="card-body">

@@ -7,6 +7,7 @@
 	import MessageReasoning from './MessageReasoning.svelte';
 	import MessageAvatar from './MessageAvatar.svelte';
 	import MessageMeta from './MessageMeta.svelte';
+	import MessageHeader from './MessageHeader.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import HoldToConfirmButton, { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
 	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
@@ -479,12 +480,12 @@
 	// Null suppresses the badge; MessageAvatar renders it only when given a number.
 	const avatarOrdinal = $derived(themeStore.appearance.showMessageNumbers ? ordinal : null);
 	// No portrait column to hang the #N badge and the timer off: the Portraits setting
-	// is off, or Manuscript (which has never drawn one). Both readouts fall back into
+	// is off, or Manuscript places a compact portrait in the header. Both readouts stay in
 	// the meta row rather than vanishing, because a visibility toggle silently killing two
 	// OTHER visibility toggles is a lie, not a layout.
-	const avatarsHidden = $derived(
-		!themeStore.appearance.showAvatars || themeStore.appearance.chatStyle === 'manuscript'
-	);
+	const isManuscript = $derived(themeStore.appearance.chatStyle === 'manuscript');
+	const avatarsHidden = $derived(!themeStore.appearance.showAvatars);
+	const metaReadouts = $derived(avatarsHidden || isManuscript);
 	// Meta-row visibility knobs (Settings → Layout): a null prop drops that piece.
 	// Tokens render directly; provider/model use the hover-or-tap info hint.
 	// Gating tokens here also skips the countTokens estimate while it's off ($derived is lazy).
@@ -525,7 +526,7 @@
 >
 	<div class="message-inner">
 		<div class="message-main {isUser ? 'message-main-user' : 'message-main-assistant'}">
-			{#if !isPortraitStyle && !avatarsHidden}
+			{#if !isPortraitStyle && !isManuscript && !avatarsHidden}
 				<MessageAvatar
 					role={message.role}
 					name={speakerName}
@@ -560,21 +561,23 @@
 								</div>
 							{/if}
 							<div class="message-card-col">
-							<MessageMeta
-								name={speakerName}
-								{isUser}
-								timestamp={showTimestamps && !streamReplacement ? message.createdAt : null}
-								model={showModelName && !streamReplacement ? message.model : null}
-								provider={showModelName && !streamReplacement ? message.provider : null}
-								edited={!streamReplacement && !!(message.editedAt || message.minorEditedAt)}
-								streaming={streamReplacement}
-								tokens={showTokenCount ? streamReplacement ? `~${countTokens(displayedContent)} tok` : tokenLabel : null}
-								ordinal={avatarsHidden ? avatarOrdinal : null}
-								durationMs={avatarsHidden && showGenerationTime && !streamReplacement ? message.generationMs : null}
-								archived={archived && !streamReplacement}
-								lorebook={loreTrace}
-								onLorebook={() => (loreOpen = true)}
-							/>
+							<MessageHeader role={message.role} name={speakerName} imagePath={speakerImagePath} focus={speakerFocus}>
+								<MessageMeta
+									name={speakerName}
+									{isUser}
+									timestamp={showTimestamps && !streamReplacement ? message.createdAt : null}
+									model={showModelName && !streamReplacement ? message.model : null}
+									provider={showModelName && !streamReplacement ? message.provider : null}
+									edited={!streamReplacement && !!(message.editedAt || message.minorEditedAt)}
+									streaming={streamReplacement}
+									tokens={showTokenCount ? streamReplacement ? `~${countTokens(displayedContent)} tok` : tokenLabel : null}
+									ordinal={metaReadouts ? avatarOrdinal : null}
+									durationMs={metaReadouts && showGenerationTime && !streamReplacement ? message.generationMs : null}
+									archived={archived && !streamReplacement}
+									lorebook={loreTrace}
+									onLorebook={() => (loreOpen = true)}
+								/>
+							</MessageHeader>
 							{#if hasReasoning}
 								<div class="message-thinking">
 									<MessageReasoning
@@ -1402,8 +1405,8 @@
 	}
 
 	/* ===== Chat style: Manuscript =====
-	   Bare reading flow: no cards, no avatars (hidden in MessageAvatar), just the
-	   speaker label and prose: as close to a book page as a chat can get. */
+	   Bare reading flow, with an optional compact portrait in the shared header.
+	   With portraits off, the original speaker label and prose stay unchanged. */
 	:global([data-chat-style='manuscript']) .message-main-user {
 		flex-direction: row;
 	}

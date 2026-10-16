@@ -192,4 +192,14 @@
 			linear-gradient(to bottom, #000 68%, transparent 100%);
 		mask-composite: intersect;
 	}
+	/* Manuscript uses a compact header portrait, leaving the prose full width below it. */
+	:global([data-chat-style='manuscript']) .avatar-column {
+		width: calc(2.5rem * var(--avatar-scale, 1));
+		flex: 0 0 calc(2.5rem * var(--avatar-scale, 1));
+	}
+
+	:global([data-chat-style='manuscript']) .avatar-frame {
+		aspect-ratio: 1;
+		border-radius: var(--avatar-radius-sm, var(--radius-lg));
+	}
 </style>
