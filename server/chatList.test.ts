@@ -195,6 +195,22 @@ describe('searchChatMessages', () => {
 });
 
 describe('duplicateChat', () => {
+	test('legacy branch labels and canon pointers survive loading and duplication after map retirement', () => {
+		const chatId = makeChat({ title: 'Legacy story' });
+		const id = crypto.randomUUID();
+		const label = { name: 'Old fork', color: 'amber' };
+		serverDb.insertMessage({ id, chatId, parentId: null, role: 'assistant', content: 'An older beginning.',
+			createdAt: Date.now(), siblingIndex: 0, branchLabel: label });
+		serverDb.updateChat({ id: chatId, rootMessageId: id, activeLeafId: id, canonLeafId: id });
+		expect(serverDb.getMessage(id).branchLabel).toEqual(label);
+		const copyId = serverDb.duplicateChat({ chatId, title: 'Legacy copy', includeMemory: false });
+		const copied = serverDb.getMessagesByChat(copyId);
+		expect(copied).toHaveLength(1);
+		expect(copied[0].branchLabel).toEqual(label);
+		expect(serverDb.getChat(copyId).canonLeafId).toBe(copied[0].id);
+		expect(serverDb.getChat(chatId).canonLeafId).toBe(id);
+	});
+
 	test('copies the whole forest with fresh ids and remapped pointers', () => {
 		const { chatId, ids } = seedBranchedChat('Source');
 		serverDb.updateChat({ id: chatId, canonLeafId: ids.reply, featureState: '{"steering":null}' });

@@ -175,7 +175,7 @@ export interface AppearanceState {
 
 	/* --- Transcript density --- */
 	messageSpacing: MessageSpacing;
-	/** Opacity of turns already folded into chat memory. */
+	/** Opacity of turns excluded from the prompt or folded into chat memory. */
 	archivedOpacity: number;
 
 	/* --- Portraits. Shape is Bubbles-only: the Portraits chat style owns its

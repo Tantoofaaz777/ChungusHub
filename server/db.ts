@@ -185,7 +185,7 @@ const MIGRATIONS: Migration[] = [
 			active_leaf_id TEXT,
 			settings_json TEXT,
 			character_id TEXT,
-			-- The tip of the path marked as canon, which the story map draws as its spine.
+			-- Legacy canon marker; retained for saved-chat compatibility and pointer repair.
 			canon_leaf_id TEXT,
 			character_version_id TEXT,
 			-- Steering and the impersonate perspective, as an opaque JSON blob the server never
@@ -508,6 +508,11 @@ const MIGRATIONS: Migration[] = [
 		DROP TABLE assistant_messages;
 		DROP TABLE assistant_sessions;
 		`
+	},
+	{
+		version: 46,
+		name: 'message_prompt_exclusion',
+		sql: `ALTER TABLE messages ADD COLUMN excluded_from_prompt INTEGER NOT NULL DEFAULT 0;`
 	}
 ];
 
@@ -693,6 +698,7 @@ class ServerDatabase {
 			parentId: row.parent_id,
 			role: row.role,
 			content: row.content,
+			excludedFromPrompt: row.excluded_from_prompt === 1,
 			personaId: row.persona_id ?? null,
 			branchLabel: row.branch_label ? JSON.parse(row.branch_label as string) : null,
 			thinking: row.thinking ?? null,
@@ -827,8 +833,8 @@ class ServerDatabase {
 				this.execute(
 					`INSERT INTO messages
 					 (id, chat_id, parent_id, role, content, persona_id, branch_label, thinking, attachments_json, created_at, edited_at, minor_edited_at, sprite_label,
-					  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, excluded_from_prompt)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						idMap.get(row.id as string),
 						newChatId,
@@ -852,7 +858,8 @@ class ServerDatabase {
 						row.first_token_ms ?? null,
 						row.reasoning_ms ?? null,
 						row.lore_json ?? null,
-						row.sibling_index
+						row.sibling_index,
+						row.excluded_from_prompt ?? 0
 					]
 				);
 				queue.push(...(children.get(row.id as string) ?? []));
@@ -1067,13 +1074,23 @@ class ServerDatabase {
 		 *  than by the caller so a page that never comes back cannot leave guidance armed to
 		 *  apply itself twice (architecture/chat-sessions.md). */
 		spendSteeringIds: string[];
+		replaceMessageIds?: string[];
 	}): { messageId: string; spentSteeringIds: string[] } | null {
-		return this.inTransaction(() => {
+		const removedImages: string[] = [];
+		const landed = this.inTransaction(() => {
 			const chat = this.select<{ active_leaf_id: string | null; root_message_id: string | null }[]>(
 				'SELECT active_leaf_id, root_message_id FROM chats WHERE id = ?',
 				[commit.chatId]
 			)[0];
 			if (!chat) return null;
+			if (commit.replaceMessageIds?.length && (commit.finishReason === 'cancelled' || !commit.content.trim())) return null;
+			const replacements = [...new Set(commit.replaceMessageIds ?? [])];
+			for (const id of replacements) {
+				const old = this.getMessage(id) as { chatId: string; parentId: string | null } | null;
+				if (old && (old.chatId !== commit.chatId || old.parentId !== commit.parentId)) {
+					throw new Error('Replacement must name alternatives of the generated reply.');
+				}
+			}
 
 			if (commit.parentId) {
 				const parent = this.select<{ id: string }[]>('SELECT id FROM messages WHERE id = ?', [commit.parentId]);
@@ -1114,6 +1131,20 @@ class ServerDatabase {
 			if (commit.claimsRoot && !chat.root_message_id) pointers.rootMessageId = messageId;
 			this.updateChat(pointers, { touchUpdatedAt: true });
 
+			// Insert and remove in one transaction, including tombstones for every device.
+			// Files are cleaned only after commit, so a rollback cannot erase live attachments.
+			for (const id of replacements) {
+				const doomed = this.descendantIds(id, true);
+				if (!doomed.length) continue;
+				removedImages.push(...this.imagePathsOfMessages(doomed));
+				this.recordMessageTombstones(commit.chatId, doomed, this.bumpMessagesRev(commit.chatId));
+				this.execute(`WITH RECURSIVE descendants AS (
+					SELECT id FROM messages WHERE id = ?
+					UNION ALL SELECT m.id FROM messages m INNER JOIN descendants d ON m.parent_id = d.id
+				) DELETE FROM messages WHERE id IN (SELECT id FROM descendants)`, [id]);
+				this.repairChatPointers(commit.chatId, new Set(doomed), commit.parentId);
+			}
+
 			// The ids actually deleted, not a count: the caller records their texts in the chat's
 			// reuse list, and a note this loop declined to spend is still armed. Listing it as
 			// spent would show it in Recent while it is about to inject again.
@@ -1142,6 +1173,8 @@ class ServerDatabase {
 
 			return { messageId, spentSteeringIds };
 		});
+		this.dropOrphanedChatImages(removedImages);
+		return landed;
 	}
 
 	// ===== Chat image attachments (files under images/chat/) =====
@@ -1802,8 +1835,8 @@ class ServerDatabase {
 			this.execute(
 				`INSERT INTO messages
 				 (id, chat_id, parent_id, role, content, persona_id, branch_label, thinking, attachments_json, created_at, edited_at, minor_edited_at, sprite_label,
-				  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, rev)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, rev, excluded_from_prompt)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					message.id,
 					message.chatId,
@@ -1830,9 +1863,20 @@ class ServerDatabase {
 					message.reasoningMs ?? null,
 					message.lorebook ? JSON.stringify(message.lorebook) : null,
 					message.siblingIndex ?? 0,
-					rev
+					rev,
+					message.excludedFromPrompt === true ? 1 : 0
 				]
 			);
+		});
+	}
+
+	setMessageExcludedFromPrompt(messageId: string, excluded: boolean): void {
+		if (typeof excluded !== 'boolean') throw new Error('Expected a boolean prompt exclusion flag.');
+		this.inTransaction(() => {
+			const rev = this.revForMessageWrite(messageId);
+			this.execute('UPDATE messages SET excluded_from_prompt = ?, rev = ? WHERE id = ?', [
+				excluded ? 1 : 0, rev, messageId
+			]);
 		});
 	}
 
@@ -1926,19 +1970,6 @@ class ServerDatabase {
 				personaId ?? null,
 				rev,
 				chatId
-			]);
-		});
-	}
-
-	/** Name (or clear) the branch a message heads. `label` is a { name, color } object or
-	 *  null to remove it. Purely story-map metadata, never touching content or edited_at. */
-	updateMessageBranchLabel(messageId: string, label: unknown): void {
-		this.inTransaction(() => {
-			const rev = this.revForMessageWrite(messageId);
-			this.execute('UPDATE messages SET branch_label = ?, rev = ? WHERE id = ?', [
-				label ? JSON.stringify(label) : null,
-				rev,
-				messageId
 			]);
 		});
 	}
@@ -3044,10 +3075,10 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	duplicateChat: 'chats',
 	insertMessage: 'messages',
 	updateMessageContent: 'messages',
+	setMessageExcludedFromPrompt: 'messages',
 	applyMessageContinuation: 'messages',
 	updateMessagePersona: 'messages',
 	setChatUserPersona: 'messages',
-	updateMessageBranchLabel: 'messages',
 	deleteMessageOnly: 'messages',
 	deleteMessageAndDescendants: 'messages',
 	deleteDescendants: 'messages',

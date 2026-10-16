@@ -205,6 +205,65 @@ function ep2(id: string, sourceMessageIds: string[], createdAt: number, layer = 
 function coverageOf(db: FakeDb, msgs: MemoryMessage[], leafId: string): Coverage {
 	return resolveCoverage(msgs, leafId, db.episodes, resolveConfig(db.state.config).verbatimTail);
 }
+
+describe('manual message exclusion', () => {
+	test('restoring a hidden turn invalidates a summary that skipped it', () => {
+		const msgs = linear(10);
+		msgs[1].excludedFromPrompt = true;
+		const summary = ep2('skip', ['m0', 'm2'], 1);
+		expect(resolveCoverage(msgs, 'm9', [summary], 1).active).toEqual([summary]);
+		msgs[1].excludedFromPrompt = false;
+		const restored = resolveCoverage(msgs, 'm9', [summary], 1);
+		expect(restored.active).toHaveLength(0);
+		expect(restored.dead).toEqual([summary]);
+	});
+	test('hidden ancestors and leaf are traversed but never extracted', async () => {
+		const msgs = linear(10);
+		msgs[0].excludedFromPrompt = true;
+		msgs[2].excludedFromPrompt = true;
+		msgs[9].excludedFromPrompt = true;
+		expect(activePath(msgs, 'm9').map((m) => m.id)).toEqual(['m1', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
+		const db = new FakeDb();
+		setConfig(db, { batchSize: 2, verbatimTail: 1, maxPerLayer: 40 });
+		const { llm } = scriptedLlm([(_db, text) => {
+			expect(text).not.toContain('turn 0');
+			expect(text).not.toContain('turn 2');
+			expect(text).not.toContain('turn 9');
+			return { episode: 'visible turns only' };
+		}], db);
+		await processChat(deps(db, llm), 'c', msgs, 'm9');
+		expect(db.episodes.length).toBeGreaterThan(0);
+		expect(db.episodes.flatMap((e) => e.sourceMessageIds).some((id) => ['m0', 'm2', 'm9'].includes(id))).toBe(false);
+	});
+
+	test('a summary covering a hidden turn is excluded from recall and reaped', async () => {
+		const msgs = linear(10);
+		const summary = ep2('old', ['m0', 'm1', 'm2', 'm3'], 1);
+		expect(resolveCoverage(msgs, 'm9', [summary], 1).active).toHaveLength(1);
+		msgs[1].excludedFromPrompt = true;
+		const cov = resolveCoverage(msgs, 'm9', [summary], 1);
+		expect(cov.active).toHaveLength(0);
+		expect(cov.dead).toEqual([summary]);
+		const db = new FakeDb();
+		db.episodes = [summary];
+		await syncCoverage({ db }, 'c', msgs, 'm9');
+		expect(db.episodes).toHaveLength(0);
+		msgs[1].excludedFromPrompt = false;
+		expect(activePath(msgs, 'm9')).toHaveLength(10);
+	});
+
+	test('hiding a source turn while extraction runs prevents its result being saved', async () => {
+		const msgs = linear(10);
+		const db = new FakeDb();
+		setConfig(db, { batchSize: 2, verbatimTail: 1 });
+		const { llm } = scriptedLlm([() => {
+			msgs[0].excludedFromPrompt = true;
+			return { episode: 'stale result' };
+		}], db);
+		await processChat(deps(db, llm), 'c', msgs, 'm9', { latest: () => ({ allMessages: msgs, leafId: 'm9' }) });
+		expect(db.episodes).toHaveLength(0);
+	});
+});
 function cursorOf(db: FakeDb, msgs: MemoryMessage[], leafId: string): string | null {
 	return coverageOf(db, msgs, leafId).cursorMessageId;
 }
@@ -830,7 +889,7 @@ describe('branching: the hard part', () => {
 		expect(cursorOf(db, edited, 'm12')).toBe('m11');
 	});
 
-	test('an off-path turn rewritten in the story map invalidates its summary too', async () => {
+	test('rewriting a legacy off-path turn invalidates its summary too', async () => {
 		const db = new FakeDb();
 		setConfig(db, { batchSize: 4, verbatimTail: 1 });
 		const msgs = linear(13);

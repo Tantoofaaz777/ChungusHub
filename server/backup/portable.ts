@@ -52,7 +52,7 @@ const DISK_RESERVE = 512 * 1024 * 1024;
 const MAX_ENTRIES = 250_000;
 const MAX_PATH_LENGTH = 512;
 const MAX_META_BYTES = 1024 * 1024;
-const COMPRESSED_IMAGE = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif']);
+const COMPRESSED_IMAGE = new Set(['.png', '.jpg', '.jpeg', '.jfif', '.webp', '.gif', '.avif']);
 const SOURCE_KINDS = new Set<SourceSnapshotKind>(['manual', 'scheduled', 'preUpgrade', 'preRestore']);
 
 export interface PortableProgress {

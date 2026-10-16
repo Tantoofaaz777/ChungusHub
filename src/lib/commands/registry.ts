@@ -64,8 +64,6 @@ export interface CommandHost {
 /** Everything a command may ask about the workspace, resolved once by the composer. */
 export interface CommandContext {
 	chatId: string | null;
-	activeLeafId: string | null;
-	canonLeafId: string | null;
 	/** The chat's library character while it still resolves; null once it is deleted. */
 	characterEntryId: string | null;
 	/** The app-wide active persona's library entry, or null when none is set. */
@@ -134,13 +132,12 @@ export const COMMANDS: CommandDef[] = [
 		aliases: ['regenerate'],
 		group: 'story',
 		icon: 'refresh',
-		describe: 'Generate the newest turn again',
+		describe: 'Replace the newest response and all its swipes',
 		unavailable: (ctx) => (ctx.canRegenerateLast ? null : ctx.regenerateLastHint),
 		run: (_arg, ctx) => ctx.host.regenerateLast()
 	},
 	{
-		// Retry's non-destructive half, so it wears Retry's own glyph: the two are the rows
-		// behind one button in the transcript, and drawing them alike is what says so.
+		// The same action as the right arrow at the final swipe.
 		name: 'swipe',
 		group: 'story',
 		icon: 'refresh',
@@ -179,18 +176,6 @@ export const COMMANDS: CommandDef[] = [
 		unavailable: (ctx) => (ctx.lastTurnId ? null : 'This chat has no turns yet'),
 		run: (_arg, ctx) => {
 			messageStore.branchTargetId = ctx.lastTurnId;
-		}
-	},
-	{
-		name: 'canon',
-		group: 'story',
-		icon: 'crown',
-		describe: 'Mark this timeline canon, or unmark it',
-		unavailable: (ctx) => (ctx.activeLeafId ? null : NO_CHAT),
-		run: async (_arg, ctx) => {
-			const already = ctx.canonLeafId === ctx.activeLeafId;
-			await chatStore.setCanonLeaf(already ? null : ctx.activeLeafId);
-			toastStore.success(already ? 'Canon cleared' : 'This timeline is canon');
 		}
 	},
 	{
@@ -308,13 +293,6 @@ export const COMMANDS: CommandDef[] = [
 		describe: 'Open the persona you are playing in the Library editor',
 		unavailable: (ctx) => (ctx.personaEntryId ? null : 'You have no persona set'),
 		run: (_arg, ctx) => uiStore.openLibraryEntry(ctx.personaEntryId!, 'persona', flush)
-	},
-	{
-		name: 'map',
-		group: 'open',
-		icon: 'sitemap',
-		describe: 'Open the Story Map',
-		run: () => uiStore.openOverlay('storymap', flush)
 	},
 	{
 		name: 'chats',

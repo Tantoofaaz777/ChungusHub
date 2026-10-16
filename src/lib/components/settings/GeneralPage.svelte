@@ -9,7 +9,6 @@
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import { MOD_KEY } from '$lib/components/ui/ShortcutsSheet.svelte';
 	import { toggleRow } from '$lib/actions/toggleRow';
 
 	const SCOPE_OPTIONS: { value: InputHistoryScope; label: string }[] = [
@@ -32,7 +31,6 @@
 	let transcriptLoadMode = $derived(generalSettingsStore.transcriptLoadMode);
 	let autoExpandReasoning = $derived(generalSettingsStore.autoExpandReasoning);
 	let settingsSplitView = $derived(generalSettingsStore.settingsSplitView);
-	let storyMapWheelPans = $derived(generalSettingsStore.storyMapWheelPans);
 
 	let clearing = $state(false);
 
@@ -161,7 +159,7 @@
 		<div class="card-head">
 			<span class="card-title">Long Chats</span>
 			<InfoTip
-				text="A chat opens on its newest turns instead of drawing its whole branch at once, which is what makes a long story slow to open and slow to stream on an older machine. Nothing is hidden from search: find in chat covers the whole branch and loads back to whatever it lands on, and the story map and the chats panel are never limited."
+				text="A chat opens on its newest turns instead of drawing its whole branch at once, which is what makes a long story slow to open and slow to stream on an older machine. Nothing is hidden from search: find in chat covers the whole branch and loads back to whatever it lands on, and the chats panel is never limited."
 			/>
 		</div>
 		<div class="toggle-row" use:toggleRow>
@@ -201,22 +199,7 @@
 		{/if}
 	</section>
 
-	<section class="card" data-setting="story-map-scroll">
-		<div class="card-head">
-			<span class="card-title">Story Map</span>
-			<InfoTip
-				text="Zooming moves to {MOD_KEY}+scroll. A trackpad pinch zooms either way."
-			/>
-		</div>
-		<div class="toggle-row" use:toggleRow>
-			<span class="slider-label">Scroll moves the map instead of zooming</span>
-			<Toggle
-				checked={storyMapWheelPans}
-				onchange={(v) => generalSettingsStore.setStoryMapWheelPans(v)}
-				label="Scroll moves the map instead of zooming"
-			/>
-		</div>
-	</section>
+
 
 		<!-- Split view only exists at dock widths (≥76rem): below that Settings is
 		     a single centered overlay and the toggle would be inert, so don't pretend

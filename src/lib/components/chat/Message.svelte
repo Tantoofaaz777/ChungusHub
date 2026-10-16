@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Message, EditAction, DeleteAction, RegenerateAction } from '$lib/types/chat';
+	import type { Message, EditAction, DeleteAction } from '$lib/types/chat';
 	import MessageActions from './MessageActions.svelte';
 	import MessageEditor from './MessageEditor.svelte';
 	import BranchNavigator from './BranchNavigator.svelte';
@@ -87,15 +87,11 @@
 	let editorMode = $state<EditAction>('save_only');
 	let showActions = $state(false);
 	let showDeleteMenu = $state(false);
-	let showRegenerateMenu = $state(false);
 	/** The delete the user has been asked to confirm, or null while the menu offers choices. */
 	let confirmingDelete = $state<DeleteAction | null>(null);
 	/** Text waiting on the memory confirmation, set only when this turn is already summarised,
 	 *  so an ordinary edit still saves on the first press. */
 	let pendingEdit = $state<string | null>(null);
-	// "Replace reply" on a user turn deletes everything below it, a hard rewind. Gate it behind
-	// a confirm that shows how many messages will go.
-	let confirmingReplace = $state(false);
 	let deleteMenuElement = $state<HTMLDivElement | undefined>(undefined);
 
 	// Blast radius of the destructive actions on this message, since the confirmations always
@@ -223,29 +219,7 @@
 	}
 
 	async function handleRegenerateClick() {
-		// A user turn with no reply yet has nothing to "regenerate", so just generate the first
-		// reply directly, no replace/alternate choice to make.
-		if (isUser && !hasReply) {
-			await messageStore.retryMessageResponse(message.id, 'replace');
-			return;
-		}
-		showRegenerateMenu = true;
-	}
-
-	async function handleRegenerateAction(action: RegenerateAction) {
-		// Replacing a user reply nukes the whole subtree below, so confirm first with the count.
-		if (deleteGuard.asks && action === 'replace' && isUser && !confirmingReplace && belowBlast.messages > 0) {
-			confirmingReplace = true;
-			return;
-		}
-		showRegenerateMenu = false;
-		confirmingReplace = false;
-		await messageStore.retryMessageResponse(message.id, action);
-	}
-
-	function cancelRegenerate() {
-		showRegenerateMenu = false;
-		confirmingReplace = false;
+		await messageStore.retryMessageResponse(message.id, 'replace');
 	}
 
 	function handleBranchClick() {
@@ -254,9 +228,8 @@
 		isEditing = true;
 	}
 
-	// `/branch` names the newest turn and the row it names opens its own editor, the same
-	// one-shot hand-off the story map uses to point at a turn (`revealTargetId`). The editor
-	// is this component's state, so the composer can ask for it and nothing more.
+	// `/branch` names the newest turn and its row opens its own editor. The editor is this
+	// component's state, so the composer can ask for it and nothing more.
 	let branchTargetId = $derived(messageStore.branchTargetId);
 
 	$effect(() => {
@@ -278,9 +251,15 @@
 		isEditing = true;
 	}
 
-	function handleBranchNavigate(direction: 'prev' | 'next') {
-		// Use store method to fetch fresh data and navigate (avoids stale allMessages race condition)
-		messageStore.navigateToSibling(message.id, direction);
+	async function handleBranchNavigate(direction: 'prev' | 'next') {
+		if (messageStore.busy) return;
+		try {
+			if (direction === 'next' && canGenerateSwipe && siblingIndex >= siblingCount - 1) {
+				await messageStore.retryMessageResponse(message.id, 'branch');
+			} else {
+				await messageStore.navigateToSibling(message.id, direction);
+			}
+		} catch (error) { toastStore.failed('change the response', error); }
 	}
 
 	// ===== The keyboard on this turn =====
@@ -324,14 +303,13 @@
 				chatCursor.step(1);
 				break;
 			case 'arrowleft':
-				if (siblingCount > 1) handleBranchNavigate('prev');
+				if (siblingIndex > 0) void handleBranchNavigate('prev');
 				break;
 			case 'arrowright':
-				if (siblingCount > 1) handleBranchNavigate('next');
+				if (siblingIndex < siblingCount - 1 || canGenerateSwipe) void handleBranchNavigate('next');
 				break;
 			// Every one of these is this row's own button and never a second path to the act:
-			// delete and regenerate open the very menus the pointer opens, so the confirmations
-			// gating them hold for the keyboard exactly as they do for a click.
+			// Delete opens its menu; regeneration replaces the swipes directly.
 			case 'e':
 				handleEditClick();
 				break;
@@ -405,17 +383,10 @@
 	const speakerFocus = $derived(
 		message.role === 'user' ? userPersona?.portraitFocus : assistantSpeaker?.portraitFocus
 	);
-	// Generate belongs to the last user turn and retry to the last reply, nowhere else. Offered
-	// mid-story, "add alternate reply" forked a second reply under a turn that already had one,
-	// and after a splice had left a user turn hanging there, the two became swipe variants of
-	// each other: 1 of 2 a user turn, 2 of 2 a reply. To re-roll from further back, branch the
-	// user turn there (the Branch action): the clone becomes the leaf and generates from it.
-	// Every root assistant turn is a BEGINNING: a seeded greeting, or an opening already
-	// written here. So "write another one" belongs in the same cluster as the arrows that walk
-	// between them, which is where the hand reaching for another opening already is. A root
-	// turn of the reader's own is their first line and gets no offer; /opening covers that.
+	// Creation belongs to the last turn. Older alternatives remain navigable so removing
+	// the map never strands an existing continuation. Roots use the Opening Scene engine.
 	const canWriteOpening = $derived(
-		message.parentId === null && message.role === 'assistant' && featurePromptsStore.openingSceneEnabled
+		isLast && message.parentId === null && message.role === 'assistant' && featurePromptsStore.openingSceneEnabled
 	);
 	let openingDialogOpen = $state(false);
 
@@ -428,12 +399,13 @@
 	}
 
 	const showRegenerate = $derived(
-		isLast && (message.role === 'user' || (message.role === 'assistant' && message.parentId !== null))
+		isLast && (message.role === 'user' || (message.role === 'assistant' && (message.parentId !== null || canWriteOpening)))
 	);
+	const canGenerateSwipe = $derived(isLast && message.role === 'assistant' && (message.parentId !== null || canWriteOpening));
 	// Continue extends a reply in place, so it belongs to the newest turn and nowhere else.
 	// A seeded greeting qualifies where Retry refuses one: a continuation works from the reply
 	// itself, while a re-roll needs the prompt that wrote it, and a greeting has none.
-	const showContinue = $derived(isLast && message.role === 'assistant');
+	const showContinue = $derived(isLast && message.role === 'assistant' && !message.excludedFromPrompt);
 
 	function handleContinue() {
 		// The store toasts its own generation failures; only its throw-guards reach here.
@@ -526,7 +498,8 @@
 <article
 	id="msg-{message.id}"
 	class="message-row group fade-in"
-	class:message-archived={archived}
+	class:message-archived={archived || message.excludedFromPrompt}
+	class:message-excluded={message.excludedFromPrompt}
 	class:message-row-cursor={cursored}
 	tabindex="-1"
 	data-hint
@@ -534,7 +507,7 @@
 	onkeydown={handleRowKeydown}
 	onmouseenter={() => (showActions = true)}
 	onmouseleave={() => (showActions = false)}
-	aria-label="{message.role} message{archived ? ' (in memory)' : ''}"
+	aria-label="{message.role} message{message.excludedFromPrompt ? ' (excluded from prompt)' : archived ? ' (in memory)' : ''}"
 >
 	<div class="message-inner">
 		<div class="message-main {isUser ? 'message-main-user' : 'message-main-assistant'}">
@@ -675,18 +648,21 @@
 
 				{#if !isEditing}
 					<div class="message-toolbar-shell {isUser ? 'message-toolbar-shell-user' : 'message-toolbar-shell-assistant'}">
-						<div class="message-toolbar {isUser ? 'justify-end' : 'justify-start'}">
+						<div class="message-toolbar">
 							<div
 								class="message-actions-slot"
-								class:message-actions-visible={showActions || cursored || showDeleteMenu || showRegenerateMenu}
+								class:message-actions-visible={showActions || cursored || showDeleteMenu}
 							>
 								<MessageActions
 									onEdit={handleEditClick}
 									onDelete={handleDeleteClick}
 									onCopy={handleCopy}
+									onTogglePrompt={() => messageStore.setExcludedFromPrompt(message.id, !message.excludedFromPrompt)}
+									excludedFromPrompt={!!message.excludedFromPrompt}
 									onRegenerate={showRegenerate ? handleRegenerateClick : undefined}
 									{showRegenerate}
-									regenerateLabel={isUser ? (hasReply ? 'Regenerate' : 'Generate Reply') : 'Retry'}
+									regenerateLabel={isUser ? (hasReply ? 'Regenerate response' : 'Generate Reply') : 'Regenerate response'}
+									disabled={messageStore.busy}
 									onContinue={showContinue ? handleContinue : undefined}
 									{showContinue}
 									onBranch={handleBranchClick}
@@ -788,81 +764,15 @@
 										{/if}
 									</div>
 								{/if}
-
-								{#if showRegenerateMenu}
-									<Dialog
-										open={showRegenerateMenu}
-										onClose={cancelRegenerate}
-										title={message.role === 'user' ? 'Regenerate reply' : 'Regenerate response'}
-										titleAlign="left"
-										size="sm"
-										placement="center"
-										bare
-									>
-										{#if confirmingReplace}
-											<div class="p-3 border-b border-border-subtle bg-error/10">
-												<p class="text-sm font-ui font-medium text-error">Replace reply?</p>
-												<p class="text-xs text-text-muted mt-1">
-													This deletes {belowBlast.messages} message{belowBlast.messages === 1 ? '' : 's'}{belowBlast.branches > 1 ? ` across ${belowBlast.branches} branches` : ''} below
-													and generates a fresh reply. This can't be undone.
-												</p>
-											</div>
-											<div class="p-1.5 space-y-1.5">
-												<HoldToConfirmButton
-													holdMs={holdMsForBlast(belowBlast.messages)}
-													onconfirm={() => handleRegenerateAction('replace')}
-												>
-													<Icon name="warning" class="w-3.5 h-3.5" />
-													Delete {belowBlast.messages} message{belowBlast.messages === 1 ? '' : 's'} & replace
-												</HoldToConfirmButton>
-												<button
-													class="w-full px-3 py-2 text-left text-sm font-ui font-medium text-text-secondary hover:bg-bg-tertiary rounded-[var(--radius-lg)] transition-all duration-150"
-													onclick={cancelRegenerate}
-												>
-													Cancel
-												</button>
-											</div>
-										{:else}
-											<div class="p-1.5">
-												<button
-													class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
-													onclick={() => handleRegenerateAction('replace')}
-													data-dialog-initial-focus
-												>
-													<span class="font-medium text-text-primary">
-														{message.role === 'user' ? 'Replace reply' : 'Replace current'}
-													</span>
-													<p class="text-text-muted text-xs mt-0.5">
-														{message.role === 'user'
-															? 'Delete the replies below and generate a fresh one'
-															: 'Delete this response and generate a new one'}
-													</p>
-												</button>
-												<button
-													class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
-													onclick={() => handleRegenerateAction('branch')}
-												>
-													<span class="font-medium text-text-primary">
-														{message.role === 'user' ? 'Add alternate reply' : 'Create alternate'}
-													</span>
-													<p class="text-text-muted text-xs mt-0.5">
-														{message.role === 'user'
-															? 'Keep the current reply and generate another to swipe between'
-															: 'Keep this response and generate a new branch'}
-													</p>
-												</button>
-											</div>
-										{/if}
-									</Dialog>
-								{/if}
 							</div>
-							{#if siblingCount > 1 || canWriteOpening}
+							{#if siblingCount > 1 || (isLast && message.role === 'assistant')}
 								<div
 									class="message-pager-slot"
 									class:message-actions-visible={showActions || cursored || openingDialogOpen}
+									class:message-pager-always={isLast && message.role === 'assistant'}
 								>
-									{#if siblingCount > 1}
-										<BranchNavigator current={siblingIndex} total={siblingCount} onNavigate={handleBranchNavigate} />
+									{#if siblingCount > 1 || (isLast && message.role === 'assistant')}
+										<BranchNavigator current={siblingIndex} total={siblingCount} canGenerate={canGenerateSwipe} disabled={messageStore.busy} onNavigate={handleBranchNavigate} />
 									{/if}
 									{#if canWriteOpening}
 										<div class="opening-trigger">
@@ -870,7 +780,7 @@
 												type="button"
 												class="opening-btn"
 												onclick={() => (openingDialogOpen = true)}
-												disabled={messageStore.isStreaming}
+												disabled={messageStore.busy}
 												aria-label="Write another opening scene"
 												aria-haspopup="dialog"
 												aria-expanded={openingDialogOpen}
@@ -926,7 +836,7 @@
 			clamp(0.55rem, 0.4rem + 0.5vw, 0.95rem);
 	}
 
-	/* Ghost state: a turn that has been folded into chat memory. Subtle by default
+	/* Ghost state: a turn excluded from the prompt or folded into chat memory. Subtle by default
 	   (dimmed, a hint of desaturation) so live turns stand out at a glance, and it lifts
 	   toward full clarity on hover so the text stays readable when you go looking. */
 	.message-archived {
@@ -1229,7 +1139,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		width: max-content;
+		width: 100%;
 		max-width: 100%;
 	}
 
@@ -1237,6 +1147,8 @@
 	   Settings → Chat; hover and focus-within always reveal, so the tray
 	   stays reachable by keyboard and not just by mouse. */
 	.message-actions-slot {
+		min-width: 0;
+		max-width: 100%;
 		opacity: var(--msg-actions-idle-opacity, 0);
 		pointer-events: var(--msg-actions-idle-events, none);
 		transition: opacity 120ms ease;
@@ -1244,11 +1156,15 @@
 
 	.message-pager-slot {
 		display: flex;
+		flex-shrink: 0;
+		margin-left: auto;
 		gap: 0.25rem;
 		opacity: var(--msg-pager-idle-opacity, 1);
 		pointer-events: var(--msg-pager-idle-events, auto);
 		transition: opacity 120ms ease;
 	}
+
+	.message-pager-slot.message-pager-always { opacity: 1; pointer-events: auto; }
 
 	.opening-trigger {
 		display: inline-flex;
@@ -1310,11 +1226,8 @@
 		pointer-events: auto;
 	}
 
-	/* The always-visible footnotes hug the bubble's edge; the idle-hidden actions
-	   take the inner end of the line so they never leave a blank indent. */
-	.message-toolbar-shell-assistant .message-actions-slot {
-		order: 2;
-	}
+	/* Keep DOM order for every role and chat style: actions first, swipes on the right.
+	   Only the action buttons scroll when space is tight; menus stay outside that scroller. */
 
 	/* The cap is the column, not the viewport: the styles that draw a portrait
 	   column take its width off the message column, so on a phone the column is
@@ -1400,10 +1313,6 @@
 		justify-content: flex-start;
 	}
 
-	:global([data-chat-style='flat']) .message-toolbar-shell-user .message-actions-slot {
-		order: 2;
-	}
-
 	/* Toolbar is left-packed in this style, so the menu opens rightwards. */
 	:global([data-chat-style='flat']) .message-toolbar-shell-user .message-menu {
 		left: 0;
@@ -1462,10 +1371,6 @@
 	/* Left-packed line: footnotes hug the left edge, actions take the inner end. */
 	:global([data-chat-style='portrait']) .message-toolbar-shell-user {
 		justify-content: flex-start;
-	}
-
-	:global([data-chat-style='portrait']) .message-toolbar-shell-user .message-actions-slot {
-		order: 2;
 	}
 
 	/* Toolbar is left-packed in this style, so the menu opens rightwards. */
@@ -1529,10 +1434,6 @@
 	/* Left-packed line: footnotes hug the left edge, actions take the inner end. */
 	:global([data-chat-style='manuscript']) .message-toolbar-shell-user {
 		justify-content: flex-start;
-	}
-
-	:global([data-chat-style='manuscript']) .message-toolbar-shell-user .message-actions-slot {
-		order: 2;
 	}
 
 	/* Toolbar is left-packed in this style, so the menu opens rightwards. */

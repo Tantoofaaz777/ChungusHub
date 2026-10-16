@@ -7,7 +7,6 @@
 	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
 	import SettingsContentPanel from '$lib/components/settings/SettingsContentPanel.svelte';
 	import ChatsView from '$lib/components/sidebar/ChatsView.svelte';
-	import StoryMapView from '$lib/components/storymap/StoryMapView.svelte';
 	import MemoryPanel from '$lib/components/memory/MemoryPanel.svelte';
 	import StatsView from '$lib/components/stats/StatsView.svelte';
 	import WelcomeView from '$lib/components/layout/WelcomeView.svelte';
@@ -308,8 +307,6 @@
 				<div class="chat-overlay-panel" data-panel>
 					{#if activeOverlay === 'chats'}
 						<ChatsView />
-						{:else if activeOverlay === 'storymap'}
-							<StoryMapView />
 						{:else if activeOverlay === 'memory'}
 							<MemoryPanel />
 					{:else if activeOverlay === 'presetControls'}

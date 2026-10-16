@@ -5,7 +5,7 @@
  * conversation, so recursion depth becomes user data: a story long enough overflows the
  * call stack, and the browser's ceiling moves with JIT state, so the same chat can work
  * on one page load and not the next. Every walk below is an explicit loop, and any new
- * one is too. Same rule, same reason, in `story-map-layout.ts`.
+ * one is too.
  */
 import type { Message } from '$lib/types/chat';
 
@@ -40,8 +40,8 @@ export function findActivePath(messages: Message[], leafId: string): Message[] {
  * regardless of role. Siblings are the alternative continuations of the story from
  * that point: same-role ones are variants (swipes/regenerations), different-role ones
  * are forks (e.g. a reply re-parented next to user turns by a splice delete). The chat
- * arrows navigate ALL of them, deliberately matching the story map's numbering: a
- * role-filtered count made spliced branches invisible outside the map.
+ * arrows navigate ALL of them: a role-filtered count would make spliced branches
+ * invisible in the transcript.
  */
 export function findSiblings(messages: Message[], messageId: string): Message[] {
 	const message = messages.find((m) => m.id === messageId);

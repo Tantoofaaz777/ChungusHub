@@ -171,7 +171,7 @@
 	     scrolls. Negative margins cancel the dialog's content padding so the bar
 	     hugs the panel's edges. -->
 	<div class="picker-footer">
-		<span class="picker-note font-ui">PNG, JPG, WebP, GIF or AVIF.</span>
+		<span class="picker-note font-ui">PNG, JPG, JFIF, WebP, GIF or AVIF.</span>
 		<Button variant="secondary" size="sm" disabled={uploading} onclick={() => fileInput?.click()}>
 			<Icon name="upload" class="w-3.5 h-3.5" />
 			{uploading ? 'Uploading…' : 'Upload image'}
@@ -193,7 +193,7 @@
 <input
 	bind:this={fileInput}
 	type="file"
-	accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+	accept="image/png,image/jpeg,.jfif,image/webp,image/gif,image/avif"
 	class="hidden"
 	onchange={handleUpload}
 />

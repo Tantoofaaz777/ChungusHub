@@ -1,4 +1,4 @@
-import type { Message, MessageAttachment, EditAction, DeleteAction, RegenerateAction, BranchLabel } from '$lib/types/chat';
+import type { Message, MessageAttachment, EditAction, DeleteAction, RegenerateAction } from '$lib/types/chat';
 import type { LLMMessage } from '$lib/types/llm';
 import { db } from '$lib/services/database';
 import { chatStore } from './chat.svelte';
@@ -45,6 +45,7 @@ function spentSteeringTexts(
 class MessageStore {
 	abortController = $state<AbortController | null>(null);
 	private isProcessing = $state(false);
+	get busy(): boolean { return this.isProcessing || this.isStreaming; }
 
 	/** A generation is in flight ANYWHERE, not merely in the chat on screen: walking into
 	 *  another chat must not read as idle and let a second generation start beside the
@@ -159,7 +160,8 @@ class MessageStore {
 	 *  message's id, or to null when nothing was streamed to keep (no message is created). A
 	 *  stop mid-stream still persists what streamed, so it returns an id like any other
 	 *  reply. Other failures throw. */
-	async generateResponse(chatId: string, parentId: string, prompt: BuiltPrompt): Promise<string | null> {
+	async generateResponse(chatId: string, parentId: string, prompt: BuiltPrompt,
+		placement?: { expectedLeafId: string | null; replaceMessageIds?: string[] }): Promise<string | null> {
 		const { messages, target: callTarget, lorebook, oneShotSteering } = prompt;
 		this.abortController = new AbortController();
 		chatStore.startStream(chatId);
@@ -183,7 +185,8 @@ class MessageStore {
 				commit: {
 					chatId,
 					parentId,
-					expectedLeafId: parentId,
+					expectedLeafId: placement ? placement.expectedLeafId : parentId,
+					replaceMessageIds: placement?.replaceMessageIds,
 					claimsRoot: false,
 					lorebook,
 					spendSteeringIds: oneShotSteering.map((note) => note.id)
@@ -228,6 +231,21 @@ class MessageStore {
 		}
 	}
 
+	async setExcludedFromPrompt(messageId: string, excluded: boolean): Promise<void> {
+		if (this.warnIfBusy()) return;
+		const chatId = chatStore.activeChatId;
+		if (!chatId) return;
+		this.isProcessing = true;
+		try {
+			await db.setMessageExcludedFromPrompt(messageId, excluded);
+			await chatStore.refreshChat(chatId);
+		} catch (error) {
+			toastStore.failed('change message visibility in the prompt', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
 	async editMessage(
 		messageId: string,
 		newContent: string,
@@ -238,10 +256,8 @@ class MessageStore {
 		const state = chatStore.currentChatState;
 		if (!state) throw new Error('No active chat');
 
-		// Look the message up across the whole tree, not just the active path, so the story map
-		// can edit off-path branch nodes too. The chat only ever passes active-path ids, so its
-		// behaviour is unchanged (same object, same code path). `save_only` leaves the active leaf
-		// alone; `create_branch` moves it onto the fork it just wrote, exactly as in chat.
+		// Resolve against the whole tree so legacy off-path ids remain valid. `save_only`
+		// leaves the active leaf alone; `create_branch` moves it onto the new fork.
 		const message = state.allMessages.find((m) => m.id === messageId);
 		if (!message) throw new Error('Message not found');
 
@@ -314,10 +330,8 @@ class MessageStore {
 		const state = chatStore.currentChatState;
 		if (!state) throw new Error('No active chat');
 
-		// Tree-wide lookup so the story map can prune off-path branches. The active-leaf
-		// navigation below is gated on whether the deletion actually touches the branch we're
-		// viewing, so pruning an off-path branch never yanks the current view. The chat only
-		// deletes active-path messages, so it keeps its exact prior behaviour.
+		// Tree-wide lookup preserves support for legacy off-path ids. Navigation below only
+		// changes if the deletion touches the branch currently being viewed.
 		const message = state.allMessages.find((m) => m.id === messageId);
 		if (!message) throw new Error('Message not found');
 
@@ -384,8 +398,8 @@ class MessageStore {
 					if (!children.some((c) => onPath.has(c.id))) {
 						toastStore.info(
 							children.length === 1
-								? 'The reply below was kept. It now follows the previous turn as its own branch, reachable by swiping there or from the story map.'
-								: 'The replies below were kept. They now follow the previous turn as their own branches, reachable by swiping there or from the story map.'
+								? 'The reply below was kept. It now follows the previous turn as its own branch, reachable by swiping there.'
+								: 'The replies below were kept. They now follow the previous turn as their own branches, reachable by swiping there.'
 						);
 					}
 				}
@@ -403,7 +417,7 @@ class MessageStore {
 				const siblings = sameRole.length > 0 ? sameRole : pool;
 
 				// Only re-home the active leaf if the branch we're deleting is the one we're viewing.
-				// An off-path prune (from the story map) leaves the current view untouched.
+				// An off-path prune leaves the current view untouched.
 				const isInActivePath = state.chat.activeLeafId
 					? findActivePath(allMessages, state.chat.activeLeafId).some((m) => m.id === messageId)
 					: false;
@@ -462,7 +476,7 @@ class MessageStore {
 
 	/**
 	 * After a structural delete, a canonLeafId pointing at a removed message would dangle
-	 * forever (the gold spine silently vanishes from the story map). Retreat it to its
+	 * forever. Preserve legacy metadata by retreating it to its
 	 * nearest surviving ancestor (the canonical prefix that still exists) or clear it.
 	 */
 	private async repairCanon(chatId: string, preMessages: Message[]): Promise<void> {
@@ -477,17 +491,9 @@ class MessageStore {
 		await db.updateChat({ id: chatId, canonLeafId: cur }, { touchUpdatedAt: false });
 	}
 
-	/** The turn a jump wants brought into view, set beside a navigation and claimed by the
-	 *  transcript, which scrolls to it, marks it briefly and clears this back to null.
-	 *  Navigating reaches a BRANCH, by its deepest leaf, which is rarely the turn the user
-	 *  picked. Without naming it they arrive in another timeline at whatever scroll offset
-	 *  the previous one had, with nothing on screen saying where the turn they chose went. */
-	revealTargetId = $state<string | null>(null);
-
 	/** The turn whose editor should open in Branch mode, set by `/branch` and claimed by the
-	 *  transcript row, which opens its editor and clears this back to null. Same one-shot
-	 *  idiom as `revealTargetId`, and for the same reason: the editor is the row's own state,
-	 *  so the composer can only ask for it, never reach in and set it. */
+	 *  transcript row, which opens its editor and clears this back to null. The editor is
+	 *  the row's own state, so the composer can only ask for it. */
 	branchTargetId = $state<string | null>(null);
 
 	async navigateToBranch(messageId: string): Promise<void> {
@@ -509,13 +515,6 @@ class MessageStore {
 		const leafId = findDeepestLeafFromNode(messages, messageId);
 
 		await db.updateChatActiveLeaf(state.chat.id, leafId, { touchUpdatedAt: false });
-		await chatStore.refreshCurrentChat();
-	}
-
-	/** Name (or clear, with null) the branch a message heads: story-map metadata only.
-	 *  Never touches content or edited_at, and doesn't reorder the chat. */
-	async setBranchLabel(messageId: string, label: BranchLabel | null): Promise<void> {
-		await db.updateMessageBranchLabel(messageId, label);
 		await chatStore.refreshCurrentChat();
 	}
 
@@ -543,7 +542,7 @@ class MessageStore {
 		}
 
 		// Fresh siblings, every role: the arrows walk all branches at this point, forks
-		// included, mirroring findSiblings/the story map (see architecture/chat-sessions.md).
+		// included, mirroring findSiblings (see architecture/chat-sessions.md).
 		const siblings = messages
 			.filter((m) => m.parentId === message.parentId)
 			.sort((a, b) => a.siblingIndex - b.siblingIndex);
@@ -564,100 +563,32 @@ class MessageStore {
 	}
 
 	async retryMessageResponse(messageId: string, action: RegenerateAction = 'replace'): Promise<void> {
-		if (this.isProcessing) return;
+		if (this.busy) return;
+		const state = chatStore.currentChatState;
+		if (!state || state.activePath.at(-1)?.id !== messageId) return;
+		const current = state.activePath.at(-1)!;
+		if (current.role === 'assistant' && current.parentId === null) {
+			await this.generateOpeningScene('', action);
+			return;
+		}
 		this.isProcessing = true;
-
 		try {
-			const state = chatStore.currentChatState;
-			if (!state || state.activePath.length === 0) return;
-
-			const message = state.activePath.find((m) => m.id === messageId);
-			if (!message) throw new Error('Message not found in active path');
-
-			if (message.role === 'assistant') {
-				const parentId = message.parentId;
-				if (!parentId) {
-					throw new Error('Cannot regenerate: assistant message has no parent');
-				}
-				// Before the leaf moves, so a review left open or cancelled never takes the
-				// reply off the reader's screen while they are deciding about it. The path to
-				// the parent is what a retry sends either way: the turn being re-rolled hangs
-				// below it and was never in its own prompt.
-				const prompt = await this.prepareFromLeaf('regenerate', state.chat.id, parentId, 'swipe');
-				if (!prompt) return;
-
-				const prevLeafId = state.chat.activeLeafId;
-
-				// Both actions generate a SIBLING first and differ only in what happens after.
-				// 'replace' deleting up front is what a generation that outlives its page made
-				// unsafe: the server refuses a second committing turn for a chat that already
-				// has one running, and a refusal arriving after the delete leaves the reader
-				// with neither the old reply nor a new one. Nothing is thrown away until there
-				// is something to throw it away for.
-				await db.updateChatActiveLeaf(state.chat.id, parentId, { touchUpdatedAt: action === 'replace' });
-
-				await chatStore.refreshCurrentChat();
-				let newId: string | null = null;
-				try {
-					newId = await this.generateResponse(state.chat.id, parentId, prompt);
-					if (newId && action === 'replace') {
-						const preDelete = await chatStore.freshMessages(state.chat.id);
-						await db.deleteMessageAndDescendants(message.id);
-						await this.repairCanon(state.chat.id, preDelete);
-					}
-				} finally {
-					// Aborted or failed: don't strand the view on the bare parent (the reply the
-					// user was reading would just vanish). Either action restores that exact
-					// reply, since nothing has been deleted by this point.
-					if (!newId) {
-						const restoreId =
-							prevLeafId ?? findDeepestLeafFromNode(await chatStore.freshMessages(state.chat.id), parentId);
-						await db.updateChatActiveLeaf(state.chat.id, restoreId, { touchUpdatedAt: false });
-					}
-					await chatStore.refreshCurrentChat();
-				}
-				return;
-			}
-
-			if (message.role === 'user') {
-				// Re-roll the AI's answer to THIS turn: the user message is never cloned (that's
-				// what the Branch action does). Replace removes the replies
-				// below and regenerates one; alternate keeps them and adds a swipeable assistant sibling.
-				const prompt = await this.prepareFromLeaf('regenerate', state.chat.id, message.id, 'swipe');
-				if (!prompt) return;
-
-				const prevLeafId = state.chat.activeLeafId;
-				// Delete-after, exactly as above: a refused generation must not leave the reader
-				// holding neither the replies it deleted nor a new one.
-				await db.updateChatActiveLeaf(state.chat.id, message.id, { touchUpdatedAt: action === 'replace' });
-				await chatStore.refreshCurrentChat();
-				let newId: string | null = null;
-				try {
-					newId = await this.generateResponse(state.chat.id, message.id, prompt);
-					if (newId && action === 'replace') {
-						const preDelete = await chatStore.freshMessages(state.chat.id);
-						// Everything under the user turn EXCEPT the reply just written for it.
-						for (const child of preDelete.filter((m) => m.parentId === message.id && m.id !== newId)) {
-							await db.deleteMessageAndDescendants(child.id);
-						}
-						await this.repairCanon(state.chat.id, preDelete);
-					}
-				} finally {
-					// Nothing has been deleted when the generation produced no row, so the reply
-					// the user was reading is still there to go back to.
-					if (!newId && prevLeafId && prevLeafId !== message.id) {
-						await db.updateChatActiveLeaf(state.chat.id, prevLeafId, { touchUpdatedAt: false });
-					}
-					await chatStore.refreshCurrentChat();
-				}
-				return;
-			}
-
-			throw new Error('Retry is only available for user and assistant messages');
+			const messages = await chatStore.freshMessages(state.chat.id);
+			const message = messages.find(m => m.id === messageId);
+			if (!message || (message.role !== 'user' && message.role !== 'assistant')) return;
+			const parentId = message.role === 'user' ? message.id : message.parentId;
+			if (!parentId) return;
+			const prompt = await this.prepareFromLeaf('regenerate', state.chat.id, parentId, 'swipe');
+			if (!prompt) return;
+			const fresh = await chatStore.freshMessages(state.chat.id);
+			// Keep the selected reply and every alternative until the server commits success.
+			// Only the siblings present when this request leaves may be replaced.
+			await this.generateResponse(state.chat.id, parentId, prompt, {
+				expectedLeafId: state.chat.activeLeafId,
+				replaceMessageIds: action === 'replace' ? fresh.filter(m => m.parentId === parentId).map(m => m.id) : undefined
+			});
 		} catch (error) {
-			if (error instanceof Error && error.name !== 'AbortError') {
-				toastStore.failed('generate the new reply', error);
-			}
+			if (error instanceof Error && error.name !== 'AbortError') toastStore.failed('generate the new reply', error);
 		} finally {
 			this.isProcessing = false;
 		}
@@ -707,6 +638,10 @@ class MessageStore {
 			const allMessages = await chatStore.freshMessages(state.chat.id);
 			const target = allMessages.find((m) => m.id === leaf.id);
 			if (!target) throw new Error('The reply to continue no longer exists.');
+			if (target.excludedFromPrompt) {
+				toastStore.warning('Include this reply in the prompt before continuing it');
+				return;
+			}
 
 			// The same prompt that generated the reply (its parent path), with the reply
 			// itself riding as the assembly's continuation tail. A root reply (greeting /
@@ -831,8 +766,8 @@ class MessageStore {
 	 * `direction` is what the reader typed. Blank means "surprise me"; there is no magic
 	 * string for that, because a sentinel the caller has to spell is a second contract.
 	 */
-	async generateOpeningScene(direction: string): Promise<void> {
-		if (this.isProcessing) return;
+	async generateOpeningScene(direction: string, action: RegenerateAction = 'branch'): Promise<void> {
+		if (this.busy) return;
 		// The Opening Scene engine can be switched off app-wide (Settings → Engines). Every
 		// trigger hides or refuses when it's off; fail loud if something calls in anyway.
 		if (!featurePromptsStore.openingSceneEnabled) throw new Error('Opening Scene is turned off in Settings → Engines');
@@ -923,6 +858,9 @@ class MessageStore {
 					// they moved on while it was being written. Off the fresh row rather than the
 					// store's snapshot: this is a claim about where the chat stands right now.
 					expectedLeafId: chat.activeLeafId,
+					replaceMessageIds: action === 'replace'
+						? (await chatStore.freshMessages(state.chat.id)).filter(m => m.parentId === null).map(m => m.id)
+						: undefined,
 					claimsRoot: true,
 					lorebook,
 					spendSteeringIds: oneShotSteering.map((note) => note.id)

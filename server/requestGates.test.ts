@@ -236,6 +236,13 @@ describe('/files/', () => {
 		const fallback = await exchange('GET', '/files/images/characters/thumbnails/beside.webp', ours());
 		expect(fallback.status).toBe(200);
 		expect(fallback.headers['content-type']).toBe('image/png');
+		writeFileSync(join(dir, 'jpeg-original.jfif'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+		for (const path of ['jpeg-original.jfif', 'thumbnails/jpeg-original.webp']) {
+			const jfif = await exchange('GET', `/files/images/characters/${path}`, ours());
+			expect(jfif.status).toBe(200);
+			expect(jfif.headers['content-type']).toBe('image/jpeg');
+			expect(jfif.headers['x-content-type-options']).toBe('nosniff');
+		}
 	});
 
 	test('a bundled background carries the same headers', async () => {

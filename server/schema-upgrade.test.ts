@@ -22,6 +22,20 @@ const DATA_MIGRATIONS: string[] = [
 ];
 
 describe('migrations', () => {
+	test('message exclusion upgrades existing transcripts with every message included', () => {
+		const old = new Database(':memory:');
+		try {
+			for (const migration of MIGRATIONS_FOR_TESTS.filter((m) => m.version < 46)) old.exec(migration.sql);
+			old.run("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 'Story', 1, 1)");
+			old.run("INSERT INTO messages (id, chat_id, role, content, created_at) VALUES ('m', 'c', 'user', 'Keep my text', 1)");
+			old.exec(MIGRATIONS_FOR_TESTS.find((m) => m.version === 46)!.sql);
+			expect(old.query('SELECT content, excluded_from_prompt FROM messages').get()).toEqual({
+				content: 'Keep my text', excluded_from_prompt: 0
+			});
+		} finally {
+			old.close();
+		}
+	});
 	test('a migration only moves data when it was decided here', () => {
 		const movers = MIGRATIONS_FOR_TESTS.filter((m) =>
 			/\b(UPDATE\s+\w+\s+SET|INSERT\s+INTO|DELETE\s+FROM)\b/i.test(m.sql)

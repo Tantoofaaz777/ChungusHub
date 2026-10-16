@@ -13,12 +13,8 @@
  * `equal`/`removed` segment's text reproduces `before` exactly, and every `equal`/`added`
  * segment's text reproduces `after` exactly, whitespace included. See text-diff.test.ts.
  *
- * Deliberately separate from utils/diff.ts (the branch comparison view): that one is
- * line-first and renders a change as PAIRED del/add rows, each side its own segment list:
- * right for comparing story turns, wrong for a one-paragraph composer draft. This one
- * emits a single interleaved stream for an inline redline, and guarantees the reconstruction
- * invariant above, which diff.ts neither needs nor offers. Only the ~20-line LCS walk is
- * shared in shape; folding them together would couple this contract to untested render code.
+ * Emits a single interleaved stream for an inline redline and preserves the reconstruction
+ * invariant above.
  */
 
 export type DiffSegment = { type: 'equal' | 'removed' | 'added'; text: string };
@@ -26,7 +22,7 @@ export type DiffSegment = { type: 'equal' | 'removed' | 'added'; text: string };
 /** Above this many DP cells the quadratic LCS is too expensive for a foreground,
  *  user-triggered action. Composer drafts are small, so this only ever bites on a
  *  pathological paste: fall back to a trivial two-segment answer (a worse diff,
- *  never a hang). Mirrors the same guard shape as utils/diff.ts's MAX_CELLS. */
+ *  never a hang). */
 const MAX_CELLS = 250_000;
 
 /** Split on whitespace runs, keeping the runs as their own tokens (the capture group in

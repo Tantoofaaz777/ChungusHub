@@ -407,7 +407,7 @@ function stopped(opts: ProcessOptions): boolean {
  * the wording it was actually read with.
  */
 function rewrittenSinceRead(tree: TreeSnapshot, readAs: Map<string, number>): boolean {
-	const now = new Map(tree.allMessages.map((m) => [m.id, m.editedAt ?? 0] as const));
+	const now = new Map(tree.allMessages.filter((m) => !m.excludedFromPrompt).map((m) => [m.id, m.editedAt ?? 0] as const));
 	for (const [id, stamp] of readAs) {
 		if (now.get(id) !== stamp) return true;
 	}

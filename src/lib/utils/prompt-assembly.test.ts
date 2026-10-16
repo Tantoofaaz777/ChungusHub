@@ -64,6 +64,39 @@ const CHAT = [
 	msg('m5', 'user', 'Latest user turn.')
 ];
 
+describe('manual message exclusion', () => {
+	test('hidden text and images leave history, last-turn macros and token counts together', () => {
+		const p = preset([item('{{chatHistory}}'), item('Last: {{lastMessage}} / {{lastUserMessage}} / {{lastCharMessage}}')]);
+		const hidden = { ...msg('hidden', 'assistant', 'SECRET HIDDEN TEXT'), excludedFromPrompt: true,
+			attachments: [{ kind: 'image' as const, path: 'images/chat/hidden.png' }] };
+		const base = input(p, { chatMessages: CHAT, postProcessing: { mode: 'none' } });
+		const expected = assemblePrompt(base);
+		const actual = assemblePrompt({ ...base, chatMessages: [...CHAT, hidden] });
+		expect(actual.messages).toEqual(expected.messages);
+		expect(actual.breakdown).toEqual(expected.breakdown);
+		expect(actual.trimmedMessages).toBe(expected.trimmedMessages);
+		const shown = assemblePrompt({ ...base, chatMessages: [...CHAT, { ...hidden, excludedFromPrompt: false }] });
+		expect(shown.messages.some((m) => m.content.includes('SECRET HIDDEN TEXT'))).toBe(true);
+	});
+
+	test('hidden keywords cannot activate lorebook entries', () => {
+		const book = createEmptyLorebook('Hidden keyword');
+		book.entries = [{ ...createEmptyLorebookEntry(), content: 'SECRET LORE', key: ['sigil'] }];
+		const p = preset([item('{{lorebook}}'), item('{{chatHistory}}')]);
+		const options = input(p, { lorebooks: [book], chatMessages: [
+			{ ...msg('hidden', 'user', 'sigil'), excludedFromPrompt: true }, msg('live', 'assistant', 'Visible reply')
+		], postProcessing: { mode: 'none' } });
+		expect(assemblePrompt(options).messages.some((m) => m.content.includes('SECRET LORE'))).toBe(false);
+		expect(assemblePrompt({ ...options, chatMessages: options.chatMessages.map((m) => ({ ...m, excludedFromPrompt: false })) }).messages.some((m) => m.content.includes('SECRET LORE'))).toBe(true);
+	});
+
+	test('a hidden continuation cannot bypass the history exclusion', () => {
+		const options = input(preset([item('{{chatHistory}}')]), { chatMessages: CHAT });
+		expect(assemblePrompt({ ...options, continuation: { ...msg('hidden', 'assistant', 'SECRET'), excludedFromPrompt: true } }).messages)
+			.toEqual(assemblePrompt(options).messages);
+	});
+});
+
 describe('assemblePrompt: basic attribution', () => {
 	test('plain preset item lands entirely in the preset bucket', () => {
 		const a = assemblePrompt(input(preset([item('You are a helpful assistant.')])));

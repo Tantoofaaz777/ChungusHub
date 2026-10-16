@@ -11,9 +11,8 @@ export interface Chat {
 	updatedAt: number;
 	rootMessageId: string | null;
 	activeLeafId: string | null;
-	/** The tip of the canonical timeline: the single branch the author has blessed as
-	 *  "the real story". Null until one is marked. The story map draws root→here as the
-	 *  gold spine; independent of activeLeafId (where you currently are). */
+	/** Legacy canon marker, preserved when reading, copying and repairing stored chats.
+	 *  Independent of activeLeafId, which controls the visible conversation. */
 	canonLeafId: string | null;
 	settings: ChatSettings | null;
 	/** The library character this chat is bound to (ST-style: one chat, one character). */
@@ -63,7 +62,7 @@ export function duplicateAsksAboutMemory(footprint: ChatMemoryFootprint): boolea
 	return footprint.enabled || footprint.episodes > 0;
 }
 
-/** A user-given name + color for a branch, anchored on the message that heads it.
+/** A legacy name + color for a branch, anchored on the message that heads it.
  *  `color` is a palette key (see branch-labels.ts), not a raw CSS color, so it stays
  *  theme-independent. */
 export interface BranchLabel {
@@ -284,12 +283,13 @@ export interface Message {
 	parentId: string | null;
 	role: 'user' | 'assistant' | 'system';
 	content: string;
+	/** Kept in the transcript, excluded from model history and memory extraction. */
+	excludedFromPrompt?: boolean;
 	/** The persona this message was sent with, captured at send time. Locks attribution
 	 *  so changing the global active persona never re-labels past messages. User messages
 	 *  only; null for assistant/system and for messages created before this was tracked. */
 	personaId: string | null;
-	/** A name+color for the branch this message heads, shown on the story map. Null for
-	 *  unlabeled messages (the vast majority). Story-map metadata only. */
+	/** Legacy branch name and color, preserved in saved chats and shown in search. */
 	branchLabel: BranchLabel | null;
 	thinking: string | null;
 	/** Images the user sent with this turn (paths under images/chat/ on the server).

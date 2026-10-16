@@ -222,8 +222,7 @@ class ChatStore {
 	}
 
 	/** Close the open chat and land on the welcome screen, the same zero state as
-	 *  boot: no active chat, no loaded chat state, memory cleared (story map and
-	 *  memory panels then show their no-chat states). Callers must check
+	 *  boot: no active chat, no loaded chat state, memory cleared (the memory panel then shows its no-chat state). Callers must check
 	 *  `messageStore.warnIfBusy()` first: this store can't import messageStore
 	 *  (import cycle), and nulling `currentChatState` mid-generation would orphan
 	 *  the stream that writes into it. */
@@ -644,16 +643,6 @@ class ChatStore {
 				chat: { ...this.currentChatState.chat, characterVersionId: versionId }
 			};
 		}
-	}
-
-	/** Bless (or clear, with null) a node as the canonical timeline's tip for the current
-	 *  chat. Pure story-map metadata: it never moves the active leaf or touches content, so
-	 *  it doesn't bump the chat's activity order. */
-	async setCanonLeaf(leafId: string | null): Promise<void> {
-		if (!this.currentChatState) return;
-		const chatId = this.currentChatState.chat.id;
-		await db.updateChat({ id: chatId, canonLeafId: leafId }, { touchUpdatedAt: false });
-		await this.refreshCurrentChat();
 	}
 
 	async updateChatTitle(chatId: string, title: string): Promise<void> {

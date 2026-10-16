@@ -133,7 +133,7 @@
 	// JS state, so there is no race where crossing the gap to the popup dismisses it.
 
 	// Back to the welcome landing. This is a real exit, not just raising the layer: the
-	// chat closes to the boot zero state (story map / memory show no chat).
+	// chat closes to the boot zero state (memory shows no chat).
 	// Refused mid-generation: the stream writes into the state this tears down.
 	function handleGoHome() {
 		menuOpen = false;
@@ -421,7 +421,7 @@
 	// Continue extends the newest turn in place, so it only makes sense when that turn is an
 	// AI reply. The button for it lives on that reply (MessageActions); what is left here is
 	// the gate `/continue` runs behind.
-	let canContinue = $derived(lastTurn?.role === 'assistant');
+	let canContinue = $derived(lastTurn?.role === 'assistant' && !lastTurn.excludedFromPrompt);
 
 	// Same target as Continue (the newest turn), but what it does depends on whose turn that is:
 	// a reply gets re-rolled, your own turn gets the reply it doesn't have yet. One store call
@@ -430,12 +430,8 @@
 	let canRegenerateLast = $derived.by(() => {
 		const last = lastTurn;
 		if (!last) return false;
-		// A seeded greeting has no prompt behind it to re-roll.
-		if (last.role === 'assistant') return last.parentId !== null;
-		if (last.role !== 'user') return false;
-		// A user turn holding replies would make 'replace' a subtree delete. The transcript's own
-		// button puts that behind a counted confirm, so the composer must not fire it uncounted.
-		return !(chatStore.currentChatState?.allMessages ?? []).some((m) => m.parentId === last.id);
+		if (last.role === 'assistant') return last.parentId !== null || featurePromptsStore.openingSceneEnabled;
+		return last.role === 'user';
 	});
 
 	let regenerateLastHint = $derived(
@@ -443,18 +439,14 @@
 			? 'The newest turn must be a reply, or a turn of yours with no reply yet'
 			: lastTurn?.role === 'user'
 				? 'Generate a reply to your last turn'
-				: 'Delete the last reply and generate a new one'
+				: 'Replace the last response and all its swipes'
 	);
 
-	// Swipe is the same act with the non-destructive action ('branch' keeps what is there and
-	// adds a sibling), so its gate is Retry's WITHOUT the one exclusion that exists purely
-	// because 'replace' would be a subtree delete. A user turn that already holds replies is
-	// not the case swipe has to refuse; it is the case swipe is FOR.
+	// The right arrow and /swipe add an alternative without removing existing responses.
 	let canSwipeLast = $derived.by(() => {
 		const last = lastTurn;
 		if (!last) return false;
-		// A seeded greeting has no prompt behind it, the same reason Retry refuses one.
-		if (last.role === 'assistant') return last.parentId !== null;
+		if (last.role === 'assistant') return last.parentId !== null || featurePromptsStore.openingSceneEnabled;
 		return last.role === 'user';
 	});
 
@@ -553,8 +545,6 @@
 	// neither can end up more permissive than the other.
 	let commandContext = $derived<CommandContext>({
 		chatId: chatStore.activeChatId,
-		activeLeafId: chatStore.activeChat?.activeLeafId ?? null,
-		canonLeafId: chatStore.activeChat?.canonLeafId ?? null,
 		characterEntryId: activeCharacterEntry?.id ?? null,
 		personaEntryId: chatPersona?.id ?? null,
 		lastTurnId: lastTurn?.id ?? null,

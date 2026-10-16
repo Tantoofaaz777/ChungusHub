@@ -63,7 +63,10 @@ function megabytes(bytes: number): string {
  *  whether the event is even its business; whether the picture is *acceptable* is the
  *  separate question below. */
 export function isImageFile(file: Blob): boolean {
-	return file.type.startsWith('image/');
+	return file.type.startsWith('image/') || (
+		file instanceof File && /\.jfif$/i.test(file.name) &&
+		(!file.type || file.type === 'application/octet-stream')
+	);
 }
 
 /**
@@ -134,7 +137,11 @@ class ImageService {
 	}
 
 	async saveImage(file: File, category: ImageCategory = 'characters'): Promise<string> {
-		const { blob, ext } = await this.toStoredFormat(file, this.getFileExtension(file.name), category);
+		// Some file pickers leave JFIF untyped or use a nonstandard JPEG alias.
+		const source = /\.jfif$/i.test(file.name) && ['', 'application/octet-stream', 'image/jfif', 'image/pjpeg'].includes(file.type)
+			? new File([file], file.name, { type: 'image/jpeg', lastModified: file.lastModified })
+			: file;
+		const { blob, ext } = await this.toStoredFormat(source, this.getFileExtension(file.name), category);
 		let thumb: Blob | null = null;
 		try {
 			thumb = await this.makeThumbnail(blob);

@@ -205,3 +205,64 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		expect(serverDb.getAllSteeringNotes().some((n: { id: string }) => n.id === note)).toBe(true);
 	});
 });
+
+describe('replacing response swipes', () => {
+	test('commits a replacement and removes every named alternative and its continuation together', () => {
+		const chatId = makeChat();
+		const user = addMessage(chatId, null, 'user');
+		const a = addMessage(chatId, user, 'assistant', 0);
+		const b = addMessage(chatId, user, 'assistant', 1);
+		const continuation = addMessage(chatId, b, 'user');
+		serverDb.updateChatActiveLeaf(chatId, a);
+		serverDb.updateChat({ id: chatId, canonLeafId: continuation });
+		const result = serverDb.commitGeneratedTurn(commit({ chatId, parentId: user, expectedLeafId: a, replaceMessageIds: [a, b] }));
+		expect(serverDb.getMessagesByChat(chatId).map((m: { id: string }) => m.id).sort()).toEqual([user, result.messageId].sort());
+		expect(serverDb.getChat(chatId).activeLeafId).toBe(result.messageId);
+		expect(serverDb.getMessage(a)).toBeNull();
+		expect(serverDb.getMessage(b)).toBeNull();
+		expect(serverDb.getMessage(continuation)).toBeNull();
+		expect(serverDb.getChat(chatId).canonLeafId).not.toBe(continuation);
+	});
+	test('canceling even after tokens arrived, or receiving empty text, preserves all swipes', () => {
+		for (const fields of [{ finishReason: 'cancelled', content: 'partial reply' }, { content: '  ' }]) {
+			const chatId = makeChat();
+			const parent = addMessage(chatId, null, 'user');
+			const a = addMessage(chatId, parent, 'assistant');
+			const b = addMessage(chatId, parent, 'assistant', 1);
+			serverDb.updateChatActiveLeaf(chatId, a);
+			expect(serverDb.commitGeneratedTurn(commit({ chatId, parentId: parent, expectedLeafId: a, replaceMessageIds: [a, b], ...fields }))).toBeNull();
+			expect(serverDb.getMessagesByChat(chatId)).toHaveLength(3);
+			expect(serverDb.getChat(chatId).activeLeafId).toBe(a);
+		}
+	});
+	test('refuses a replacement targeting another turn or chat without writing anything', () => {
+		const chatId = makeChat();
+		const parent = addMessage(chatId, null, 'user');
+		const original = addMessage(chatId, parent, 'assistant');
+		const anotherChat = makeChat();
+		const foreign = addMessage(anotherChat, null, 'assistant');
+		for (const badId of [parent, foreign]) {
+			expect(() => serverDb.commitGeneratedTurn(commit({ chatId, parentId: parent, replaceMessageIds: [original, badId] }))).toThrow(/alternatives/);
+			expect(serverDb.getMessagesByChat(chatId)).toHaveLength(2);
+			expect(serverDb.getMessage(foreign)).not.toBeNull();
+		}
+	});
+	test('replacing opening swipes repairs the root and leaves one new opening', () => {
+		const chatId = makeChat();
+		const first = serverDb.commitGeneratedTurn(commit({ chatId, claimsRoot: true }));
+		const second = serverDb.commitGeneratedTurn(commit({ chatId, claimsRoot: true, expectedLeafId: first.messageId }));
+		const next = serverDb.commitGeneratedTurn(commit({ chatId, claimsRoot: true, expectedLeafId: second.messageId,
+			replaceMessageIds: [first.messageId, second.messageId] }));
+		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(1);
+		expect(serverDb.getChat(chatId).rootMessageId).toBe(next.messageId);
+		expect(serverDb.getChat(chatId).activeLeafId).toBe(next.messageId);
+	});
+	test('keeps an alternative created after the request snapshot', () => {
+		const chatId = makeChat();
+		const parent = addMessage(chatId, null, 'user');
+		const old = addMessage(chatId, parent, 'assistant');
+		const newer = addMessage(chatId, parent, 'assistant', 1);
+		serverDb.commitGeneratedTurn(commit({ chatId, parentId: parent, replaceMessageIds: [old] }));
+		expect(serverDb.getMessage(newer)).not.toBeNull();
+	});
+});

@@ -9,7 +9,6 @@
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { findSiblings } from '$lib/utils/message-tree';
-	import { flashTarget } from '$lib/utils/flash-target';
 	import { memoryStore } from '$lib/memory/store.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
@@ -64,8 +63,9 @@
 	// set (e.g. mid-navigation), so the boundary never lands in the middle of live turns.
 	let archivedPrefix = $derived.by(() => {
 		let n = 0;
-		for (const m of messages) {
-			if (archivedIds.has(m.id)) n++;
+		for (const [index, m] of messages.entries()) {
+			if (m.excludedFromPrompt) continue;
+			if (archivedIds.has(m.id)) n = index + 1;
 			else break;
 		}
 		return n;
@@ -166,7 +166,7 @@
 	// a card of DOM and a row this scroller re-measures on every streaming token, so a
 	// nine-hundred-turn story is slow to open and then drags every reply that follows it.
 	// The reader gets the newest `pageSize` turns and reaches further back deliberately.
-	// NOTHING else is windowed: the tree, the prompt, the story map, the chats panel and find
+	// NOTHING else is windowed: the tree, the prompt, the chats panel and find
 	// in chat all still see the whole path (architecture/chat-sessions.md coupling 14).
 	const LOAD_EARLIER_PX = 240;
 
@@ -363,46 +363,9 @@
 		messageStore.navigateToBranch(messageId);
 	}
 
-	// ===== Arrival from another surface =====
-	// The story map navigates to a BRANCH and names the turn that was picked; the transcript
-	// is the only place that can show it. `flashTarget` is the app's one "look here" gesture,
-	// so every surface uses the same scroll and accent glow.
-	let revealTargetId = $derived(messageStore.revealTargetId);
-
-	$effect(() => {
-		const id = revealTargetId;
-		if (!id) return;
-		// Read the path so this re-runs when the new branch lands, in case the target was
-		// named before its row was on screen, and the window so it re-runs once the turn
-		// below has been loaded back into it.
-		void messages;
-		void windowStart;
-		// Behind the window is the one case where a missing row does not mean the target is
-		// gone: load back through it and let this effect fire again on the row that now exists.
-		const index = messages.findIndex((m) => m.id === id);
-		if (index >= 0 && index < windowStart) {
-			showFrom(index);
-			return;
-		}
-		const row = document.getElementById(`msg-${id}`);
-		// The card, not the row: a row is as wide as the scrollport, so its glow is clipped
-		// left and right and painted over below by the turn that follows it.
-		const card = row?.querySelector<HTMLElement>('[data-message-card]') ?? row;
-		if (card) {
-			flashTarget(card);
-			messageStore.revealTargetId = null;
-			return;
-		}
-		// Never rendered: the row was deleted between the click and the jump. Give up rather
-		// than sit armed and fire later under an unrelated branch switch.
-		const timer = setTimeout(() => (messageStore.revealTargetId = null), 1000);
-		return () => clearTimeout(timer);
-	});
-
 	// ===== The message cursor =====
 	// Where the keyboard is in the story (architecture/chat-sessions.md, "The message cursor").
-	// The same reach as the arrival mark above and for the same reason, but it lands rather
-	// than points: a turn behind the window is loaded back in, and only then does the keyboard
+	// A turn behind the window is loaded back in, and only then does the keyboard
 	// move to it.
 	//
 	// Marking and taking are separate on purpose. `takeNonce` is what says the keyboard should
@@ -534,9 +497,9 @@
 						depth={messages.length - 1 - index + streamingTurnOffset}
 						siblingCount={siblings.length}
 						{siblingIndex}
-						isLast={index === messages.length - 1 && !isStreaming}
+						isLast={index === messages.length - 1}
 						{allMessages}
-						archived={index < archivedPrefix}
+						archived={archivedIds.has(message.id)}
 						onNavigateBranch={handleNavigateBranch}
 						streamTail={continuingMessageId === message.id ? streamingContent : null}
 						streamTailThinking={continuingMessageId === message.id ? streamingThinking : null}

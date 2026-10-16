@@ -31,10 +31,6 @@ interface GeneralSettings {
 	 *  open in a wide centered panel. Off = phone-style drill-down everywhere.
 	 *  Inert below dock widths (the panel is a single centered overlay there). */
 	settingsSplitView: boolean;
-	/** What a plain wheel or two-finger trackpad scroll does on the story map canvas:
-	 *  on it pans, off it zooms. Ctrl+scroll zooms and Shift+scroll pans sideways either
-	 *  way, so a trackpad pinch (which reaches the page as ctrl+wheel) is never affected. */
-	storyMapWheelPans: boolean;
 	/** Whether the welcome dialog has run once. Not a preference the reader sets from a
 	 *  row, but it rides the spine like one deliberately: the settings blob is server-side,
 	 *  so opening the app on a phone after setting it up on a desktop does NOT greet you a
@@ -59,7 +55,6 @@ const DEFAULT_SETTINGS: GeneralSettings = {
 	autoExpandReasoning: false,
 	personaSwitcher: false,
 	settingsSplitView: false,
-	storyMapWheelPans: false,
 	welcomeSeen: false
 };
 
@@ -112,10 +107,6 @@ function normalize(raw: Partial<GeneralSettings> | null): GeneralSettings {
 			typeof raw?.settingsSplitView === 'boolean'
 				? raw.settingsSplitView
 				: DEFAULT_SETTINGS.settingsSplitView,
-		storyMapWheelPans:
-			typeof raw?.storyMapWheelPans === 'boolean'
-				? raw.storyMapWheelPans
-				: DEFAULT_SETTINGS.storyMapWheelPans,
 		welcomeSeen:
 			typeof raw?.welcomeSeen === 'boolean' ? raw.welcomeSeen : DEFAULT_SETTINGS.welcomeSeen
 	};
@@ -133,7 +124,6 @@ class GeneralSettingsStore {
 	transcriptLoadMode = $derived(this.settings.transcriptLoadMode);
 	autoExpandReasoning = $derived(this.settings.autoExpandReasoning);
 	settingsSplitView = $derived(this.settings.settingsSplitView);
-	storyMapWheelPans = $derived(this.settings.storyMapWheelPans);
 	welcomeSeen = $derived(this.settings.welcomeSeen);
 
 	async initialize(): Promise<void> {
@@ -187,11 +177,6 @@ class GeneralSettingsStore {
 
 	setSettingsSplitView(enabled: boolean): void {
 		this.settings.settingsSplitView = enabled;
-		this.persist();
-	}
-
-	setStoryMapWheelPans(enabled: boolean): void {
-		this.settings.storyMapWheelPans = enabled;
 		this.persist();
 	}
 

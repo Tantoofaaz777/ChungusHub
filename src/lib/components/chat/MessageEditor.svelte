@@ -72,7 +72,7 @@
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			// Claim the key so the workspace's global Esc doesn't also close the
-			// hosting panel (e.g. the story map) on the same press.
+			// hosting panel on the same press.
 			e.preventDefault();
 			onCancel();
 		}

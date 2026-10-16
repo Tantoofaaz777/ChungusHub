@@ -51,7 +51,8 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 		? characterLibraryStore.dataForVersion(characterEntry, chatStore.activeChat?.characterVersionId ?? null)
 		: null;
 	const character = toPromptCharacter(characterEntry, characterData);
-	const chatMessages = opts.chatMessages ?? chatStore.currentChatState?.activePath ?? [];
+	const chatMessages = (opts.chatMessages ?? chatStore.currentChatState?.activePath ?? [])
+		.filter((m) => !m.excludedFromPrompt);
 	const preset = chatPreset(chatStore.activeChat);
 	// Same budget derivation as buildMacroContext (share of the prompt budget, counted with
 	// the active model's encoding), so these surfaces inject the same block the prompt does.

@@ -40,6 +40,10 @@ describe('spellcheck shape', () => {
 });
 
 describe('impersonate shape: the swapped seat', () => {
+	test('manually hidden messages stay out of impersonation history', () => {
+		const hidden = { ...msg('user', 'SECRET'), excludedFromPrompt: true };
+		expect(shape('impersonate', [...STORY, hidden])).toEqual(shape('impersonate', STORY));
+	});
 	test('history roles are swapped and the template closes the prompt as a user turn', () => {
 		const out = shape('impersonate', STORY);
 		expect(out.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'user']);

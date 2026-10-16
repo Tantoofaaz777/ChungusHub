@@ -1061,7 +1061,7 @@
 <input
 	bind:this={coverInput}
 	type="file"
-	accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+	accept="image/png,image/jpeg,.jfif,image/webp,image/gif,image/avif"
 	class="hidden"
 	onchange={onCoverPick}
 />

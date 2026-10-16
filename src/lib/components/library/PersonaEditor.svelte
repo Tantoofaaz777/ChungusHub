@@ -303,7 +303,7 @@
 <input
 	bind:this={fileInputRef}
 	type="file"
-	accept="image/*"
+	accept="image/*,.jfif"
 	class="hidden"
 	onchange={handleImageSelect}
 />

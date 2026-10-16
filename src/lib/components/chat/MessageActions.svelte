@@ -6,6 +6,8 @@
 		onEdit: () => void;
 		onDelete: () => void;
 		onCopy: () => Promise<void>;
+		onTogglePrompt?: () => void;
+		excludedFromPrompt?: boolean;
 		onRegenerate?: () => void;
 		showRegenerate?: boolean;
 		/** Label for the regenerate button, and its accessible name: the word labels are
@@ -19,19 +21,23 @@
 		 *  said, a reply into a hand-written alternate you can swipe between. */
 		onBranch?: () => void;
 		showBranch?: boolean;
+		disabled?: boolean;
 	}
 
 	let {
 		onEdit,
 		onDelete,
 		onCopy,
+		onTogglePrompt,
+		excludedFromPrompt = false,
 		onRegenerate,
 		showRegenerate = false,
 		regenerateLabel = 'Retry',
 		onContinue,
 		showContinue = false,
 		onBranch,
-		showBranch = false
+		showBranch = false,
+		disabled = false
 	}: Props = $props();
 
 	let justCopied = $state(false);
@@ -55,6 +61,7 @@
 		type="button"
 		class="action-btn"
 		onclick={onEdit}
+		{disabled}
 		aria-label="Edit message"
 		title="Edit"
 	>
@@ -78,6 +85,7 @@
 			type="button"
 			class="action-btn"
 			onclick={onRegenerate}
+			{disabled}
 			aria-label={regenerateLabel}
 			title={regenerateLabel}
 		>
@@ -91,6 +99,7 @@
 			type="button"
 			class="action-btn"
 			onclick={onContinue}
+			{disabled}
 			aria-label="Continue this reply"
 			title="Continue: extend this reply from where it stopped"
 		>
@@ -104,6 +113,7 @@
 			type="button"
 			class="action-btn"
 			onclick={onBranch}
+			{disabled}
 			aria-label="Branch this turn"
 			title="Branch: fork this turn into a new take you can rewrite"
 		>
@@ -112,10 +122,27 @@
 		</button>
 	{/if}
 
+	{#if onTogglePrompt}
+		<button
+			type="button"
+			class="action-btn"
+			class:action-btn-active={excludedFromPrompt}
+			onclick={onTogglePrompt}
+			{disabled}
+			aria-label={excludedFromPrompt ? 'Include message in prompt' : 'Exclude message from prompt'}
+			aria-pressed={excludedFromPrompt}
+			title={excludedFromPrompt ? 'Include in prompt' : 'Exclude from prompt'}
+		>
+			<Icon name={excludedFromPrompt ? 'eyeOff' : 'eye'} class="w-3.5 h-3.5" strokeWidth={1.75} />
+			<span class="action-label">{excludedFromPrompt ? 'Include' : 'Exclude'}</span>
+		</button>
+	{/if}
+
 	<button
 		type="button"
 		class="action-btn action-btn-danger"
 		onclick={onDelete}
+		{disabled}
 		aria-label="Delete message"
 		title="Delete"
 	>
@@ -126,7 +153,12 @@
 
 <style>
 	.message-actions {
-		display: inline-flex;
+		display: flex;
+		box-sizing: border-box;
+		max-width: 100%;
+		overflow-x: auto;
+		overscroll-behavior-x: contain;
+		scrollbar-width: none;
 		align-items: center;
 		gap: 0.2rem;
 		padding: 0.16rem;
@@ -135,10 +167,15 @@
 		background: color-mix(in srgb, var(--color-bg-secondary) 76%, transparent);
 	}
 
+	.message-actions::-webkit-scrollbar {
+		display: none;
+	}
+
 	/* Padding, gap and the word labels ride the Compact actions setting; the phone
 	   rule below sets the same properties later in source, so narrow screens stay
 	   icon-only whatever the setting says. */
 	.action-btn {
+		flex-shrink: 0;
 		height: 1.6rem;
 		min-width: 1.6rem;
 		padding: var(--msg-action-pad, 0 0.5rem);
@@ -173,6 +210,11 @@
 		color: var(--color-error);
 		background: color-mix(in srgb, var(--color-error) 12%, transparent);
 		border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
+	}
+
+	.action-btn-active {
+		color: var(--color-accent);
+		background: var(--color-accent-muted);
 	}
 
 	.action-label {

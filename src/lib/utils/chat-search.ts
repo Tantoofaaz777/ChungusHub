@@ -94,8 +94,7 @@ export interface BranchHit {
  *
  * That makes the two halves of the search deliberately asymmetric. On-path matching sees the
  * rendered text (markdown resolved, display regex applied); this sees the row as written.
- * Callers expand {{char}}/{{user}} before handing text in, the same call the story map's
- * search makes, and the same reason: a greeting stores its macros raw, so without it a search
+ * Callers expand {{char}}/{{user}} before handing text in: a greeting stores its macros raw, so without it a search
  * for the character's own name would skip every greeting.
  */
 export function findBranchHits(

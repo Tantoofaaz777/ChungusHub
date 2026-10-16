@@ -320,6 +320,7 @@ const MIME: Record<string, string> = {
 	'.png': 'image/png',
 	'.jpg': 'image/jpeg',
 	'.jpeg': 'image/jpeg',
+	'.jfif': 'image/jpeg',
 	'.webp': 'image/webp',
 	'.svg': 'image/svg+xml',
 	'.ico': 'image/x-icon',
@@ -1096,7 +1097,8 @@ function commitGeneration(
 		firstTokenMs: timings.firstTokenMs,
 		reasoningMs: timings.reasoningMs,
 		lorebook: commit.lorebook ?? null,
-		spendSteeringIds: commit.spendSteeringIds
+		spendSteeringIds: commit.spendSteeringIds,
+		replaceMessageIds: commit.replaceMessageIds
 	});
 	if (!landed) return null;
 

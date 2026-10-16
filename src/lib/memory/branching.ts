@@ -39,7 +39,7 @@ export function activePath(messages: MemoryMessage[], leafId: string | null): Me
 		const m = byId.get(cur);
 		if (!m) break;
 		seen.add(cur);
-		out.unshift(m);
+		if (!m.excludedFromPrompt) out.unshift(m);
 		cur = m.parentId;
 	}
 	return out;
@@ -132,10 +132,10 @@ export function resolveCoverage(
 	const path = activePath(allMessages, leafId);
 	const pathIndex = new Map<string, number>();
 	path.forEach((m, i) => pathIndex.set(m.id, i));
-	// Indexed over the WHOLE tree, not just the path: an off-path turn can be rewritten too
-	// (story map, branch compare), and the summary covering it is just as wrong for it.
+	// Indexed over the WHOLE tree, not just the path: a legacy off-path turn can be rewritten too,
+	// and the summary covering it is just as wrong for it.
 	// Membership in this map doubles as "does this turn still exist in the chat".
-	const editedAt = new Map(allMessages.map((m) => [m.id, m.editedAt ?? 0] as const));
+	const editedAt = new Map(allMessages.filter((m) => !m.excludedFromPrompt).map((m) => [m.id, m.editedAt ?? 0] as const));
 
 	const dead: Episode[] = [];
 	const dormant: Episode[] = [];

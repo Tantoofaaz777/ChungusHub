@@ -55,6 +55,8 @@ const CANDIDATES = [
 	'.png',
 	'.jpg',
 	'.jpeg',
+	'.jfif',
+	'.JFIF',
 	'.webp',
 	'.gif',
 	'.avif',
@@ -104,10 +106,10 @@ describe('saveImage', () => {
 	});
 
 	test('takes an extension however it is spelled', async () => {
-		for (const ext of ['png', '.png', '.PNG']) {
+		for (const ext of ['png', '.png', '.PNG', 'jfif', '.jfif', '.JFIF']) {
 			const result = await store(ext);
 			expect(result).toHaveProperty('path');
-			expect((result as { path: string }).path).toEndWith('.png');
+			expect((result as { path: string }).path).toEndWith(ext.toLowerCase().includes('jfif') ? '.jfif' : '.png');
 		}
 	});
 });
@@ -117,6 +119,8 @@ describe('imageContentType', () => {
 		expect(imageContentType('images/characters/a.png')).toBe('image/png');
 		expect(imageContentType('images/characters/a.jpg')).toBe('image/jpeg');
 		expect(imageContentType('images/characters/a.jpeg')).toBe('image/jpeg');
+		expect(imageContentType('images/characters/a.jfif')).toBe('image/jpeg');
+		expect(imageContentType('images/characters/A.JFIF')).toBe('image/jpeg');
 		expect(imageContentType('images/characters/a.webp')).toBe('image/webp');
 		expect(imageContentType('images/characters/a.gif')).toBe('image/gif');
 		expect(imageContentType('images/characters/a.avif')).toBe('image/avif');
@@ -134,4 +138,14 @@ describe('imageContentType', () => {
 		expect(imageContentType('images/a.png/b')).toBeNull();
 		expect(imageContentType('images/a.b/c.png')).toBe('image/png');
 	});
+});
+
+test('JFIF without a thumbnail remains readable by the app and model providers', async () => {
+	const result = await store('.jfif');
+	if ('error' in result) throw new Error(result.error);
+	const { resolveImageFile, thumbnailFor } = await import('./files');
+	const { loadImage, imageDataUrl } = await import('./llm/media');
+	expect(resolveImageFile(thumbnailFor(result.path))).toBe(join(imagesRoot, result.path.replace(/^images\//, '')));
+	expect(loadImage(result.path)).toEqual({ mediaType: 'image/jpeg', base64: 'AA==' });
+	expect(imageDataUrl(result.path)).toBe('data:image/jpeg;base64,AA==');
 });

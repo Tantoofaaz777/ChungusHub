@@ -60,6 +60,8 @@ export interface MemoryMessage {
 	parentId: string | null;
 	role: 'user' | 'assistant' | 'system';
 	content: string;
+	/** Hidden turns remain tree links, but must never be summarized or recalled. */
+	excludedFromPrompt?: boolean;
 	/** Display name of the speaker, resolved by the caller (persona/character name). */
 	speaker: string;
 	/** Last in-place content rewrite (the row's edited_at). An archived message edited

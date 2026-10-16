@@ -443,7 +443,7 @@ class MemoryStore {
 		// card sheet AND linked lorebooks both come from it.
 		const data = entry ? characterLibraryStore.dataForVersion(entry, ctx.characterVersionId) : null;
 		const character = toPromptCharacter(entry, data);
-		const chatMessages = ctx.leafId ? findActivePath(ctx.allMessages, ctx.leafId) : [];
+		const chatMessages = ctx.leafId ? findActivePath(ctx.allMessages, ctx.leafId).filter((m) => !m.excludedFromPrompt) : [];
 		// The persona this chat plays as, same rule and same resolver as the prompt.
 		const persona = personaEntryFor(ctx.personaId);
 		// One resolution for both halves: a preset's controls and the values they expand
@@ -592,7 +592,7 @@ class MemoryStore {
 
 		const episodes = await memoryDb.listEpisodes(chatId);
 		const config = resolveConfig(state.config);
-		const mem = path.map((m): MemoryMessage => ({ id: m.id, parentId: m.parentId, role: m.role, content: m.content, speaker: '', editedAt: m.editedAt }));
+		const mem = path.map((m): MemoryMessage => ({ id: m.id, parentId: m.parentId, role: m.role, content: m.content, speaker: '', editedAt: m.editedAt, excludedFromPrompt: m.excludedFromPrompt }));
 		const leafId = mem.length > 0 ? mem[mem.length - 1].id : null;
 		// Coverage resolves against THIS path, so a branch change moments ago is already
 		// accounted for: there is no persisted boundary that could still be catching up.
@@ -849,7 +849,8 @@ class MemoryStore {
 			role: m.role,
 			content: m.content,
 			speaker: this.speakerFor(m, charName, userName),
-			editedAt: m.editedAt
+			editedAt: m.editedAt,
+			excludedFromPrompt: m.excludedFromPrompt
 		}));
 	}
 

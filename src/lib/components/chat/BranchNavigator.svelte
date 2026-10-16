@@ -5,19 +5,22 @@
 		current: number;
 		total: number;
 		onNavigate: (direction: 'prev' | 'next') => void;
+		canGenerate?: boolean;
+		disabled?: boolean;
 	}
 
-	let { current, total, onNavigate }: Props = $props();
+	let { current, total, onNavigate, canGenerate = false, disabled = false }: Props = $props();
+	const createsNext = $derived(canGenerate && current >= total - 1);
 </script>
 
-<div class="branch-nav" role="group" aria-label="Response branch navigation">
+<div class="branch-nav" role="group" aria-label="Response swipes">
 	<button
 		type="button"
 		class="branch-btn"
-		disabled={current === 0}
+		disabled={disabled || current <= 0}
 		onclick={() => onNavigate('prev')}
-		aria-label="Previous branch"
-		title="Previous"
+		aria-label="Previous swipe"
+		title="Previous swipe"
 	>
 		<Icon name="chevronLeft" class="w-3.5 h-3.5" strokeWidth={1.75} />
 	</button>
@@ -27,10 +30,10 @@
 	<button
 		type="button"
 		class="branch-btn"
-		disabled={current === total - 1}
+		disabled={disabled || (current >= total - 1 && !canGenerate)}
 		onclick={() => onNavigate('next')}
-		aria-label="Next branch"
-		title="Next"
+		aria-label={createsNext ? 'Generate alternate response' : 'Next swipe'}
+		title={createsNext ? 'Generate alternate response' : 'Next swipe'}
 	>
 		<Icon name="chevronRight" class="w-3.5 h-3.5" strokeWidth={1.75} />
 	</button>

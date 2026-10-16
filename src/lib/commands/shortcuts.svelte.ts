@@ -120,8 +120,7 @@ const FOCUS_KEYS: Record<string, Direction> = {
 	KeyD: 'right'
 };
 
-/** A chat genuinely on screen, which is what the transcript's own keys need: the story map
- *  and the other overlays cover the column and carry their own search, and so does either
+/** A chat genuinely on screen, which is what the transcript's own keys need: the overlays cover the column and carry their own search, and so does either
  *  centered editor, which is why the two ids are read here and not only `activeOverlay`.
  *  Without them Ctrl+F opens find in a chat nobody can see and takes the caret with it. */
 const chatOnScreen = () =>

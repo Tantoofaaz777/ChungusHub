@@ -20,6 +20,8 @@ export interface GenerationCommit {
 	lorebook: unknown;
 	/** Ids of the 'once' steering notes this prompt resolved, spent inside the commit. */
 	spendSteeringIds: string[];
+	/** Snapshot of sibling subtrees to replace, only after a complete reply is saved. */
+	replaceMessageIds?: string[];
 }
 
 /** Whether an inbound placement is shaped like one. Every field is checked, `spendSteeringIds`
@@ -36,6 +38,9 @@ export function isGenerationCommit(value: unknown): value is GenerationCommit {
 		(c.expectedLeafId === null || typeof c.expectedLeafId === 'string') &&
 		typeof c.claimsRoot === 'boolean' &&
 		Array.isArray(c.spendSteeringIds) &&
-		c.spendSteeringIds.every((id) => typeof id === 'string')
+		c.spendSteeringIds.every((id) => typeof id === 'string') &&
+		(c.replaceMessageIds === undefined || (
+			Array.isArray(c.replaceMessageIds) && c.replaceMessageIds.every(id => typeof id === 'string' && !!id)
+		))
 	);
 }

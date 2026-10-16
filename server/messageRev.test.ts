@@ -98,6 +98,25 @@ function seedChain(): { chatId: string; greeting: string; user: string; reply: s
 }
 
 describe('getMessagesDelta', () => {
+	test('prompt exclusion syncs, survives duplication, and changes neither text nor tree', () => {
+		const { chatId, user, reply } = seedChain();
+		const before = serverDb.getMessage(user);
+		const chatBefore = serverDb.getChat(chatId);
+		const rev = delta(chatId, null)!.rev;
+		serverDb.setMessageExcludedFromPrompt(user, true);
+		const changed = delta(chatId, rev)!;
+		expect(changed.full).toBe(false);
+		if (changed.full) throw new Error('Expected a message delta');
+		expect(changed.upserts.map((m: any) => m.id)).toEqual([user]);
+		expect(serverDb.getMessage(user)).toEqual({ ...before, excludedFromPrompt: true });
+		expect(serverDb.getMessage(reply).parentId).toBe(user);
+		expect(serverDb.getChat(chatId).activeLeafId).toBe(chatBefore.activeLeafId);
+		const copyId = serverDb.duplicateChat({ chatId, title: 'Hidden copy', includeMemory: false });
+		expect(serverDb.getMessagesByChat(copyId).find((m: any) => m.content === before.content).excludedFromPrompt).toBe(true);
+		serverDb.setMessageExcludedFromPrompt(user, false);
+		expect(serverDb.getMessage(user)).toEqual(before);
+		expect(() => serverDb.setMessageExcludedFromPrompt(user, 'true')).toThrow();
+	});
 	test('a fresh open reads full, and a later ask costs only what changed', () => {
 		const { chatId, reply } = seedChain();
 		const d0 = delta(chatId, null)!;
@@ -166,7 +185,7 @@ describe('getMessagesDelta', () => {
 		expect(d.chat.activeLeafId).toBe(user);
 	});
 
-	test('metadata writes move their row: branch label, persona, continuation', () => {
+	test('metadata writes move their row: persona and continuation', () => {
 		const { chatId, user, reply } = seedChain();
 		let rev = delta(chatId, null)!.rev;
 		const one = (expected: string) => {
@@ -176,8 +195,6 @@ describe('getMessagesDelta', () => {
 			rev = d.rev;
 		};
 
-		serverDb.updateMessageBranchLabel(reply, { name: 'Fork', color: 'amber' });
-		one(reply);
 		serverDb.updateMessagePersona(user, null);
 		one(user);
 		serverDb.applyMessageContinuation(reply, {

@@ -5,7 +5,7 @@
  * SQL (and the single source of truth) lives on the server; this is a thin, typed proxy,
  * so nothing above it knows where the data comes from.
  */
-import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta, BranchLabel } from '$lib/types/chat';
+import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta } from '$lib/types/chat';
 import type { CharacterVersion, LibraryEntry } from '$lib/types/library';
 import type { Lorebook } from '$lib/lorebook/types';
 import type { SteeringNote } from '$lib/types/steering';
@@ -83,6 +83,9 @@ class DatabaseService {
 	insertMessage(message: Message): Promise<void> { return this.call('insertMessage', message); }
 	/** `minor: true` records the touch without advancing `edited_at`, so the summary covering
 	 *  this turn survives it (architecture/memory.md). */
+	setMessageExcludedFromPrompt(messageId: string, excluded: boolean): Promise<void> {
+		return this.call('setMessageExcludedFromPrompt', messageId, excluded);
+	}
 	updateMessageContent(messageId: string, content: string, opts?: { minor?: boolean }): Promise<void> {
 		return this.call('updateMessageContent', messageId, content, opts);
 	}
@@ -105,9 +108,6 @@ class DatabaseService {
 	}
 	setChatUserPersona(chatId: string, personaId: string | null): Promise<void> {
 		return this.call('setChatUserPersona', chatId, personaId);
-	}
-	updateMessageBranchLabel(messageId: string, label: BranchLabel | null): Promise<void> {
-		return this.call('updateMessageBranchLabel', messageId, label);
 	}
 	deleteMessageOnly(messageId: string): Promise<void> { return this.call('deleteMessageOnly', messageId); }
 	deleteMessageAndDescendants(messageId: string): Promise<void> { return this.call('deleteMessageAndDescendants', messageId); }

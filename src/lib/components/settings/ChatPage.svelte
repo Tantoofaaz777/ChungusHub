@@ -17,8 +17,8 @@
 	 *
 	 * A control with nothing left to style is HIDDEN, not shown inert, the same rule
 	 * the chat-width slider follows on phones. Manuscript draws no card and no portrait,
-	 * so three whole cards drop out and a note says why; the memory ghost fade goes with
-	 * the Chat Memory engine, the one gate here that comes from another page.
+	 * so three whole cards drop out and a note says why. Ghost opacity also applies to
+	 * manually excluded messages, independently of the Chat Memory engine.
 	 *
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
 	 * foot of the page and only there while something has actually moved.
@@ -30,7 +30,6 @@
 	import ColorSwatchPicker from '$lib/components/ui/ColorSwatchPicker.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
-	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { DEFAULT_APPEARANCE, proseQuoteDefault } from '$lib/themes/presets';
 	import { rangeReset } from '$lib/actions/rangeReset';
@@ -845,13 +844,9 @@
 				/>
 			</div>
 
-			<!-- With Chat Memory switched off nothing is ever archived, so there is no ghost
-			     for this to fade, the same "hidden, not inert" rule the chat-width slider
-			     follows on phones. The stored value is untouched and returns with the engine. -->
-			{#if featurePromptsStore.memoryEnabled}
 				<div class="slider-block">
 					<div class="slider-top">
-						<label for="archived-opacity" class="slider-label">Memory ghost fade</label>
+						<label for="archived-opacity" class="slider-label">Hidden message fade</label>
 						<span class="slider-value">{pct(appearance.archivedOpacity)}</span>
 					</div>
 					<input
@@ -869,11 +864,10 @@
 						}}
 					/>
 					<p class="field-hint">
-						How faint a turn goes once it has been folded into chat memory. Hovering one
-						always brings it back to full.
+						Opacity of messages excluded from the prompt or folded into chat memory.
+						Hovering brings them back to full.
 					</p>
 				</div>
-			{/if}
 		</div>
 	</section>
 

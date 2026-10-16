@@ -166,7 +166,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 	// Prompt-scope regex rules rewrite the chat turns HERE, before anything derives
 	// from them: structural injection, lorebook scanning and the budget trim all
 	// read ctx.chatMessages, so every surface prices exactly what is sent.
-	const chatMessages = applyPromptRegex(input.chatMessages, input.regexRules);
+	const chatMessages = applyPromptRegex(input.chatMessages.filter((m) => !m.excludedFromPrompt), input.regexRules);
 	// What the ENABLED preset actually injects. Two behaviors hang off this: archived turns
 	// only leave {{chatHistory}} when {{memory}} recalls them somewhere, and only turns
 	// {{chatHistory}} renders can be dropped by the budget trim.
@@ -473,7 +473,7 @@ function buildLoreSplices(ctx: MacroContext, model?: string): DepthSplice[] {
 /** The continue-in-place tail (see {@link AssembleInput.continuation}), priced so the
  *  budget trim can account for it. Empty when the input carries no continuation. */
 function continuationTail(input: AssembleInput, ctx: MacroContext): { messages: LLMMessage[]; tokens: number } {
-	if (!input.continuation) return { messages: [], tokens: 0 };
+	if (!input.continuation || input.continuation.excludedFromPrompt) return { messages: [], tokens: 0 };
 	const [target] = applyPromptRegex([input.continuation], input.regexRules);
 	const messages = [toInjectedMessage(target, ctx)];
 	const nudge = expandMacros(input.preset?.continuePrompt ?? DEFAULT_CONTINUE_PROMPT, ctx).trim();

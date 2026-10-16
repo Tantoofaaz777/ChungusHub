@@ -31,14 +31,13 @@
 	// the shelf you left it on); Chats is reached from the composer's hamburger menu.
 	type NavItem = {
 		overlay: OverlayType;
-		icon: 'sliders' | 'sitemap' | 'brain';
+		icon: 'sliders' | 'brain';
 		label: string;
 		title: string;
 	};
 
 	const NAV: NavItem[] = [
 		{ overlay: 'presetControls', icon: 'sliders', label: 'Preset Controls', title: 'Preset Controls' },
-		{ overlay: 'storymap', icon: 'sitemap', label: 'Story Map', title: 'Story Map' },
 		{ overlay: 'memory', icon: 'brain', label: 'Memory', title: 'Memory' }
 	];
 
