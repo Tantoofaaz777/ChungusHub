@@ -27,6 +27,7 @@ type Delta =
  *  decides which read comes back first. The chat row is taken when the call arrives,
  *  as the server's one read takes it. */
 let owed: { resolve: (delta: Delta) => void }[] = [];
+let writes: { leafId: string; resolve: () => void; reject: (error: Error) => void }[] = [];
 
 const CHAT = { id: 'chat-1', title: 'Overlap', activeLeafId: 'reply', rootMessageId: 'greeting' };
 /** The chat row as the server currently holds it. Moved between reads to model a swipe,
@@ -59,6 +60,9 @@ afterAll(() => {
 mock.module('$lib/services/database', () => ({
 	...realDatabase,
 	db: {
+		updateChatActiveLeaf: (_chatId: string, leafId: string) => new Promise<void>((resolve, reject) => {
+			writes.push({ leafId, reject, resolve: () => { serverChat = { ...serverChat, activeLeafId: leafId }; resolve(); } });
+		}),
 		getChat: async () => ({ ...(chatReadApart ?? serverChat) }),
 		getMessagesDelta: () => {
 			const chat = { ...serverChat };
@@ -93,9 +97,11 @@ const EDITED_USER = row('user', 'greeting', 'user', 'rewritten');
 
 beforeEach(() => {
 	owed = [];
+	writes = [];
 	serverChat = { ...CHAT };
 	chatReadApart = null;
 	chatStore.activeChatId = CHAT.id;
+	chatStore.chats = [{ ...CHAT }] as never;
 	chatStore.currentChatState = {
 		chat: { ...CHAT },
 		activePath: [...BASE],
@@ -122,6 +128,103 @@ const NOTHING_CHANGED: Delta = { rev: 5, full: false, upserts: [], deletedIds: [
 
 const ids = () => chatStore.currentChatState!.allMessages.map((m) => m.id);
 const userTurn = () => chatStore.currentChatState!.allMessages.find((m) => m.id === 'user')!.content;
+
+describe('immediate branch navigation', () => {
+	function addAlternative() {
+		chatStore.currentChatState!.allMessages.push(row('reply-2', 'user', 'assistant') as never);
+	}
+
+	test('the selected response paints before any network write completes, without rereading the chat', async () => {
+		addAlternative();
+		const move = chatStore.navigateToLeaf('reply-2');
+		expect(chatStore.currentChatState!.activePath.at(-1)?.id).toBe('reply-2');
+		expect(owed).toHaveLength(0);
+		await settle();
+		expect(writes.map((w) => w.leafId)).toEqual(['reply-2']);
+		writes[0].resolve();
+		await move;
+		expect(owed).toHaveLength(0);
+	});
+
+	test('rapid clicks paint immediately but persist in click order', async () => {
+		addAlternative();
+		const first = chatStore.navigateToLeaf('reply-2');
+		const second = chatStore.navigateToLeaf('reply');
+		expect(chatStore.currentChatState!.activePath.at(-1)?.id).toBe('reply');
+		await settle();
+		expect(writes).toHaveLength(1);
+		writes[0].resolve();
+		await first;
+		await settle();
+		expect(writes.map((w) => w.leafId)).toEqual(['reply-2', 'reply']);
+		writes[1].resolve();
+		await second;
+		expect(serverChat.activeLeafId).toBe('reply');
+		expect(chatStore.currentChatState!.chat.activeLeafId).toBe('reply');
+	});
+
+	test('a stale read cannot put the previous swipe back over an immediate choice', async () => {
+		addAlternative();
+		const stale = chatStore.loadChatState(CHAT.id);
+		await settle();
+		const move = chatStore.navigateToLeaf('reply-2');
+		owed[0].resolve(NOTHING_CHANGED);
+		await stale;
+		expect(chatStore.currentChatState!.chat.activeLeafId).toBe('reply-2');
+		await settle();
+		writes[0].resolve();
+		await move;
+	});
+
+	test('generation freshness waits until the selected swipe has reached the server', async () => {
+		addAlternative();
+		const move = chatStore.navigateToLeaf('reply-2');
+		const fresh = chatStore.freshMessages(CHAT.id);
+		await settle();
+		expect(owed).toHaveLength(0);
+		writes[0].resolve();
+		await move;
+		await settle();
+		expect(owed).toHaveLength(1);
+		owed[0].resolve(NOTHING_CHANGED);
+		await fresh;
+		expect(chatStore.currentChatState!.chat.activeLeafId).toBe('reply-2');
+	});
+
+	test('a rejected save reconciles the selection from the server', async () => {
+		addAlternative();
+		const move = chatStore.navigateToLeaf('reply-2').catch((error) => error);
+		await settle();
+		writes[0].reject(new Error('offline'));
+		await settle();
+		expect(owed).toHaveLength(1);
+		owed[0].resolve(NOTHING_CHANGED);
+		expect((await move).message).toBe('offline');
+		expect(chatStore.currentChatState!.chat.activeLeafId).toBe('reply');
+	});
+
+	test('leaving the chat while a selection saves does not reopen it', async () => {
+		addAlternative();
+		const move = chatStore.navigateToLeaf('reply-2');
+		chatStore.activeChatId = null;
+		chatStore.currentChatState = null;
+		await settle();
+		writes[0].resolve();
+		await move;
+		expect(chatStore.currentChatState).toBeNull();
+		expect(serverChat.activeLeafId).toBe('reply-2');
+	});
+
+	test('replacement streams keep the old response saved and clear their placement when they finish', () => {
+		chatStore.startStream(CHAT.id, { replacingMessageId: 'reply' });
+		chatStore.appendStreamingContent('New response');
+		expect(chatStore.stream?.replacingMessageId).toBe('reply');
+		expect(chatStore.stream?.content).toBe('New response');
+		expect(chatStore.currentChatState!.activePath.at(-1)?.content).toBe('reply text');
+		chatStore.endStream();
+		expect(chatStore.stream).toBeNull();
+	});
+});
 
 describe('overlapping transcript loads', () => {
 	test('a delete that landed is not undone by a read that started before it', async () => {

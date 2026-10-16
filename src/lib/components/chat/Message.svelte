@@ -59,6 +59,8 @@
 		 *  renders as part of the bubble; the stored row is only written when it completes. */
 		streamTail?: string | null;
 		streamTailThinking?: string | null;
+		/** A new swipe replaces the displayed body while leaving the saved turn intact. */
+		streamReplacement?: boolean;
 	}
 
 	let {
@@ -72,12 +74,13 @@
 		onNavigateBranch,
 		archived = false,
 		streamTail = null,
-		streamTailThinking = null
+		streamTailThinking = null,
+		streamReplacement = false
 	}: Props = $props();
 
 	/** The set the viewer pages: this turn's own pictures, and nothing wider. A chat is a
 	 *  tree, so "every image in this chat" would have to pick a branch to mean anything. */
-	let imageAttachments = $derived((message.attachments ?? []).filter((a) => a.kind === 'image').map((a) => a.path));
+	let imageAttachments = $derived(streamReplacement ? [] : (message.attachments ?? []).filter((a) => a.kind === 'image').map((a) => a.path));
 
 	// One editor, two intents, chosen by which button opened it: Edit rewrites this turn,
 	// Branch writes the text as a new sibling and leaves this one alone. Nothing is created
@@ -333,7 +336,7 @@
 	}
 
 	async function handleCopy() {
-		await copyText(message.content);
+		await copyText(streamReplacement ? displayedContent : message.content);
 	}
 
 	const isUser = $derived(message.role === 'user');
@@ -432,7 +435,7 @@
 	// content with self-refs expanded: the model restates the expanded text it was sent,
 	// not the stored macros. Any new reasoning streams in after the stored block.
 	const displayedContent = $derived(
-		streamTail != null
+		streamReplacement ? streamTail ?? '' : streamTail != null
 			? previewContinuation(
 					message.content,
 					streamTail,
@@ -441,7 +444,7 @@
 			: message.content
 	);
 	const liveThinking = $derived(
-		streamTailThinking
+		streamReplacement ? streamTailThinking ?? '' : streamTailThinking
 			? message.thinking
 				? message.thinking + '\n\n' + streamTailThinking
 				: streamTailThinking
@@ -486,7 +489,7 @@
 	// all (no lorebook linked, an imported chat, a seeded greeting) has nothing to report, and
 	// a pill reading zero on every reply would be noise for everyone not using lorebooks.
 	const loreTrace = $derived(
-		message.lorebook && (message.lorebook.records.length > 0 || message.lorebook.silent > 0)
+		!streamReplacement && message.lorebook && (message.lorebook.records.length > 0 || message.lorebook.silent > 0)
 			? message.lorebook
 			: null
 	);
@@ -498,17 +501,19 @@
 <article
 	id="msg-{message.id}"
 	class="message-row group fade-in"
-	class:message-archived={archived || message.excludedFromPrompt}
-	class:message-excluded={message.excludedFromPrompt}
+	class:message-archived={!streamReplacement && (archived || message.excludedFromPrompt)}
+	class:message-excluded={!streamReplacement && message.excludedFromPrompt}
 	class:message-editing={isEditing}
 	class:message-row-cursor={cursored}
 	tabindex="-1"
+	aria-busy={streamReplacement}
+	data-stream-replacement={streamReplacement || undefined}
 	data-hint
 	onfocus={handleRowFocus}
 	onkeydown={handleRowKeydown}
 	onmouseenter={() => (showActions = true)}
 	onmouseleave={() => (showActions = false)}
-	aria-label="{message.role} message{message.excludedFromPrompt ? ' (excluded from prompt)' : archived ? ' (in memory)' : ''}"
+	aria-label="{message.role} message{streamReplacement ? ' (generating)' : message.excludedFromPrompt ? ' (excluded from prompt)' : archived ? ' (in memory)' : ''}"
 >
 	<div class="message-inner">
 		<div class="message-main {isUser ? 'message-main-user' : 'message-main-assistant'}">
@@ -519,7 +524,7 @@
 					imagePath={speakerImagePath}
 					focus={speakerFocus}
 					ordinal={avatarOrdinal}
-					durationMs={showGenerationTime ? message.generationMs : null}
+					durationMs={showGenerationTime && !streamReplacement ? message.generationMs : null}
 				/>
 			{/if}
 
@@ -542,7 +547,7 @@
 										imagePath={speakerImagePath}
 										focus={speakerFocus}
 										ordinal={avatarOrdinal}
-										durationMs={showGenerationTime ? message.generationMs : null}
+										durationMs={showGenerationTime && !streamReplacement ? message.generationMs : null}
 									/>
 								</div>
 							{/if}
@@ -550,14 +555,15 @@
 							<MessageMeta
 								name={speakerName}
 								{isUser}
-								timestamp={showTimestamps ? message.createdAt : null}
-								model={showModelName ? message.model : null}
-								provider={showModelName ? message.provider : null}
-								edited={!!(message.editedAt || message.minorEditedAt)}
-								tokens={showTokenCount ? tokenLabel : null}
+								timestamp={showTimestamps && !streamReplacement ? message.createdAt : null}
+								model={showModelName && !streamReplacement ? message.model : null}
+								provider={showModelName && !streamReplacement ? message.provider : null}
+								edited={!streamReplacement && !!(message.editedAt || message.minorEditedAt)}
+								streaming={streamReplacement}
+								tokens={showTokenCount ? streamReplacement ? `~${countTokens(displayedContent)} tok` : tokenLabel : null}
 								ordinal={avatarsHidden ? avatarOrdinal : null}
-								durationMs={avatarsHidden && showGenerationTime ? message.generationMs : null}
-								{archived}
+								durationMs={avatarsHidden && showGenerationTime && !streamReplacement ? message.generationMs : null}
+								archived={archived && !streamReplacement}
 								lorebook={loreTrace}
 								onLorebook={() => (loreOpen = true)}
 							/>
@@ -565,7 +571,7 @@
 								<div class="message-thinking">
 									<MessageReasoning
 										thinking={liveThinking!}
-										isStreaming={!!streamTailThinking}
+										isStreaming={streamReplacement || !!streamTailThinking}
 									/>
 								</div>
 							{/if}

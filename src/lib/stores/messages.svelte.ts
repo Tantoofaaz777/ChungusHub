@@ -161,10 +161,10 @@ class MessageStore {
 	 *  stop mid-stream still persists what streamed, so it returns an id like any other
 	 *  reply. Other failures throw. */
 	async generateResponse(chatId: string, parentId: string, prompt: BuiltPrompt,
-		placement?: { expectedLeafId: string | null; replaceMessageIds?: string[] }): Promise<string | null> {
+		placement?: { expectedLeafId: string | null; replaceMessageIds?: string[]; replacingMessageId?: string }): Promise<string | null> {
 		const { messages, target: callTarget, lorebook, oneShotSteering } = prompt;
 		this.abortController = new AbortController();
-		chatStore.startStream(chatId);
+		chatStore.startStream(chatId, { replacingMessageId: placement?.replacingMessageId });
 
 		try {
 			// The turn is written by the SERVER, from this placement, the moment the model
@@ -502,7 +502,7 @@ class MessageStore {
 		if (!state) throw new Error('No active chat');
 
 		// Find the deepest leaf starting from this message
-		const messages = await chatStore.freshMessages(state.chat.id);
+		const messages = state.allMessages;
 
 		// Validate message exists (might be stale reference from UI race condition)
 		const messageExists = messages.some((m) => m.id === messageId);
@@ -514,8 +514,7 @@ class MessageStore {
 
 		const leafId = findDeepestLeafFromNode(messages, messageId);
 
-		await db.updateChatActiveLeaf(state.chat.id, leafId, { touchUpdatedAt: false });
-		await chatStore.refreshCurrentChat();
+		await chatStore.navigateToLeaf(leafId);
 	}
 
 	/** Re-attribute every user turn in a chat to `personaId` (or clear with null so they
@@ -531,8 +530,8 @@ class MessageStore {
 		const state = chatStore.currentChatState;
 		if (!state) throw new Error('No active chat');
 
-		// Fetch fresh data to avoid stale reference issues
-		const messages = await chatStore.freshMessages(state.chat.id);
+		// Navigation uses the already loaded tree; saves are queued without delaying paint.
+		const messages = state.allMessages;
 		const message = messages.find((m) => m.id === messageId);
 
 		if (!message) {
@@ -552,14 +551,11 @@ class MessageStore {
 		const targetSibling = siblings[targetIndex];
 
 		if (!targetSibling) {
-			// No sibling in that direction, just refresh
-			await chatStore.refreshCurrentChat();
 			return;
 		}
 
 		const leafId = findDeepestLeafFromNode(messages, targetSibling.id);
-		await db.updateChatActiveLeaf(state.chat.id, leafId, { touchUpdatedAt: false });
-		await chatStore.refreshCurrentChat();
+		await chatStore.navigateToLeaf(leafId);
 	}
 
 	async retryMessageResponse(messageId: string, action: RegenerateAction = 'replace'): Promise<void> {
@@ -585,6 +581,7 @@ class MessageStore {
 			// Only the siblings present when this request leaves may be replaced.
 			await this.generateResponse(state.chat.id, parentId, prompt, {
 				expectedLeafId: state.chat.activeLeafId,
+				replacingMessageId: message.role === 'assistant' ? message.id : undefined,
 				replaceMessageIds: action === 'replace' ? fresh.filter(m => m.parentId === parentId).map(m => m.id) : undefined
 			});
 		} catch (error) {
@@ -780,7 +777,9 @@ class MessageStore {
 		}
 
 		this.abortController = new AbortController();
-		chatStore.startStream(state.chat.id, { openingScene: true });
+		const openingLeaf = state.activePath.at(-1);
+		const replacingOpening = openingLeaf?.role === 'assistant' && openingLeaf.parentId === null ? openingLeaf.id : undefined;
+		chatStore.startStream(state.chat.id, { openingScene: !replacingOpening, replacingMessageId: replacingOpening });
 
 		try {
 			const chat = await db.getChat(state.chat.id);

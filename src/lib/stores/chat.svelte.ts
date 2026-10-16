@@ -51,6 +51,45 @@ class ChatStore {
 	/** Claimed by every transcript load, so an answer coming back after a newer load has
 	 *  already published can tell that it describes an older moment. See `overtaken`. */
 	private loadTicket = 0;
+	/** Navigation paints from the loaded tree immediately; writes retain click order. */
+	private leafWrites = new Map<string, Promise<void>>();
+
+	private async flushLeafWrites(chatId: string): Promise<void> {
+		let pending: Promise<void> | undefined;
+		while ((pending = this.leafWrites.get(chatId))) await pending.catch(() => {});
+	}
+
+	/** Select a loaded branch without waiting for the network. Failed writes reconcile
+	 *  from the server, while a later click always gets the last write in the queue. */
+	async navigateToLeaf(leafId: string): Promise<void> {
+		const state = this.currentChatState;
+		if (!state || state.chat.id !== this.activeChatId || !state.allMessages.some((m) => m.id === leafId)) return;
+		const chatId = state.chat.id;
+		++this.loadTicket; // A read started before this choice must never publish over it.
+		state.chat = { ...state.chat, activeLeafId: leafId };
+		state.activePath = findActivePath(state.allMessages, leafId);
+		this.chats = this.chats.map((c) => c.id === chatId ? { ...c, activeLeafId: leafId } : c);
+		void this.refreshMemory(state.chat, state.allMessages);
+
+		const previous = this.leafWrites.get(chatId) ?? Promise.resolve();
+		const write = previous.catch(() => {}).then(() => db.updateChatActiveLeaf(chatId, leafId, { touchUpdatedAt: false }));
+		this.leafWrites.set(chatId, write);
+		let failed = false;
+		let failure: unknown;
+		try {
+			await write;
+		} catch (error) {
+			failed = true;
+			failure = error;
+		} finally {
+			if (this.leafWrites.get(chatId) === write) this.leafWrites.delete(chatId);
+		}
+		if (failed) {
+			// A newer queued choice owns the view; only reconcile when this was the last one.
+			if (!this.leafWrites.has(chatId) && this.activeChatId === chatId) await this.loadChatState(chatId);
+			throw failure;
+		}
+	}
 
 	activeChat = $derived(this.chats.find((c) => c.id === this.activeChatId) ?? null);
 	sortedChats = $derived([...this.chats].sort((a, b) => b.updatedAt - a.updatedAt));
@@ -289,6 +328,8 @@ class ChatStore {
 
 	async loadChatState(chatId: string): Promise<void> {
 		const ticket = ++this.loadTicket;
+		await this.flushLeafWrites(chatId);
+		if (chatId !== this.activeChatId || ticket !== this.loadTicket) return;
 		const { chat, messages, rev } = await this.fetchMessages(chatId);
 		if (this.overtaken(ticket, chatId, rev)) return;
 
@@ -356,6 +397,7 @@ class ChatStore {
 	 * from; a leaf that moved is `loadChatState`'s to publish, together with its rows.
 	 */
 	async freshMessages(chatId: string): Promise<Message[]> {
+		await this.flushLeafWrites(chatId);
 		const { chat, messages, rev } = await this.fetchMessages(chatId);
 		const state = this.currentChatState;
 		// Strictly newer only: two refreshes in flight resolve in either order, and the
@@ -738,13 +780,14 @@ class ChatStore {
 	 *  options rather than positional flags: `startStream(id, null, true)` says nothing. */
 	startStream(
 		chatId: string,
-		opts: { continuingMessageId?: string; openingScene?: boolean } = {}
+		opts: { continuingMessageId?: string; replacingMessageId?: string; openingScene?: boolean } = {}
 	): void {
 		this.stream = {
 			chatId,
 			content: '',
 			thinking: '',
 			continuingMessageId: opts.continuingMessageId ?? null,
+			replacingMessageId: opts.replacingMessageId ?? null,
 			openingScene: opts.openingScene ?? false
 		};
 	}

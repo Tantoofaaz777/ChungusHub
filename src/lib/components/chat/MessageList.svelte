@@ -8,7 +8,6 @@
 	import { chatCursor } from '$lib/stores/chatCursor.svelte';
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
-	import { findSiblings } from '$lib/utils/message-tree';
 	import { memoryStore } from '$lib/memory/store.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
@@ -25,6 +24,7 @@
 		/** Set while a continue streams into an existing turn: that bubble renders the
 		 *  live tail and the streaming-indicator bubble stays out of the list. */
 		continuingMessageId?: string | null;
+		replacingMessageId?: string | null;
 		/** Set while an opening scene streams: the path stays off screen and the streaming
 		 *  bubble stands alone, since a new beginning is not a turn after the ones there. */
 		openingSceneStream?: boolean;
@@ -46,10 +46,23 @@
 		streamingContent = '',
 		streamingThinking = '',
 		continuingMessageId = null,
+		replacingMessageId = null,
 		openingSceneStream = false,
 		scrollEl = $bindable(),
 		onContentShift
 	}: Props = $props();
+
+	// Index once per tree update, rather than scanning the whole chat for every visible row.
+	const siblingGroups = $derived.by(() => {
+		const groups = new Map<string | null, Message[]>();
+		for (const message of allMessages) {
+			const group = groups.get(message.parentId);
+			if (group) group.push(message);
+			else groups.set(message.parentId, [message]);
+		}
+		for (const group of groups.values()) group.sort((a, b) => a.siblingIndex - b.siblingIndex);
+		return groups;
+	});
 
 	// Chat-memory ghosting: archived messages render dimmed, with a single boundary
 	// marker between the memory-folded prefix and the live tail. Archived ids form a
@@ -100,7 +113,7 @@
 	// what a depth-bounded regex rule measures against (architecture/prompt-pipeline.md), and
 	// without this the newest reply would flip between turn 0 and turn 1 as a stream starts
 	// and settles. A continue writes into a row that already exists, so it adds no turn.
-	let streamingTurnOffset = $derived(isStreaming && !continuingMessageId ? 1 : 0);
+	let streamingTurnOffset = $derived(isStreaming && !continuingMessageId && !replacingMessageId ? 1 : 0);
 
 	// Auto-pinning follows the stream only while the user is near the bottom;
 	// scrolling up to read hands them the reins until they come back (or jump).
@@ -479,7 +492,7 @@
 			{/if}
 			{#each shown as message, offset (message.id)}
 				{@const index = windowStart + offset}
-				{@const siblings = findSiblings(allMessages, message.id)}
+				{@const siblings = siblingGroups.get(message.parentId) ?? [message]}
 				{@const siblingIndex = siblings.findIndex(m => m.id === message.id)}
 				{#if archivedPrefix > 0 && archivedPrefix < messages.length && index === archivedPrefix}
 						<div class="memory-boundary" aria-hidden="true">
@@ -501,11 +514,12 @@
 						{allMessages}
 						archived={archivedIds.has(message.id)}
 						onNavigateBranch={handleNavigateBranch}
-						streamTail={continuingMessageId === message.id ? streamingContent : null}
-						streamTailThinking={continuingMessageId === message.id ? streamingThinking : null}
+						streamReplacement={replacingMessageId === message.id}
+						streamTail={continuingMessageId === message.id || replacingMessageId === message.id ? streamingContent : null}
+						streamTailThinking={continuingMessageId === message.id || replacingMessageId === message.id ? streamingThinking : null}
 					/>
 			{/each}
-			{#if isStreaming && !continuingMessageId}
+			{#if isStreaming && !continuingMessageId && !replacingMessageId}
 				<StreamingIndicator content={streamingContent} thinking={streamingThinking} />
 			{/if}
 		</div>

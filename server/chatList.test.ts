@@ -195,6 +195,15 @@ describe('searchChatMessages', () => {
 });
 
 describe('duplicateChat', () => {
+	test('branch selection refuses deleted messages and messages belonging to another chat', () => {
+		const chatId = makeChat({ title: 'Navigation' });
+		const otherChat = makeChat({ title: 'Other story' });
+		const id = crypto.randomUUID();
+		serverDb.insertMessage({ id, chatId: otherChat, parentId: null, role: 'assistant', content: 'Other story', createdAt: Date.now() });
+		expect(() => serverDb.updateChatActiveLeaf(chatId, 'deleted')).toThrow();
+		expect(() => serverDb.updateChatActiveLeaf(chatId, id)).toThrow();
+		expect(serverDb.getChat(chatId).activeLeafId).toBeNull();
+	});
 	test('legacy branch labels and canon pointers survive loading and duplication after map retirement', () => {
 		const chatId = makeChat({ title: 'Legacy story' });
 		const id = crypto.randomUUID();

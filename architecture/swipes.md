@@ -14,6 +14,17 @@ Older messages show a pager when they already have alternatives; it navigates th
 existing continuations without generating new ones. All navigation and generation
 controls are disabled while the message store is busy.
 
+Switching existing swipes uses the loaded message tree and paints immediately. Leaf
+writes are serialized in click order; reads used by generation wait for those writes,
+and load tickets prevent stale responses from moving the view back. Failed saves
+reconcile against the server. The transcript indexes siblings once per tree update.
+
+A new swipe or regeneration carries `ChatStream.replacingMessageId`: partial text and
+reasoning replace the current bubble visually while the original row remains saved.
+There is no extra streaming bubble below it. Continue still appends to the current
+text, and a normal send still adds a separate response. Failed or uncommitted replacement
+streams restore the original display when the stream closes.
+
 Regenerate runs directly, with no replace/alternate dialog. It snapshots all siblings
 at that point and sends their ids in `GenerationCommit.replaceMessageIds`. The old
 responses stay intact while the request is being prepared and generated. On success,

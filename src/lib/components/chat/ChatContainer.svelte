@@ -19,6 +19,7 @@
 	let streamingContent = $derived(stream?.content ?? '');
 	let streamingThinking = $derived(stream?.thinking ?? '');
 	let continuingMessageId = $derived(stream?.continuingMessageId ?? null);
+	let replacingMessageId = $derived(stream?.replacingMessageId ?? null);
 	let openingSceneStream = $derived(stream?.openingScene ?? false);
 	// A reply being written for this chat that this page never started: after a reload (the
 	// ordinary way a phone comes back), or from another device. It has no stream here to
@@ -145,7 +146,7 @@
 		<div class="chat-content" onwheel={handleMarginWheel}>
 			<div class="chat-center-shell">
 				<div class="chat-message-pane">
-					<MessageList bind:scrollEl messages={activePath} {allMessages} {isStreaming} {streamingContent} {streamingThinking} {continuingMessageId} {openingSceneStream} onContentShift={handleContentShift} />
+					<MessageList bind:scrollEl messages={activePath} {allMessages} {isStreaming} {streamingContent} {streamingThinking} {continuingMessageId} {replacingMessageId} {openingSceneStream} onContentShift={handleContentShift} />
 				</div>
 
 				<div class="chat-input-pane">

@@ -372,6 +372,8 @@ export interface ChatStream {
 	/** Assistant turn a continue is streaming into: its bubble renders the live tail
 	 *  instead of the streaming indicator. Null while a fresh reply streams. */
 	continuingMessageId: string | null;
+	/** A swipe/regeneration streams in this turn's place without changing its saved text. */
+	replacingMessageId: string | null;
 	/** Set while an opening scene is being written. The transcript paints the streaming
 	 *  bubble ALONE: an opening is a new beginning beside the ones already there, not a
 	 *  turn after them, so leaving the path on screen would read as a reply to it. */

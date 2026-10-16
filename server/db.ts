@@ -1007,6 +1007,9 @@ class ServerDatabase {
 	}
 
 	updateChatActiveLeaf(chatId: string, leafId: string | null, options: { touchUpdatedAt?: boolean } = {}): void {
+		if (leafId !== null && !this.select<{ id: string }[]>(
+			'SELECT id FROM messages WHERE id = ? AND chat_id = ?', [leafId, chatId]
+		).length) throw new Error('The selected response no longer exists in this chat.');
 		const { touchUpdatedAt = false } = options;
 		if (touchUpdatedAt) {
 			this.execute('UPDATE chats SET active_leaf_id = ?, updated_at = ? WHERE id = ?', [
