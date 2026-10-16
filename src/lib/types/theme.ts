@@ -175,7 +175,8 @@ export interface AppearanceState {
 
 	/* --- Transcript density --- */
 	messageSpacing: MessageSpacing;
-	/** Opacity of turns excluded from the prompt or folded into chat memory. */
+	/** Brightness of excluded/memory-folded messages, including portraits and controls (0–1).
+	 *  Legacy key retained for saved themes; the UI exposes its inverse as Hidden message dim. */
 	archivedOpacity: number;
 
 	/* --- Portraits. Shape is Bubbles-only: the Portraits chat style owns its

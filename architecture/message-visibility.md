@@ -17,7 +17,11 @@ new extraction batches contain only included messages. Restoring a hidden messag
 any summary that skipped over it non-contiguous, so it is also reconciled. An extraction
 whose source was hidden while the model ran is discarded before committing.
 
-The existing `archivedOpacity` preference also styles manually excluded messages. Its
-control is now called **Hidden message fade** and remains available when Chat Memory is
-off. Archived and manually excluded turns have distinct accessible labels and buttons;
-hidden text remains editable and can be included again without recreating the message.
+The legacy `archivedOpacity` preference now stores message brightness (0–1), preserving saved
+themes. **Hidden message dim** exposes its inverse as 0–100% darkening and remains available
+when Chat Memory is off. CSS brightness filters darken the card, images, action buttons
+and swipes without introducing transparency. The separate surfaces keep floating menus
+outside filtered ancestors. Mobile uses the same strength, and editing temporarily restores
+the message's brightness. Archived and manually
+excluded turns have distinct accessible labels and buttons; hidden text remains editable
+and can be included again without recreating the message.

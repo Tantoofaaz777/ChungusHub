@@ -275,7 +275,7 @@ function normalize(raw: Partial<AppearanceState> | null, known: PaletteDef[]): A
 			['compact', 'cozy', 'roomy'],
 			d.messageSpacing
 		),
-		archivedOpacity: clamp(raw?.archivedOpacity, 0.25, 1, d.archivedOpacity),
+		archivedOpacity: clamp(raw?.archivedOpacity, 0, 1, d.archivedOpacity),
 		showAvatars: bool(raw?.showAvatars, d.showAvatars),
 		avatarShape: oneOf<AvatarShape>(
 			raw?.avatarShape,
@@ -778,7 +778,7 @@ class ThemeStore {
 			'--msg-shadow': msgShadow,
 			'--user-bubble-width': String(a.bubbleWidth),
 			'--msg-row-gap': MESSAGE_SPACING[a.messageSpacing],
-			'--msg-archived-opacity': String(a.archivedOpacity),
+			'--msg-hidden-brightness': String(a.archivedOpacity),
 			'--msg-actions-idle-opacity': a.messageActions === 'always' ? '1' : '0',
 			'--msg-actions-idle-events': a.messageActions === 'always' ? 'auto' : 'none',
 			'--msg-action-label': a.compactActions ? 'none' : 'inline',

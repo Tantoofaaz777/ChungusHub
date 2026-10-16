@@ -500,6 +500,7 @@
 	class="message-row group fade-in"
 	class:message-archived={archived || message.excludedFromPrompt}
 	class:message-excluded={message.excludedFromPrompt}
+	class:message-editing={isEditing}
 	class:message-row-cursor={cursored}
 	tabindex="-1"
 	data-hint
@@ -836,25 +837,25 @@
 			clamp(0.55rem, 0.4rem + 0.5vw, 0.95rem);
 	}
 
-	/* Ghost state: a turn excluded from the prompt or folded into chat memory. Subtle by default
-	   (dimmed, a hint of desaturation) so live turns stand out at a glance, and it lifts
-	   toward full clarity on hover so the text stays readable when you go looking. */
-	.message-archived {
-		opacity: var(--msg-archived-opacity, 0.6);
-		transition: opacity 160ms ease, filter 160ms ease;
+	/* Darken the message, portrait and controls together without transparency. Apply the
+	   filter to each visible surface so floating menus keep their viewport positioning.
+	   Editing temporarily restores the whole message's readability. */
+	.message-rail,
+	.message-main > :global(.avatar-column),
+	.message-actions-slot > :global(.message-actions) {
+		transition: filter 160ms ease;
 	}
 
-	.message-archived :global(.message-bubble) {
-		filter: saturate(0.82);
+	.message-archived:not(.message-editing) .message-rail,
+	.message-archived:not(.message-editing) .message-main > :global(.avatar-column),
+	.message-archived:not(.message-editing) .message-actions-slot > :global(.message-actions),
+	.message-archived:not(.message-editing) .message-pager-slot {
+		filter: brightness(var(--msg-hidden-brightness, 0.6));
 	}
 
 	/* The outline moved to the shell, so the ghost's dashed treatment follows it. */
 	.message-archived :global(.message-bubble-shell)::before {
 		border-style: dashed;
-	}
-
-	.message-archived:hover {
-		opacity: 1;
 	}
 
 	.message-inner {
@@ -1161,7 +1162,7 @@
 		gap: 0.25rem;
 		opacity: var(--msg-pager-idle-opacity, 1);
 		pointer-events: var(--msg-pager-idle-events, auto);
-		transition: opacity 120ms ease;
+		transition: opacity 120ms ease, filter 160ms ease;
 	}
 
 	.message-pager-slot.message-pager-always { opacity: 1; pointer-events: auto; }
@@ -1268,18 +1269,13 @@
 
 	}
 
-	/* No hover on touch (any width, since a touch laptop is wider than 900px): the
-	   action icons and pager stay visible and archived turns don't rely on hover to
-	   lift. "Hidden" actions still win, since that is a display rule. */
+	/* On touch the action icons and pager stay visible. Dimming uses the same strength
+	   at every width. "Hidden" actions still win, since that is a display rule. */
 	@media (hover: none) {
 		.message-actions-slot,
 		.message-pager-slot {
 			opacity: 1;
 			pointer-events: auto;
-		}
-
-		.message-archived {
-			opacity: max(var(--msg-archived-opacity, 0.6), 0.75);
 		}
 	}
 

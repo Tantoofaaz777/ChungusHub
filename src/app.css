@@ -141,7 +141,7 @@
 	--msg-border-color: rgb(42 45 51 / 88%);
 	--msg-shadow: 0 2px 12px rgb(0 0 0 / 24%);
 	--msg-row-gap: clamp(0.45rem, 0.36rem + 0.42vw, 0.75rem);
-	--msg-archived-opacity: 0.6;
+	--msg-hidden-brightness: 0.6;
 	--msg-actions-idle-opacity: 0;
 	--msg-actions-idle-events: none;
 	--msg-action-label: inline;

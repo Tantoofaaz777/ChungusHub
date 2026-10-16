@@ -17,7 +17,7 @@
 	 *
 	 * A control with nothing left to style is HIDDEN, not shown inert, the same rule
 	 * the chat-width slider follows on phones. Manuscript draws no card and no portrait,
-	 * so three whole cards drop out and a note says why. Ghost opacity also applies to
+	 * so three whole cards drop out and a note says why. Message dimming also applies to
 	 * manually excluded messages, independently of the Chat Memory engine.
 	 *
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
@@ -846,26 +846,26 @@
 
 				<div class="slider-block">
 					<div class="slider-top">
-						<label for="archived-opacity" class="slider-label">Hidden message fade</label>
-						<span class="slider-value">{pct(appearance.archivedOpacity)}</span>
+						<label for="hidden-message-dim" class="slider-label">Hidden message dim</label>
+						<span class="slider-value">{pct(1 - appearance.archivedOpacity)}</span>
 					</div>
 					<input
-						id="archived-opacity"
+						id="hidden-message-dim"
 						type="range"
 						class="slider"
-						min="0.25"
+						min="0"
 						max="1"
 						step="0.01"
-						value={appearance.archivedOpacity}
-						oninput={(e) => themeStore.update({ archivedOpacity: parseFloat(e.currentTarget.value) })}
+						value={1 - appearance.archivedOpacity}
+						oninput={(e) => themeStore.update({ archivedOpacity: 1 - parseFloat(e.currentTarget.value) })}
 						use:rangeReset={{
-							defaultValue: DEFAULT_APPEARANCE.archivedOpacity,
-							apply: (v) => themeStore.update({ archivedOpacity: v })
+							defaultValue: 1 - DEFAULT_APPEARANCE.archivedOpacity,
+							apply: (v) => themeStore.update({ archivedOpacity: 1 - v })
 						}}
 					/>
 					<p class="field-hint">
-						Opacity of messages excluded from the prompt or folded into chat memory.
-						Hovering brings them back to full.
+						Darkens messages excluded from the prompt or folded into chat memory.
+						Includes images, action buttons and swipes. Higher values make them darker.
 					</p>
 				</div>
 		</div>
