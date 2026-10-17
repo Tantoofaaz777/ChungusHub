@@ -27,6 +27,14 @@ describe('Threads selections and prompt boundaries', () => {
 		expect(noContext).not.toContain('# PREVIOUS CONTEXT'); expect(noContext).not.toContain('# FANDOM CONTINUITY');
 		expect(noContext).toContain('Story 4');
 	});
+	test('story sections contain only message content separated by blank lines, including saved rounds', async () => {
+		const old=round('old');
+		old.messages.push({...old.messages[0],id:'reply',role:'user',speaker:'Private persona name',index:25,content:'Old user reply'});
+		const current=round('current').messages;
+		current.push({...current[0],id:'current-reply',role:'user',speaker:'Private persona name',index:42,content:'Current user reply'});
+		const prompt=await threadsPrompt({messages:current,label:'Private scene label',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:1,fandomThreads:0}});
+		expect(prompt.split('\n\n# INSTRUCTIONS')[0]).toBe('# PREVIOUS CONTEXT\n\nStory old\n\nOld user reply\n\n# RECENT CONTEXT\n\nStory current\n\nCurrent user reply');
+	});
 	test('only the active feed version reaches audience continuity', async () => {
 		const r = round('1');
 		r.versions.push({id:'alternate',createdAt:2,feed:{...r.versions[0].feed,post:{username:'new',body:'A new theory',score:1}}});
@@ -38,11 +46,11 @@ describe('Threads selections and prompt boundaries', () => {
 		expect(normalizeThreadsConfig({previousRounds:-5,fandomThreads:Infinity})).toMatchObject({previousRounds:0,fandomThreads:3});
 		expect(normalizeThreadsConfig({previousRounds:100,fandomThreads:1.9})).toMatchObject({previousRounds:50,fandomThreads:1});
 	});
-	test('token budgets retain newest whole source messages and full active feeds, with framing included', async () => {
+	test('token budgets retain newest whole source messages and full active feeds, counting only story text', async () => {
 		const older=round('old'), latest=round('new');
 		latest.messages.push({...latest.messages[0],id:'new-b',index:1,content:'Newest source'});
-		const sourceText=`[#2 · Narrator]\nNewest source`;
-		const storyBudget=renderBlocks([{label:latest.label,content:sourceText}]).length;
+		const sourceText='Newest source';
+		const storyBudget=sourceText.length;
 		const {serializeFeedForContinuity}=await import('./feed');
 		const fandomBudget=renderBlocks([{label:latest.label,content:serializeFeedForContinuity(activeThreadsFeed(latest))}]).length;
 		const recent=round('current').messages;recent[0].content='CURRENT SCENE '.repeat(100);

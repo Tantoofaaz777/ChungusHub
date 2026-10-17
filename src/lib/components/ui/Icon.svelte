@@ -97,7 +97,8 @@
 		| 'keyboard'
 		| 'arrowUpDown'
 		| 'tag'
-		| 'threads';
+		| 'threads'
+		| 'ao3';
 
 	interface Props extends SVGAttributes<SVGSVGElement> {
 		name: IconName;
@@ -148,6 +149,10 @@
 			paths: [
 				'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253'
 			]
+		},
+		// AO3's crossed strokes, circle and 3, simplified to the app's rounded outline.
+		ao3: {
+			paths: ['M17.5 7.5a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0Z', 'M1.8 4.5C7 5.5 12 11.8 15.1 16.4c.8-4 3-7 7-10', 'M6.8 9c-.4 3.8-1.8 7-3.8 9.5 5-3.5 10-6 15-6.3 5-.3 4 3.5.3 4 4.4 1.4 5.1 3.3 2.1 4.2-1.6.5-3.2 0-4.2-1']
 		},
 		users: {
 			paths: [

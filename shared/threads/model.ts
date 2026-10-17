@@ -68,7 +68,7 @@ export async function threadsPrompt(input: {
 }): Promise<string> {
 	const config = normalizeThreadsConfig(input.config);
 	const tail = (n: number) => n ? input.previous.slice(-n) : [];
-	const messageText = (m: ThreadsMessage) => `[#${m.index + 1} · ${m.speaker}]\n${m.content}`;
+	const messageText = (m: ThreadsMessage) => m.content;
 	const label = (r: ThreadsRound) => r.label || r.versions[0].feed.title;
 	const storyBlocks = input.previous.map(r => ({ label: label(r), messages: r.messages.map(messageText) }));
 	const fandomBlock = (r: ThreadsRound) => ({ label: label(r), content: serializeFeedForContinuity(activeThreadsFeed(r)) });

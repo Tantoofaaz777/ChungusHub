@@ -119,11 +119,11 @@
 					</div>
 					<label class="field-label" for="threads-label">Episode / chapter <span class="muted">(optional)</span></label>
 					<input id="threads-label" class="input-base field" maxlength="200" value={store.label} disabled={store.busy} oninput={(e) => store.label = e.currentTarget.value} />
-					<details class="notes-section" bind:open={ao3Open}><summary>AO3 information</summary>
+					<details class="notes-section" bind:open={ao3Open}><summary><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="ao3" class="w-4 h-4 shrink-0" aria-hidden="true" /><span>AO3 information</span><span class="section-rule" aria-hidden="true"></span></summary>
 						{#if ao3Open}
 						<div class="ao3-fields"><Toggle checked={store.ao3.enabled} onchange={(enabled) => ao3({enabled})} label="Use AO3 information" />
 							<label class="field-label" for="threads-rating">Rating</label><select id="threads-rating" class="input-base field" value={store.ao3.rating ?? ''} onchange={(e) => ao3({rating: e.currentTarget.value as Ao3Information['rating'] || null})}><option value="">None</option>{#each AO3_RATINGS as rating}<option value={rating}>{rating}</option>{/each}</select>
-							<fieldset><legend>Archive warnings</legend>{#each AO3_WARNINGS as warning}<label class="check-row"><input type="checkbox" checked={store.ao3.archiveWarnings.includes(warning)} onchange={(e) => ao3({archiveWarnings: e.currentTarget.checked ? [...store.ao3.archiveWarnings,warning] : store.ao3.archiveWarnings.filter(v => v !== warning)})} />{warning}</label>{/each}</fieldset>
+							<label class="field-label" for="threads-warning">Archive warnings</label><select id="threads-warning" class="input-base field" value={store.ao3.archiveWarnings[0] ?? ''} onchange={(e) => ao3({archiveWarnings: e.currentTarget.value ? [e.currentTarget.value as Ao3Information['archiveWarnings'][number]] : []})}><option value="">None</option>{#each AO3_WARNINGS as warning}<option value={warning}>{warning}</option>{/each}</select>
 							<fieldset><legend>Categories</legend><div class="categories">{#each AO3_CATEGORIES as category}<label class="check-row"><input type="checkbox" checked={store.ao3.categories.includes(category)} onchange={(e) => ao3({categories:e.currentTarget.checked ? [...store.ao3.categories,category] : store.ao3.categories.filter(v => v !== category)})} />{category}</label>{/each}</div></fieldset>
 							{#each AO3_TEXT_FIELDS as [key,label]}
 								<label class="field-label" for={`threads-ao3-${key}`}>{label}</label>
@@ -132,14 +132,14 @@
 						</div>
 						{/if}
 					</details>
-					<details class="notes-section" bind:open={notesOpen}><summary>Fandom Notes</summary>{#if notesOpen}<label class="sr-only" for="threads-notes">Fandom Notes</label><ExpandableTextarea id="threads-notes" class="input-base threads-textarea" value={store.notes} onValueChange={(notes) => store.updateNotes({notes})} dialogTitle="Fandom Notes" placeholder="Reader expectations, recurring jokes, ships…" rows={4} />{/if}</details>
+					<details class="notes-section" bind:open={notesOpen}><summary><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="users" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span>Fandom Notes</span><span class="section-rule" aria-hidden="true"></span></summary>{#if notesOpen}<label class="sr-only" for="threads-notes">Fandom Notes</label><ExpandableTextarea id="threads-notes" class="input-base threads-textarea" value={store.notes} onValueChange={(notes) => store.updateNotes({notes})} dialogTitle="Fandom Notes" placeholder="Reader expectations, recurring jokes, ships…" rows={4} />{/if}</details>
 					{#if store.notesError}<div class="error" role="alert">{store.notesError}<Button variant="secondary" size="sm" onclick={() => store.flushNotes().catch(() => {})}>Retry saving notes</Button></div>{/if}
 					{#if !featurePromptsStore.threadsEnabled}<p class="muted">Enable Threads in <button class="text-link" onclick={settings}>Settings → Engines</button> to generate.</p>{/if}
 					<div class="message-list" aria-label="Unused messages">
 						{#each store.available as message (message.id)}
 							<button class="message-row" class:is-selected={selected.has(message.id)} aria-pressed={selected.has(message.id)} disabled={store.busy} onclick={(event) => select(event,message.id)} onpointerdown={(event) => startTouch(event,message.id)} onpointermove={moveTouch} onpointerup={clearTouch} onpointercancel={clearTouch} oncontextmenu={(event) => event.preventDefault()}>
 								<span class="check" aria-hidden="true">{#if selected.has(message.id)}<Icon name="check" class="w-3 h-3" />{/if}</span><span class="message-number">#{message.index + 1}</span>
-								<span class="message-text"><span class="message-role">{message.role}{#if message.excludedFromPrompt} · hidden{/if}</span><span class="message-preview">{message.content || '(empty message)'}</span></span>
+								<span class="message-text"><span class="message-role">{message.role}{#if message.excludedFromPrompt}<span role="img" aria-label="Hidden message" title="Hidden message"><Icon name="eyeOff" class="w-3.5 h-3.5" aria-hidden="true" /></span>{/if}</span><span class="message-preview">{message.content || '(empty message)'}</span></span>
 							</button>
 						{:else}<p class="muted empty-list">{store.path.length ? 'All messages have been used. Continue the story to select a new scene.' : 'This chat has no messages yet.'}</p>{/each}
 					</div>
@@ -153,7 +153,9 @@
 
 <style>
 	.threads-panel { font-family:var(--font-ui); display:flex; flex-direction:column; height:100%; min-height:0; }
-	.heading { display:flex; align-items:center; justify-content:space-between; width:100%; }
+	.heading { display:grid; grid-template-columns:2rem minmax(0,1fr) 2rem; align-items:center; width:100%; }
+	.heading h2 { grid-column:2; text-align:center; }
+	.heading > button { grid-column:3; justify-self:end; }
 	.threads-body { flex:1; min-height:0; padding:1rem; }
 	.tabs { display:flex; justify-content:center; margin-bottom:1.2rem; }
 	.feed-card, .make-card { padding:1rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-lg); background:var(--color-bg-secondary); min-width:0; }
@@ -178,8 +180,12 @@
 	.context strong { color:var(--color-accent); font-weight:500; }
 	.field-label { display:block; margin-bottom:.35rem; color:var(--color-text-secondary); font-size:.75rem; }
 	.field { width:100%; min-width:0; padding:.55rem .65rem; font-size:.8rem; }
-	.notes-section { margin:1rem 0; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); padding:.7rem; }
-	.notes-section summary { cursor:pointer; font-size:.8rem; color:var(--color-text-secondary); font-weight:600; }
+	.notes-section { margin:1.25rem 0; }
+	.notes-section summary { display:flex; align-items:center; gap:.375rem; padding:.125rem 0; list-style:none; cursor:pointer; font-size:.75rem; color:var(--color-accent); font-weight:600; text-transform:uppercase; letter-spacing:.025em; }
+	.notes-section summary::-webkit-details-marker { display:none; }
+	.notes-section summary :global(.section-chevron) { flex-shrink:0; transform:rotate(-90deg); transition:transform 150ms; }
+	.notes-section[open] summary :global(.section-chevron) { transform:rotate(0); }
+	.section-rule { flex:1; min-width:.5rem; border-top:1px solid color-mix(in srgb,var(--color-border-subtle) 70%,transparent); margin-left:.25rem; }
 	.notes-section[open] summary { margin-bottom:.8rem; }
 	.threads-panel :global(.threads-textarea) { width:100%; min-height:6rem; padding:.65rem; font-size:.8rem; line-height:1.6; }
 	.ao3-fields { display:flex; flex-direction:column; gap:.4rem; }
@@ -197,7 +203,7 @@
 	.check { width:1rem; height:1rem; display:flex; align-items:center; justify-content:center; border:1px solid var(--color-border); border-radius:3px; flex-shrink:0; color:var(--color-accent); }
 	.message-number { font-size:.72rem; color:var(--color-text-muted); flex-shrink:0; font-variant-numeric:tabular-nums; }
 	.message-text { display:flex; flex-direction:column; gap:.25rem; min-width:0; }
-	.message-role { font-size:.64rem; color:var(--color-text-muted); }
+	.message-role { display:flex; align-items:center; gap:.35rem; font-size:.64rem; color:var(--color-text-muted); }
 	.message-preview { font-size:.77rem; line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
 	.make-actions { flex-wrap:wrap; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
 	.make-actions > span { margin-right:auto; }

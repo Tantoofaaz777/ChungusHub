@@ -33,6 +33,10 @@ export function renderBlocks<T extends { label: string; content: string }>(items
     .join('\n\n')
 }
 
+export function renderStoryRanges(items: StoryRange[]): string {
+  return items.map(item => item.content).join('\n\n')
+}
+
 function storyRangesFromSuffix(items: StoryMessageRange[], messageCount: number): StoryRange[] {
   let remainingToSkip = Math.max(0, items.reduce((total, item) => total + item.messages.length, 0) - messageCount)
   const selected: StoryRange[] = []
@@ -42,7 +46,7 @@ function storyRangesFromSuffix(items: StoryMessageRange[], messageCount: number)
     const messages = item.messages.slice(skippedHere)
     if (messages.length > 0) selected.push({ label: item.label, content: messages.join('\n\n') })
   }
-  return groupConsecutiveStoryRanges(selected)
+  return selected
 }
 
 export async function selectPreviousContextByTokenBudget(
@@ -58,7 +62,7 @@ export async function selectPreviousContextByTokenBudget(
   while (minimum < maximum) {
     const candidateCount = Math.ceil((minimum + maximum) / 2)
     const candidate = storyRangesFromSuffix(items, candidateCount)
-    const tokens = await countTokens(renderBlocks(candidate))
+    const tokens = await countTokens(renderStoryRanges(candidate))
     if (tokens <= tokenBudget) minimum = candidateCount
     else maximum = candidateCount - 1
   }
@@ -108,10 +112,10 @@ export function buildThreadsPrompt(input: ThreadsPromptInput): string {
   const ao3Information = serializeAo3Information(input.ao3Information)
   return [
     ...(input.previousRanges.length > 0
-      ? ['# PREVIOUS CONTEXT', renderBlocks(input.previousRanges)]
+      ? ['# PREVIOUS CONTEXT', renderStoryRanges(input.previousRanges)]
       : []),
     '# RECENT CONTEXT',
-    renderBlocks([input.recentRange]),
+    input.recentRange.content,
     ...(ao3Information ? ['# AO3 INFORMATIONS', ao3Information] : []),
     ...(input.fandomContinuity.length > 0
       ? ['# FANDOM CONTINUITY', renderBlocks(input.fandomContinuity)]
