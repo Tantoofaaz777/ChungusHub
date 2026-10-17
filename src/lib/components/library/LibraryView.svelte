@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RetainedView from '$lib/components/ui/RetainedView.svelte';
 	import Icon, { type IconName } from '$lib/components/ui/Icon.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
@@ -8,9 +9,7 @@
 	import LorebooksView from '$lib/components/lorebook/LorebooksView.svelte';
 	import type { LibraryTab } from '$lib/stores/ui.svelte';
 
-	// The merged Library: a top switcher over the three shelves. Only the active one is
-	// mounted, so each view's own $effects (nav-blocker, workspace-focus mirror) run in
-	// isolation, with no changes needed inside them.
+	// Visited shelves retain filters and scroll. Only the visible shelf owns panel activity.
 	let tab = $derived(uiStore.libraryTab);
 	const flush = () => lorebookStore.flush();
 
@@ -76,13 +75,9 @@
 	</div>
 
 	<div class="flex-1 min-h-0">
-		{#if tab === 'characters'}
-			<CharacterLibraryView />
-		{:else if tab === 'personas'}
-			<PersonasView />
-		{:else}
-			<LorebooksView />
-		{/if}
+		<RetainedView active={tab === 'characters'}><CharacterLibraryView /></RetainedView>
+		<RetainedView active={tab === 'personas'}><PersonasView /></RetainedView>
+		<RetainedView active={tab === 'lorebooks'}><LorebooksView /></RetainedView>
 	</div>
 </div>
 

@@ -478,6 +478,7 @@
 	// ===== keyboard =====
 
 	function handleKeydown(e: KeyboardEvent) {
+		if (!uiStore.libraryOpen || !uiStore.lorebookEditorId || uiStore.lorebookEditorId !== bookId) return;
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
 			void lorebookStore.flush();
@@ -485,7 +486,7 @@
 		}
 		// A modal dialog owns the keyboard: Dialog closes itself on the same window
 		// Escape event without stopping propagation, so stand down while one is open.
-		if (document.querySelector('.dialog-portal')) return;
+		if (document.querySelector('.dialog-portal:not([inert])')) return;
 		// Ctrl+F, not Ctrl+K: the workspace owns Ctrl+K (Chats) and this view
 		// must not shadow it.
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {

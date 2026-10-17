@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { menuMotion } from '$lib/components/ui/menu-motion';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import type { Snippet } from 'svelte';
 
+	const panelActive = panelActivity();
 	interface Props {
 		/** Bindable so callers can close the panel after an action (e.g. menu items). */
 		open?: boolean;
@@ -19,7 +22,7 @@
 	}
 
 	$effect(() => {
-		if (!open) return;
+		if (!panelActive() || !open) return;
 		const onDown = (e: MouseEvent) => {
 			if (rootRef && !rootRef.contains(e.target as Node)) open = false;
 		};
@@ -38,6 +41,7 @@
 			document.removeEventListener('keydown', onKey);
 		};
 	});
+	$effect(() => { if (!panelActive()) open = false; });
 </script>
 
 <!-- display:contents keeps the trigger in the toolbar's flex flow while the panel
@@ -47,7 +51,7 @@
 <div class="brw-pop" bind:this={rootRef}>
 	{@render trigger({ toggle, open })}
 	{#if open}
-		<div class="brw-pop-panel" class:brw-pop-panel--menu={variant === 'menu'}>
+		<div transition:menuMotion class="brw-pop-panel" class:brw-pop-panel--menu={variant === 'menu'}>
 			{@render children()}
 		</div>
 	{/if}

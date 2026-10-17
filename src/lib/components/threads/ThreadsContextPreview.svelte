@@ -1,16 +1,26 @@
 <script lang="ts">
 	import { threadsPrompt, assembleThreadsPrompt } from '$shared/threads/model';
 	import { countTokens, tokenCalibration } from '$lib/tokenizer';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 
 	let { count, input, model }: { count: number; input: Parameters<typeof threadsPrompt>[0] | null; model: string } = $props();
 	let fullTokens = $state<number | null>(null);
 	let calculating = $state(false);
 	let previousTitles = $state<string[] | null>(null);
-	const recentText = $derived(input?.messages.map(message => message.content).join('\n\n') ?? '');
-	const recentTokens = $derived(input ? countTokens(recentText, model || undefined) : null);
+	const panelActive = panelActivity();
+	let recentTokens = $state<number | null>(null);
+	let cached: { key: string; recent: number; full: number; titles: string[] } | null = null;
 	const format = (value: number) => value.toLocaleString('en-US');
 	$effect(() => {
+		if (!panelActive()) { calculating = false; return; }
 		const snapshot = input, assignedModel = model, ratio = tokenCalibration.ratioFor(model);
+		const key = JSON.stringify({ snapshot, assignedModel, ratio });
+		if (cached?.key === key) {
+			recentTokens = cached.recent; fullTokens = cached.full; previousTitles = cached.titles; calculating = false;
+			return;
+		}
+		const recent = snapshot ? countTokens(snapshot.messages.map(message => message.content).join('\n\n'), assignedModel || undefined) : null;
+		recentTokens = recent;
 		let current = true;
 		fullTokens = null; previousTitles = null; calculating = false;
 		if (!snapshot || !assignedModel) return;
@@ -18,7 +28,10 @@
 		// Selection can change quickly; count only the most recent snapshot after the burst.
 		const timer = setTimeout(() => {
 			void assembleThreadsPrompt({ ...snapshot, countTokens: text => countTokens(text, assignedModel) }).then(result => {
-				if (current) { fullTokens = Math.round(countTokens(result.prompt, assignedModel) * ratio); previousTitles = result.previousTitles; }
+				if (current) {
+					fullTokens = Math.round(countTokens(result.prompt, assignedModel) * ratio); previousTitles = result.previousTitles;
+					cached = { key, recent: recent ?? 0, full: fullTokens, titles: result.previousTitles };
+				}
 			}).catch(() => { if (current) { fullTokens = null; previousTitles = null; } }).finally(() => { if (current) calculating = false; });
 		}, 150);
 		return () => { current = false; clearTimeout(timer); };

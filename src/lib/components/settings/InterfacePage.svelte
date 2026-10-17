@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
+	const panelActive = panelActivity();
 	/**
 	 * Settings → Appearance → Interface: everything the app draws that is not the story.
 	 * The palette every surface is derived from, the accent over it, the frame's own type
@@ -170,6 +172,7 @@
 			.trim()
 			.replace(/\b\w/g, (c) => c.toUpperCase());
 	});
+	$effect(() => { if (!panelActive()) customOpen = false; });
 </script>
 
 <svelte:window onpointerdown={handleWindowPointerDown} onkeydowncapture={handleWindowKeydown} />

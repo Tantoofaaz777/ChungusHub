@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
+	const panelActive = panelActivity();
 	/**
 	 * Lorebooks half of the merged Library (see library/LibraryView): the shelf, wearing the
 	 * Characters and Personas tabs' own browse bar, selection bar, view options (layout, card
@@ -183,7 +185,7 @@
 	$effect(() => {
 		// An open book is the top-most surface and answers Escape itself. This listener is on
 		// `document`, which fires before its window handler, so it stands down while one is up.
-		if (uiStore.lorebookEditorId) return;
+		if (!panelActive() || uiStore.lorebookEditorId) return;
 		if (!selectionMode && !defaultsOpen) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== 'Escape') return;

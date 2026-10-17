@@ -24,6 +24,7 @@ import { lorebookStore } from '$lib/lorebook/store.svelte';
 import { chatCastStore } from '$lib/stores/chatCast.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { memoryStore } from '$lib/memory/scene-store.svelte';
+import { CoalescedTask } from '$lib/utils/coalesced-task';
 
 /** A reply being written for a chat by someone other than this page. */
 type ForeignGeneration = { chatId: string; requestId: string; startedAt: number };
@@ -38,6 +39,9 @@ class ChatStore {
 	currentChatState = $state<ChatState | null>(null);
 	/** The one generation in flight, tagged with the chat that owns it. Null when idle. */
 	stream = $state<ChatStream | null>(null);
+	/** A display-only copy. Raw received text above is never delayed or truncated. */
+	private streamPreview = $state<ChatStream | null>(null);
+	private streamPaint = new CoalescedTask(50);
 	/** A reply being written for a chat that THIS page never asked for: one it started before
 	 *  a reload, or one another device is running. Found by asking the server, since a
 	 *  generation outlives the socket but not the page's memory of it. Without this the chat
@@ -100,6 +104,11 @@ class ChatStore {
 	visibleStream = $derived(
 		this.stream && this.stream.chatId === this.currentChatState?.chat.id ? this.stream : null
 	);
+
+	/** Only this copy feeds Markdown, regex, live token counts and scroll measurements. */
+	get visibleStreamPreview(): ChatStream | null {
+		return this.stream && this.streamPreview?.chatId === this.currentChatState?.chat.id ? this.streamPreview : null;
+	}
 
 	/** The foreign reply only when it belongs to the chat on screen AND this page is not the
 	 *  one writing it: a generation this page owns already paints its own stream and carries
@@ -789,6 +798,7 @@ class ChatStore {
 		chatId: string,
 		opts: { continuingMessageId?: string; replacingMessageId?: string; openingScene?: boolean } = {}
 	): void {
+		this.streamPaint.cancel();
 		this.stream = {
 			chatId,
 			content: '',
@@ -797,12 +807,15 @@ class ChatStore {
 			replacingMessageId: opts.replacingMessageId ?? null,
 			openingScene: opts.openingScene ?? false
 		};
+		this.streamPreview = { ...this.stream };
 	}
 
 	/** Close the stream. Every caller does this in a `finally`, after its own message is
 	 *  committed, so a deferred sync reload reads a settled tree. */
 	endStream(): void {
+		this.streamPaint.flush();
 		this.stream = null;
+		this.streamPreview = null;
 		if (this.missedSyncWhileStreaming) {
 			this.missedSyncWhileStreaming = false;
 			void this.syncReload();
@@ -812,11 +825,22 @@ class ChatStore {
 	// Tokens land on the stream record itself, which already names its owner, so they
 	// reach the chat that asked for them however far the reader has wandered.
 	appendStreamingContent(content: string): void {
-		if (this.stream) this.stream.content += content;
+		if (!this.stream) return;
+		this.stream.content += content;
+		this.queueStreamPaint();
 	}
 
 	appendStreamingThinking(thinking: string): void {
-		if (this.stream) this.stream.thinking += thinking;
+		if (!this.stream) return;
+		this.stream.thinking += thinking;
+		this.queueStreamPaint();
+	}
+
+	private queueStreamPaint(): void {
+		const owner = this.stream;
+		this.streamPaint.queue(() => {
+			if (owner && this.stream === owner) this.streamPreview = { ...owner };
+		});
 	}
 
 	// ===== Chat feature state (steering reuse history + impersonate) =====

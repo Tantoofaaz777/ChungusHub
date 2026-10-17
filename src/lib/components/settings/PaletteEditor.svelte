@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
+	const panelActive = panelActivity();
 	/**
 	 * The editor for one palette the reader built. It appends BELOW the palette grid on
 	 * the Interface page and never above it, so opening it cannot slide the card that was
@@ -179,6 +181,7 @@
 		themeStore.deletePalette(paletteId);
 		onclose();
 	}
+	$effect(() => { if (!panelActive()) openKey = null; });
 </script>
 
 <svelte:window onpointerdown={handleWindowPointerDown} onkeydown={handleWindowKeydown} />

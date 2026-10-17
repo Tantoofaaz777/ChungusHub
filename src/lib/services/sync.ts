@@ -21,29 +21,20 @@ import { threadsStore } from '$lib/threads/store.svelte';
 import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { backupStore } from '$lib/stores/backups.svelte';
 import type { SyncScope } from '$shared/sync';
+import { SyncBatch } from './sync-batch';
 
 let started = false;
-let queue: Promise<void> = Promise.resolve();
 
 export function initSync(): void {
 	if (started) return;
 	started = true;
 
-	// The server emits hints in mutation order and some scopes depend on it (a
-	// `presets` hint lands the preset a following `settings` hint activates), so
-	// apply them one at a time instead of racing the reloads. handleScope catches
-	// its own errors, so the chain never breaks.
-	onSync((scope) => {
-		queue = queue.then(() => handleScope(scope));
-	});
-
-	// Hints are fire-and-forget: the server keeps no per-device queue, so everything
-	// broadcast while this device's socket was down is simply gone. A reconnect therefore
-	// re-reads everything rather than resuming. Without it a laptop that slept through a
-	// batch of changes stays stale until the user reloads the page by hand.
-	onReconnect(() => {
-		queue = queue.then(resyncAll);
-	});
+	// One read per scope in a 50ms burst, ordered by dependencies. Both chat hints
+	// refresh the same transcript and persona cast, so share a single invalidation.
+	const batch = new SyncBatch<SyncScope>(HANDLERS, reportFailure, { messages: 'chats' });
+	onSync((scope) => batch.enqueue(scope));
+	// Hints lost while disconnected require every scope to be read again.
+	onReconnect(() => batch.reconnect());
 }
 
 /**
@@ -51,7 +42,7 @@ export function initSync(): void {
  * broadcast (shared/sync.ts) but this device cannot apply is a compile error. The old
  * `switch` just fell through and left the other device stale.
  *
- * Declaration order is the order `resyncAll` replays in, so scopes that feed another one
+ * Declaration order is the order the batch drains in, so scopes that feed another one
  * come first: `presets` must land the preset that `settings` then activates.
  */
 const HANDLERS: Record<SyncScope, () => Promise<void>> = {
@@ -94,25 +85,10 @@ const HANDLERS: Record<SyncScope, () => Promise<void>> = {
 	backups: () => backupStore.syncReload()
 };
 
-/** Re-read every scope, in declaration order. The reconnect path: cheaper than a page
- *  reload and it keeps the open chat, drafts and scroll position where they are. */
-async function resyncAll(): Promise<void> {
-	for (const scope of Object.keys(HANDLERS) as SyncScope[]) {
-		await handleScope(scope);
-	}
-}
-
-async function handleScope(scope: string): Promise<void> {
-	const handler = HANDLERS[scope as SyncScope];
-	// An unknown scope means the server broadcast something this build has no handler for:
-	// a version skew across devices. Say so instead of dropping it silently.
-	if (!handler) {
+function reportFailure(scope: string, ...failure: [unknown?]): void {
+	if (failure.length === 0) {
 		console.error(`[sync] no handler for scope "${scope}", ignoring`);
-		return;
-	}
-	try {
-		await handler();
-	} catch (error) {
-		console.error(`[sync] failed to apply scope "${scope}":`, error);
+	} else {
+		console.error(`[sync] failed to apply scope "${scope}":`, failure[0]);
 	}
 }

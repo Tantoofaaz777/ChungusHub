@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { CONVERT_ACTION } from '$lib/utils/entry-conversion';
 	import type { LibraryEntryType } from '$lib/types/library';
 
+	const panelActive = panelActivity();
 	interface Props {
 		/** The kind this card holds: names the conversion item ("Save as persona…" and back).
 		 *  Absent on a row that is neither, which is also a row with nothing to convert to. */
@@ -96,7 +98,7 @@
 	}
 
 	$effect(() => {
-		if (!open) return;
+		if (!panelActive() || !open) return;
 		document.addEventListener('mousedown', handleOutside, true);
 		const onScroll = () => close();
 		const onKeydown = (e: KeyboardEvent) => {
@@ -118,6 +120,7 @@
 			window.removeEventListener('keydown', onKeydown);
 		};
 	});
+	$effect(() => { if (!panelActive()) open = false; });
 </script>
 
 <button

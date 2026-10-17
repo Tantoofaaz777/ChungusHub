@@ -2,6 +2,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { countTokens } from '$lib/tokenizer';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import { chapterTitle, sceneLevel, type MemoryScene, type ResolvedScene } from '../../../../shared/memory-scenes';
 
 	let { item, model, onEdit, onRemove }: {
@@ -12,13 +13,23 @@
 	} = $props();
 	let title = $derived(chapterTitle(item.scene.title));
 	let level = $derived(sceneLevel(item.scene));
+	let expanded = $state(false);
 	// Only saved content and the chat's model affect this count. Expanding a preview
 	// or typing in the review dialog does not tokenize the chapter again.
-	let tokens = $derived(countTokens(item.scene.content, model));
+	const panelActive = panelActivity();
+	let tokens = $state(0);
+	let counted: { content: string; model: string } | null = null;
+	$effect(() => {
+		if (!panelActive()) return;
+		const content = item.scene.content, assignedModel = model;
+		if (counted?.content === content && counted.model === assignedModel) return;
+		tokens = countTokens(content, assignedModel);
+		counted = { content, model: assignedModel };
+	});
 </script>
 
 <article class="chapter-card">
-	<details class="chapter-preview">
+	<details class="chapter-preview" bind:open={expanded}>
 		<summary aria-label={`Preview ${level}: ${title}`}>
 			<div class="chapter-heading">
 				<h4>{title}</h4>
@@ -30,7 +41,7 @@
 				<span class="chapter-tokens" title={`Estimated ${level} text tokens${model ? ` · ${model}` : ''}`}># {tokens.toLocaleString()} tokens</span>
 			</div>
 		</summary>
-		<div class="chapter-content"><p>{item.scene.content}</p></div>
+		{#if expanded}<div class="chapter-content"><p>{item.scene.content}</p></div>{/if}
 	</details>
 	{#if item.reason}<p class="chapter-reason">{item.reason}</p>{/if}
 	<div class="chapter-actions">

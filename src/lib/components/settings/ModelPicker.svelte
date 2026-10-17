@@ -1,8 +1,11 @@
 <script lang="ts">
+	import { menuMotion } from '$lib/components/ui/menu-motion';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import type { ModelInfo } from '$lib/types/llm';
 	import { formatPricePerMillion, formatContext, modelVendor, vendorLabel } from '$lib/utils/modelFormat';
 
+	const panelActive = panelActivity();
 	type SortMode = 'relevance' | 'name' | 'priceAsc' | 'contextDesc' | 'newest';
 
 	interface Props {
@@ -195,6 +198,7 @@
 
 	// Close on outside click.
 	$effect(() => {
+		if (!panelActive()) return;
 		function onClick(e: MouseEvent): void {
 			const target = e.target as Node;
 			if (open && dropdownEl && inputEl && !dropdownEl.contains(target) && !inputEl.contains(target)) {
@@ -205,6 +209,7 @@
 		document.addEventListener('mousedown', onClick);
 		return () => document.removeEventListener('mousedown', onClick);
 	});
+	$effect(() => { if (!panelActive()) open = false; });
 </script>
 
 <div class="picker">
@@ -258,7 +263,7 @@
 	</div>
 
 	{#if open}
-		<div bind:this={dropdownEl} class="dropdown surface-float" role="listbox">
+		<div bind:this={dropdownEl} transition:menuMotion class="dropdown surface-float" role="listbox">
 			<div class="toolbar">
 				<div class="sorts">
 					{#each SORTS as s (s.mode)}
@@ -456,7 +461,7 @@
 		font-weight: 500;
 		white-space: nowrap;
 		cursor: pointer;
-		transition: all 100ms ease;
+		transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
 	}
 
 	.routing-btn:hover {
@@ -508,7 +513,7 @@
 		font-size: 0.72rem;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 90ms ease;
+		transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
 	}
 
 	.sort-chip:hover {
@@ -534,7 +539,7 @@
 		font-size: 0.72rem;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 90ms ease;
+		transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
 	}
 
 	.group-toggle:hover {

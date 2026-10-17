@@ -17,6 +17,8 @@
 
 	interface Props {
 		chat: Chat;
+		position: number;
+		total: number;
 		stats: ChatListStats | null;
 		/** The face this row wears: the bound character globally, the chat's persona
 		 *  inside one character's list (where every row is the same character). */
@@ -48,6 +50,8 @@
 
 	let {
 		chat,
+		position,
+		total,
 		stats,
 		member,
 		isActive,
@@ -115,6 +119,8 @@
 	class:menu-open={menuOpen}
 	role="option"
 	aria-selected={isSelected}
+	aria-posinset={position}
+	aria-setsize={total}
 	tabindex="-1"
 	id="chat-option-{chat.id}"
 	onmouseenter={onHover}

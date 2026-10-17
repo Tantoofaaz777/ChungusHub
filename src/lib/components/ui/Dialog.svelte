@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import type { Snippet } from 'svelte';
-	import { fade, fly } from 'svelte/transition';
+	import { scrimMotion, surfaceMotion } from './surface-motion';
 	import Icon from './Icon.svelte';
 
+	const panelActive = panelActivity();
 	type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 	type DialogPlacement = 'top' | 'center';
 
@@ -70,10 +72,10 @@
 		if (dismissible) onClose();
 	}
 
+	const visible = $derived(open && panelActive());
 	const titleId = `dialog-title-${crypto.randomUUID()}`;
 	let dialogEl: HTMLDivElement | null = $state(null);
 	let portalEl: HTMLDivElement | null = $state(null);
-	let previouslyFocused: HTMLElement | null = null;
 
 	const focusableSelector =
 		'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]), [contenteditable]:not([contenteditable="false"]), audio[controls], video[controls], summary';
@@ -81,7 +83,7 @@
 	function getFocusableElements(): HTMLElement[] {
 		if (!dialogEl) return [];
 		return Array.from(dialogEl.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-			(el) => !el.hasAttribute('disabled') && el.offsetParent !== null
+			(el) => !el.hasAttribute('disabled') && !el.closest('[inert]') && el.offsetParent !== null
 		);
 	}
 
@@ -89,7 +91,7 @@
 		if (e.key !== 'Tab') return;
 
 		const focusable = getFocusableElements();
-		if (focusable.length === 0) return;
+		if (focusable.length === 0) { e.preventDefault(); dialogEl?.focus(); return; }
 
 		const first = focusable[0];
 		const last = focusable[focusable.length - 1];
@@ -103,34 +105,36 @@
 		}
 	}
 
-	// Portal: move dialog to body to escape stacking contexts (e.g., backdrop-filter)
-	$effect(() => {
-		if (open && portalEl) {
-			document.body.appendChild(portalEl);
-			previouslyFocused = document.activeElement as HTMLElement | null;
-			// Double rAF ensures DOM is fully painted before focusing
-			requestAnimationFrame(() => {
-				requestAnimationFrame(() => {
-					const focusable = getFocusableElements();
-					const preferred = dialogEl?.querySelector<HTMLElement>('[data-dialog-initial-focus]');
-					if (preferred && focusable.includes(preferred)) {
-						preferred.focus();
-					} else if (focusable.length > 0) {
-						focusable[0].focus();
-					} else {
-						dialogEl?.focus();
-					}
-				});
-			});
-		}
+	// The action removes the portal only after Svelte finishes its outgoing transition.
+	function portal(node: HTMLDivElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
+	}
 
+	$effect(() => {
+		if (!visible || !portalEl) return;
+		const currentPortal = portalEl;
+		const previous = document.activeElement as HTMLElement | null;
+		let current = true;
+		let secondFrame = 0;
+		const firstFrame = requestAnimationFrame(() => {
+			secondFrame = requestAnimationFrame(() => {
+				if (!current || !visible || !isTopmostDialog()) return;
+				const focusable = getFocusableElements();
+				const preferred = dialogEl?.querySelector<HTMLElement>('[data-dialog-initial-focus]');
+				const bodyFirst = focusable.find(el => el.closest('.dialog-body'));
+				if (preferred && focusable.includes(preferred)) preferred.focus();
+				else (bodyFirst ?? focusable[0] ?? dialogEl)?.focus();
+			});
+		});
 		return () => {
-			if (portalEl && portalEl.parentNode === document.body) {
-				document.body.removeChild(portalEl);
-			}
-			if (previouslyFocused) {
-				previouslyFocused.focus();
-				previouslyFocused = null;
+			current = false;
+			cancelAnimationFrame(firstFrame); cancelAnimationFrame(secondFrame);
+			const remaining = Array.from(document.body.querySelectorAll<HTMLElement>('.dialog-portal:not([inert])'))
+				.filter(node => node !== currentPortal);
+			const top = remaining.at(-1);
+			if (previous?.isConnected && !previous.closest('[inert]') && (!top || top.contains(previous))) {
+				previous.focus({ preventScroll: true });
 			}
 		};
 	});
@@ -152,15 +156,16 @@
 	/** Nested dialogs share the window listener. Only the portal painted last may respond,
 	 *  otherwise one Escape press dismisses every open layer at once. */
 	function isTopmostDialog(): boolean {
-		const portals = document.body.querySelectorAll('.dialog-portal');
+		const portals = document.body.querySelectorAll('.dialog-portal:not([inert])');
 		return portals[portals.length - 1] === portalEl;
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (!open || !isTopmostDialog()) return;
+		if (e.defaultPrevented || !visible || !isTopmostDialog()) return;
 		if (e.key === 'Escape') {
 			if (dismissible && onEscape) onEscape(e);
 			else requestClose();
+			e.preventDefault();
 		}
 		trapFocus(e);
 	}
@@ -168,8 +173,8 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if open}
-<div bind:this={portalEl} class="dialog-portal">
+{#if visible}
+<div bind:this={portalEl} use:portal class="dialog-portal" transition:scrimMotion>
 	<!-- Backdrop -->
 	<div
 		class="dialog-scrim fixed inset-0 z-[300] flex justify-center px-3 panel-scroll {mobileFullscreen
@@ -183,7 +188,6 @@
 		aria-modal="true"
 		aria-labelledby={title ? titleId : undefined}
 		tabindex="-1"
-		transition:fade={{ duration: 200 }}
 	>
 		<!-- Dialog panel wrapper - non-scrolling container for close button -->
 		<div
@@ -194,7 +198,9 @@
 				: ''}"
 			class:dialog-panel--centered={placement === 'center'}
 			style="box-shadow: var(--shadow-lg);"
-			transition:fly={{ y: 20, duration: 200 }}
+			bind:this={dialogEl}
+			tabindex="-1"
+			transition:surfaceMotion={{ fade: false }}
 		>
 			<!-- Close button - outside scrollable area so it never disappears. Gone
 			     entirely while the dialog must be answered, never shown inert. -->
@@ -211,7 +217,6 @@
 
 			<!-- Scrollable content area, unless the child asked to own its own edges -->
 			<div
-				bind:this={dialogEl}
 				class="dialog-body {bare ? 'flex flex-col min-h-0 flex-1' : 'panel-scroll overscroll-contain'}"
 			>
 				{#if title}
@@ -241,6 +246,8 @@
 {/if}
 
 <style>
+	.dialog-portal { position:fixed; inset:0; z-index:300; pointer-events:none; }
+	.dialog-scrim { pointer-events:auto; }
 	/* The room a panel has, declared where it is actually spent so nothing below has to
 	   restate it: this padding, top and bottom, and the panel between them. */
 	.dialog-scrim {

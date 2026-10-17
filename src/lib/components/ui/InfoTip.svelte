@@ -11,20 +11,22 @@
   button of your own.
 -->
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import type { Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Icon from './Icon.svelte';
 	import { anchorTo } from '$lib/actions/anchorTo';
 
+	const panelActive = panelActivity();
 	let { text, trigger }: { text: string; trigger?: Snippet } = $props();
 
 	let rootEl = $state<HTMLElement>();
 	let hovering = $state(false);
 	let pinned = $state(false);
-	let open = $derived(hovering || pinned);
+	let open = $derived(panelActive() && (hovering || pinned));
 
 	$effect(() => {
-		if (!pinned) return;
+		if (!panelActive() || !pinned) return;
 		const onDown = (e: PointerEvent) => {
 			if (rootEl && !rootEl.contains(e.target as Node)) pinned = false;
 		};
@@ -42,6 +44,7 @@
 			document.removeEventListener('keydown', onKey);
 		};
 	});
+	$effect(() => { if (!panelActive()) { hovering = false; pinned = false; } });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->

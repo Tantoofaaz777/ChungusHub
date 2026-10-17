@@ -41,6 +41,7 @@
 	/* Geometry is three custom properties per size, so the knob's travel is derived
 	   from the track rather than hand-tuned twice and drifting apart. */
 	.toggle {
+		--toggle-ease: cubic-bezier(0.16, 1, 0.3, 1);
 		position: relative;
 		flex-shrink: 0;
 		padding: 0;
@@ -50,7 +51,7 @@
 		border: 1px solid var(--color-border);
 		background: color-mix(in srgb, var(--color-bg-tertiary) 85%, transparent);
 		cursor: pointer;
-		transition: background-color 160ms ease, border-color 160ms ease;
+		transition: background-color 180ms var(--toggle-ease), border-color 180ms var(--toggle-ease), transform 100ms var(--toggle-ease);
 	}
 
 	.toggle--md {
@@ -70,6 +71,10 @@
 		border-color: var(--color-accent);
 	}
 
+	.toggle:active:not(:disabled) {
+		transform: scale(0.97);
+	}
+
 	.toggle:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
@@ -84,7 +89,7 @@
 		border-radius: var(--radius-full);
 		background: var(--color-text-muted);
 		transform: translateY(-50%);
-		transition: transform 160ms ease, background-color 160ms ease;
+		transition: transform 180ms var(--toggle-ease), background-color 180ms var(--toggle-ease);
 	}
 
 	.toggle.on .knob {

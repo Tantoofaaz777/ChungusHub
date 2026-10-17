@@ -2,7 +2,7 @@
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { renderedHtml } from '$lib/actions/renderedHtml';
 	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
-	import { countTokens } from '$lib/tokenizer';
+	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
 	import MessageReasoning from './MessageReasoning.svelte';
 	import MessageAvatar from './MessageAvatar.svelte';
 	import MessageMeta from './MessageMeta.svelte';
@@ -47,7 +47,10 @@
 	let displayContent = $derived(regexRulesStore.forDisplay(content, 'assistant', 0, displayPreset));
 	let bodyHtml = $derived(renderMarkdown(displayContent));
 	// Counts the raw stream, not the display transform: it estimates what the model emits.
-	let streamingTokens = $derived(countTokens(content));
+	const estimate = liveTokenCount({ text: () => content,
+		enabled: () => themeStore.appearance.showTokenCount, streaming: () => true,
+		identity: () => chatStore.stream });
+	let streamingTokens = $derived(estimate.value);
 	// Same rule as Message.svelte: MessageReasoning is a pure renderer, so the caller
 	// decides whether there is anything to show.
 	const hasReasoning = $derived(Boolean(thinking.trim()));
@@ -120,8 +123,7 @@
 							</div>
 						{/if}
 
-						<!-- Toggle first: while it's off the lazy streamingTokens derived never
-						     runs, so the per-tick countTokens estimate is skipped entirely. -->
+						<!-- The shared estimator cancels pending counts while this readout is off. -->
 						{#if !(isManuscript && !avatarsHidden) && themeStore.appearance.showTokenCount && streamingTokens > 0}
 							<div class="stream-tokens-row">
 								<span class="stream-tokens" title="Estimated tokens">~{streamingTokens}</span>

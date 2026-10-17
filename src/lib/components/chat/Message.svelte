@@ -29,6 +29,7 @@
 	import { describeMemoryImpact } from '$lib/memory/impact-copy';
 	import { canSpliceMessage, collectSubtree, subtreeBlastRadius } from '$lib/utils/message-tree';
 	import { countTokens } from '$lib/tokenizer';
+	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
 	import { imageService } from '$lib/services/imageService';
 	import ImageLightbox from '$lib/components/ui/ImageLightbox.svelte';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
@@ -492,6 +493,9 @@
 	const showModelName = $derived(themeStore.appearance.showModelName);
 	const showTokenCount = $derived(themeStore.appearance.showTokenCount);
 	const showGenerationTime = $derived(themeStore.appearance.showGenerationTime);
+	const replacementTokens = liveTokenCount({ text: () => displayedContent,
+		enabled: () => showTokenCount && streamReplacement, streaming: () => streamReplacement,
+		identity: () => chatStore.stream });
 	// The pill appears only where a scan actually happened: a turn that consulted no book at
 	// all (no lorebook linked, an imported chat, a seeded greeting) has nothing to report, and
 	// a pill reading zero on every reply would be noise for everyone not using lorebooks.
@@ -567,7 +571,7 @@
 									provider={showModelName && !streamReplacement ? message.provider : null}
 									edited={!streamReplacement && !!(message.editedAt || message.minorEditedAt)}
 									streaming={streamReplacement}
-									tokens={showTokenCount ? streamReplacement ? `~${countTokens(displayedContent)} tok` : tokenLabel : null}
+									tokens={showTokenCount ? streamReplacement ? `~${replacementTokens.value} tok` : tokenLabel : null}
 									ordinal={metaReadouts ? avatarOrdinal : null}
 									durationMs={metaReadouts && showGenerationTime && !streamReplacement ? message.generationMs : null}
 									archived={archived && !streamReplacement}

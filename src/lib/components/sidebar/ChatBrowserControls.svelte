@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { menuMotion } from '$lib/components/ui/menu-motion';
 	import type { Snippet } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { SORT_OPTIONS, type SortKey, type SortDir, type FilterMode } from '$lib/utils/chat-browser';
@@ -239,7 +240,7 @@
 		</button>
 
 		{#if sortMenuOpen}
-			<div class="chats-sort-menu surface-float" role="menu" tabindex="-1" onkeydown={(event) => {
+			<div transition:menuMotion class="chats-sort-menu surface-float" role="menu" tabindex="-1" onkeydown={(event) => {
 				if (event.key === 'Escape') {
 					event.preventDefault();
 					event.stopPropagation();
@@ -291,7 +292,7 @@
 			<Icon name="dotsVertical" class="w-4 h-4" />
 		</button>
 		{#if moreMenuOpen}
-			<div class="chats-sort-menu surface-float" role="menu" aria-label="More chat options" tabindex="-1" onkeydown={closeMenus}>
+			<div transition:menuMotion class="chats-sort-menu surface-float" role="menu" aria-label="More chat options" tabindex="-1" onkeydown={closeMenus}>
 				{#if twinsInScope || filterMode === 'duplicates'}
 					<button type="button" role="menuitemcheckbox" aria-checked={filterMode === 'duplicates'}
 						class="chats-menu-item" class:is-active={filterMode === 'duplicates'}

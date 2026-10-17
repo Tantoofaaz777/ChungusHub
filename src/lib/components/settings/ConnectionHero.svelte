@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { menuMotion } from '$lib/components/ui/menu-motion';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import type { ProviderMeta } from '$lib/services/llm/provider';
 	import type { ProviderAccount, ProviderName } from '$lib/types/llm';
 	import { formatUsd } from '$lib/utils/modelFormat';
 
+	const panelActive = panelActivity();
 	type Status = 'idle' | 'binding' | 'valid' | 'invalid';
 
 	interface Props {
@@ -87,6 +90,7 @@
 	}
 
 	$effect(() => {
+		if (!panelActive()) return;
 		function onClick(e: MouseEvent): void {
 			const t = e.target as Node;
 			if (menuOpen && menuEl && chipEl && !menuEl.contains(t) && !chipEl.contains(t)) menuOpen = false;
@@ -94,6 +98,7 @@
 		document.addEventListener('mousedown', onClick);
 		return () => document.removeEventListener('mousedown', onClick);
 	});
+	$effect(() => { if (!panelActive()) menuOpen = false; });
 </script>
 
 <div class="hero">
@@ -119,7 +124,7 @@
 			</button>
 
 			{#if menuOpen}
-				<div bind:this={menuEl} class="provider-menu surface-float" role="listbox">
+				<div bind:this={menuEl} transition:menuMotion class="provider-menu surface-float" role="listbox">
 					{#each providers as p (p.name)}
 						<button
 							type="button"

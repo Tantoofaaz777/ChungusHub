@@ -4,6 +4,7 @@
 	import LibraryEditorOverlay from '$lib/components/library/LibraryEditorOverlay.svelte';
 	import LorebookView from '$lib/components/lorebook/LorebookView.svelte';
 	import PresetControlsView from '$lib/components/presetControls/PresetControlsView.svelte';
+	import RetainedView from '$lib/components/ui/RetainedView.svelte';
 	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
 	import SettingsContentPanel from '$lib/components/settings/SettingsContentPanel.svelte';
 	import ChatsView from '$lib/components/sidebar/ChatsView.svelte';
@@ -14,7 +15,8 @@
 	import PromptDebugPanel from '$lib/components/debug/PromptDebugPanel.svelte';
 	import PromptReviewDialog from '$lib/components/chat/PromptReviewDialog.svelte';
 	import { untrack } from 'svelte';
-	import { fade, fly } from 'svelte/transition';
+	import { surfaceMotion, scrimMotion } from '$lib/components/ui/surface-motion';
+	import { retainedPanel } from '$lib/components/ui/retained-panel';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
@@ -28,6 +30,7 @@
 	import HintLayer from '$lib/components/layout/HintLayer.svelte';
 	import { matchShortcut } from '$lib/commands/shortcuts.svelte';
 	import { chatCursor } from '$lib/stores/chatCursor.svelte';
+	import { chatStore } from '$lib/stores/chat.svelte';
 
 	let activeOverlay = $derived(uiStore.activeOverlay);
 	let welcomeOpen = $derived(uiStore.welcomeOpen);
@@ -134,8 +137,8 @@
 	// and the selected page opens wide and centered, the Library entry editor's
 	// pattern. Below dock widths the preference is inert (Settings is a single
 	// centered overlay there, drill-down as always).
-	let settingsSplit = $derived(settingsDocked && generalSettingsStore.settingsSplitView);
-	let settingsContentOpen = $derived(settingsSplit && uiStore.settingsPage !== 'root');
+	let settingsSplit = $derived(canDock && generalSettingsStore.settingsSplitView);
+	let settingsContentOpen = $derived(settingsOpen && settingsSplit && uiStore.settingsPage !== 'root');
 
 	// Merged Library: mirrors Settings but docks into the right margin instead.
 	let libraryOpen = $derived(uiStore.libraryOpen);
@@ -220,7 +223,7 @@
 		if (e.key === 'Escape') {
 			// A modal Dialog owns the keyboard while its portal is mounted: it closes
 			// itself on this very event (same guard LorebookView uses).
-			if (document.querySelector('.dialog-portal')) return;
+			if (document.querySelector('.dialog-portal:not([inert])')) return;
 			// Panels that consume Esc (lorebook collapse, message editors, image
 			// viewers…) mark the event with preventDefault, but their window listeners
 			// are registered after this one. Defer to a microtask so their claim is
@@ -298,20 +301,16 @@
 			     TitleBar and composer stay reachable by Tab on purpose), and claiming
 			     modality a focus trap doesn't back up only misleads a screen reader.
 			     ChatsView lands focus in its own search field and Escape closes it. -->
-			<div class="chats-modal" role="dialog" aria-label="Chats" transition:fade={{ duration: 120 }}>
-				<div class="chats-modal-panel surface-float" data-panel>
+			<div class="chats-modal" role="dialog" aria-label="Chats" transition:scrimMotion>
+				<div class="chats-modal-panel surface-float" data-panel transition:surfaceMotion={{ fade: false }}>
 					<ChatsView />
 				</div>
 			</div>
-		{:else if activeOverlay}
-			<div class="chat-overlay" transition:fade={{ duration: 120 }}>
+		{:else if activeOverlay && activeOverlay !== 'memory' && activeOverlay !== 'threads'}
+			<div class="chat-overlay" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
 					{#if activeOverlay === 'chats'}
 						<ChatsView />
-						{:else if activeOverlay === 'memory'}
-							<MemoryPanel />
-					{:else if activeOverlay === 'threads'}
-						<ThreadsPanel />
 					{:else if activeOverlay === 'presetControls'}
 						<PresetControlsView />
 					{:else if activeOverlay === 'stats'}
@@ -321,52 +320,47 @@
 			</div>
 		{/if}
 
-		<!-- Settings on wide screens: docked into the left margin, glued to the chat. -->
-		{#if settingsDocked}
-			<aside class="settings-dock" data-panel transition:fly={{ x: -16, duration: 200 }}>
-				<SettingsPanel split={settingsSplit} />
-			</aside>
-		{/if}
-
-		<!-- Split view: the selected settings page, wide and centered over the chat
-		     while the dock keeps the root list, the Library entry editor's pattern. -->
-		{#if settingsContentOpen}
-			<div class="chat-overlay chat-overlay-front" transition:fade={{ duration: 120 }}>
-				<div class="chat-overlay-panel" data-panel>
-					<SettingsContentPanel />
-				</div>
+		<!-- Retain the current chat's tools across closes, but release their view state
+		     when the chat changes. Stores still own generation and live data. -->
+		<div class="chat-overlay" hidden data-retained-panel use:retainedPanel={activeOverlay === 'memory'} inert={activeOverlay !== 'memory'} aria-hidden={activeOverlay !== 'memory'}>
+			<div class="chat-overlay-panel" data-panel>
+				<RetainedView present active={activeOverlay === 'memory'}>
+					{#key chatStore.activeChatId}<MemoryPanel />{/key}
+				</RetainedView>
 			</div>
-		{/if}
-
-		<!-- Settings on narrow screens: a chat-area overlay, above any other overlay. -->
-		{#if settingsOverlay}
-			<div class="chat-overlay chat-overlay-front" transition:fade={{ duration: 120 }}>
-				<div class="chat-overlay-panel" data-panel>
-					<SettingsPanel />
-				</div>
+		</div>
+		<div class="chat-overlay" hidden data-retained-panel use:retainedPanel={activeOverlay === 'threads'} inert={activeOverlay !== 'threads'} aria-hidden={activeOverlay !== 'threads'}>
+			<div class="chat-overlay-panel" data-panel>
+				<RetainedView present active={activeOverlay === 'threads'}>
+					{#key chatStore.activeChatId}<ThreadsPanel />{/key}
+				</RetainedView>
 			</div>
-		{/if}
+		</div>
 
-		<!-- Merged Library on wide screens: docked into the right margin, glued to the chat. -->
-		{#if libraryDocked}
-			<aside class="library-dock" data-panel transition:fly={{ x: 16, duration: 200 }}>
-				<LibraryView />
-			</aside>
-		{/if}
-
-		<!-- Merged Library on narrow screens: a chat-area overlay, above any other overlay. -->
-		{#if libraryOverlay}
-			<div class="chat-overlay chat-overlay-front" transition:fade={{ duration: 120 }}>
-				<div class="chat-overlay-panel" data-panel>
-					<LibraryView />
-				</div>
+		<!-- One retained instance per panel; layout changes geometry rather than ownership.
+		     Activity and interaction stop immediately; the painted shells finish their outro. -->
+		<aside class:settings-dock={canDock} class:chat-overlay={!canDock} class:chat-overlay-front={!canDock} hidden data-retained-panel use:retainedPanel={settingsOpen} inert={!settingsOpen} aria-hidden={!settingsOpen}>
+			<div class:chat-overlay-panel={!canDock} class:dock-body={canDock} data-panel>
+				<RetainedView present active={settingsOpen}><SettingsPanel split={settingsSplit} /></RetainedView>
 			</div>
-		{/if}
+		</aside>
+
+		<div class="chat-overlay chat-overlay-front" hidden data-retained-panel use:retainedPanel={settingsContentOpen} inert={!settingsContentOpen} aria-hidden={!settingsContentOpen}>
+			<div class="chat-overlay-panel" data-panel>
+				<RetainedView present active={settingsContentOpen}><SettingsContentPanel /></RetainedView>
+			</div>
+		</div>
+
+		<aside class:library-dock={canDock} class:chat-overlay={!canDock} class:chat-overlay-front={!canDock} hidden data-retained-panel use:retainedPanel={libraryOpen} inert={!libraryOpen} aria-hidden={!libraryOpen}>
+			<div class:chat-overlay-panel={!canDock} class:dock-body={canDock} data-panel>
+				<RetainedView present active={libraryOpen}><LibraryView /></RetainedView>
+			</div>
+		</aside>
 
 		<!-- Library entry editor: wide and centered over the chat, so the dock's browse
 		     list keeps its place while the editor gets full width. -->
 		{#if libraryEditorOpen}
-			<div class="chat-overlay chat-overlay-front" transition:fade={{ duration: 120 }}>
+			<div class="chat-overlay chat-overlay-front" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
 					<LibraryEditorOverlay />
 				</div>
@@ -376,7 +370,7 @@
 		<!-- The open lorebook, in the same slot and for the same reason: the Lorebooks shelf
 		     keeps the dock while the book itself is read at full width. -->
 		{#if lorebookEditorOpen && uiStore.lorebookEditorId}
-			<div class="chat-overlay chat-overlay-front" transition:fade={{ duration: 120 }}>
+			<div class="chat-overlay chat-overlay-front" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
 					<LorebookView
 						bookId={uiStore.lorebookEditorId}
@@ -389,7 +383,7 @@
 		<!-- Prompt debug log: a chat-sized panel listing every logged query, opened from
 		     the Advanced settings tab. Only exists while the toggle is on. -->
 		{#if promptDebugEnabled && uiStore.debugPanelOpen}
-			<div class="chat-overlay chat-overlay-front" transition:fade={{ duration: 120 }}>
+			<div class="chat-overlay chat-overlay-front" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
 					<PromptDebugPanel />
 				</div>
@@ -413,6 +407,8 @@
 <HintLayer />
 
 <style>
+	[data-retained-panel][hidden] { display:none !important; }
+	.dock-body { height:100%; min-height:0; width:100%; }
 	.workspace-shell {
 		height: 100%;
 		min-height: 0;

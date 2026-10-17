@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { personaStore, LAST_PERSONA_REASON } from '$lib/stores/persona.svelte';
@@ -29,6 +30,7 @@
 	import { personasViewPrefs, DEFAULTS as BROWSE_DEFAULTS } from '$lib/stores/browseViewPrefs.svelte';
 	import { rangeReset } from '$lib/actions/rangeReset';
 
+	const panelActive = panelActivity();
 	// Personas half of the merged Library (see LibraryView): the browse list, speaking
 	// the same toolbar/card language as CharacterLibraryView. The entry editor opens
 	// wide and centered over the chat (LibraryEditorOverlay) via uiStore.libraryEditorId.
@@ -41,12 +43,13 @@
 
 	// Load library on mount
 	$effect(() => {
-		characterLibraryStore.load();
+		if (panelActive()) void characterLibraryStore.load();
 	});
 
 	// Deep link from "Edit in Library" style buttons: open the requested
 	// entry's editor, then consume the one-shot request so it doesn't re-fire.
 	$effect(() => {
+		if (!panelActive()) return;
 		const pending = uiStore.pendingLibraryEntryId;
 		if (pending) {
 			uiStore.libraryEditorId = pending;
@@ -57,6 +60,7 @@
 	// Trap navigation while an unsaved brand-new persona is open, exactly like the
 	// characters tab does for its new entries.
 	$effect(() => {
+		if (!panelActive()) return;
 		const blocker = () => {
 			const id = uiStore.libraryEditorId;
 			return !!id && characterLibraryStore.isUnconfirmedNew(id);
@@ -70,6 +74,12 @@
 	let guardFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {
+		if (!panelActive()) {
+			lastGuardPulse = uiStore.guardPulse;
+			if (guardFlashTimer) clearTimeout(guardFlashTimer);
+			guardFlash = false;
+			return;
+		}
 		const pulse = uiStore.guardPulse;
 		if (pulse === lastGuardPulse) return;
 		lastGuardPulse = pulse;

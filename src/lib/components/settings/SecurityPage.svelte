@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { untrack } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import {
 		allowIpAddress,
@@ -23,6 +24,7 @@
 	import IpAllowlistMockup from '$lib/components/mockups/IpAllowlistMockup.svelte';
 	import { toggleRow } from '$lib/actions/toggleRow';
 
+	const panelActive = panelActivity();
 	const MIN_PASSWORD_LENGTH = 4;
 
 	// ===== Access control (IP allowlist) =====
@@ -95,9 +97,9 @@
 	let idleDirty = $derived(idleInput.trim() !== String(idleMinutes));
 	let idleValid = $derived(/^\d+$/.test(idleInput.trim()));
 
-	onMount(() => {
-		loadAccess();
-		loadSecurity();
+	$effect(() => {
+		if (!panelActive()) return;
+		untrack(() => { void loadAccess(); void loadSecurity(); });
 		// Keep the waiting list live while the tab is open, so a device knocking on
 		// the door shows up here within seconds. The switches are re-read alongside
 		// it because they can also move without this page: the server applies edits

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
@@ -9,6 +10,7 @@
 	import { imageService } from '$lib/services/imageService';
 	import { backgroundStore } from '$lib/stores/background.svelte';
 
+	const panelActive = panelActivity();
 	interface BackgroundEntry {
 		path: string;
 		name: string;
@@ -44,7 +46,7 @@
 	}
 
 	$effect(() => {
-		if (open) void refresh();
+		if (panelActive() && open) void refresh();
 	});
 
 	function select(path: string): void {

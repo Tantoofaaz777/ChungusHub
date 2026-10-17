@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import SettingsPageView from './SettingsPageView.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -6,6 +7,7 @@
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
+	const panelActive = panelActivity();
 	interface Props {
 		/** Split view (wide-screen dock): render only the root list with the active
 		 *  row tinted: the page itself opens in the centered SettingsContentPanel,
@@ -97,8 +99,9 @@
 	 *  while a Dialog portal owns the key. In split view "back to root" closes
 	 *  the centered page panel; the next Escape reaches the workspace. */
 	function handlePageKeydown(e: KeyboardEvent): void {
+		if (!panelActive()) return;
 		if (e.key !== 'Escape' || e.defaultPrevented || page === 'root') return;
-		if (document.querySelector('.dialog-portal')) return;
+		if (document.querySelector('.dialog-portal:not([inert])')) return;
 		e.preventDefault();
 		back();
 	}

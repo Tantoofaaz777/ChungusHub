@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import GenerationDots from '$lib/components/ui/GenerationDots.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -25,6 +26,7 @@
 	import ThreadsContextPreview from './ThreadsContextPreview.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import type { ThreadsComment as Comment } from '$shared/threads/types';
+	const panelActive = panelActivity();
 	function totalComments(comments: Comment[]): number { return comments.reduce((n, c) => n + 1 + totalComments(c.replies), 0); }
 
 	let removing = $state<ThreadsRound | null>(null);
@@ -40,10 +42,28 @@
 	let suppressedClick: string | null = null;
 	let suppressTimer: ReturnType<typeof setTimeout> | null = null;
 	const selected = $derived(new Set(store.selected));
+	// Page previews only; the store keeps selection, ranges and prompt sources complete.
+	const MESSAGE_BATCH_SIZE = 50;
+	let messageLimit = $state(MESSAGE_BATCH_SIZE);
+	const availableMessages = $derived(store.available);
+	const visibleMessages = $derived(availableMessages.slice(0, messageLimit));
+	const hasMoreMessages = $derived(visibleMessages.length < availableMessages.length);
+	function loadMoreMessages() {
+		if (!panelActive() || store.tab !== 'make' || store.busy || !hasMoreMessages) return;
+		messageLimit = Math.min(availableMessages.length, messageLimit + MESSAGE_BATCH_SIZE);
+	}
+	function scrollMessages(event: Event) {
+		const list = event.currentTarget as HTMLDivElement;
+		if (list.scrollHeight - list.scrollTop - list.clientHeight < 200) loadMoreMessages();
+	}
 	const currentRoundIds = $derived(new Set(store.previousRounds.map(r => r.id)));
 	const previewModel = $derived(llmService.modelFor({ engine: 'threads' }));
 	const chatId = $derived(chatStore.activeChatId);
-	$effect(() => { const id = chatId; untrack(() => { void store.load(id); }); });
+	$effect(() => {
+		if (!panelActive()) return;
+		const id = chatId;
+		untrack(() => { void store.ensureLoaded(id); });
+	});
 	$effect(() => {
 		const id = chatId, newest = store.rounds.at(-1)?.id ?? null;
 		untrack(() => {
@@ -70,6 +90,15 @@
 		if (suppressedClick === id) { suppressedClick = null; return; }
 		store.toggle(id, event.shiftKey);
 	}
+	$effect(() => {
+		if (panelActive()) return;
+		untrack(() => {
+			clearTouch();
+			if (suppressTimer) clearTimeout(suppressTimer);
+			suppressedClick = null;
+			void store.flushNotes().catch(() => {});
+		});
+	});
 	onDestroy(() => { clearTouch(); if (suppressTimer) clearTimeout(suppressTimer); void store.flushNotes().catch(() => {}); });
 	async function copy(round: ThreadsRound) {
 		try { await copyText(serializeFeedAsPlainText(activeThreadsFeed(round))); toastStore.success('Thread copied.'); }
@@ -90,6 +119,8 @@
 	<div class="threads-body panel-scroll">
 		{#if !chatId}
 			<EmptyState icon="threads" size="sm">Open a chat to make threads.</EmptyState>
+		{:else if store.chatId !== chatId}
+			<p class="muted">Loading threads…</p>
 		{:else}
 			<div class="tabs"><PillRow options={[{value:'feed',label:'Feed'}, {value:'make',label:'Make'}]} current={store.tab} onpick={(value) => store.tab = value as 'feed' | 'make'} label="Threads view" /></div>
 			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} value={viewedRound.id} onchange={(id) => viewedRoundId = id} />{/if}
@@ -138,7 +169,7 @@
 					<p class="muted">Tap messages to select individually. Shift-click or hold another message to select a range.</p>
 					<div class="context">
 						<button class="continuity-reset" disabled={store.busy || !!store.pending || !store.loaded || !store.rounds.length} onclick={() => { if (store.chatId) resetting = { chatId: store.chatId, rounds: store.rounds.map(({ id, revision }) => ({ id, revision })) }; }}>Reset continuity</button>
-						<ThreadsContextPreview count={store.selectedCount} input={store.promptPreview} model={previewModel} />
+						<ThreadsContextPreview count={store.selectedCount} input={panelActive() ? store.promptPreview : null} model={previewModel} />
 						{#if store.selectedCount > 0}
 						<div class="context-chapter">
 							<label class="field-label" for="threads-label">Episode / chapter <span class="muted">(optional)</span></label>
@@ -171,13 +202,14 @@
 					<details class="notes-section" bind:open={notesOpen}><summary><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="users" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span>Fandom Notes</span><span class="section-rule" aria-hidden="true"></span></summary>{#if notesOpen}<label class="sr-only" for="threads-notes">Fandom Notes</label><ExpandableTextarea id="threads-notes" class="input-base threads-textarea" value={store.notes} onValueChange={(notes) => store.updateNotes({notes})} dialogTitle="Fandom Notes" placeholder="Reader expectations, recurring jokes, ships…" rows={4} />{/if}</details>
 					{#if store.notesError}<div class="error" role="alert">{store.notesError}<Button variant="secondary" size="sm" onclick={() => store.flushNotes().catch(() => {})}>Retry saving notes</Button></div>{/if}
 					{#if !featurePromptsStore.threadsEnabled}<p class="muted">Enable Threads in <button class="text-link" onclick={settings}>Settings → Engines</button> to generate.</p>{/if}
-					<div class="message-list" aria-label="Unused messages">
-						{#each store.available as message (message.id)}
+					<div class="message-list" aria-label="Unused messages" onscroll={scrollMessages}>
+						{#each visibleMessages as message (message.id)}
 							<button class="message-row" class:is-selected={selected.has(message.id)} aria-pressed={selected.has(message.id)} disabled={store.busy} onclick={(event) => select(event,message.id)} onpointerdown={(event) => startTouch(event,message.id)} onpointermove={moveTouch} onpointerup={clearTouch} onpointercancel={clearTouch} oncontextmenu={(event) => event.preventDefault()}>
 								<span class="check" aria-hidden="true">{#if selected.has(message.id)}<Icon name="check" class="w-3 h-3" />{/if}</span><span class="message-number">#{message.index + 1}</span>
 								<span class="message-text"><span class="message-role">{message.role}{#if message.excludedFromPrompt}<span role="img" aria-label="Hidden message" title="Hidden message"><Icon name="eyeOff" class="w-3.5 h-3.5" aria-hidden="true" /></span>{/if}</span><span class="message-preview">{message.content || '(empty message)'}</span></span>
 							</button>
 						{:else}<p class="muted empty-list">{store.path.length ? 'All messages have been used. Continue the story to select a new scene.' : 'This chat has no messages yet.'}</p>{/each}
+						{#if hasMoreMessages}<div class="message-list-more"><Button variant="ghost" size="sm" disabled={store.busy} onclick={loadMoreMessages}>Load more messages</Button><span class="muted">{visibleMessages.length.toLocaleString()} / {availableMessages.length.toLocaleString()}</span></div>{/if}
 					</div>
 					<div class="make-actions"><span class="muted">{store.selectedCount} selected</span><Button variant="ghost" size="sm" disabled={store.busy || !store.selected.length} onclick={() => store.clearSelection()}>Clear</Button><Button size="sm" disabled={store.busy || !!store.pending || !store.selectedCount || !featurePromptsStore.threadsEnabled} onclick={() => store.generate()}>Generate thread</Button></div>
 				</section>
@@ -246,6 +278,7 @@
 	.message-row { display:flex; align-items:center; gap:.65rem; width:100%; text-align:left; padding:.7rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); touch-action:pan-y; min-width:0; }
 	.message-row:hover { background:var(--color-bg-tertiary); }
 	.message-row.is-selected { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 8%,var(--color-bg-secondary)); }
+	.message-list-more { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.35rem 0; overflow-anchor:none; }
 	.message-row:disabled { opacity:.6; }
 	.check { width:1rem; height:1rem; display:flex; align-items:center; justify-content:center; border:1px solid var(--color-border); border-radius:3px; flex-shrink:0; color:var(--color-accent); }
 	.message-number { font-size:.72rem; color:var(--color-text-muted); flex-shrink:0; font-variant-numeric:tabular-nums; }

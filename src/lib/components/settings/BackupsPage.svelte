@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { untrack } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -25,6 +26,7 @@
 		type SnapshotManifest
 	} from '$shared/backups';
 
+	const panelActive = panelActivity();
 	const INTERVALS = [
 		{ value: '6', label: 'Every 6 hours' },
 		{ value: '24', label: 'Once a day' },
@@ -64,12 +66,13 @@
 	let bulkDeleteOpen = $state(false);
 	let cancelling = $state(false);
 
-	onMount(() => {
-		void backupStore.load().catch((error) => {
+	$effect(() => {
+		if (!panelActive()) return;
+		untrack(() => void backupStore.load().catch((error) => {
 			pageError = failureText('load your backups', error);
-		});
+		}));
+		return () => backupStore.close();
 	});
-	onDestroy(() => backupStore.close());
 
 	// A claimed restore freezes the store, so a selection started before the claim landed
 	// (possibly on another device) would be a mode full of buttons that can no longer act.

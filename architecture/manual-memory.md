@@ -81,3 +81,5 @@ child revisions, overlaps and optimistic revisions; changing a saved item's leve
 Chat duplication remaps both message references and the complete child graph. Stale dependencies
 remain stale even though copied summary revisions restart at one. Database snapshots include the
 new columns through the existing schema and migration path.
+
+The retained Memory panel renders a prefix of 50 cards independently for chapters, arcs and volumes. A per-section IntersectionObserver rooted in the panel scroller appends another 50 within 200px of the viewport; each section also has a manual Load more button. Observers disconnect while hidden, saving, loading or unmounted, and queued callbacks cannot expand a detached list. Loaded prefixes and expanded cards survive panel toggles for the same chat; the workspace chat key resets them on chat changes. This limits presentation only: resolution, compaction candidates, source coverage and prompt assembly retain every saved scene. Collapsed card previews do not mount their summary text; expanding mounts it on demand. Token counts still appear in card headings and reuse their content/model cache.

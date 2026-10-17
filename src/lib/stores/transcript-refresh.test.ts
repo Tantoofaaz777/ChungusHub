@@ -373,3 +373,42 @@ describe('scene-memory publication', () => {
   writes[0].resolve(); await move;
  });
 });
+
+
+describe('display-only streaming snapshots', () => {
+	test('raw content and reasoning stay complete while the visual copy coalesces both channels', async () => {
+		chatStore.startStream(CHAT.id, { replacingMessageId: 'reply' });
+		try {
+			for (let i=0;i<20;i++) { chatStore.appendStreamingContent('x'); chatStore.appendStreamingThinking('y'); }
+			expect(chatStore.stream?.content).toBe('x'.repeat(20));expect(chatStore.stream?.thinking).toBe('y'.repeat(20));
+			expect(chatStore.visibleStreamPreview?.content).toBe('');
+			await new Promise(resolve=>setTimeout(resolve,70));
+			expect(chatStore.visibleStreamPreview).toMatchObject({content:'x'.repeat(20),thinking:'y'.repeat(20),replacingMessageId:'reply'});
+		} finally { chatStore.endStream(); }
+	});
+	test('a new generation cannot inherit a pending visual update from the previous one', async () => {
+		chatStore.startStream(CHAT.id);chatStore.appendStreamingContent('old reply');
+		chatStore.startStream(CHAT.id,{continuingMessageId:'reply'});
+		try {
+			await new Promise(resolve=>setTimeout(resolve,70));expect(chatStore.visibleStreamPreview?.content).toBe('');
+			chatStore.appendStreamingContent('new continuation');await new Promise(resolve=>setTimeout(resolve,70));
+			expect(chatStore.visibleStreamPreview).toMatchObject({content:'new continuation',continuingMessageId:'reply',replacingMessageId:null});
+		} finally { chatStore.endStream(); }
+	});
+	test('ending or stopping before a paint interval preserves raw text and releases pending callbacks', async () => {
+		chatStore.startStream(CHAT.id,{openingScene:true});chatStore.appendStreamingContent('short partial');chatStore.appendStreamingThinking('short thought');
+		const received=chatStore.stream;chatStore.endStream();
+		expect(received).toMatchObject({content:'short partial',thinking:'short thought',openingScene:true});
+		await new Promise(resolve=>setTimeout(resolve,70));expect(chatStore.stream).toBeNull();expect(chatStore.visibleStreamPreview).toBeNull();
+	});
+	test('a stream remains owned by its chat when navigation changes during a queued paint', async () => {
+		chatStore.startStream(CHAT.id);chatStore.appendStreamingContent('A reply');
+		const original=chatStore.currentChatState!;
+		try {
+			chatStore.currentChatState={...original,chat:{...original.chat,id:'other-chat'}};
+			await new Promise(resolve=>setTimeout(resolve,70));expect(chatStore.visibleStreamPreview).toBeNull();
+			expect(chatStore.stream?.content).toBe('A reply');chatStore.currentChatState=original;
+			expect(chatStore.visibleStreamPreview?.content).toBe('A reply');
+		} finally { chatStore.currentChatState=original;chatStore.endStream(); }
+	});
+});

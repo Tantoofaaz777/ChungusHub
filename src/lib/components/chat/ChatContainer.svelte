@@ -15,7 +15,7 @@
 	let chatState = $derived(chatStore.currentChatState);
 	// Everything the transcript paints comes off the VISIBLE stream, so a reply still
 	// arriving in a chat the reader has left cannot spill its tokens into this one.
-	let stream = $derived(chatStore.visibleStream);
+	let stream = $derived(chatStore.visibleStreamPreview);
 	let isStreaming = $derived(stream !== null);
 	let streamingContent = $derived(stream?.content ?? '');
 	let streamingThinking = $derived(stream?.thinking ?? '');

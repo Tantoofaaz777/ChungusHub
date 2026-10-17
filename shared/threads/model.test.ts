@@ -27,13 +27,13 @@ describe('Threads selections and prompt boundaries', () => {
 		expect(noContext).not.toContain('# PREVIOUS CONTEXT'); expect(noContext).not.toContain('# FANDOM CONTINUITY');
 		expect(noContext).toContain('Story 4');
 	});
-	test('story sections contain only message content separated by blank lines, including saved rounds', async () => {
+	test('story sections have episode headings and only message content separated by blank lines', async () => {
 		const old=round('old');
 		old.messages.push({...old.messages[0],id:'reply',role:'user',speaker:'Private persona name',index:25,content:'Old user reply'});
 		const current=round('current').messages;
 		current.push({...current[0],id:'current-reply',role:'user',speaker:'Private persona name',index:42,content:'Current user reply'});
 		const prompt=await threadsPrompt({messages:current,label:'Private scene label',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:1,fandomThreads:0}});
-		expect(prompt.split('\n\n# INSTRUCTIONS')[0]).toBe('# PREVIOUS CONTEXT\n\nStory old\n\nOld user reply\n\n# RECENT CONTEXT\n\nStory current\n\nCurrent user reply');
+		expect(prompt.split('\n\n# INSTRUCTIONS')[0]).toBe('# PREVIOUS CONTEXT\n\n## Episode old\nStory old\n\nOld user reply\n\n# RECENT CONTEXT\n\n## Private scene label\nStory current\n\nCurrent user reply');
 	});
 	test('only the active feed version reaches audience continuity', async () => {
 		const r = round('1');
@@ -42,24 +42,49 @@ describe('Threads selections and prompt boundaries', () => {
 		const prompt = await threadsPrompt({messages:round('2').messages,label:'Next',previous:[r],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:DEFAULT_THREADS_CONFIG});
 		expect(prompt).toContain('A new theory'); expect(prompt).not.toContain('Reaction 1');
 	});
+	test('groups matching consecutive episode titles in both count and token modes', async () => {
+		const previous=[round('1'),round('2'),round('3')];
+		previous[0].label=previous[1].label='Chapter 1'; previous[2].label='Chapter 2';
+		for (const previousMode of ['rounds','tokens'] as const) {
+			const result=await assembleThreadsPrompt({messages:round('4').messages,label:'Chapter 3',previous,notes:'',ao3:emptyAo3Information(),instructions:'Discuss',
+				config:{previousMode,previousRounds:3,previousTokens:1000,fandomThreads:0},countTokens:text=>text.length});
+			expect(result.prompt.split('\n\n# INSTRUCTIONS')[0]).toBe('# PREVIOUS CONTEXT\n\n## Chapter 1\nStory 1\n\nStory 2\n\n## Chapter 2\nStory 3\n\n# RECENT CONTEXT\n\n## Chapter 3\nStory 4');
+			expect(result.previousTitles).toEqual(['Chapter 1','Chapter 2']);
+		}
+	});
+	test('uses the original untitled range and round fallbacks rather than generated feed titles', async () => {
+		const old=round('old');old.label='';
+		const prompt=await threadsPrompt({messages:round('new').messages,label:'',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:DEFAULT_THREADS_CONFIG});
+		expect(prompt).toContain('# PREVIOUS CONTEXT\n\n## ROUND 1\nStory old');
+		expect(prompt).toContain('# RECENT CONTEXT\n\n## CURRENT RANGE\nStory new');
+		expect(prompt).toContain('# FANDOM CONTINUITY\n\n## ROUND 1\n');
+		expect(prompt).not.toContain('## Feed old');
+	});
+	test('a historical message fits only if its episode heading also fits the budget', async () => {
+		const old=round('old'), block=renderBlocks([{label:old.label,content:old.messages[0].content}]);
+		const input={messages:round('new').messages,label:'Next',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',
+			config:{previousMode:'tokens' as const,previousTokens:block.length,fandomThreads:0},countTokens:(text:string)=>text.length};
+		expect((await assembleThreadsPrompt(input)).previousTitles).toEqual([old.label]);
+		expect((await assembleThreadsPrompt({...input,config:{...input.config,previousTokens:block.length-1}})).previousTitles).toEqual([]);
+	});
 	test('previous episode titles follow the same chronological count and token limits as the prompt', async () => {
 		const previous=[round('1'),round('2'),round('3')];previous.forEach((r,i)=>r.label=`Chapter ${i+1}`);
 		const input={messages:round('current').messages,label:'Next',previous,notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:3,fandomThreads:0},countTokens:(text:string)=>text.length};
 		const all=await assembleThreadsPrompt(input);
 		expect(all.previousTitles).toEqual(['Chapter 1','Chapter 2','Chapter 3']);expect(all.prompt).toBe(await threadsPrompt(input));
 		expect((await assembleThreadsPrompt({...input,config:{previousRounds:2}})).previousTitles).toEqual(['Chapter 2','Chapter 3']);
-		expect((await assembleThreadsPrompt({...input,config:{previousMode:'tokens',previousTokens:'Story 3'.length}})).previousTitles).toEqual(['Chapter 3']);
+		expect((await assembleThreadsPrompt({...input,config:{previousMode:'tokens',previousTokens:renderBlocks([{label:'Chapter 3',content:'Story 3'}]).length}})).previousTitles).toEqual(['Chapter 3']);
 		expect((await assembleThreadsPrompt({...input,config:{previousRounds:0}})).previousTitles).toEqual([]);
 	});
 	test('normalizes imported limits', () => {
 		expect(normalizeThreadsConfig({previousRounds:-5,fandomThreads:Infinity})).toMatchObject({previousRounds:0,fandomThreads:3});
 		expect(normalizeThreadsConfig({previousRounds:100,fandomThreads:1.9})).toMatchObject({previousRounds:50,fandomThreads:1});
 	});
-	test('token budgets retain newest whole source messages and full active feeds, counting only story text', async () => {
+	test('token budgets retain newest whole source messages and full active feeds, including episode headings in the budget', async () => {
 		const older=round('old'), latest=round('new');
 		latest.messages.push({...latest.messages[0],id:'new-b',index:1,content:'Newest source'});
 		const sourceText='Newest source';
-		const storyBudget=sourceText.length;
+		const storyBudget=renderBlocks([{label:latest.label,content:sourceText}]).length;
 		const {serializeFeedForContinuity}=await import('./feed');
 		const fandomBudget=renderBlocks([{label:latest.label,content:serializeFeedForContinuity(activeThreadsFeed(latest))}]).length;
 		const recent=round('current').messages;recent[0].content='CURRENT SCENE '.repeat(100);

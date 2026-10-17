@@ -212,13 +212,26 @@
 		stats, twins: twinCounts, messageHits
 	}));
 
+	// Keep filtering, bulk selection and keyboard indexes over the complete result set.
+	const CHAT_BATCH_SIZE = 50;
+	let renderLimit = $state(CHAT_BATCH_SIZE);
+	const renderedChats = $derived(visibleChats.slice(0, renderLimit));
+	const hasMoreChats = $derived(renderedChats.length < visibleChats.length);
+	function loadMoreChats() {
+		renderLimit = Math.min(visibleChats.length, renderLimit + CHAT_BATCH_SIZE);
+	}
+	function scrollChats(event: Event) {
+		const list = event.currentTarget as HTMLDivElement;
+		if (hasMoreChats && list.scrollHeight - list.scrollTop - list.clientHeight < 200) loadMoreChats();
+	}
+
 	/** The same flat order, cut into labelled sections. Boundaries only ever fall between
 	 *  runs, because the flat list is already ordered favorites-first then by the sort
 	 *  key, so the keyboard's index and what's on screen can't drift apart. */
 	let sections = $derived.by(() => {
 		const timeGrouped = sortKey === 'activity' || sortKey === 'created';
 		const out: { key: string; label: string | null; chats: Chat[] }[] = [];
-		for (const chat of visibleChats) {
+		for (const chat of renderedChats) {
 			let key = 'all';
 			let label: string | null = null;
 			if (chat.isFavorite && filterMode !== 'favorites') {
@@ -287,6 +300,9 @@
 		// other filter. Reading the resolved id rather than the switch also covers the
 		// character disappearing from the library under an open panel.
 		scopedCharacterId;
+		searchInMessages;
+		renderLimit = CHAT_BATCH_SIZE;
+		if (listEl) listEl.scrollTop = 0;
 		selectedIndex = 0;
 		// The rows these two point at may not exist in the new list at all: a held
 		// preview would go on showing a chat the query just filtered out.
@@ -481,8 +497,8 @@
 	}
 
 	function selectAllVisible() {
-		// What the filters and the search have left on screen, never the whole store: the
-		// rows the reader can see are the ones they agreed to.
+		// All means every filtered result (the count shown in the control), including
+		// rows not mounted yet. Rendering a prefix must never narrow a bulk selection.
 		selectedIds = new Set([...selectedIds, ...visibleChats.map((c) => c.id)]);
 	}
 
@@ -576,6 +592,8 @@
 
 	function moveSelection(next: number) {
 		if (visibleChats.length === 0) return;
+		// Mount the destination before the scheduled scroll and aria-activedescendant update.
+		renderLimit = Math.max(renderLimit, Math.min(visibleChats.length, Math.ceil((next + 1) / CHAT_BATCH_SIZE) * CHAT_BATCH_SIZE));
 		keyboardActive = true;
 		selectedIndex = next;
 		hoveredChatId = visibleChats[next]?.id ?? null;
@@ -606,10 +624,11 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		if (uiStore.activeOverlay !== 'chats') return;
 		// A modal Dialog owns the keyboard while its portal is mounted and closes itself
 		// on Escape. Same guard Workspace and LorebookView use, or one press would shut
 		// the dialog AND the panel behind it.
-		if (document.querySelector('.dialog-portal')) return;
+		if (document.querySelector('.dialog-portal:not([inert])')) return;
 		// While a rename field is open it owns the keyboard; the row's own handler stops
 		// those keys before they reach here, so this only guards the stragglers.
 		const renaming = renamingChatId !== null;
@@ -743,6 +762,7 @@
 				bind:this={listEl}
 				id="chats-listbox"
 				class="chats-scroll chats-list panel-scroll"
+				onscroll={scrollChats}
 				role="listbox"
 				tabindex="-1"
 				aria-label="Chats"
@@ -790,6 +810,8 @@
 								{@const index = indexById.get(chat.id) ?? 0}
 								<ChatListRow
 									{chat}
+									position={index + 1}
+									total={visibleChats.length}
 									stats={stats[chat.id] ?? null}
 									member={faceFor(chat)}
 									isActive={chat.id === activeChatId}
@@ -818,6 +840,12 @@
 					{/each}
 				{/if}
 			</div>
+			{#if hasMoreChats}
+				<div class="chats-more">
+					<button type="button" class="chats-empty-action" onclick={loadMoreChats}>Load more chats</button>
+					<span>{renderedChats.length.toLocaleString()} / {visibleChats.length.toLocaleString()}</span>
+				</div>
+			{/if}
 		</div>
 
 		{#if !singleColumn}
@@ -1081,6 +1109,9 @@
 		padding: 0.35rem 0.35rem 0.6rem;
 		outline: none;
 	}
+
+	.chats-more { display:flex; align-items:center; justify-content:center; gap:.5rem; flex-shrink:0; padding:.4rem .5rem; color:var(--color-text-muted); font-size:.72rem; border-top:1px solid var(--color-border-subtle); }
+	.chats-more .chats-empty-action { margin-top:0; }
 
 	.chats-preview-pane {
 		display: flex;

@@ -26,15 +26,18 @@
   rest of the time.
 -->
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import type { Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { anchorTo } from '$lib/actions/anchorTo';
 
+	const panelActive = panelActivity();
 	let { text, children, trigger }: { text: string; children: Snippet; trigger?: Snippet } = $props();
 
 	let anchorEl = $state<HTMLElement>();
 	let open = $state(false);
+	$effect(() => { if (!panelActive()) open = false; });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -55,7 +58,7 @@
 	{/if}
 </span>
 
-{#if open}
+{#if open && panelActive()}
 	<div
 		class="tip-pop"
 		use:anchorTo={anchorEl}

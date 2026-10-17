@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
+	const panelActive = panelActivity();
 	/**
 	 * One engine's detail view, drilled into from the Engines list
 	 * (uiStore.settingsEngineId, the connection editor's pattern). Three cards:
@@ -13,7 +15,7 @@
 	 * button and nothing to lose by leaving. Reset returns a field to the
 	 * shipped default.
 	 */
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
@@ -86,6 +88,9 @@
 		saveTimer = setTimeout(commit, 600);
 	}
 
+	$effect(() => {
+		if (!panelActive()) untrack(() => { if (saveTimer) { clearTimeout(saveTimer); commit(); } });
+	});
 	onDestroy(() => {
 		if (saveTimer) {
 			clearTimeout(saveTimer);

@@ -1,4 +1,4 @@
-import { buildThreadsPrompt, selectPreviousContextByTokenBudget, selectNewestLabeledBlocksByTokenBudget } from './prompt';
+import { buildThreadsPrompt, groupConsecutiveStoryRanges, installmentOrRoundLabel, selectPreviousContextByTokenBudget, selectNewestLabeledBlocksByTokenBudget } from './prompt';
 import { serializeFeedForContinuity } from './feed';
 import type { ThreadsMessage, ThreadsRound } from './types';
 import type { Ao3Information } from './ao3';
@@ -69,7 +69,8 @@ export async function assembleThreadsPrompt(input: {
 	const config = normalizeThreadsConfig(input.config);
 	const tail = (n: number) => n ? input.previous.slice(-n) : [];
 	const messageText = (m: ThreadsMessage) => m.content;
-	const label = (r: ThreadsRound) => r.label || r.versions[0].feed.title;
+	const labels = new Map(input.previous.map((r, index) => [r.id, installmentOrRoundLabel(r.label, index + 1)]));
+	const label = (r: ThreadsRound) => labels.get(r.id)!;
 	const storyBlocks = input.previous.map(r => ({ label: label(r), messages: r.messages.map(messageText) }));
 	const fandomBlock = (r: ThreadsRound) => ({ label: label(r), content: serializeFeedForContinuity(activeThreadsFeed(r)) });
 	const counter = async (text: string) => {
@@ -80,12 +81,12 @@ export async function assembleThreadsPrompt(input: {
 	};
 	const previousRanges = config.previousMode === 'tokens'
 		? await selectPreviousContextByTokenBudget(storyBlocks, config.previousTokens, counter)
-		: tail(config.previousRounds).map(r => ({ label: label(r), content: r.messages.map(messageText).join('\n\n') }));
+		: groupConsecutiveStoryRanges(tail(config.previousRounds).map(r => ({ label: label(r), content: r.messages.map(messageText).join('\n\n') })));
 	const fandomContinuity = config.fandomMode === 'tokens'
 		? await selectNewestLabeledBlocksByTokenBudget(input.previous.map(fandomBlock), config.fandomTokens, counter)
 		: tail(config.fandomThreads).map(fandomBlock);
 	const prompt = buildThreadsPrompt({
-		recentRange: { label: input.label || 'CURRENT SCENE', content: input.messages.map(messageText).join('\n\n') },
+		recentRange: { label: input.label.trim() || 'CURRENT RANGE', content: input.messages.map(messageText).join('\n\n') },
 		previousRanges, fandomContinuity,
 		fandomNotes: input.notes, ao3Information: input.ao3, instructions: input.instructions
 	});

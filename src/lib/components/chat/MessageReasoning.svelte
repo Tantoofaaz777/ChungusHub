@@ -2,7 +2,8 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { renderedHtml } from '$lib/actions/renderedHtml';
-	import { countTokens } from '$lib/tokenizer';
+	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
+	import { chatStore } from '$lib/stores/chat.svelte';
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
 
@@ -19,10 +20,11 @@
 	// svelte-ignore state_referenced_locally
 	let expanded = $state(generalSettingsStore.autoExpandReasoning);
 	// The reasoning block's own knob, independent of the message-level token
-	// toggle. While off, the lazy derived below never runs, so the reasoning
-	// text is never token-counted either.
+	// toggle. The shared estimator cancels its pending work while this readout is off.
 	let showTokens = $derived(themeStore.appearance.showReasoningTokenCount);
-	let thinkingTokens = $derived(countTokens(thinking));
+	const estimate = liveTokenCount({ text: () => thinking, enabled: () => showTokens,
+		streaming: () => isStreaming, identity: () => chatStore.stream });
+	let thinkingTokens = $derived(estimate.value);
 	let bodyHtml = $derived(renderMarkdown(thinking));
 </script>
 

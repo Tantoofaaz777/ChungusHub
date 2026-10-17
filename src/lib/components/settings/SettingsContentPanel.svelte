@@ -26,6 +26,7 @@
 </script>
 
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import SettingsPageView from './SettingsPageView.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -33,6 +34,7 @@
 	import { connectionStore } from '$lib/stores/connections.svelte';
 	import { ENGINES } from '$lib/engines/registry';
 
+	const panelActive = panelActivity();
 	// The split-view page surface: the Settings dock keeps the root list while the
 	// selected page opens here, wide and centered over the chat, the Library entry
 	// editor's pattern. Workspace mounts this only while the dock is in split view
@@ -57,7 +59,7 @@
 	// editor, the routing sub-view), except the steps back/forward themselves replay.
 	$effect(() => {
 		// Never record 'root': the panel is being dismissed and unmounts with it.
-		if (uiStore.settingsPage === 'root') return;
+		if (!panelActive() || uiStore.settingsPage === 'root') return;
 		const entry: NavEntry = { page, connectionId, routing, engineId };
 		if (applying) {
 			applying = false;

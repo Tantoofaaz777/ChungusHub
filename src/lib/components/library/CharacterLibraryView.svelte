@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { db } from '$lib/services/database';
@@ -39,6 +40,7 @@
 	import { libraryViewPrefs, DEFAULTS as BROWSE_DEFAULTS } from '$lib/stores/browseViewPrefs.svelte';
 	import { rangeReset } from '$lib/actions/rangeReset';
 
+	const panelActive = panelActivity();
 	// Characters half of the merged Library (see LibraryView): the browse list. The
 	// entry editor itself opens wide and centered over the chat (LibraryEditorOverlay);
 	// this view just picks which entry that is via uiStore.libraryEditorId.
@@ -57,6 +59,7 @@
 	// this blocker before letting any panel switch through, and pulses guardPulse
 	// when it vetoes so we can flash the panel red.
 	$effect(() => {
+		if (!panelActive()) return;
 		const blocker = () => !!selectedEntryId && characterLibraryStore.isUnconfirmedNew(selectedEntryId);
 		uiStore.registerNavBlocker(blocker);
 		return () => uiStore.clearNavBlocker(blocker);
@@ -67,6 +70,12 @@
 	let guardFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {
+		if (!panelActive()) {
+			lastGuardPulse = uiStore.guardPulse;
+			if (guardFlashTimer) clearTimeout(guardFlashTimer);
+			guardFlash = false;
+			return;
+		}
 		const pulse = uiStore.guardPulse;
 		if (pulse === lastGuardPulse) return;
 		lastGuardPulse = pulse;
@@ -102,7 +111,7 @@
 
 	// Load library on mount
 	$effect(() => {
-		characterLibraryStore.load();
+		if (panelActive()) void characterLibraryStore.load();
 	});
 
 	// Per-chat message stats for the chat-aware sorts. Re-fetched whenever the chat set
@@ -111,6 +120,8 @@
 	// until a full page reload.
 	let messageCounts = $state<Record<string, number>>({});
 	let lastTalked = $state<Record<string, number>>({});
+	let statsStamp: string | null = null;
+	let statsChats: typeof chatStore.chats | null = null;
 
 	$effect(() => {
 		// Track the chat set so this effect re-runs on add/remove (import, delete), not
@@ -118,15 +129,21 @@
 		// a bulk import reassigns chatStore.chats once per chat, so several fetches can be
 		// in flight at once and resolve out of order. Without the guard an earlier (staler)
 		// aggregate could land after a newer one and freeze the counts mid-import.
-		void chatStore.chats.length;
+		if (!panelActive()) return;
+		const chats = chatStore.chats;
+		const stamp = JSON.stringify(chats.map(chat => [chat.id, chat.updatedAt]));
+		// A fresh server snapshot also invalidates deletions that leave updatedAt unchanged.
+		if (chats === statsChats && stamp === statsStamp) return;
 		let cancelled = false;
 		Promise.all([db.getMessageCounts(), db.getLastUserMessageTimes()]).then(
 			([counts, talked]) => {
 				if (cancelled) return;
+				statsStamp = stamp;
+				statsChats = chats;
 				messageCounts = counts;
 				lastTalked = talked;
 			}
-		);
+		).catch(() => { if (!cancelled) toastStore.error('Could not load library chat statistics. Reopen the Library to retry.'); });
 		return () => {
 			cancelled = true;
 		};
@@ -135,6 +152,7 @@
 	// Deep link from "Edit in Library" style buttons: open the requested
 	// entry's editor, then consume the one-shot request so it doesn't re-fire.
 	$effect(() => {
+		if (!panelActive()) return;
 		const pending = uiStore.pendingLibraryEntryId;
 		if (pending) {
 			uiStore.libraryEditorId = pending;
@@ -546,7 +564,7 @@
 	// Esc leaves selection mode, but only when nothing above it (a popover or a
 	// confirm dialog, which consume Esc themselves) is open.
 	$effect(() => {
-		if (!selectionMode) return;
+		if (!panelActive() || !selectionMode) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== 'Escape') return;
 			if (filterOpen || viewOpen || moreOpen || favMenuOpen || tagsOpen) return;

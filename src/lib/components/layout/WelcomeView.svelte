@@ -20,6 +20,9 @@
 	let resumable = $derived(chats.filter((c) => c.rootMessageId !== null));
 	let expanded = $state(false);
 	let visibleCount = $state(3);
+	const CHAT_BATCH_SIZE = 50;
+	let browseLimit = $state(CHAT_BATCH_SIZE);
+	let welcomeEl = $state<HTMLDivElement | null>(null);
 	let searchQuery = $state('');
 	let query = $derived(viewport.isMobile ? '' : searchQuery.trim());
 	let sortKey = $state<SortKey>('activity');
@@ -48,10 +51,26 @@
 	let filteredChats = $derived(filterAndSortChats(browsing ? chats : resumable, {
 		query, filter: filterMode, sort: sortKey, direction: sortDir, stats, twins: twinCounts
 	}));
-	let recent = $derived(browsing ? filteredChats : filteredChats.slice(0, expanded ? visibleCount : 3));
+	let recent = $derived(filteredChats.slice(0, browsing ? browseLimit : expanded ? visibleCount : 3));
+	// All selects the full filtered set, matching the count in the selection control.
+	let selectableChats = $derived(browsing ? filteredChats : recent);
+	let hasMoreChats = $derived((browsing || expanded) && recent.length < filteredChats.length);
+	$effect(() => {
+		void query; void sortKey; void sortDir; void filterMode; void browsing;
+		browseLimit = CHAT_BATCH_SIZE;
+		if (welcomeEl) welcomeEl.scrollTop = 0;
+	});
+	function loadMoreChats() {
+		if (browsing) browseLimit = Math.min(filteredChats.length, browseLimit + CHAT_BATCH_SIZE);
+		else if (expanded) visibleCount = Math.min(filteredChats.length, visibleCount + CHAT_BATCH_SIZE);
+	}
+	function scrollChats(event: Event) {
+		const list = event.currentTarget as HTMLDivElement;
+		if (hasMoreChats && list.scrollHeight - list.scrollTop - list.clientHeight < 200) loadMoreChats();
+	}
 	let selectedChats = $derived(chats.filter((chat) => selectedIds.has(chat.id)));
 	let selectedCount = $derived(selectedChats.length);
-	let allVisibleSelected = $derived(recent.length > 0 && recent.every((chat) => selectedIds.has(chat.id)));
+	let allVisibleSelected = $derived(selectableChats.length > 0 && selectableChats.every((chat) => selectedIds.has(chat.id)));
 	let bulkDeleteStats = $derived(selectedChats.reduce((total, chat) => total + (stats[chat.id]?.total ?? 0), 0));
 	let bulkDeleteMessage = $derived(
 		`Delete ${selectedCount} chat${selectedCount === 1 ? '' : 's'} and ${bulkDeleteStats} message${bulkDeleteStats === 1 ? '' : 's'} in total? This cannot be undone.`
@@ -66,7 +85,7 @@
 		selectedIds = next;
 	}
 	function selectAllVisible() {
-		selectedIds = new Set([...selectedIds, ...recent.map((chat) => chat.id)]);
+		selectedIds = new Set([...selectedIds, ...selectableChats.map((chat) => chat.id)]);
 	}
 	async function confirmBulkDelete() {
 		const ids = selectedChats.map((chat) => chat.id);
@@ -89,7 +108,7 @@
 			return;
 		}
 		// Always reveal at least two more so the button never no-ops when cramped.
-		visibleCount = 3 + Math.max(2, Math.floor((spareHeight - RESERVE_PX) / ROW_PX));
+		visibleCount = Math.min(CHAT_BATCH_SIZE, 3 + Math.max(2, Math.floor((spareHeight - RESERVE_PX) / ROW_PX)));
 		expanded = true;
 	}
 
@@ -119,7 +138,7 @@
 
 </script>
 
-<div class="welcome panel-scroll">
+<div class="welcome panel-scroll" bind:this={welcomeEl} onscroll={scrollChats}>
 	<div class="welcome-inner">
 		<div class="welcome-top">
 			<header class="hero">
@@ -139,7 +158,7 @@
 					bind:searchQuery bind:sortKey bind:sortDir bind:filterMode
 					allowMessageSearch={false} showSearch={!viewport.isMobile} mobileActions iconSort compact
 					{twinsInScope} {selecting} {toggleSelecting} {selectedCount} {allVisibleSelected}
-					visibleCount={recent.length} {selectAllVisible}
+					visibleCount={selectableChats.length} {selectAllVisible}
 					clearSelection={() => (selectedIds = new Set())}
 					requestDelete={() => (bulkDeleteOpen = true)}
 				>
@@ -184,6 +203,10 @@
 							</button>
 						{/each}
 					</div>
+
+					{#if hasMoreChats}
+						<button type="button" class="recent-expand" onclick={loadMoreChats}>Load more chats · {recent.length.toLocaleString()} / {filteredChats.length.toLocaleString()}</button>
+					{/if}
 
 					{#if !browsing && filteredChats.length > 3}
 						<button type="button" class="recent-expand" onclick={toggleExpand}>

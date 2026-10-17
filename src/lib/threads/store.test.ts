@@ -13,7 +13,7 @@ afterAll(()=>{
 	mock.module('$lib/services/database',()=>realDb);mock.module('$lib/stores/chat.svelte',()=>realChat);
 	mock.module('$lib/services/llm/provider',()=>realLlm);mock.module('$lib/tokenizer',()=>realTokenizer);
 });
-let reads: {chatId:string; resolve:(data:ThreadsData)=>void}[]=[];
+let reads: {chatId:string; resolve:(data:ThreadsData)=>void; reject:(error:Error)=>void}[]=[];
 let calls: {messages:{content:string}[]; signal:AbortSignal; onToken:(text:string)=>void; onThinkingToken:(text:string)=>void; resolve:(result:{content:string;thinking?:string})=>void}[]=[];
 let saved:SaveThreadsRound[]=[], failSave=false;
 let resetGate: Promise<void> | null = null;
@@ -26,7 +26,7 @@ const empty=():ThreadsData=>({rounds:[],notes:'',ao3:emptyAo3Information(),promp
 const feed:ThreadsFeed={title:'Discussion',post:{username:'op',body:'A question',score:1},comments:[{username:'reader',body:'A theory',score:2,replies:[{username:'other',body:'Agreed',score:1,replies:[]}]}]};
 mock.module('$lib/services/database',()=>({...realDb,db:{
 	resetThreadsContinuity:async(chatId:string,expected:{id:string;revision:number}[])=>{resets.push({chatId,expected});await resetGate;},
-	getThreadsData:(chatId:string)=>new Promise(resolve=>reads.push({chatId,resolve})),
+	getThreadsData:(chatId:string)=>new Promise((resolve,reject)=>reads.push({chatId,resolve,reject})),
 	updateThreadsNotes:async()=>{ await notesGate; },
 	saveThreadsRound:async(input:SaveThreadsRound):Promise<ThreadsRound>=>{saved.push(input);if(failSave)throw new Error('Disconnected');return {...input,revision:1,createdAt:1,activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed:input.feed}]};}
 }}));
@@ -43,6 +43,41 @@ async function open() {const p=store.load('a');reads.shift()!.resolve(empty());a
 async function start() {store.selected=['5','2'];const p=store.generate();for(let i=0;i<100 && !calls.length;i++) await Promise.resolve();return {p};}
 function previous():ThreadsRound {return {id:'previous',chatId:'a',label:'Prior scene',revision:1,createdAt:1,messages:[{...path[0],role:'assistant',index:0,speaker:'Narrator'}],activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed}]};}
 describe('Threads generation lifecycle',()=>{
+	test('ordinary panel reopens reuse data and preserve scene selection and notes',async()=>{
+		await open();store.rounds=[previous()];store.selected=['2','5'];store.label='Next chapter';store.notes='A local note';store.tab='make';
+		await store.ensureLoaded('a');
+		expect(reads).toHaveLength(0);expect(store.loaded).toBe(true);expect(store.rounds).toHaveLength(1);
+		expect(store.selected).toEqual(['2','5']);expect(store.label).toBe('Next chapter');expect(store.notes).toBe('A local note');expect(store.tab).toBe('make');
+	});
+	test('rapid panel reopens share the active read, while live sync explicitly reloads',async()=>{
+		const opening=store.ensureLoaded('a'),reopening=store.ensureLoaded('a');expect(reads).toHaveLength(1);
+		reads.shift()!.resolve({...empty(),notes:'Initial notes'});await Promise.all([opening,reopening]);
+		await store.ensureLoaded('a');expect(reads).toHaveLength(0);
+		const sync=store.syncReload();expect(reads).toHaveLength(1);
+		reads.shift()!.resolve({...empty(),notes:'Another device edited this'});await sync;
+		expect(store.notes).toBe('Another device edited this');
+	});
+	test('reopening during generation does not restart or interrupt the model call',async()=>{
+		await open();const {p}=await start();expect(calls).toHaveLength(1);
+		await store.ensureLoaded('a');expect(reads).toHaveLength(0);expect(calls).toHaveLength(1);
+		expect(calls[0].signal.aborted).toBe(false);expect(store.phase).toBe('generating');
+		calls[0].resolve({content:JSON.stringify(feed)});await p;
+		expect(saved).toHaveLength(1);expect(store.rounds).toHaveLength(1);expect(store.phase).toBe('idle');
+	});
+	test('a failed initial read can be retried on the next opening',async()=>{
+		const opening=store.ensureLoaded('a');reads.shift()!.reject(new Error('Offline'));await opening;
+		expect(store.loaded).toBe(false);expect(store.error).toBe('Offline');
+		const retry=store.ensureLoaded('a');expect(reads).toHaveLength(1);
+		reads.shift()!.resolve(empty());await retry;expect(store.loaded).toBe(true);expect(store.error).toBe('');
+	});
+	test('switching chats rejects late data without duplicating the new chat read',async()=>{
+		const a=store.ensureLoaded('a'),b=store.ensureLoaded('b');expect(reads).toHaveLength(2);
+		reads[0].resolve({...empty(),notes:'A'});await a;
+		const reopening=store.ensureLoaded('b');expect(reads).toHaveLength(2);expect(store.loaded).toBe(false);
+		reads[1].resolve({...empty(),notes:'B'});await Promise.all([b,reopening]);
+		expect(store.chatId).toBe('b');expect(store.notes).toBe('B');
+		await store.ensureLoaded(null);expect(store.chatId).toBeNull();expect(store.rounds).toEqual([]);expect(store.notes).toBe('');
+	});
 	test('reset restores all source messages, including hidden ones, and preserves selection and notes',async()=>{
 		await open();store.rounds=[previous()];store.selected=['2'];store.notes='Keep notes';store.promptId='chosen';
 		expect(store.available.map(m=>m.id)).not.toContain('1');
@@ -89,6 +124,24 @@ describe('Threads generation lifecycle',()=>{
 		calls[0].resolve({content:JSON.stringify(feed)});await p;
 		expect(saved[0].messages.map(m=>m.id)).toEqual(['2','5']);expect(store.rounds).toHaveLength(1);expect(store.selected).toEqual([]);expect(store.tab).toBe('feed');
 	});
+	test('long picker ranges and sparse selections reach preview and generation beyond the first 50 rows',async()=>{
+		await open();
+		const longPath=Array.from({length:200},(_,i)=>({id:String(i+1),parentId:i ? String(i) : null,role:'assistant',content:`Source message ${i+1}.`,excludedFromPrompt:i===99}));
+		fakeChat.currentChatState={chat:{id:'a'},activePath:longPath,allMessages:longPath};
+		store.rounds=[previous()];
+		store.toggle('2');store.toggle('175',true);store.toggle('200');
+		const expected=[...longPath.slice(1,175),longPath[199]].map(m=>m.id);
+		expect(store.available).toHaveLength(199);
+		expect(store.selected).toEqual(expected);expect(store.selectedCount).toBe(175);
+		expect(store.promptPreview!.messages.map(m=>m.id)).toEqual(expected);
+		expect(store.promptPreview!.messages.find(m=>m.id==='100')?.content).toBe('Source message 100.');
+		const generating=store.generate();for(let i=0;i<100 && !calls.length;i++)await Promise.resolve();
+		expect(calls).toHaveLength(1);
+		const prompt=calls[0].messages[0].content;
+		expect(prompt).toContain('Source message 175.');expect(prompt).toContain('Source message 200.');expect(prompt).not.toContain('Source message 176.');
+		calls[0].resolve({content:JSON.stringify(feed)});await generating;
+		expect(saved[0].messages.map(m=>m.id)).toEqual(expected);
+	});
 	test('the selection meter previews the same full prompt as generation without calling the model',async()=>{
 		expect(store.promptPreview).toBeNull();await open();expect(store.promptPreview?.messages).toEqual([]);
 		store.rounds=[previous()];store.selected=['5','2'];store.label='Current scene';store.notes='A reader note';
@@ -100,6 +153,8 @@ describe('Threads generation lifecycle',()=>{
 		const {threadsPrompt}=await import('$shared/threads/model');
 		const expected=await threadsPrompt(input);const {p}=await start();
 		expect(calls[0].messages[0].content).toBe(expected);
+		expect(expected).toContain('# PREVIOUS CONTEXT\n\n## Prior scene\nTurn 1');
+		expect(expected).toContain('# RECENT CONTEXT\n\n## Current scene\nTurn 2\n\nTurn 5');
 		store.cancel();calls[0].resolve({content:JSON.stringify(feed)});await p;
 		store.clearSelection();expect(store.promptPreview?.messages).toEqual([]);expect(store.promptPreview?.previous).toHaveLength(1);
 	});

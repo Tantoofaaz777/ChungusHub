@@ -53,9 +53,9 @@ describe('Threads feed and context', () => {
       instructions: 'Discuss it.',
     })
     expect(prompt).toContain(
-      '# PREVIOUS CONTEXT\n\nScene A\n\nScene B\n\nScene C',
+      '# PREVIOUS CONTEXT\n\n## ZETA - S01E03\nScene A\n\nScene B\n\n## ZETA - S01E04\nScene C',
     )
-    expect(prompt).toContain('# RECENT CONTEXT\n\nCurrent scene')
+    expect(prompt).toContain('# RECENT CONTEXT\n\n## ZETA - S01E05\nCurrent scene')
   })
 
   test('keeps the newest whole messages within the Previous Context token budget', async () => {

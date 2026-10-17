@@ -31,6 +31,7 @@ export class ThreadsStore {
 	notesError = $state('');
 	pending = $state.raw<PendingResult | null>(null);
 	private ticket = 0;
+	private loading: { chatId: string | null; promise: Promise<void> } | null = null;
 	private controller: AbortController | null = null;
 	private anchor: string | null = null;
 	private notesPatch: NotesPatch = {};
@@ -47,14 +48,27 @@ export class ThreadsStore {
 	get previousRounds() {
 		return threadsOnPath(this.rounds, this.path);
 	}
-	async load(chatId: string | null) {
+	/** Ordinary panel opens reuse the current data; explicit reloads and live sync stay fresh. */
+	async ensureLoaded(chatId: string | null) {
+		if (this.chatId === chatId && this.loaded) return;
+		if (this.loading?.chatId === chatId) return this.loading.promise;
+		await this.load(chatId);
+	}
+	load(chatId: string | null): Promise<void> {
+		const request = { chatId, promise: this.loadData(chatId) };
+		this.loading = request;
+		const finish = () => { if (this.loading === request) this.loading = null; };
+		void request.promise.then(finish, finish);
+		return request.promise;
+	}
+	private async loadData(chatId: string | null) {
 		if (chatId !== this.chatId) {
 			void this.flushNotes().catch(() => {});
 			this.cancel(); this.chatId = chatId; this.rounds = []; this.selected = []; this.anchor = null;
 			this.notes = ''; this.promptId = null; this.ao3 = emptyAo3Information(); this.label = ''; this.pending = null; this.error = ''; this.notesError = '';
 		}
 		const ticket = ++this.ticket;
-		this.loaded = false;
+		this.loaded = false; this.error = '';
 		if (!chatId) return;
 		try {
 			const data = await db.getThreadsData(chatId);

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
@@ -33,6 +34,8 @@
 			else if (!timer) draft = content;
 		});
 	});
+	const panelActive = panelActivity();
+	$effect(() => { if (!panelActive()) untrack(() => { if (timer) flush(); }); });
 	onDestroy(flush);
 	function edit(value: string) {
 		draft = value;
