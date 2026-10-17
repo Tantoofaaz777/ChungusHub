@@ -123,7 +123,7 @@ export class ThreadsStore {
 		const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, chat?.characterVersionId ?? null)) : null;
 		const persona = toPromptCharacter(personaEntryFor(chatPersonaClaim(chat)));
 		const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
-		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : selectThreadsMessages(this.path, this.selected, this.usedIds).map(m => ({
+		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : (!validate && !this.selected.length ? [] : selectThreadsMessages(this.path, this.selected, this.usedIds)).map(m => ({
 			id: m.id, index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,
 			speaker: m.role === 'assistant' ? charName : m.role === 'user' ? userName : 'System'
 		}));
@@ -141,7 +141,7 @@ export class ThreadsStore {
 		return { messages, branchLeafId, label, input };
 	}
 	get promptPreview(): Parameters<typeof threadsPrompt>[0] | null {
-		if (!this.loaded || !this.selectedCount) return null;
+		if (!this.loaded) return null;
 		try { return this.preparePrompt(undefined, false).input; } catch { return null; }
 	}
 	async generate(round?: ThreadsRound) {

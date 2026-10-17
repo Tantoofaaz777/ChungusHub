@@ -90,7 +90,7 @@ describe('Threads generation lifecycle',()=>{
 		expect(saved[0].messages.map(m=>m.id)).toEqual(['2','5']);expect(store.rounds).toHaveLength(1);expect(store.selected).toEqual([]);expect(store.tab).toBe('feed');
 	});
 	test('the selection meter previews the same full prompt as generation without calling the model',async()=>{
-		await open();expect(store.promptPreview).toBeNull();
+		expect(store.promptPreview).toBeNull();await open();expect(store.promptPreview?.messages).toEqual([]);
 		store.rounds=[previous()];store.selected=['5','2'];store.label='Current scene';store.notes='A reader note';
 		store.ao3={...emptyAo3Information(),enabled:true,title:'Story metadata'};
 		const input=store.promptPreview!;
@@ -101,7 +101,7 @@ describe('Threads generation lifecycle',()=>{
 		const expected=await threadsPrompt(input);const {p}=await start();
 		expect(calls[0].messages[0].content).toBe(expected);
 		store.cancel();calls[0].resolve({content:JSON.stringify(feed)});await p;
-		store.clearSelection();expect(store.promptPreview).toBeNull();
+		store.clearSelection();expect(store.promptPreview?.messages).toEqual([]);expect(store.promptPreview?.previous).toHaveLength(1);
 	});
 	test('streams separate model-aware reasoning and response estimates and refreshes from the final result',async()=>{
 		await open();const {p}=await start();const call=calls[0];

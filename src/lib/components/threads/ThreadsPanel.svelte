@@ -136,16 +136,16 @@
 				<section class="make-card">
 					<h3>Select a scene</h3>
 					<p class="muted">Tap messages to select individually. Shift-click or hold another message to select a range.</p>
-					{#if store.selectedCount > 0}
 					<div class="context">
 						<button class="continuity-reset" disabled={store.busy || !!store.pending || !store.loaded || !store.rounds.length} onclick={() => { if (store.chatId) resetting = { chatId: store.chatId, rounds: store.rounds.map(({ id, revision }) => ({ id, revision })) }; }}>Reset continuity</button>
 						<ThreadsContextPreview count={store.selectedCount} input={store.promptPreview} model={previewModel} />
+						{#if store.selectedCount > 0}
 						<div class="context-chapter">
 							<label class="field-label" for="threads-label">Episode / chapter <span class="muted">(optional)</span></label>
 							<input id="threads-label" class="input-base field" maxlength="200" value={store.label} disabled={store.busy} oninput={(e) => store.label = e.currentTarget.value} />
 						</div>
+						{/if}
 					</div>
-					{/if}
 					<label class="field-label" for="threads-chat-prompt">Fandom instructions</label>
 					<select id="threads-chat-prompt" class="input-base field chat-prompt" value={featurePromptsStore.threadsPrompts.prompts.some(p => p.id === store.promptId) ? store.promptId ?? '' : ''} disabled={store.busy} onchange={(event) => store.updateNotes({promptId: event.currentTarget.value || null})}>
 						<option value="">Engine default · {featurePromptsStore.activeThreadsPrompt.name}</option>
@@ -251,7 +251,7 @@
 	.message-number { font-size:.72rem; color:var(--color-text-muted); flex-shrink:0; font-variant-numeric:tabular-nums; }
 	.message-text { display:flex; flex-direction:column; gap:.25rem; min-width:0; }
 	.message-role { display:flex; align-items:center; gap:.35rem; font-size:.64rem; color:var(--color-text-muted); }
-	.message-preview { font-size:.77rem; line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+	.message-preview { font-size:.77rem; line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; line-clamp:3; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
 	.make-actions { flex-wrap:wrap; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
 	.make-actions > span { margin-right:auto; }
 	.empty-list { padding:1rem 0; }
