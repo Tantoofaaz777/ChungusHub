@@ -30,56 +30,17 @@
 	// the shelf you left it on); Chats is reached from the composer's hamburger menu.
 	type NavItem = {
 		overlay: OverlayType;
-		icon: 'sliders' | 'brain';
-		label: string;
+		icon: 'sliders' | 'brain' | 'threads';
 		title: string;
 	};
 
 	const NAV: NavItem[] = [
-		{ overlay: 'presetControls', icon: 'sliders', label: 'Preset Controls', title: 'Preset Controls' },
-		{ overlay: 'memory', icon: 'brain', label: 'Memory', title: 'Memory' }
+		{ overlay: 'presetControls', icon: 'sliders', title: 'Preset Controls' },
+		{ overlay: 'memory', icon: 'brain', title: 'Memory' },
+		{ overlay: 'threads', icon: 'threads', title: 'Threads' }
 	];
 
 	const nav = NAV;
-
-	// Whether the buttons carry their labels is decided against ONE width: the dock
-	// regime's column at the current window width (`--chat-col-docked`, measured off
-	// the probe below), never the bar's own rendered width. The bar's room is
-	// non-monotonic by design: while the docks are held the column squeezes toward
-	// its floor, and the moment they vanish it springs back to the content cap
-	// (app.css, the dock branch), so a rule that asks "do the labels fit right now"
-	// turns the labels back on in the middle of a narrowing drag. The docked column
-	// is the tightest form the current window can take and moves only in the
-	// window's own direction, so keying on it flips the labels exactly once per
-	// direction; below the dock breakpoint the bar is wider than the deciding
-	// width, and that slack stays icons-only on purpose. The threshold is the row's
-	// own widest state (both split pills with their pins, every nav label) plus
-	// room to spare, erring on the side of dropping early: a bar that scrolls or
-	// clips is the failure this exists to prevent. In rem, against the live root
-	// font size, so browser zoom keeps working.
-	//
-	// The verdict is stamped on <html> inside the observer callback, synchronously
-	// before paint, and app.css's `.overlay-title` reads the same attribute: the
-	// panels these buttons raise name themselves exactly while the buttons are bare
-	// icons, off one writer, with nothing to keep in step. contracts.test.ts pins
-	// the attribute's name and the probe's variable.
-	const NAV_LABELS_MIN_REM = 40;
-	let navRoomProbe: HTMLDivElement | undefined = $state();
-
-	$effect(() => {
-		if (!navRoomProbe) return;
-		const root = document.documentElement;
-		const observer = new ResizeObserver((entries) => {
-			const width = entries[entries.length - 1].contentRect.width;
-			const rem = parseFloat(getComputedStyle(root).fontSize);
-			root.toggleAttribute('data-nav-labels', width >= NAV_LABELS_MIN_REM * rem);
-		});
-		observer.observe(navRoomProbe);
-		return () => {
-			observer.disconnect();
-			root.removeAttribute('data-nav-labels');
-		};
-	});
 
 	// Requested generation and summaries needing review share the panel's status.
 	let memoryStanding = $derived(memoryStore.standing);
@@ -90,7 +51,6 @@
 </script>
 
 <header class="title-bar">
-	<div class="nav-room-probe" aria-hidden="true" bind:this={navRoomProbe}></div>
 	<div class="title-bar-inner">
 		<div class="nav-group nav-group-start">
 			<div class="overlay-split" class:is-open={settingsOpen}>
@@ -98,11 +58,11 @@
 					type="button"
 					class="overlay-split-main"
 					class:is-open={settingsOpen}
+					aria-label={settingsOpen ? `Close Settings (${shortcut(',')})` : `Settings (${shortcut(',')})`}
 					title={settingsOpen ? `Close Settings (${shortcut(',')})` : `Settings (${shortcut(',')})`}
 					onclick={() => uiStore.toggleSettings(flush)}
 				>
 					<Icon name="settings" class="w-3.5 h-3.5" />
-					<span>Settings</span>
 				</button>
 				{#if canDock}
 					<button
@@ -126,7 +86,7 @@
 					class="overlay-btn"
 					class:is-active-tint={activeOverlay === item.overlay}
 					title={titleFor(item)}
-					aria-label={item.overlay === 'memory' ? titleFor(item) : undefined}
+					aria-label={titleFor(item)}
 					onclick={() => handleToggleOverlay(item.overlay)}
 				>
 					{#if item.overlay === 'memory'}
@@ -134,7 +94,6 @@
 					{:else}
 						<Icon name={item.icon} class="w-3.5 h-3.5" />
 					{/if}
-					<span>{item.label}</span>
 				</button>
 			{/each}
 		</div>
@@ -157,11 +116,11 @@
 					type="button"
 					class="overlay-split-main"
 					class:is-open={libraryOpen}
+					aria-label={libraryOpen ? `Close Library (${shortcut('L')})` : `Library (${shortcut('L')})`}
 					title={libraryOpen ? `Close Library (${shortcut('L')})` : `Library (${shortcut('L')})`}
 					onclick={() => uiStore.toggleLibrary(flush)}
 				>
 					<Icon name="bookOpen" class="w-3.5 h-3.5" />
-					<span>Library</span>
 				</button>
 			</div>
 		</div>
@@ -182,25 +141,8 @@
 		z-index: 80;
 	}
 
-	/* The ruler the label rule measures: the dock regime's column at this window
-	   width, whatever regime the window is actually in. Out of flow and invisible,
-	   because nothing on screen is this wide below the dock breakpoint; it exists
-	   only to hand the ResizeObserver above a width the CSS already knows how to
-	   compute, instead of a second JavaScript copy of the column equation. */
-	.nav-room-probe {
-		position: absolute;
-		top: 0;
-		left: 0;
-		height: 0;
-		width: var(--chat-col-docked);
-		visibility: hidden;
-		pointer-events: none;
-	}
-
 	.title-bar-inner {
-		/* Capped at the chat column so the end pills sit on the column's edges, the
-		   same lines the side docks glue to below. The label decision deliberately
-		   does NOT measure this element: see the probe above. */
+		/* Capped at the chat column so the end buttons follow the dock edges. */
 		height: 100%;
 		max-width: var(--chat-col-max);
 		margin: 0 auto;
@@ -220,10 +162,7 @@
 		flex-shrink: 0;
 	}
 
-	/* The centred cluster of overlay buttons. It neither scrolls nor shrinks below
-	   its content: the label rule guarantees the fit, and if that guarantee ever
-	   breaks the overflow paints where it can be seen rather than hiding behind an
-	   invisible scrollbar. */
+	/* The centered navigation cluster uses icons at every viewport width. */
 	.nav-cluster {
 		display: inline-flex;
 		align-items: center;
@@ -239,7 +178,7 @@
 		color: var(--color-text-secondary);
 		height: 1.8rem;
 		border-radius: var(--radius-md);
-		padding: 0 0.62rem;
+		padding: 0 0.5rem;
 		display: inline-flex;
 		align-items: center;
 		gap: 0.35rem;
@@ -307,7 +246,7 @@
 
 	.overlay-split-main {
 		gap: 0.35rem;
-		padding: 0 0.5rem 0 0.62rem;
+		padding: 0 0.5rem;
 	}
 
 	.overlay-split-lock {
@@ -355,16 +294,4 @@
 		background: color-mix(in srgb, var(--color-accent) 26%, transparent);
 	}
 
-	/* Without the attribute the script stamps, every button is a bare icon, and the
-	   panels these buttons raise name themselves in their own headers instead
-	   (`.overlay-title` in app.css reads the same attribute). The rule that grants
-	   it sits with the probe in the script above. */
-	:global(:root:not([data-nav-labels])) .overlay-btn span,
-	:global(:root:not([data-nav-labels])) .overlay-split-main span {
-		display: none;
-	}
-
-	:global(:root:not([data-nav-labels])) .overlay-btn {
-		padding: 0 0.5rem;
-	}
 </style>

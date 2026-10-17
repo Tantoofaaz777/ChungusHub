@@ -1,5 +1,5 @@
 /**
- * Engines are the app's built-in AI machinery: Chat Memory, Opening Scene,
+ * Engines are the app's built-in AI machinery: Chat Memory, Threads, Opening Scene,
  * Steering, Spellcheck, Impersonate. Each engine is its own deep
  * system; this registry is their shared identity for the Engines settings
  * page: what the engine does, whether it makes model calls (every
@@ -22,6 +22,7 @@
 import { featurePromptsStore, type FeaturePromptKey } from '$lib/stores/featurePrompts.svelte';
 
 export type EngineId =
+	| 'threads'
 	| 'memory'
 	| 'opening-scene'
 	| 'steering'
@@ -47,7 +48,7 @@ export interface EngineDef {
 	/** Also the engine's `source` label on LLM calls in the prompt debug panel. */
 	id: EngineId;
 	name: string;
-	icon: 'brain' | 'sparkles' | 'compass' | 'checkCircle' | 'mask' | 'image';
+	icon: 'threads' | 'brain' | 'sparkles' | 'compass' | 'checkCircle' | 'mask' | 'image';
 	/** One line for the engine's row: what it does, nothing about cost or trigger. */
 	summary: string;
 	/** The tooltip beside the engine's name in the detail view: what it does and when it fires. */
@@ -68,6 +69,14 @@ export interface EngineDef {
 }
 
 export const ENGINES: EngineDef[] = [
+	{
+		id: 'threads', name: 'Threads', icon: 'threads',
+		summary: 'Turns selected scenes into a fictional fandom feed',
+		description: 'Select individual messages in Make and generate a fictional audience discussion. Threads are saved separately from the roleplay and never change its prompt.',
+		makesCalls: true,
+		prompts: [{ key: 'threads', label: 'Fandom instructions', hint: 'Directs the audience, tone, language and discussion size. Selected messages and the JSON format are supplied automatically.' }],
+		enabled: { get: () => featurePromptsStore.threadsEnabled, set: (value) => featurePromptsStore.setThreadsEnabled(value) }
+	},
 	{
 		id: 'memory',
 		name: 'Chat Memory',

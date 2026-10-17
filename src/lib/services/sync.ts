@@ -17,6 +17,7 @@ import { inputDraftStore } from '$lib/stores/inputDraft.svelte';
 import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
 import { presetService } from '$lib/services/presets.svelte';
 import { reloadAllSyncedSettings } from '$lib/services/syncedSetting';
+import { threadsStore } from '$lib/threads/store.svelte';
 import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { backupStore } from '$lib/stores/backups.svelte';
 import type { SyncScope } from '$shared/sync';
@@ -87,6 +88,7 @@ const HANDLERS: Record<SyncScope, () => Promise<void>> = {
 	// Another device folded/rolled back/edited the open chat's memory, so refresh
 	// the panel data and ghost boundary.
 	memory: () => memoryStore.syncReload(),
+	threads: () => threadsStore.syncReload(),
 	// A snapshot finished, was pinned or was deleted. A no-op unless the Backups page
 	// has been opened on this device.
 	backups: () => backupStore.syncReload()

@@ -35,6 +35,7 @@
 	<p class="dup-lead">
 		<strong>{title}</strong> will be copied whole: every message, every branch and swipe, its
 		labels and its canon path. The copy is independent from here on.
+		Saved Threads, Fandom Notes and AO3 information are copied with either choice.
 	</p>
 
 	<div class="dup-memory">

@@ -40,6 +40,7 @@
 		onReconnect
 	} from '$lib/services/transport';
 	import { backupStore } from '$lib/stores/backups.svelte';
+	import { threadsConfigStore } from '$lib/threads/config.svelte';
 	import { initSync } from '$lib/services/sync';
 	import { onMount } from 'svelte';
 
@@ -160,6 +161,7 @@
 			await inputHistoryStore.initialize();
 			await backgroundStore.initialize();
 			await featurePromptsStore.initialize();
+			await threadsConfigStore.initialize();
 			await libraryViewPrefs.initialize();
 			await personasViewPrefs.initialize();
 			await lorebookViewPrefs.initialize();

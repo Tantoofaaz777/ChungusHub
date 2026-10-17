@@ -31,6 +31,7 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import type { CallTarget } from '$lib/types/llm';
+	import { threadsConfigStore } from '$lib/threads/config.svelte';
 	import { toggleRow } from '$lib/actions/toggleRow';
 
 	import { copyText } from '$lib/utils/clipboard';
@@ -169,6 +170,33 @@
 		{/if}
 	</section>
 
+	{#if engine.id === 'threads'}
+		<section class="card">
+			<div class="card-head"><span class="card-title">Continuity</span></div>
+			<div class="card-body">
+				<div class="threads-context">
+					<h3>Previous story context</h3>
+					<PillRow options={[{value:'rounds',label:'Rounds'},{value:'tokens',label:'Tokens'}]} current={threadsConfigStore.value.previousMode} onpick={(v) => threadsConfigStore.set('previousMode', v as 'rounds' | 'tokens')} label="Story context limit mode" />
+					{#if threadsConfigStore.value.previousMode === 'tokens'}
+						<label class="threads-limit" for="threads-previous-limit">Token budget<input id="threads-previous-limit" class="input-base" type="number" min="0" max="2000000" step="1" value={threadsConfigStore.value.previousTokens} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('previousTokens',e.currentTarget.valueAsNumber); }} /></label>
+					{:else}
+						<label class="threads-limit" for="threads-previous-limit">Previous story rounds<input id="threads-previous-limit" class="input-base" type="number" min="0" max="50" step="1" value={threadsConfigStore.value.previousRounds} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('previousRounds',e.currentTarget.valueAsNumber); }} /></label>
+					{/if}
+				</div>
+				<div class="threads-context">
+					<h3>Fandom continuity</h3>
+					<PillRow options={[{value:'threads',label:'Threads'},{value:'tokens',label:'Tokens'}]} current={threadsConfigStore.value.fandomMode} onpick={(v) => threadsConfigStore.set('fandomMode', v as 'threads' | 'tokens')} label="Fandom continuity limit mode" />
+					{#if threadsConfigStore.value.fandomMode === 'tokens'}
+						<label class="threads-limit" for="threads-fandom-limit">Token budget<input id="threads-fandom-limit" class="input-base" type="number" min="0" max="2000000" step="1" value={threadsConfigStore.value.fandomTokens} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('fandomTokens',e.currentTarget.valueAsNumber); }} /></label>
+					{:else}
+						<label class="threads-limit" for="threads-fandom-limit">Previous fandom threads<input id="threads-fandom-limit" class="input-base" type="number" min="0" max="50" step="1" value={threadsConfigStore.value.fandomThreads} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('fandomThreads',e.currentTarget.valueAsNumber); }} /></label>
+					{/if}
+				</div>
+				<p class="placement-note">Story context keeps the newest whole messages; fandom continuity keeps whole threads. The selected scene is never trimmed. Set a limit to 0 to omit that context.</p>
+			</div>
+		</section>
+	{/if}
+
 	<!-- Steering's one extra card: the placement every note inherits. A note overrides either
 	     field per note (its `depth`/`role` are tri-state, null = inherit), so this is the
 	     bottom of that chain, not a competing setting. -->
@@ -300,6 +328,11 @@
 </div>
 
 <style>
+	.threads-limit { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.8rem; font-size:.8rem; color:var(--color-text-secondary); }
+	.threads-context + .threads-context { margin-top:1.2rem; }
+	.threads-context h3 { font-size:.78rem; font-weight:600; color:var(--color-text-secondary); margin-bottom:.5rem; }
+	.threads-context .threads-limit { margin-top:.7rem; }
+	.threads-limit input { width:7rem; padding:.4rem .6rem; }
 	.detail {
 		display: flex;
 		flex-direction: column;

@@ -206,15 +206,7 @@
 		   the docks, which on a wide screen inverts the layout into a narrow story
 		   strip between two panels wider than the column they frame. */
 		--chat-content-max: calc(78rem * var(--user-chat-width, 1));
-		/* The dock regime's column, at EVERY window width: the value --chat-col-max
-		   takes inside the 76rem branch below, spelled once here so the branch and
-		   the TitleBar's nav-label probe read the same equation (the full reasoning
-		   for its shape sits on the branch). Outside the branch nothing on screen is
-		   this wide, but it is still the tightest column the current window can be
-		   asked to hold, which is exactly what the nav-label rule keys on
-		   (TitleBar.svelte): unlike the bar's rendered width it moves only in the
-		   window's own direction, so the labels flip once per resize direction
-		   instead of reversing at the dock breakpoint. */
+		/* Docked column width, shared by the chat shell and side-dock geometry. */
 		--chat-col-docked: min(
 			calc(
 				max(var(--chat-col-min), min(50vw, 100vw - 2 * var(--dock-hold))) *
@@ -286,8 +278,7 @@
 	   are no docks and the column keeps its generous cap. Must match DOCK_QUERY in
 	   src/lib/stores/viewport.svelte.ts (the two spell the same equation). The
 	   expression itself lives on --chat-col-docked in :root above, defined at every
-	   width because the TitleBar's nav-label probe measures it below the breakpoint
-	   too; this branch only assigns it.
+	   width; this branch only assigns it.
 
 	   The alternative (give each dock a fixed minimum and hand the chat every
 	   leftover pixel at ALL widths) is what this replaced, and it is wrong in a
@@ -532,15 +523,7 @@
 		color: var(--color-text-muted);
 	}
 
-	/* The stacked header, worn by the panels the TitleBar's nav cluster raises: the
-	   panel's name on its own line, the subject it holds and the controls over that
-	   subject below it, both centered. The name line is there for the widths where
-	   the nav button is a bare icon, and goes the moment that button carries its own
-	   label, or the reader is told the same word twice on one screen. Whether that
-	   label is on is one decision with one writer: TitleBar.svelte stamps
-	   `data-nav-labels` on the root element, and the rule below reads it, so the
-	   name line and the nav label flip together on the same frame with nothing here
-	   to measure or keep in step (contracts.test.ts pins the attribute's name). */
+	/* Icon-only navigation leaves panel names in their own stacked headers at every width. */
 	.overlay-header--stacked {
 		flex-direction: column;
 		justify-content: center;
@@ -552,20 +535,6 @@
 		flex: 0 1 auto;
 		max-width: 100%;
 		justify-content: center;
-	}
-
-	/* Hidden while the TitleBar's own button carries the word, and hidden rather than
-	   removed: the panel keeps its heading for a reader who navigates by them at every
-	   width. Only the duplicate on screen goes. */
-	:root[data-nav-labels] .overlay-title {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		margin: -1px;
-		padding: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 
 	.overlay-crumb-sep {

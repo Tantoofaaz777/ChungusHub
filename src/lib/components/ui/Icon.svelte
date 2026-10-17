@@ -96,7 +96,8 @@
 		| 'externalLink'
 		| 'keyboard'
 		| 'arrowUpDown'
-		| 'tag';
+		| 'tag'
+		| 'threads';
 
 	interface Props extends SVGAttributes<SVGSVGElement> {
 		name: IconName;
@@ -476,6 +477,14 @@
 				'M8 9h.01M12 9h.01M16 9h.01',
 				'M8 14h.01M16 14h.01',
 				'M11 14h2'
+			]
+		},
+		threads: {
+			paths: [
+				'M3 7h10v3h-1v7h1v3H3v-3h1v-7H3V7z',
+				'M4 11l8-1M4 14l8-1M4 17l8-1',
+				'M15 18l3.2-13.6a1.6 1.6 0 0 1 3.1.8L15 18z',
+				'M19.7 4.7l-.4 1.5'
 			]
 		},
 		tag: {

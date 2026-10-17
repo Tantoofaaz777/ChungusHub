@@ -43,6 +43,7 @@
 		id: string;
 		label: string;
 		icon:
+			| 'threads'
 			| 'chat'
 			| 'annotation'
 			| 'brain'

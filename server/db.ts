@@ -9,6 +9,11 @@
  * exactly once, tracked in the _migrations table. No "IF NOT EXISTS" guesswork.
  */
 import { Database } from 'bun:sqlite';
+import { normalizeAo3Information, emptyAo3Information, type Ao3Information } from '../shared/threads/ao3';
+import { threadsSelectionOverlaps } from '../shared/threads/model';
+import { inheritThreadsRounds } from '../shared/threads/inheritance';
+import { parseGeneratedThreadsFeed } from '../shared/threads/feed';
+import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound } from '../shared/threads/types';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -534,6 +539,22 @@ const MIGRATIONS: Migration[] = [
 		name: 'memory_arcs_volumes',
 		sql: `ALTER TABLE memory_scenes ADD COLUMN level TEXT NOT NULL DEFAULT 'chapter' CHECK (level IN ('chapter', 'arc', 'volume'));
 		ALTER TABLE memory_scenes ADD COLUMN children_json TEXT NOT NULL DEFAULT '[]';`
+	},
+	{
+		version: 49,
+		name: 'threads_engine',
+		sql: `CREATE TABLE threads_rounds (
+			id TEXT PRIMARY KEY,
+			chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+			created_at INTEGER NOT NULL,
+			data_json TEXT NOT NULL
+		);
+		CREATE INDEX idx_threads_rounds_chat ON threads_rounds(chat_id, created_at);
+		CREATE TABLE threads_notes (
+			chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
+			notes TEXT NOT NULL DEFAULT '',
+			ao3_json TEXT NOT NULL DEFAULT '{}'
+		);`
 	}
 ];
 
@@ -913,8 +934,17 @@ class ServerDatabase {
 			}
 
 			if (includeMemory) this.copyChatMemory(chatId, newChatId, idMap);
+			this.copyChatThreads(chatId, newChatId, idMap);
 			return newChatId;
 		});
+	}
+
+	/** Threads are copied independently of the optional Chat Memory payload. */
+	private copyChatThreads(fromChatId: string, toChatId: string, messageIds: Map<string, string>): void {
+		const data = this.getThreadsData(fromChatId);
+		for (const round of inheritThreadsRounds(data.rounds, toChatId, messageIds, randomUUID)) this.writeThreadsRound(round);
+		const notes = this.select<{ notes: string; ao3_json: string }[]>('SELECT notes, ao3_json FROM threads_notes WHERE chat_id = ?', [fromChatId])[0];
+		if (notes) this.execute('INSERT INTO threads_notes (chat_id, notes, ao3_json) VALUES (?, ?, ?)', [toChatId, notes.notes, notes.ao3_json]);
 	}
 
 	/** Carry a chat's memory across to a duplicate. Every message reference is remapped
@@ -3129,6 +3159,95 @@ class ServerDatabase {
 		tx();
 	}
 
+
+	// ===== THREADS: audience feeds, independent of the story and memory =====
+	getThreadsData(chatId: string): ThreadsData {
+		if (!this.getChat(chatId)) throw new Error('Chat not found');
+		const notes = this.select<{ notes: string; ao3_json: string }[]>('SELECT notes, ao3_json FROM threads_notes WHERE chat_id = ?', [chatId])[0];
+		return {
+			rounds: this.select<{ data_json: string }[]>('SELECT data_json FROM threads_rounds WHERE chat_id = ? ORDER BY created_at, rowid', [chatId]).map(r => JSON.parse(r.data_json)),
+			notes: notes?.notes ?? '', ao3: notes ? normalizeAo3Information(JSON.parse(notes.ao3_json)) : emptyAo3Information()
+		};
+	}
+	updateThreadsNotes(chatId: string, patch: { notes?: string; ao3?: Ao3Information }): void {
+		if (!patch || (patch.notes !== undefined && (typeof patch.notes !== 'string' || patch.notes.length > 100_000)) ||
+			(patch.ao3 !== undefined && JSON.stringify(patch.ao3).length > 100_000)) throw new Error('Invalid Threads notes.');
+		this.inTransaction(() => {
+			if (!this.getChat(chatId)) throw new Error('Chat not found');
+			this.execute('INSERT OR IGNORE INTO threads_notes (chat_id) VALUES (?)', [chatId]);
+			if (patch.notes !== undefined) this.execute('UPDATE threads_notes SET notes = ? WHERE chat_id = ?', [patch.notes, chatId]);
+			if (patch.ao3 !== undefined) this.execute('UPDATE threads_notes SET ao3_json = ? WHERE chat_id = ?', [JSON.stringify(normalizeAo3Information(patch.ao3)), chatId]);
+		});
+	}
+	private writeThreadsRound(round: ThreadsRound): ThreadsRound {
+		this.execute('INSERT INTO threads_rounds (id, chat_id, created_at, data_json) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data_json = excluded.data_json',
+			[round.id, round.chatId, round.createdAt, JSON.stringify(round)]);
+		return round;
+	}
+	saveThreadsRound(input: SaveThreadsRound): ThreadsRound {
+		if (!input || typeof input.id !== 'string' || !input.id || typeof input.chatId !== 'string' ||
+			typeof input.label !== 'string' || input.label.length > 200 || (input.branchLeafId !== undefined && typeof input.branchLeafId !== 'string') || !Array.isArray(input.messages) ||
+			!input.messages.length || input.messages.length > 10000 || input.messages.some(m => !m || typeof m.id !== 'string' ||
+				typeof m.content !== 'string' || typeof m.speaker !== 'string' || m.speaker.length > 500 || !Number.isInteger(m.index))) throw new Error('Invalid Threads scene.');
+		if (JSON.stringify(input).length > 4_000_000) throw new Error('This thread is too large.');
+		const feed = parseGeneratedThreadsFeed(JSON.stringify(input.feed));
+		return this.inTransaction(() => {
+			const data = this.getThreadsData(input.chatId);
+			const existing = data.rounds.find(r => r.id === input.id);
+			if (existing) {
+				if (existing.label === input.label.trim() && existing.messages.length === input.messages.length && existing.messages.every((m,i) => {
+					const source = input.messages[i];
+					return m.id === source.id && m.content === source.content && m.role === source.role && m.speaker === source.speaker;
+				}) && JSON.stringify(existing.versions[0].feed) === JSON.stringify(feed)) return existing;
+				throw new Error('This thread already exists. Reload Threads.');
+			}
+			if (this.select<{ id: string }[]>('SELECT id FROM threads_rounds WHERE id = ?', [input.id]).length) throw new Error('Thread id already used.');
+			const ids = input.messages.map(m => m.id);
+			if (new Set(ids).size !== ids.length) throw new Error('Repeated source messages.');
+			const all = this.getMessagesByChat(input.chatId) as SceneMessage[];
+			const chat = this.getChat(input.chatId) as { activeLeafId: string | null };
+			const branchLeafId = input.branchLeafId ?? chat.activeLeafId;
+			if (!branchLeafId || !all.some(m => m.id === branchLeafId)) throw new Error('The selected branch changed while generating. Select the scene again.');
+			const path = scenePath(all, branchLeafId);
+			const wanted = new Set(ids), selected = path.filter(m => wanted.has(m.id));
+			if (selected.length !== ids.length || selected.some((m, i) => m.id !== ids[i] || m.content !== input.messages[i].content || m.role !== input.messages[i].role)) {
+				throw new Error('Selected messages changed while generating. Select the scene again.');
+			}
+			if (threadsSelectionOverlaps(data.rounds, input.messages, path, all)) throw new Error('Some messages were already used by another thread on this branch. Select a scene that includes this fork’s own messages.');
+			const now = Date.now(), versionId = randomUUID();
+			return this.writeThreadsRound({ id: input.id, chatId: input.chatId, label: input.label.trim(), createdAt: now,
+				revision: 1, messages: input.messages.map(m => ({ id: m.id, role: m.role, content: m.content, speaker: m.speaker, index: path.findIndex(p => p.id === m.id) })),
+				versions: [{ id: versionId, createdAt: now, feed }], activeVersionId: versionId });
+		});
+	}
+	addThreadsVersion(chatId: string, id: string, expectedRevision: number, versionId: string, feed: ThreadsFeed): ThreadsRound {
+		const parsed = parseGeneratedThreadsFeed(JSON.stringify(feed));
+		return this.inTransaction(() => {
+			const round = this.getThreadsData(chatId).rounds.find(r => r.id === id);
+			if (!round) throw new Error('This thread was removed.');
+			if (round.versions.some(v => v.id === versionId)) return round;
+			if (!versionId || round.revision !== expectedRevision) throw new Error('This thread changed on another device. Reload before regenerating.');
+			round.versions.push({ id: versionId, createdAt: Date.now(), feed: parsed });
+			round.activeVersionId = versionId; round.revision++;
+			return this.writeThreadsRound(round);
+		});
+	}
+	setThreadsVersion(chatId: string, id: string, expectedRevision: number, versionId: string): ThreadsRound {
+		return this.inTransaction(() => {
+			const round = this.getThreadsData(chatId).rounds.find(r => r.id === id);
+			if (!round || round.revision !== expectedRevision || !round.versions.some(v => v.id === versionId)) throw new Error('This thread changed. Reload Threads.');
+			round.activeVersionId = versionId; round.revision++;
+			return this.writeThreadsRound(round);
+		});
+	}
+	deleteThreadsRound(chatId: string, id: string, expectedRevision: number): void {
+		this.inTransaction(() => {
+			const round = this.getThreadsData(chatId).rounds.find(r => r.id === id);
+			if (!round || round.revision !== expectedRevision) throw new Error('This thread changed. Reload Threads before removing it.');
+			this.execute('DELETE FROM threads_rounds WHERE id = ? AND chat_id = ?', [id, chatId]);
+		});
+	}
+
 	// ===== PROMPT DEBUG LOG (server-internal, used only by server/promptLog.ts, not bridged) =====
 
 	/** Insert one entry and prune the oldest rows past `cap` in the same transaction. */
@@ -3222,7 +3341,12 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	memUpdateEpisodeContent: 'memory',
 	memReset: 'memory',
 	saveMemoryScene: 'memory',
-	deleteMemoryScene: 'memory'
+	deleteMemoryScene: 'memory',
+	saveThreadsRound: 'threads',
+	addThreadsVersion: 'threads',
+	setThreadsVersion: 'threads',
+	deleteThreadsRound: 'threads',
+	updateThreadsNotes: 'threads'
 };
 
 // Every method the bridge is allowed to dispatch (reads + mutations).
@@ -3236,7 +3360,7 @@ const READ_METHODS = [
 	'getAllCharacterVersions', 'getCharacterVersion',
 	'getAllLorebooks', 'getLorebook',
 	'getAllSteeringNotes',
-	'memGetState', 'memListEpisodes', 'getMemoryScenes'
+	'memGetState', 'memListEpisodes', 'getMemoryScenes', 'getThreadsData'
 ];
 
 export const ALLOWED_DB_METHODS = new Set([...READ_METHODS, ...Object.keys(MUTATION_SCOPES)]);

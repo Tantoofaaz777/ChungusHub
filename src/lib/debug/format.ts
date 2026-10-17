@@ -19,6 +19,7 @@ const SOURCE_COLORS: Record<EngineId | 'chat' | 'continue', string> = {
 	'opening-scene': '#14b8a6',
 	continue: '#f97316',
 	memory: '#a855f7',
+	threads: '#d99870',
 	steering: '#6366f1',
 	spellcheck: '#06b6d4',
 	impersonate: '#f43f5e',

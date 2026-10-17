@@ -474,58 +474,6 @@ describe('one house voice (architecture/ui-shell-settings.md)', () => {
 	});
 });
 
-describe('nav labels and panel titles (architecture/ui-shell-settings.md)', () => {
-	// One boolean decides two things that must never disagree: the TitleBar's nav
-	// buttons carry their labels, and the panels those buttons raise hide their own
-	// name line. TitleBar stamps it on the root element and every reader is a CSS
-	// selector on that attribute, so the residue is the attribute's NAME, spelled in
-	// two files that cannot read each other's strings. Drift either way is a panel
-	// named twice on one screen, or a panel with no name anywhere.
-	const one = (source: string, re: RegExp, what: string): string => {
-		const found = scan(source, re, what);
-		expect(found.length, `expected exactly one ${what}`).toBe(1);
-		return found[0];
-	};
-
-	test('the bar and the panel names read the attribute the bar stamps', () => {
-		const titleBar = read('src', 'lib', 'components', 'layout', 'TitleBar.svelte');
-		const stamps = scan(
-			titleBar,
-			/(?:toggle|remove)Attribute\('([a-z-]+)'/g,
-			'stamped nav-label attribute in TitleBar.svelte'
-		);
-		const barReads = scan(
-			titleBar,
-			/:root:not\(\[([a-z-]+)\]\)/g,
-			'nav-label selector in TitleBar.svelte'
-		);
-		const titleReads = one(
-			read('src', 'app.css'),
-			/:root\[([a-z-]+)\] \.overlay-title/g,
-			'.overlay-title gate in app.css'
-		);
-		for (const name of [...stamps, ...barReads, titleReads]) expect(name).toBe(stamps[0]);
-	});
-
-	test('the label rule measures the dock regime column, not the bar', () => {
-		// The probe's width must be the variable the dock branch assigns to the column:
-		// fork either spelling and the labels key on a width that is no longer the dock
-		// regime's, which on screen is labels reversing direction mid-resize.
-		const probeVar = one(
-			read('src', 'lib', 'components', 'layout', 'TitleBar.svelte'),
-			/\.nav-room-probe \{[^}]*width: var\((--[a-z-]+)\)/g,
-			'nav probe width in TitleBar.svelte'
-		);
-		const css = read('src', 'app.css');
-		one(css, new RegExp(`(${probeVar}): min\\(`, 'g'), 'docked column equation in app.css');
-		one(
-			css,
-			new RegExp(`--chat-col-max: var\\((${probeVar})\\)`, 'g'),
-			'dock branch consuming the docked column in app.css'
-		);
-	});
-});
-
 describe('shared UI recipes (architecture/ui-shell-settings.md)', () => {
 	// `.empty-orb` is the disc ui/EmptyState draws. A panel reaching for it directly is
 	// building a second empty state by hand, which is how the app ended up with three orb

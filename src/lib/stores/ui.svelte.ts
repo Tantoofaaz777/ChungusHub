@@ -5,7 +5,7 @@
  */
 /** Chat-area overlays: they cover the chat column. Settings and the merged Library
  *  are separate (settingsOpen / libraryOpen), each docking into a side margin. */
-export type OverlayType = 'chats' | 'presetControls' | 'memory' | 'stats';
+export type OverlayType = 'chats' | 'presetControls' | 'memory' | 'threads' | 'stats';
 /** The three shelves of the merged Library, chosen by the panel's top switcher. */
 export type LibraryTab = 'characters' | 'personas' | 'lorebooks';
 /** What the Chats panel lists: the open chat's character, or every chat there is. */

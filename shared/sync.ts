@@ -21,6 +21,7 @@ export const SYNC_SCOPES = [
 	'inputHistory',
 	'presets',
 	'memory',
+	'threads',
 	'backups'
 ] as const;
 

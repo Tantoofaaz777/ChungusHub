@@ -7,6 +7,7 @@
 	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
 	import SettingsContentPanel from '$lib/components/settings/SettingsContentPanel.svelte';
 	import ChatsView from '$lib/components/sidebar/ChatsView.svelte';
+	import ThreadsPanel from '$lib/components/threads/ThreadsPanel.svelte';
 	import MemoryPanel from '$lib/components/memory/MemoryPanel.svelte';
 	import StatsView from '$lib/components/stats/StatsView.svelte';
 	import WelcomeView from '$lib/components/layout/WelcomeView.svelte';
@@ -309,6 +310,8 @@
 						<ChatsView />
 						{:else if activeOverlay === 'memory'}
 							<MemoryPanel />
+					{:else if activeOverlay === 'threads'}
+						<ThreadsPanel />
 					{:else if activeOverlay === 'presetControls'}
 						<PresetControlsView />
 					{:else if activeOverlay === 'stats'}
