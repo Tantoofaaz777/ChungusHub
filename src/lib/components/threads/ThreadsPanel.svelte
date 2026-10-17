@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import GenerationDots from '$lib/components/ui/GenerationDots.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import PillRow from '$lib/components/ui/PillRow.svelte';
@@ -13,18 +14,26 @@
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { copyText } from '$lib/utils/clipboard';
 	import { threadsStore as store } from '$lib/threads/store.svelte';
-	import { threadsConfigStore } from '$lib/threads/config.svelte';
 	import { activeThreadsFeed } from '$shared/threads/model';
 	import { serializeFeedAsPlainText } from '$shared/threads/feed';
 	import { AO3_RATINGS, AO3_WARNINGS, AO3_CATEGORIES, AO3_TEXT_FIELDS, type Ao3Information } from '$shared/threads/ao3';
 	import type { ThreadsRound } from '$shared/threads/types';
 	import ThreadsComment from './ThreadsComment.svelte';
 	import ThreadsAuthor from './ThreadsAuthor.svelte';
+	import ThreadsChapterPicker from './ThreadsChapterPicker.svelte';
 	import ThreadsEngagement from './ThreadsEngagement.svelte';
+	import ThreadsContextPreview from './ThreadsContextPreview.svelte';
+	import { llmService } from '$lib/services/llm/provider';
 	import type { ThreadsComment as Comment } from '$shared/threads/types';
 	function totalComments(comments: Comment[]): number { return comments.reduce((n, c) => n + 1 + totalComments(c.replies), 0); }
 
 	let removing = $state<ThreadsRound | null>(null);
+	let resetting = $state<{ chatId: string; rounds: { id: string; revision: number }[] } | null>(null);
+	$effect(() => { if (resetting && resetting.chatId !== store.chatId) resetting = null; });
+	let viewedRoundId = $state<string | null>(null);
+	let viewedChatId: string | null = null;
+	let newestRoundId: string | null = null;
+	const viewedRound = $derived(store.rounds.find(round => round.id === viewedRoundId) ?? store.rounds.at(-1));
 	let notesOpen = $state(false);
 	let ao3Open = $state(false);
 	let touch: { id: string; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -32,10 +41,16 @@
 	let suppressTimer: ReturnType<typeof setTimeout> | null = null;
 	const selected = $derived(new Set(store.selected));
 	const currentRoundIds = $derived(new Set(store.previousRounds.map(r => r.id)));
-	const storyRoundCount = $derived(Math.min(store.previousRounds.length,threadsConfigStore.value.previousRounds));
-	const fandomThreadCount = $derived(Math.min(store.previousRounds.length,threadsConfigStore.value.fandomThreads));
+	const previewModel = $derived(llmService.modelFor({ engine: 'threads' }));
 	const chatId = $derived(chatStore.activeChatId);
 	$effect(() => { const id = chatId; untrack(() => { void store.load(id); }); });
+	$effect(() => {
+		const id = chatId, newest = store.rounds.at(-1)?.id ?? null;
+		untrack(() => {
+			if (id !== viewedChatId || newest !== newestRoundId) viewedRoundId = null;
+			viewedChatId = id; newestRoundId = newest;
+		});
+	});
 	function settings() { uiStore.gotoSettingsPage('engines'); uiStore.settingsEngineId = 'threads'; uiStore.openSettings(); }
 	function ao3(patch: Partial<Ao3Information>) { store.updateNotes({ ao3: { ...store.ao3, ...patch } }); }
 	function clearTouch() {
@@ -77,11 +92,20 @@
 			<EmptyState icon="threads" size="sm">Open a chat to make threads.</EmptyState>
 		{:else}
 			<div class="tabs"><PillRow options={[{value:'feed',label:'Feed'}, {value:'make',label:'Make'}]} current={store.tab} onpick={(value) => store.tab = value as 'feed' | 'make'} label="Threads view" /></div>
+			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} value={viewedRound.id} onchange={(id) => viewedRoundId = id} />{/if}
 			{#if store.error}<div class="error" role="alert">{store.error}{#if !store.loaded}<Button variant="secondary" size="sm" onclick={() => store.load(chatId)}>Retry loading</Button>{/if}</div>{/if}
 			{#if store.pending}
 				<div class="status" role="status"><span>Thread generated. Save it without making another model call.</span><div class="actions"><Button size="sm" onclick={() => store.saveResult()} disabled={store.busy}>Retry saving</Button><Button variant="ghost" size="sm" disabled={store.busy} onclick={() => {store.pending = null; store.error = '';}}>Discard result</Button></div></div>
 			{/if}
-			{#if store.busy}<div class="status" role="status"><span>{store.phase === 'generating' ? 'Generating thread…' : 'Saving thread…'}</span>{#if store.phase === 'generating'}<Button variant="secondary" size="sm" onclick={() => store.cancel()}>Cancel</Button>{/if}</div>{/if}
+			{#if store.busy}
+				<div class="status">
+					<div class="generation-progress">
+						<span class="generation-label" role="status">{#if store.phase === 'generating'}<GenerationDots label="Generating thread" />Generating thread{:else}Saving thread…{/if}</span>
+						{#if store.phase === 'generating'}<span class="generation-tokens" title="Estimated tokens from received text, using the assigned model’s tokenizer.">Reasoning {store.tokenProgress.reasoning === null ? '-' : `~${store.tokenProgress.reasoning.toLocaleString()}`} · Response {store.tokenProgress.response === null ? '-' : `~${store.tokenProgress.response.toLocaleString()}`} tok</span>{/if}
+					</div>
+					{#if store.phase === 'generating'}<Button variant="secondary" size="sm" onclick={() => store.cancel()}>Cancel</Button>{/if}
+				</div>
+			{/if}
 			{#if !store.loaded && !store.error}<p class="muted">Loading threads…</p>
 			{:else if store.loaded && store.tab === 'feed'}
 				{#if !store.rounds.length}
@@ -89,11 +113,15 @@
 						{#snippet actions()}<Button size="sm" onclick={() => store.tab = 'make'}>Make a thread</Button>{/snippet}
 					</EmptyState>
 				{:else}
-					{#each [...store.rounds].reverse() as round (round.id)}
+					{#each viewedRound ? [viewedRound] : [] as round (round.id)}
 						{@const feed = activeThreadsFeed(round)}
 						{@const versionIndex = round.versions.findIndex(v => v.id === round.activeVersionId)}
 						<article class="feed-card">
 							<div class="round-info"><span>{round.label || `Thread ${store.rounds.indexOf(round) + 1}`} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its full scene is not on the current branch.">Outside this branch</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
+							<div class="feed-actions">
+								<div class="actions"><button class="icon-btn" aria-label="Copy thread" title="Copy thread" onclick={() => copy(round)}><Icon name="copy" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy || !!store.pending || !featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)} aria-label="Generate another version" title="Generate another version" onclick={() => store.generate(round)}><Icon name="refresh" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy} aria-label="Delete thread" title="Delete thread" onclick={() => removing = round}><Icon name="trash" class="w-4 h-4" /></button></div>
+								<div class="actions"><button class="icon-btn" disabled={store.busy || versionIndex === 0} aria-label="Previous thread version" onclick={() => swipe(round,-1)}><Icon name="chevronLeft" class="w-4 h-4" /></button><span class="version">{versionIndex + 1} / {round.versions.length}</span><button class="icon-btn" disabled={store.busy || !!store.pending || (versionIndex === round.versions.length - 1 && (!featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)))} aria-label={versionIndex === round.versions.length - 1 ? 'Generate another thread version' : 'Next thread version'} onclick={() => swipe(round,1)}><Icon name="chevronRight" class="w-4 h-4" /></button></div>
+							</div>
 							<section class="feed-post">
 								<ThreadsAuthor username={feed.post.username} op />
 								<h3 class="post-title">{feed.title}</h3>
@@ -101,10 +129,6 @@
 								<ThreadsEngagement score={feed.post.score} commentCount={totalComments(feed.comments)} />
 							</section>
 							<div class="comments">{#each feed.comments as comment}<ThreadsComment {comment} />{/each}</div>
-							<div class="feed-actions">
-								<div class="actions"><button class="icon-btn" aria-label="Copy thread" title="Copy thread" onclick={() => copy(round)}><Icon name="copy" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy || !!store.pending || !featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)} aria-label="Generate another version" title="Generate another version" onclick={() => store.generate(round)}><Icon name="refresh" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy} aria-label="Delete thread" title="Delete thread" onclick={() => removing = round}><Icon name="trash" class="w-4 h-4" /></button></div>
-								<div class="actions"><button class="icon-btn" disabled={store.busy || versionIndex === 0} aria-label="Previous thread version" onclick={() => swipe(round,-1)}><Icon name="chevronLeft" class="w-4 h-4" /></button><span class="version">{versionIndex + 1} / {round.versions.length}</span><button class="icon-btn" disabled={store.busy || !!store.pending || (versionIndex === round.versions.length - 1 && (!featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)))} aria-label={versionIndex === round.versions.length - 1 ? 'Generate another thread version' : 'Next thread version'} onclick={() => swipe(round,1)}><Icon name="chevronRight" class="w-4 h-4" /></button></div>
-							</div>
 						</article>
 					{/each}
 				{/if}
@@ -112,16 +136,28 @@
 				<section class="make-card">
 					<h3>Select a scene</h3>
 					<p class="muted">Tap messages to select individually. Shift-click or hold another message to select a range.</p>
+					{#if store.selectedCount > 0}
 					<div class="context">
-						<span>Previous context</span><strong>{threadsConfigStore.value.previousMode === 'tokens' ? `${threadsConfigStore.value.previousTokens.toLocaleString()} token budget` : `${storyRoundCount} ${storyRoundCount === 1 ? 'round' : 'rounds'}`}</strong>
-						<span>Fandom continuity</span><strong>{threadsConfigStore.value.fandomMode === 'tokens' ? `${threadsConfigStore.value.fandomTokens.toLocaleString()} token budget` : `${fandomThreadCount} ${fandomThreadCount === 1 ? 'thread' : 'threads'}`}</strong>
-						<span>Recent context</span><strong>{store.selectedCount} selected</strong>
+						<button class="continuity-reset" disabled={store.busy || !!store.pending || !store.loaded || !store.rounds.length} onclick={() => { if (store.chatId) resetting = { chatId: store.chatId, rounds: store.rounds.map(({ id, revision }) => ({ id, revision })) }; }}>Reset continuity</button>
+						<ThreadsContextPreview count={store.selectedCount} input={store.promptPreview} model={previewModel} />
+						<div class="context-chapter">
+							<label class="field-label" for="threads-label">Episode / chapter <span class="muted">(optional)</span></label>
+							<input id="threads-label" class="input-base field" maxlength="200" value={store.label} disabled={store.busy} oninput={(e) => store.label = e.currentTarget.value} />
+						</div>
 					</div>
-					<label class="field-label" for="threads-label">Episode / chapter <span class="muted">(optional)</span></label>
-					<input id="threads-label" class="input-base field" maxlength="200" value={store.label} disabled={store.busy} oninput={(e) => store.label = e.currentTarget.value} />
-					<details class="notes-section" bind:open={ao3Open}><summary><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="ao3" class="w-4 h-4 shrink-0" aria-hidden="true" /><span>AO3 information</span><span class="section-rule" aria-hidden="true"></span></summary>
+					{/if}
+					<label class="field-label" for="threads-chat-prompt">Fandom instructions</label>
+					<select id="threads-chat-prompt" class="input-base field chat-prompt" value={featurePromptsStore.threadsPrompts.prompts.some(p => p.id === store.promptId) ? store.promptId ?? '' : ''} disabled={store.busy} onchange={(event) => store.updateNotes({promptId: event.currentTarget.value || null})}>
+						<option value="">Engine default · {featurePromptsStore.activeThreadsPrompt.name}</option>
+						{#each featurePromptsStore.threadsPrompts.prompts as prompt (prompt.id)}<option value={prompt.id}>{prompt.name}</option>{/each}
+					</select>
+					<section class="notes-section ao3-section" class:is-open={ao3Open} class:is-disabled={!store.ao3.enabled}>
+						<div class="ao3-header">
+							<button type="button" class="section-toggle" aria-expanded={ao3Open} aria-controls="threads-ao3-content" onclick={() => ao3Open = !ao3Open}><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="ao3" class="w-4 h-4 shrink-0" aria-hidden="true" /><span>AO3 information</span><span class="section-rule" aria-hidden="true"></span></button>
+							<Toggle checked={store.ao3.enabled} onchange={(enabled) => ao3({enabled})} label="Use AO3 information" />
+						</div>
 						{#if ao3Open}
-						<div class="ao3-fields"><Toggle checked={store.ao3.enabled} onchange={(enabled) => ao3({enabled})} label="Use AO3 information" />
+						<div id="threads-ao3-content" class="ao3-fields">
 							<label class="field-label" for="threads-rating">Rating</label><select id="threads-rating" class="input-base field" value={store.ao3.rating ?? ''} onchange={(e) => ao3({rating: e.currentTarget.value as Ao3Information['rating'] || null})}><option value="">None</option>{#each AO3_RATINGS as rating}<option value={rating}>{rating}</option>{/each}</select>
 							<label class="field-label" for="threads-warning">Archive warnings</label><select id="threads-warning" class="input-base field" value={store.ao3.archiveWarnings[0] ?? ''} onchange={(e) => ao3({archiveWarnings: e.currentTarget.value ? [e.currentTarget.value as Ao3Information['archiveWarnings'][number]] : []})}><option value="">None</option>{#each AO3_WARNINGS as warning}<option value={warning}>{warning}</option>{/each}</select>
 							<fieldset><legend>Categories</legend><div class="categories">{#each AO3_CATEGORIES as category}<label class="check-row"><input type="checkbox" checked={store.ao3.categories.includes(category)} onchange={(e) => ao3({categories:e.currentTarget.checked ? [...store.ao3.categories,category] : store.ao3.categories.filter(v => v !== category)})} />{category}</label>{/each}</div></fieldset>
@@ -131,7 +167,7 @@
 							{/each}
 						</div>
 						{/if}
-					</details>
+					</section>
 					<details class="notes-section" bind:open={notesOpen}><summary><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="users" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span>Fandom Notes</span><span class="section-rule" aria-hidden="true"></span></summary>{#if notesOpen}<label class="sr-only" for="threads-notes">Fandom Notes</label><ExpandableTextarea id="threads-notes" class="input-base threads-textarea" value={store.notes} onValueChange={(notes) => store.updateNotes({notes})} dialogTitle="Fandom Notes" placeholder="Reader expectations, recurring jokes, ships…" rows={4} />{/if}</details>
 					{#if store.notesError}<div class="error" role="alert">{store.notesError}<Button variant="secondary" size="sm" onclick={() => store.flushNotes().catch(() => {})}>Retry saving notes</Button></div>{/if}
 					{#if !featurePromptsStore.threadsEnabled}<p class="muted">Enable Threads in <button class="text-link" onclick={settings}>Settings → Engines</button> to generate.</p>{/if}
@@ -149,6 +185,8 @@
 		{/if}
 	</div>
 </div>
+<!-- Reset always asks, including when ordinary delete confirmations are disabled. -->
+<ConfirmDialog open={resetting !== null} title="Reset continuity?" message={`Delete all ${resetting?.rounds.length ?? 0} saved rounds and all their versions from this chat? All their messages will return to the message selector. This cannot be undone.`} confirmLabel="Reset continuity" variant="danger" onConfirm={() => { const reset = resetting; resetting = null; if (reset) void store.resetContinuity(reset.chatId, reset.rounds); }} onCancel={() => resetting = null} />
 <ConfirmDialog open={removing !== null} title="Delete thread?" message={`Delete “${removing ? activeThreadsFeed(removing).title : ''}” and all its versions? Its source messages will become available in Make again.`} confirmLabel="Delete thread" variant="danger" destructive onConfirm={() => { const round = removing; removing = null; if (round) void store.remove(round); }} onCancel={() => removing = null} />
 
 <style>
@@ -169,25 +207,34 @@
 	.post { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.84rem; line-height:1.65; }
 	.comments { min-width:0; }
 	.feed-actions, .actions, .make-actions { display:flex; align-items:center; gap:.3rem; }
-	.feed-actions { justify-content:space-between; flex-wrap:wrap; border-top:1px solid var(--color-border-subtle); padding:.55rem .75rem; background:color-mix(in srgb,var(--color-bg-tertiary) 40%,transparent); }
+	.feed-actions { justify-content:space-between; flex-wrap:wrap; border-bottom:1px solid var(--color-border-subtle); padding:.55rem .75rem; background:color-mix(in srgb,var(--color-bg-tertiary) 40%,transparent); }
 	.icon-btn { display:inline-flex; align-items:center; justify-content:center; width:2rem; height:2rem; border-radius:var(--radius-md); color:var(--color-text-secondary); flex-shrink:0; }
 	.icon-btn:hover { background:var(--color-bg-tertiary); color:var(--color-text-primary); }
 	.icon-btn:disabled { opacity:.35; cursor:default; }
 	.version { font-size:.72rem; color:var(--color-text-muted); font-variant-numeric:tabular-nums; }
 	.muted { font-size:.77rem; line-height:1.6; color:var(--color-text-muted); }
-	.context { display:grid; grid-template-columns:1fr auto; gap:.5rem; margin:1rem 0; padding:.8rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); font-size:.72rem; }
-	.context > span { color:var(--color-text-muted); }
-	.context strong { color:var(--color-accent); font-weight:500; }
+	.context { display:flex; flex-direction:column; gap:.5rem; margin:1rem 0; padding:.8rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); font-size:.72rem; }
+	.continuity-reset { width:100%; padding:.5rem .75rem; margin-bottom:.25rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); color:var(--color-text-secondary); background:var(--color-bg-tertiary); font:inherit; cursor:pointer; }
+	.continuity-reset:hover:not(:disabled), .continuity-reset:active:not(:disabled) { color:var(--color-error); border-color:var(--color-error); background:color-mix(in srgb,var(--color-error) 10%,transparent); }
+	.continuity-reset:active:not(:disabled) { background:color-mix(in srgb,var(--color-error) 20%,transparent); }
+	.continuity-reset:disabled { opacity:.45; cursor:default; }
+	.context-chapter { min-width:0; margin-top:.25rem; padding-top:.65rem; border-top:1px solid var(--color-border-subtle); }
 	.field-label { display:block; margin-bottom:.35rem; color:var(--color-text-secondary); font-size:.75rem; }
 	.field { width:100%; min-width:0; padding:.55rem .65rem; font-size:.8rem; }
+	.chat-prompt { margin-bottom:1rem; font-family:var(--font-ui); }
 	.notes-section { margin:1.25rem 0; }
-	.notes-section summary { display:flex; align-items:center; gap:.375rem; padding:.125rem 0; list-style:none; cursor:pointer; font-size:.75rem; color:var(--color-accent); font-weight:600; text-transform:uppercase; letter-spacing:.025em; }
+	.notes-section summary, .section-toggle { display:flex; align-items:center; gap:.375rem; padding:.125rem 0; list-style:none; cursor:pointer; font-size:.75rem; color:var(--color-accent); font-weight:600; text-transform:uppercase; letter-spacing:.025em; }
 	.notes-section summary::-webkit-details-marker { display:none; }
-	.notes-section summary :global(.section-chevron) { flex-shrink:0; transform:rotate(-90deg); transition:transform 150ms; }
-	.notes-section[open] summary :global(.section-chevron) { transform:rotate(0); }
+	.notes-section summary :global(.section-chevron), .section-toggle :global(.section-chevron) { flex-shrink:0; transform:rotate(-90deg); transition:transform 150ms; }
+	.notes-section[open] summary :global(.section-chevron), .ao3-section.is-open .section-toggle :global(.section-chevron) { transform:rotate(0); }
 	.section-rule { flex:1; min-width:.5rem; border-top:1px solid color-mix(in srgb,var(--color-border-subtle) 70%,transparent); margin-left:.25rem; }
 	.notes-section[open] summary { margin-bottom:.8rem; }
 	.threads-panel :global(.threads-textarea) { width:100%; min-height:6rem; padding:.65rem; font-size:.8rem; line-height:1.6; }
+	.ao3-header { display:flex; align-items:center; gap:.6rem; min-height:2rem; }
+	.ao3-header .section-toggle { flex:1; min-width:0; text-align:left; }
+	.ao3-section.is-open .ao3-header { margin-bottom:.8rem; }
+	.ao3-section .section-toggle, .ao3-fields { transition:filter 160ms ease; }
+	.ao3-section.is-disabled .section-toggle, .ao3-section.is-disabled .ao3-fields { filter:brightness(.6); }
 	.ao3-fields { display:flex; flex-direction:column; gap:.4rem; }
 	.ao3-fields .field-label { margin-top:.5rem; margin-bottom:0; }
 	fieldset { border:0; min-width:0; margin-top:.5rem; }
@@ -211,6 +258,9 @@
 	.error, .status { padding:.75rem; margin-bottom:1rem; border-radius:var(--radius-md); font-size:.78rem; overflow-wrap:anywhere; }
 	.error { color:var(--color-error); border:1px solid color-mix(in srgb,var(--color-error) 40%,transparent); display:flex; flex-direction:column; gap:.6rem; }
 	.status { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.7rem; background:var(--color-bg-tertiary); color:var(--color-text-secondary); }
+	.generation-progress { display:flex; flex-direction:column; gap:.4rem; min-width:0; }
+	.generation-label { display:flex; align-items:center; gap:.5rem; }
+	.generation-tokens { font-family:var(--font-mono); font-size:.68rem; font-variant-numeric:tabular-nums; color:var(--color-text-muted); }
 	.text-link { color:var(--color-accent); text-decoration:underline; }
 	@media(max-width:480px) { .threads-body { padding:.75rem; } .make-card { padding:.85rem; } .feed-post { padding:.85rem .75rem; } .round-info { padding:.55rem .75rem; } .message-row { gap:.45rem; padding:.65rem .5rem; } }
 </style>

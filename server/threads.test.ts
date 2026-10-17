@@ -71,27 +71,62 @@ describe('Threads persistence',()=>{
 		expect(db.select<{n:number}[]>('SELECT COUNT(*) AS n FROM threads_rounds WHERE chat_id = ?',[chatId])[0].n).toBe(0);
 		expect(db.select<{n:number}[]>('SELECT COUNT(*) AS n FROM threads_notes WHERE chat_id = ?',[chatId])[0].n).toBe(0);
 	});
+	test('chat prompt selection persists independently from notes and AO3 and can return to the engine default',()=>{
+		const {chatId}=fixture(),other=fixture();
+		expect(db.getThreadsData(chatId).promptId).toBeNull();
+		db.updateThreadsNotes(chatId,{promptId:'chosen-prompt'});
+		db.updateThreadsNotes(chatId,{notes:'Keep this note',ao3:{...emptyAo3Information(),enabled:true,title:'Story'}});
+		db.closeForTests();expect(db.getThreadsData(chatId)).toMatchObject({promptId:'chosen-prompt',notes:'Keep this note'});
+		expect(db.getThreadsData(other.chatId).promptId).toBeNull();
+		expect(()=>db.updateThreadsNotes(chatId,{promptId:42 as any})).toThrow();
+		db.updateThreadsNotes(chatId,{promptId:null});
+		expect(db.getThreadsData(chatId)).toMatchObject({promptId:null,notes:'Keep this note',ao3:{title:'Story'}});
+	});
+	test('reset clears every round and version while preserving messages, metadata and other chats',()=>{
+		const {chatId,messages}=fixture(),other=fixture();
+		db.setMessageExcludedFromPrompt(messages[1].id,true);
+		const first=save(chatId,messages.slice(0,2));
+		const updated=db.addThreadsVersion(chatId,first.id,1,crypto.randomUUID(),feed);
+		const second=save(chatId,messages.slice(2)),foreign=save(other.chatId,other.messages);
+		db.updateThreadsNotes(chatId,{notes:'Keep me',promptId:'preset',ao3:{...emptyAo3Information(),title:'Story'}});
+		const before=db.getMessagesByChat(chatId),chatBefore=db.getChat(chatId);
+		expect(()=>db.resetThreadsContinuity(chatId,[first,second])).toThrow(/changed/);
+		expect(db.getThreadsData(chatId).rounds).toHaveLength(2);
+		expect(()=>db.resetThreadsContinuity(chatId,[updated,updated])).toThrow(/changed/);
+		db.resetThreadsContinuity(chatId,[updated,second]);
+		expect(db.getThreadsData(chatId)).toMatchObject({rounds:[],notes:'Keep me',promptId:'preset',ao3:{title:'Story'}});
+		expect(db.getThreadsData(other.chatId).rounds).toEqual([foreign]);
+		expect(db.getMessagesByChat(chatId)).toEqual(before);expect(db.getChat(chatId)).toEqual(chatBefore);
+		expect(()=>db.addThreadsVersion(chatId,first.id,updated.revision,crypto.randomUUID(),feed)).toThrow(/removed/);
+		expect(save(chatId,messages).messages).toHaveLength(5);
+	});
+	test('reset refuses a confirmation made before another round was saved',()=>{
+		const {chatId,messages}=fixture(),first=save(chatId,messages.slice(0,2));
+		save(chatId,messages.slice(2));
+		expect(()=>db.resetThreadsContinuity(chatId,[first])).toThrow(/changed/);
+		expect(db.getThreadsData(chatId).rounds).toHaveLength(2);
+	});
 	test('new methods participate in the RPC and live sync',async()=>{
 		const {ALLOWED_DB_METHODS,MUTATION_SCOPES}=await import('./db');
-		for(const name of ['getThreadsData','saveThreadsRound','addThreadsVersion','setThreadsVersion','deleteThreadsRound','updateThreadsNotes']) expect(ALLOWED_DB_METHODS.has(name)).toBe(true);
+		for(const name of ['getThreadsData','saveThreadsRound','addThreadsVersion','setThreadsVersion','deleteThreadsRound','resetThreadsContinuity','updateThreadsNotes']) expect(ALLOWED_DB_METHODS.has(name)).toBe(true);
 		expect(MUTATION_SCOPES.saveThreadsRound).toBe('threads');
 	});
 	test('duplicates inherit complete scenes, versions, notes and AO3 independently of memory',()=>{
 		const {chatId,messages}=fixture();
 		const original=save(chatId,[messages[0],messages[2],messages[4]]);
 		const version=db.addThreadsVersion(chatId,original.id,1,crypto.randomUUID(),{...feed,title:'Active alternate'});
-		db.updateThreadsNotes(chatId,{notes:'A running joke',ao3:{...emptyAo3Information(),enabled:true,title:'The source story'}});
+		db.updateThreadsNotes(chatId,{promptId:'inherited-prompt',notes:'A running joke',ao3:{...emptyAo3Information(),enabled:true,title:'The source story'}});
 		db.updateMessageContent(messages[2].id,'Revised after the thread');
 		const copyId=db.duplicateChat({chatId,title:'Threads copy',includeMemory:false}), copy=db.getThreadsData(copyId);
-		expect(copy.rounds).toHaveLength(1);expect(copy.notes).toBe('A running joke');expect(copy.ao3.title).toBe('The source story');
+		expect(copy.promptId).toBe('inherited-prompt');expect(copy.rounds).toHaveLength(1);expect(copy.notes).toBe('A running joke');expect(copy.ao3.title).toBe('The source story');
 		const inherited=copy.rounds[0], copiedMessages=db.getMessagesByChat(copyId) as {id:string}[];
 		expect(inherited.id).not.toBe(original.id);expect(inherited.revision).toBe(1);expect(inherited.versions).toHaveLength(2);
 		expect(inherited.versions.find(v=>v.id===inherited.activeVersionId)!.feed.title).toBe('Active alternate');
 		expect(inherited.messages.every(m=>copiedMessages.some(c=>c.id===m.id))).toBe(true);
 		expect(inherited.messages.some(m=>messages.some(original=>original.id===m.id))).toBe(false);
 		expect(inherited.messages[1].content).toBe(messages[2].content);
-		db.updateThreadsNotes(copyId,{notes:'Child joke'});db.deleteThreadsRound(copyId,inherited.id,1);
-		expect(db.getThreadsData(chatId).notes).toBe('A running joke');expect(db.getThreadsData(chatId).rounds[0]).toEqual(version);
+		db.updateThreadsNotes(copyId,{notes:'Child joke',promptId:'child-prompt'});db.deleteThreadsRound(copyId,inherited.id,1);
+		expect(db.getThreadsData(chatId).promptId).toBe('inherited-prompt');expect(db.getThreadsData(chatId).notes).toBe('A running joke');expect(db.getThreadsData(chatId).rounds[0]).toEqual(version);
 		const secondId=db.duplicateChat({chatId,title:'Another copy',includeMemory:true});expect(db.getThreadsData(secondId).rounds).toHaveLength(1);
 	});
 	test('forked continuations inherit common scenes and allow divergent scenes without double-counting a prefix',()=>{

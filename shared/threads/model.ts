@@ -61,11 +61,11 @@ export function selectThreadsMessages<T extends { id: string }>(path: T[], ids: 
 export function activeThreadsFeed(round: ThreadsRound) {
 	return round.versions.find(v => v.id === round.activeVersionId)!.feed;
 }
-export async function threadsPrompt(input: {
+export async function assembleThreadsPrompt(input: {
 	messages: ThreadsMessage[]; label: string; previous: ThreadsRound[]; notes: string;
 	ao3: Ao3Information; instructions: string; config: Partial<ThreadsConfig>;
 	countTokens?: (text: string) => number | Promise<number>;
-}): Promise<string> {
+}): Promise<{ prompt: string; previousTitles: string[] }> {
 	const config = normalizeThreadsConfig(input.config);
 	const tail = (n: number) => n ? input.previous.slice(-n) : [];
 	const messageText = (m: ThreadsMessage) => m.content;
@@ -84,9 +84,13 @@ export async function threadsPrompt(input: {
 	const fandomContinuity = config.fandomMode === 'tokens'
 		? await selectNewestLabeledBlocksByTokenBudget(input.previous.map(fandomBlock), config.fandomTokens, counter)
 		: tail(config.fandomThreads).map(fandomBlock);
-	return buildThreadsPrompt({
+	const prompt = buildThreadsPrompt({
 		recentRange: { label: input.label || 'CURRENT SCENE', content: input.messages.map(messageText).join('\n\n') },
 		previousRanges, fandomContinuity,
 		fandomNotes: input.notes, ao3Information: input.ao3, instructions: input.instructions
 	});
+	return { prompt, previousTitles: previousRanges.map(range => range.label) };
+}
+export async function threadsPrompt(input: Parameters<typeof assembleThreadsPrompt>[0]): Promise<string> {
+	return (await assembleThreadsPrompt(input)).prompt;
 }

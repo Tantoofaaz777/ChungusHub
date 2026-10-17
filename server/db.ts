@@ -13,7 +13,7 @@ import { normalizeAo3Information, emptyAo3Information, type Ao3Information } fro
 import { threadsSelectionOverlaps } from '../shared/threads/model';
 import { inheritThreadsRounds } from '../shared/threads/inheritance';
 import { parseGeneratedThreadsFeed } from '../shared/threads/feed';
-import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound } from '../shared/threads/types';
+import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '../shared/threads/types';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -555,6 +555,11 @@ const MIGRATIONS: Migration[] = [
 			notes TEXT NOT NULL DEFAULT '',
 			ao3_json TEXT NOT NULL DEFAULT '{}'
 		);`
+	},
+	{
+		version: 50,
+		name: 'threads_chat_prompt',
+		sql: `ALTER TABLE threads_notes ADD COLUMN prompt_id TEXT;`
 	}
 ];
 
@@ -943,8 +948,8 @@ class ServerDatabase {
 	private copyChatThreads(fromChatId: string, toChatId: string, messageIds: Map<string, string>): void {
 		const data = this.getThreadsData(fromChatId);
 		for (const round of inheritThreadsRounds(data.rounds, toChatId, messageIds, randomUUID)) this.writeThreadsRound(round);
-		const notes = this.select<{ notes: string; ao3_json: string }[]>('SELECT notes, ao3_json FROM threads_notes WHERE chat_id = ?', [fromChatId])[0];
-		if (notes) this.execute('INSERT INTO threads_notes (chat_id, notes, ao3_json) VALUES (?, ?, ?)', [toChatId, notes.notes, notes.ao3_json]);
+		const notes = this.select<{ notes: string; ao3_json: string; prompt_id: string | null }[]>('SELECT notes, ao3_json, prompt_id FROM threads_notes WHERE chat_id = ?', [fromChatId])[0];
+		if (notes) this.execute('INSERT INTO threads_notes (chat_id, notes, ao3_json, prompt_id) VALUES (?, ?, ?, ?)', [toChatId, notes.notes, notes.ao3_json, notes.prompt_id]);
 	}
 
 	/** Carry a chat's memory across to a duplicate. Every message reference is remapped
@@ -3163,18 +3168,19 @@ class ServerDatabase {
 	// ===== THREADS: audience feeds, independent of the story and memory =====
 	getThreadsData(chatId: string): ThreadsData {
 		if (!this.getChat(chatId)) throw new Error('Chat not found');
-		const notes = this.select<{ notes: string; ao3_json: string }[]>('SELECT notes, ao3_json FROM threads_notes WHERE chat_id = ?', [chatId])[0];
+		const notes = this.select<{ notes: string; ao3_json: string; prompt_id: string | null }[]>('SELECT notes, ao3_json, prompt_id FROM threads_notes WHERE chat_id = ?', [chatId])[0];
 		return {
 			rounds: this.select<{ data_json: string }[]>('SELECT data_json FROM threads_rounds WHERE chat_id = ? ORDER BY created_at, rowid', [chatId]).map(r => JSON.parse(r.data_json)),
-			notes: notes?.notes ?? '', ao3: notes ? normalizeAo3Information(JSON.parse(notes.ao3_json)) : emptyAo3Information()
+			promptId: notes?.prompt_id ?? null, notes: notes?.notes ?? '', ao3: notes ? normalizeAo3Information(JSON.parse(notes.ao3_json)) : emptyAo3Information()
 		};
 	}
-	updateThreadsNotes(chatId: string, patch: { notes?: string; ao3?: Ao3Information }): void {
-		if (!patch || (patch.notes !== undefined && (typeof patch.notes !== 'string' || patch.notes.length > 100_000)) ||
+	updateThreadsNotes(chatId: string, patch: ThreadsNotesPatch): void {
+		if (!patch || (patch.promptId !== undefined && patch.promptId !== null && (typeof patch.promptId !== 'string' || !patch.promptId || patch.promptId.length > 200)) || (patch.notes !== undefined && (typeof patch.notes !== 'string' || patch.notes.length > 100_000)) ||
 			(patch.ao3 !== undefined && JSON.stringify(patch.ao3).length > 100_000)) throw new Error('Invalid Threads notes.');
 		this.inTransaction(() => {
 			if (!this.getChat(chatId)) throw new Error('Chat not found');
 			this.execute('INSERT OR IGNORE INTO threads_notes (chat_id) VALUES (?)', [chatId]);
+			if (patch.promptId !== undefined) this.execute('UPDATE threads_notes SET prompt_id = ? WHERE chat_id = ?', [patch.promptId, chatId]);
 			if (patch.notes !== undefined) this.execute('UPDATE threads_notes SET notes = ? WHERE chat_id = ?', [patch.notes, chatId]);
 			if (patch.ao3 !== undefined) this.execute('UPDATE threads_notes SET ao3_json = ? WHERE chat_id = ?', [JSON.stringify(normalizeAo3Information(patch.ao3)), chatId]);
 		});
@@ -3238,6 +3244,17 @@ class ServerDatabase {
 			if (!round || round.revision !== expectedRevision || !round.versions.some(v => v.id === versionId)) throw new Error('This thread changed. Reload Threads.');
 			round.activeVersionId = versionId; round.revision++;
 			return this.writeThreadsRound(round);
+		});
+	}
+	resetThreadsContinuity(chatId: string, expected: { id: string; revision: number }[]): void {
+		this.inTransaction(() => {
+			const rounds = this.getThreadsData(chatId).rounds;
+			if (!Array.isArray(expected) || rounds.length !== expected.length ||
+				new Set(expected.map(r => r?.id)).size !== expected.length ||
+				rounds.some(round => !expected.some(r => r?.id === round.id && r.revision === round.revision))) {
+				throw new Error('Threads continuity changed. Reload Threads before resetting it.');
+			}
+			this.execute('DELETE FROM threads_rounds WHERE chat_id = ?', [chatId]);
 		});
 	}
 	deleteThreadsRound(chatId: string, id: string, expectedRevision: number): void {
@@ -3346,6 +3363,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	addThreadsVersion: 'threads',
 	setThreadsVersion: 'threads',
 	deleteThreadsRound: 'threads',
+	resetThreadsContinuity: 'threads',
 	updateThreadsNotes: 'threads'
 };
 

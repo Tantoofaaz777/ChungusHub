@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { activeThreadsFeed, selectThreadsMessages, threadsPrompt, DEFAULT_THREADS_CONFIG, normalizeThreadsConfig } from './model';
+import { activeThreadsFeed, selectThreadsMessages, threadsPrompt, assembleThreadsPrompt, DEFAULT_THREADS_CONFIG, normalizeThreadsConfig } from './model';
 import { emptyAo3Information } from './ao3';
 import { renderBlocks } from './prompt';
 import type { ThreadsRound } from './types';
@@ -41,6 +41,15 @@ describe('Threads selections and prompt boundaries', () => {
 		r.activeVersionId = 'alternate'; expect(activeThreadsFeed(r).post.body).toBe('A new theory');
 		const prompt = await threadsPrompt({messages:round('2').messages,label:'Next',previous:[r],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:DEFAULT_THREADS_CONFIG});
 		expect(prompt).toContain('A new theory'); expect(prompt).not.toContain('Reaction 1');
+	});
+	test('previous episode titles follow the same chronological count and token limits as the prompt', async () => {
+		const previous=[round('1'),round('2'),round('3')];previous.forEach((r,i)=>r.label=`Chapter ${i+1}`);
+		const input={messages:round('current').messages,label:'Next',previous,notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:3,fandomThreads:0},countTokens:(text:string)=>text.length};
+		const all=await assembleThreadsPrompt(input);
+		expect(all.previousTitles).toEqual(['Chapter 1','Chapter 2','Chapter 3']);expect(all.prompt).toBe(await threadsPrompt(input));
+		expect((await assembleThreadsPrompt({...input,config:{previousRounds:2}})).previousTitles).toEqual(['Chapter 2','Chapter 3']);
+		expect((await assembleThreadsPrompt({...input,config:{previousMode:'tokens',previousTokens:'Story 3'.length}})).previousTitles).toEqual(['Chapter 3']);
+		expect((await assembleThreadsPrompt({...input,config:{previousRounds:0}})).previousTitles).toEqual([]);
 	});
 	test('normalizes imported limits', () => {
 		expect(normalizeThreadsConfig({previousRounds:-5,fandomThreads:Infinity})).toMatchObject({previousRounds:0,fandomThreads:3});

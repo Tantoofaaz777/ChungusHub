@@ -9,8 +9,7 @@ import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta }
 import type { CharacterVersion, LibraryEntry } from '$lib/types/library';
 import type { Lorebook } from '$lib/lorebook/types';
 import type { SteeringNote } from '$lib/types/steering';
-import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound } from '$shared/threads/types';
-import type { Ao3Information } from '$shared/threads/ao3';
+import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '$shared/threads/types';
 import type { MemoryScene, SaveMemoryScene } from '../../../shared/memory-scenes';
 import type { BatchResult, Episode, MemoryState, PromotionResult } from '$lib/memory/types';
 import type { UserStats } from '$lib/types/stats';
@@ -193,10 +192,11 @@ class DatabaseService {
 
 	// ===== SESSION MEMORY =====
 	getThreadsData(chatId: string): Promise<ThreadsData> { return this.call('getThreadsData', chatId); }
-	updateThreadsNotes(chatId: string, patch: { notes?: string; ao3?: Ao3Information }): Promise<void> { return this.call('updateThreadsNotes', chatId, patch); }
+	updateThreadsNotes(chatId: string, patch: ThreadsNotesPatch): Promise<void> { return this.call('updateThreadsNotes', chatId, patch); }
 	saveThreadsRound(input: SaveThreadsRound): Promise<ThreadsRound> { return this.call('saveThreadsRound', input); }
 	addThreadsVersion(chatId: string, id: string, revision: number, versionId: string, feed: ThreadsFeed): Promise<ThreadsRound> { return this.call('addThreadsVersion', chatId, id, revision, versionId, feed); }
 	setThreadsVersion(chatId: string, id: string, revision: number, versionId: string): Promise<ThreadsRound> { return this.call('setThreadsVersion', chatId, id, revision, versionId); }
+	resetThreadsContinuity(chatId: string, expected: { id: string; revision: number }[]): Promise<void> { return this.call('resetThreadsContinuity', chatId, expected); }
 	deleteThreadsRound(chatId: string, id: string, revision: number): Promise<void> { return this.call('deleteThreadsRound', chatId, id, revision); }
 	getMemoryScenes(chatId: string): Promise<MemoryScene[]> { return this.call('getMemoryScenes', chatId); }
 	saveMemoryScene(input: SaveMemoryScene): Promise<MemoryScene> { return this.call('saveMemoryScene', input); }

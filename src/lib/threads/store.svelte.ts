@@ -10,21 +10,23 @@ import { toastStore } from '$lib/stores/toast.svelte';
 import { emptyAo3Information, type Ao3Information } from '$shared/threads/ao3';
 import { selectThreadsMessages, threadsPrompt, threadsOnPath, threadsSelectionOverlaps } from '$shared/threads/model';
 import { parseGeneratedThreadsFeed } from '$shared/threads/feed';
-import type { ThreadsFeed, ThreadsRound, ThreadsMessage, SaveThreadsRound } from '$shared/threads/types';
+import type { ThreadsFeed, ThreadsRound, ThreadsMessage, SaveThreadsRound, ThreadsNotesPatch } from '$shared/threads/types';
 import { threadsConfigStore } from './config.svelte';
 
-type NotesPatch = { notes?: string; ao3?: Ao3Information };
+type NotesPatch = ThreadsNotesPatch;
 type PendingResult = { input: SaveThreadsRound } | { round: ThreadsRound; versionId: string; feed: ThreadsFeed };
 export class ThreadsStore {
 	chatId = $state<string | null>(null);
 	loaded = $state(false);
 	rounds = $state<ThreadsRound[]>([]);
 	notes = $state('');
+	promptId = $state<string | null>(null);
 	ao3 = $state<Ao3Information>(emptyAo3Information());
 	selected = $state<string[]>([]);
 	label = $state('');
 	tab = $state<'feed' | 'make'>('feed');
 	phase = $state<'idle' | 'generating' | 'saving'>('idle');
+	tokenProgress = $state<{ reasoning: number | null; response: number | null }>({ reasoning: null, response: null });
 	error = $state('');
 	notesError = $state('');
 	pending = $state.raw<PendingResult | null>(null);
@@ -36,6 +38,7 @@ export class ThreadsStore {
 	private notesTimer: ReturnType<typeof setTimeout> | null = null;
 	private notesQueue: Promise<void> = Promise.resolve();
 	private notesWriting = new Map<string, number>();
+	get instructions() { return featurePromptsStore.threadsPrompts.prompts.find(p => p.id === this.promptId)?.content ?? featurePromptsStore.promptFor('threads'); }
 	get busy() { return this.phase !== 'idle'; }
 	get path() { return chatStore.currentChatState?.chat.id === this.chatId ? chatStore.currentChatState.activePath : []; }
 	get usedIds() { return new Set(this.previousRounds.flatMap(r => r.messages.map(m => m.id))); }
@@ -48,7 +51,7 @@ export class ThreadsStore {
 		if (chatId !== this.chatId) {
 			void this.flushNotes().catch(() => {});
 			this.cancel(); this.chatId = chatId; this.rounds = []; this.selected = []; this.anchor = null;
-			this.notes = ''; this.ao3 = emptyAo3Information(); this.label = ''; this.pending = null; this.error = ''; this.notesError = '';
+			this.notes = ''; this.promptId = null; this.ao3 = emptyAo3Information(); this.label = ''; this.pending = null; this.error = ''; this.notesError = '';
 		}
 		const ticket = ++this.ticket;
 		this.loaded = false;
@@ -59,6 +62,7 @@ export class ThreadsStore {
 			this.rounds = data.rounds;
 			const local = this.localNotes.get(chatId) ?? {};
 			this.notes = local.notes ?? data.notes; this.ao3 = local.ao3 ?? data.ao3;
+			this.promptId = local.promptId !== undefined ? local.promptId : data.promptId ?? null;
 			if (!this.notesWriting.get(chatId)) this.notesPatch = { ...local };
 			this.loaded = true;
 		} catch (error) { if (this.ticket === ticket) this.error = error instanceof Error ? error.message : String(error); }
@@ -77,6 +81,7 @@ export class ThreadsStore {
 	updateNotes(patch: NotesPatch) {
 		if (!this.chatId) return;
 		if (patch.notes !== undefined) this.notes = patch.notes;
+		if (patch.promptId !== undefined) this.promptId = patch.promptId;
 		if (patch.ao3) this.ao3 = patch.ao3;
 		this.notesPatch = { ...this.notesPatch, ...patch };
 		this.localNotes.set(this.chatId, { ...this.localNotes.get(this.chatId), ...structuredClone($state.snapshot(patch)) });
@@ -96,6 +101,7 @@ export class ThreadsStore {
 			await write;
 			const local = { ...this.localNotes.get(chatId) };
 			if (patch.notes !== undefined && local.notes === patch.notes) delete local.notes;
+			if (patch.promptId !== undefined && local.promptId === patch.promptId) delete local.promptId;
 			if (patch.ao3 !== undefined && JSON.stringify(local.ao3) === JSON.stringify(patch.ao3)) delete local.ao3;
 			if (Object.keys(local).length) this.localNotes.set(chatId, local); else this.localNotes.delete(chatId);
 			if (this.chatId === chatId) this.notesError = '';
@@ -111,47 +117,77 @@ export class ThreadsStore {
 		}
 	}
 	cancel() { this.controller?.abort(); this.controller = null; if (this.phase === 'generating') this.phase = 'idle'; }
+	private preparePrompt(round?: ThreadsRound, validate = true) {
+		const chat = chatStore.activeChat;
+		const entry = characterLibraryStore.entries.find(e => e.id === chat?.characterId);
+		const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, chat?.characterVersionId ?? null)) : null;
+		const persona = toPromptCharacter(personaEntryFor(chatPersonaClaim(chat)));
+		const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
+		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : selectThreadsMessages(this.path, this.selected, this.usedIds).map(m => ({
+			id: m.id, index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,
+			speaker: m.role === 'assistant' ? charName : m.role === 'user' ? userName : 'System'
+		}));
+		const branchLeafId = this.path.at(-1)?.id;
+		if (validate && !round && threadsSelectionOverlaps(this.rounds, messages, this.path, chatStore.currentChatState?.allMessages ?? this.path)) throw new Error('These messages overlap a saved thread. Include this fork’s own messages or select another scene.');
+		const cutoff = round ? this.rounds.findIndex(r => r.id === round.id) : this.rounds.length;
+		if (round && (cutoff < 0 || !this.previousRounds.some(r => r.id === round.id))) throw new Error('This thread belongs to another branch. Return to its branch to regenerate it.');
+		const earlierIds = new Set(this.rounds.slice(0, cutoff).map(r => r.id));
+		const previous = this.previousRounds.filter(r => earlierIds.has(r.id));
+		const expand = (m: ThreadsMessage) => ({ ...m, content: expandSelfRefs(m.content, charName, userName, persona?.pronouns ?? {}) });
+		const label = round?.label ?? this.label;
+		const input = $state.snapshot({ messages: messages.map(expand), label,
+			previous: previous.map(r => ({ ...r, messages: r.messages.map(expand) })), notes: this.notes, ao3: this.ao3,
+			instructions: this.instructions, config: threadsConfigStore.value });
+		return { messages, branchLeafId, label, input };
+	}
+	get promptPreview(): Parameters<typeof threadsPrompt>[0] | null {
+		if (!this.loaded || !this.selectedCount) return null;
+		try { return this.preparePrompt(undefined, false).input; } catch { return null; }
+	}
 	async generate(round?: ThreadsRound) {
 		if (!this.chatId || !this.loaded || this.busy || this.pending) return;
 		const chatId = this.chatId, controller = this.controller = new AbortController();
 		this.phase = 'generating'; this.error = '';
+		this.tokenProgress = { reasoning: null, response: null };
+		let progressTimer: ReturnType<typeof setTimeout> | null = null;
 		try {
 			if (!featurePromptsStore.threadsEnabled) throw new Error('Enable Threads in Settings → Engines to generate a thread.');
 			await this.flushNotes();
 			if (controller.signal.aborted) return;
-			const chat = chatStore.activeChat;
-			const entry = characterLibraryStore.entries.find(e => e.id === chat?.characterId);
-			const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, chat?.characterVersionId ?? null)) : null;
-			const persona = toPromptCharacter(personaEntryFor(chatPersonaClaim(chat)));
-			const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
-			const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : selectThreadsMessages(this.path, this.selected, this.usedIds).map(m => ({
-				id: m.id, index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,
-				speaker: m.role === 'assistant' ? charName : m.role === 'user' ? userName : 'System'
-			}));
-			const branchLeafId = this.path.at(-1)?.id;
-			if (!round && threadsSelectionOverlaps(this.rounds, messages, this.path, chatStore.currentChatState?.allMessages ?? this.path)) throw new Error('These messages overlap a saved thread. Include this fork’s own messages or select another scene.');
-			const cutoff = round ? this.rounds.findIndex(r => r.id === round.id) : this.rounds.length;
-			if (round && (cutoff < 0 || !this.previousRounds.some(r => r.id === round.id))) throw new Error('This thread belongs to another branch. Return to its branch to regenerate it.');
-			const earlierIds = new Set(this.rounds.slice(0, cutoff).map(r => r.id));
-			const previous = this.previousRounds.filter(r => earlierIds.has(r.id));
+			const { messages, branchLeafId, label, input } = this.preparePrompt(round);
 			const target = { engine: 'threads' }, model = llmService.modelFor(target);
 			if (!model) throw new Error('Choose a model for Threads on Connections before generating.');
-			const expand = (m: ThreadsMessage) => ({ ...m, content: expandSelfRefs(m.content, charName, userName, persona?.pronouns ?? {}) });
-			const label = round?.label ?? this.label;
-			const input = $state.snapshot({ messages: messages.map(expand), label,
-				previous: previous.map(r => ({ ...r, messages: r.messages.map(expand) })), notes: this.notes, ao3: this.ao3,
-				instructions: featurePromptsStore.promptFor('threads'), config: threadsConfigStore.value });
 			const prompt = await threadsPrompt({ ...input, countTokens: text => countTokens(text, model) });
 			if (controller.signal.aborted || this.controller !== controller || this.chatId !== chatId) return;
 			if (countTokens(prompt, model) > llmService.getPromptTokenBudget(target)) throw new Error('This scene and its context exceed the connection’s context window. Select fewer messages or lower the Threads continuity limits in Engines.');
-			const result = await llmService.complete(target, { source: 'threads', signal: controller.signal, messages: [{ role: 'user', content: prompt }] });
+			let response = '', reasoning = '';
+			const current = () => !controller.signal.aborted && this.controller === controller && this.chatId === chatId;
+			const updateProgress = (finished = false) => {
+				if (!current()) return;
+				this.tokenProgress = {
+					reasoning: reasoning || finished ? countTokens(reasoning, model) : null,
+					response: response || finished ? countTokens(response, model) : null
+				};
+			};
+			// Count accumulated text at most ten times a second, rather than tokenizing each delta.
+			const receive = (text: string, thinking: boolean) => {
+				if (!current()) return;
+				if (thinking) reasoning += text; else response += text;
+				if (progressTimer === null) progressTimer = setTimeout(() => { progressTimer = null; updateProgress(); }, 100);
+			};
+			const result = await llmService.complete(target, {
+				source: 'threads', signal: controller.signal, messages: [{ role: 'user', content: prompt }],
+				onToken: text => receive(text, false), onThinkingToken: text => receive(text, true)
+			});
 			if (controller.signal.aborted || this.controller !== controller || this.chatId !== chatId) return;
+			if (progressTimer !== null) { clearTimeout(progressTimer); progressTimer = null; }
+			response = result.content; reasoning = result.thinking ?? ''; updateProgress(true);
 			const feed = parseGeneratedThreadsFeed(result.content);
 			this.pending = round ? { round: structuredClone($state.snapshot(round)), versionId: crypto.randomUUID(), feed }
 				: { input: { id: crypto.randomUUID(), chatId, label, messages, feed, branchLeafId } };
 			await this.saveResult();
 		} catch (error) { if (!controller.signal.aborted && this.chatId === chatId) this.error = error instanceof Error ? error.message : String(error); }
-		finally { if (this.controller === controller) { this.controller = null; this.phase = 'idle'; } }
+		finally { if (progressTimer !== null) clearTimeout(progressTimer); if (this.controller === controller) { this.controller = null; this.phase = 'idle'; } }
 	}
 	async saveResult() {
 		const pending = this.pending;
@@ -174,6 +210,16 @@ export class ThreadsStore {
 			if (this.chatId === saved.chatId) this.rounds = this.rounds.map(r => r.id === saved.id ? saved : r);
 		} catch (error) { if (this.chatId === round.chatId) this.error = error instanceof Error ? error.message : String(error); }
 		finally { this.phase = 'idle'; }
+	}
+	async resetContinuity(chatId: string, expected: { id: string; revision: number }[]) {
+		if (this.chatId !== chatId || !this.loaded || this.busy || this.pending) return;
+		this.phase = 'saving'; this.error = '';
+		try {
+			await db.resetThreadsContinuity(chatId, expected);
+			if (this.chatId === chatId) { this.rounds = []; this.tab = 'make'; }
+		} catch (error) {
+			if (this.chatId === chatId) this.error = error instanceof Error ? error.message : String(error);
+		} finally { this.phase = 'idle'; }
 	}
 	async remove(round: ThreadsRound) {
 		if (this.busy) return;

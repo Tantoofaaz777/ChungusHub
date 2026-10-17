@@ -19,6 +19,7 @@
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import PillRow from '$lib/components/ui/PillRow.svelte';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
+	import ThreadsPromptEditor from '$lib/components/threads/ThreadsPromptEditor.svelte';
 	import { STEERING_ROLES, type SteeringRole } from '$lib/types/steering';
 	import { engineById, type EngineId } from '$lib/engines/registry';
 	import {
@@ -64,7 +65,7 @@
 	// mount on purpose: the host keys this component on the engine id.
 	const initialDrafts: Record<string, string> = {};
 	// svelte-ignore state_referenced_locally
-	for (const field of engine.prompts) initialDrafts[field.key] = featurePromptsStore.promptFor(field.key);
+	for (const field of engine.prompts.filter(field => field.key !== 'threads')) initialDrafts[field.key] = featurePromptsStore.promptFor(field.key);
 	let drafts = $state<Record<string, string>>(initialDrafts);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -72,6 +73,7 @@
 	function commit(): void {
 		saveTimer = null;
 		for (const field of engine.prompts) {
+			if (field.key === 'threads') continue;
 			const value = drafts[field.key];
 			if (value !== undefined && value !== featurePromptsStore.promptFor(field.key)) {
 				featurePromptsStore.setPrompt(field.key, value);
@@ -257,6 +259,9 @@
 				{@const keys = flowKeys(field.key)}
 				{@const missing = (field.requires ?? []).filter((m) => !(drafts[field.key] ?? '').includes(m))}
 				<div class="prompt-field">
+					{#if field.key === 'threads'}
+						<ThreadsPromptEditor {field} />
+					{:else}
 					<div class="prompt-head">
 						<label class="prompt-label" for={`engine-prompt-${field.key}`}>{field.label}</label>
 						<InfoTip text={field.hint} />
@@ -320,6 +325,7 @@
 								</button>
 							{/each}
 						</div>
+					{/if}
 					{/if}
 				</div>
 			{/each}
