@@ -39,6 +39,11 @@ const CONTROL_TYPES = new Set<PromptControlType>([
 ]);
 const ROLES = new Set<PromptRole>(['system', 'user', 'assistant']);
 
+/** Copy the supported item fields only, dropping legacy annotations on read/save/export. */
+export function promptItemBody(item: Omit<PromptItem, 'id'>): Omit<PromptItem, 'id'> {
+	return { name: item.name, role: item.role, content: item.content, enabled: item.enabled };
+}
+
 function objectAt(value: unknown, label: string): Record<string, unknown> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) {
 		throw new Error(`${label} must be an object.`);
@@ -78,8 +83,7 @@ export function parsePresetJson(text: string): ImportedPreset {
 			name: typeof item.name === 'string' ? item.name : '',
 			role: (item.role as PromptRole | undefined) ?? 'system',
 			content: typeof item.content === 'string' ? item.content : '',
-			enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
-			note: typeof item.note === 'string' && item.note ? item.note : undefined
+			enabled: typeof item.enabled === 'boolean' ? item.enabled : true
 		};
 	});
 
@@ -216,7 +220,7 @@ export function presetDocument(preset: PromptPreset): Record<string, unknown> {
 	return {
 		name: preset.name,
 		meta: Object.values(meta).some((value) => value !== undefined) ? meta : undefined,
-		items: preset.items.map(({ id: _id, ...item }) => item),
+		items: preset.items.map(promptItemBody),
 		controls: (preset.controls ?? []).map((control) => ({
 			...control,
 			options: control.options?.map((option) => ({ ...option })),

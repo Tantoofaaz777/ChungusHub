@@ -12,6 +12,18 @@ const bare = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('preset JSON interchange', () => {
+	test('legacy item notes are accepted on import and omitted from exports', () => {
+		const legacyItem = { id: 'old', name: 'System', role: 'system' as const, content: 'Write a story.', enabled: true, note: 'Old annotation' };
+		const legacy = bare({ items: [legacyItem] });
+		const imported = parsePresetJson(JSON.stringify(legacy));
+		expect(imported.items[0].content).toBe(legacyItem.content);
+		expect('note' in imported.items[0]).toBe(false);
+		expect(JSON.parse(serializePresetJson(legacy)).items).toEqual([
+			{ name: 'System', role: 'system', content: 'Write a story.', enabled: true }
+		]);
+		expect(legacyItem.note).toBe('Old annotation');
+	});
+
 	test('round-trips controls and preset-level behavior without runtime item ids', () => {
 		const json = serializePresetJson({
 			id: 'source',

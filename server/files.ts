@@ -336,7 +336,12 @@ function optionalString(value: unknown): string | undefined {
 function presetFileShape(data: Record<string, unknown>): Omit<PresetFileData, 'name'> & { name: unknown } {
 	return {
 		name: data.name,
-		items: optionalArray(data.items) ?? [],
+		items: (optionalArray(data.items) ?? []).map(item => {
+			if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+			// Old presets remain readable; normal saves retire their unused annotations.
+			const { note: _note, ...body } = item as Record<string, unknown>;
+			return body;
+		}),
 		controls: optionalArray(data.controls) ?? [],
 		sections: optionalArray(data.sections),
 		bundles: optionalArray(data.bundles),

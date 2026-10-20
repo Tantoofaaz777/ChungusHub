@@ -334,13 +334,10 @@
 		expandedItemIds = toggledSet(expandedItemIds, itemId);
 	}
 
-	async function handleItemFieldChange(itemId: string, field: keyof Pick<PromptItem, 'name' | 'role' | 'content' | 'note'>, value: string): Promise<void> {
+	async function handleItemFieldChange(itemId: string, field: keyof Pick<PromptItem, 'name' | 'role' | 'content'>, value: string): Promise<void> {
 		if (!currentPreset) return;
 
-		// An emptied note is dropped rather than stored blank, so it never rides the wire
-		// as a field the item doesn't actually have.
-		const next = field === 'note' && !value ? undefined : value;
-		currentPreset.items = currentPreset.items.map((item) => (item.id === itemId ? { ...item, [field]: next } : item));
+		currentPreset.items = currentPreset.items.map((item) => (item.id === itemId ? { ...item, [field]: value } : item));
 		await persistDraft();
 	}
 
@@ -698,12 +695,6 @@
 								</span>
 							</div>
 
-							{#if item.note}
-								<span class="pb-row-note" title={item.note}>
-									<Icon name="annotation" class="w-4 h-4" strokeWidth={1.5} />
-								</span>
-							{/if}
-
 							{#if unboundMacros.length > 0}
 								<span
 									class="pb-row-warn"
@@ -780,27 +771,6 @@
 									{/if}
 								</div>
 
-								<!-- The one field on this page that never reaches the model. Everything
-								     else an author types here is prompt; this is the place to say
-								     "don't touch unless you know what this does" without saying it
-								     to the model too. -->
-								<div class="pb-field">
-									<label for="item-note-{item.id}" class="pb-label">
-										Author's note
-										<span class="pb-label-aside">never sent</span>
-									</label>
-									<ExpandableTextarea
-										id="item-note-{item.id}"
-										value={item.note ?? ''}
-										onValueChange={(value) => handleItemFieldChange(item.id, 'note', value)}
-										dialogTitle={`Author's note: ${item.name || 'Untitled item'}`}
-										expandLabel={`Expand author's note for ${item.name || 'Untitled item'}`}
-										placeholder="What this item is for, what breaks if it's edited, who should leave it alone…"
-										maxHeight={160}
-										class="input-base w-full px-3 py-2 text-text-secondary font-ui text-sm resize-none"
-										expandedClass="font-ui text-sm text-text-secondary placeholder:text-text-muted"
-									/>
-								</div>
 							</div>
 						{/if}
 					</div>
@@ -1605,25 +1575,9 @@
 		cursor: help;
 	}
 
-	/* An item carrying an author's note says so, so the one thing on this page the model
-	   never sees is still visible without opening every row. */
-	.pb-row-note {
-		flex-shrink: 0;
-		display: inline-flex;
-		color: var(--color-text-muted);
-		cursor: help;
-	}
-
 	/* A declared section no control names never renders. Flag it here, not in the app. */
 	.pb-tokens--warn {
 		color: var(--color-warning);
-	}
-
-	.pb-label-aside {
-		margin-left: 0.4rem;
-		font-weight: 400;
-		font-size: 0.68rem;
-		color: var(--color-text-muted);
 	}
 
 	/* Groups the controls use that no section speaks for yet. */

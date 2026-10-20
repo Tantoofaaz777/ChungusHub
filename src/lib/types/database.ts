@@ -70,10 +70,6 @@ export interface PromptItem {
 	role: PromptRole;
 	content: string;
 	enabled: boolean;
-	/** The author's own annotation about this item. Lives in the Prompt Builder and NOWHERE
-	 *  else: assembly never reads it, so it is the one place an author can write "only touch
-	 *  this if you know what it does" without the model reading the warning too. */
-	note?: string;
 }
 
 /**

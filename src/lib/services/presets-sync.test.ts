@@ -51,6 +51,32 @@ beforeEach(() => {
 });
 
 describe('preset refresh preserves editor identity', () => {
+	test('legacy notes do not create drafts, refresh the editor or survive normal writes', async () => {
+		snapshot.presets[0].items = snapshot.presets[0].items.map(item => ({ ...item, note: 'Old annotation' }));
+		snapshot.drafts = [structuredClone(snapshot.presets[0])];
+		Object.assign(snapshot.drafts[0].items[0], { note: 'Different annotation' });
+		await service.initialize(); const before = service.getEffective('p')!;
+		expect(before.items.every(item => !('note' in item))).toBe(true);
+		expect(service.hasDraft('p')).toBe(false); expect(writes).toEqual([]);
+		Object.assign(snapshot.presets[0].items[0], { note: 'Remote annotation change' });
+		await service.syncReload();
+		expect(service.getEffective('p')).toBe(before); expect(service.getContentVersion()).toBe(0);
+		expect(writes).toEqual([]);
+		const legacy = { ...before, items: before.items.map(item => ({ ...item, note: 'Stale annotation' })) };
+		expect(clonePreset(legacy).items.every(item => !('note' in item))).toBe(true);
+		legacy.items[0].content = 'Revised instructions'; await service.saveDraft(legacy);
+		expect(writes[0].body.items.every((item: object) => !('note' in item))).toBe(true);
+		expect(writes[0].body.items.map((item: PromptItem) => item.id)).toEqual(before.items.map(item => item.id));
+	});
+	test('legacy unnamed items keep their IDs across reorder and annotation changes', async () => {
+		snapshot.presets[0].items = snapshot.presets[0].items.map(item => ({ ...item, name: '', note: 'Old annotation' }));
+		await service.initialize(); const [system, history] = service.getEffective('p')!.items;
+		snapshot.presets[0].items = snapshot.presets[0].items.toReversed().map(item => ({ ...item, note: 'Changed annotation' }));
+		await service.syncReload();
+		expect(service.getEffective('p')!.items.map(item => item.id)).toEqual([history.id, system.id]);
+		expect(writes).toEqual([]);
+	});
+
 	test('unchanged legacy presets retain objects, item IDs and editor version without writing files', async () => {
 		await service.initialize(); const before = service.getEffective('p')!;
 		const ids = before.items.map(item => item.id);

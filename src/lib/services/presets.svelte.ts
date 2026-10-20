@@ -12,7 +12,7 @@ import { apiGet, apiSend, getClientId } from '$lib/services/transport';
 import { db } from '$lib/services/database';
 import { imageService } from '$lib/services/imageService';
 import { registerSettingsReload } from '$lib/services/syncedSetting';
-import { parsePresetJson, serializePresetJson, type ImportedPreset } from '$lib/services/preset-io';
+import { parsePresetJson, promptItemBody, serializePresetJson, type ImportedPreset } from '$lib/services/preset-io';
 import type { RegexRule } from '$lib/utils/regex-rules';
 import { SvelteMap } from 'svelte/reactivity';
 
@@ -75,7 +75,7 @@ export function clonePreset(preset: PromptPreset): PromptPreset {
 	return {
 		id: preset.id,
 		...clonePresetBody(preset),
-		items: preset.items.map((item) => ({ ...item }))
+		items: preset.items.map((item) => ({ id: item.id, ...promptItemBody(item) }))
 	};
 }
 
@@ -208,7 +208,7 @@ export class PresetService {
 	}
 
 	private hydrate(stored: StoredPreset, previous?: PromptPreset): PromptPreset {
-		const items = stored.items ?? [];
+		const items = (stored.items ?? []).map(item => ({ id: item.id, ...promptItemBody(item) }));
 		const validId = (item: { id?: string }) => typeof item.id === 'string' && item.id.trim() ? item.id : null;
 		const preset: PromptPreset = {
 			id: stored.id, ...clonePresetBody(stored),
@@ -218,7 +218,7 @@ export class PresetService {
 		if (previous && this.sameContent(preset, previous) && preset.items.every((item, index) => !item.id || item.id === previous.items[index]?.id)) return previous;
 		const reserved = new Set(items.map(validId).filter((id): id is string => id !== null));
 		const used = new Set<string>();
-		const fingerprint = (item: Omit<PromptItem, 'id'>) => JSON.stringify([item.name, item.role, item.content, item.enabled, item.note ?? null]);
+		const fingerprint = (item: Omit<PromptItem, 'id'>) => JSON.stringify(promptItemBody(item));
 		preset.items = items.map((item) => {
 			let id = validId(item);
 			if (!id || used.has(id)) {
@@ -244,12 +244,12 @@ export class PresetService {
 	private strip(preset: PromptPreset): Omit<StoredPreset, 'id'> {
 		return {
 			...clonePresetBody(preset),
-			items: preset.items.map(({ id: _id, ...item }) => item)
+			items: preset.items.map(promptItemBody)
 		};
 	}
 
 	private toStored(preset: PromptPreset): Omit<StoredPreset, 'id'> {
-		return { ...this.strip(preset), items: preset.items.map(item => ({ ...item })) };
+		return { ...this.strip(preset), items: preset.items.map(item => ({ id: item.id, ...promptItemBody(item) })) };
 	}
 
 	private clone(preset: PromptPreset): PromptPreset {
@@ -372,7 +372,7 @@ export class PresetService {
 			...clonePreset(source),
 			id,
 			name: newName.trim(),
-			items: source.items.map((item) => ({ ...item, id: crypto.randomUUID() }))
+			items: source.items.map((item) => ({ ...promptItemBody(item), id: crypto.randomUUID() }))
 		};
 		await apiSend(`/api/presets/${encodeURIComponent(id)}`, 'PUT', { ...this.toStored(newPreset), clientId: getClientId() });
 		this.presets.set(id, newPreset);

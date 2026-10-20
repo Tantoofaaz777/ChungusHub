@@ -27,7 +27,7 @@ const preset: PromptPreset = {
 	id: 'source',
 	name: 'Kaçış',
 	meta: { author: 'someone', version: '2.1', cover: 'images/presets/local.png' },
-	items: [{ id: 'runtime-only', name: 'System', role: 'system', content: '{{tone}}', enabled: true, note: 'load-bearing' }],
+	items: [{ id: 'runtime-only', name: 'System', role: 'system', content: '{{tone}}', enabled: true }],
 	controls: [
 		{
 			id: 'tone-control',
@@ -58,6 +58,16 @@ const preset: PromptPreset = {
 };
 
 describe('preset cards', () => {
+	test('legacy PNG cards load without item notes and new cards omit them', () => {
+		const legacy = { ...preset, items: preset.items.map(item => ({ ...item, note: 'Old annotation' })) };
+		const oldCard = minimalPng([buildTextChunk(PRESET_CHUNK_KEYWORD, encodeBase64Utf8(JSON.stringify(legacy)))]);
+		const imported = readPresetFromPng(oldCard)!;
+		expect(imported.items[0].content).toBe('{{tone}}');
+		expect('note' in imported.items[0]).toBe(false);
+		const newCard = embedPresetInPng(minimalPng(), legacy);
+		expect(newCard).toEqual(embedPresetInPng(minimalPng(), preset));
+	});
+
 	test('a preset survives the trip through a picture', () => {
 		const card = embedPresetInPng(minimalPng(), preset);
 		const back = readPresetFromPng(card);
@@ -65,7 +75,7 @@ describe('preset cards', () => {
 		expect(back?.name).toBe('Kaçış');
 		expect(back?.meta?.author).toBe('someone');
 		expect(back?.meta?.version).toBe('2.1');
-		expect(back?.items[0].note).toBe('load-bearing');
+		expect(back?.items[0].content).toBe('{{tone}}');
 		expect(back?.controls[0].advice).toBe('recommended');
 		expect(back?.controls[0].options?.[0].description).toBe('Softer, slower.');
 		expect(back?.sections).toEqual([
