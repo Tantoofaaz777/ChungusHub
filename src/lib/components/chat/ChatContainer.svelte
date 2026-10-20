@@ -148,7 +148,7 @@
 
 <div class="chat-shell">
 	{#if opening}
-		<div class="chat-empty-wrap" role="status">
+		<div class="chat-empty-wrap chat-loading-overlay" role="status">
 			<div class="chat-loading">
 				<p>Loading chat…</p>
 				<GenerationDots label="Loading chat" />
@@ -156,8 +156,8 @@
 		</div>
 	{/if}
 	{#if chatState}
-		<!-- Keep the current composer mounted so a failed navigation retains its draft and pictures. -->
-		<div class="chat-content" hidden={opening} onwheel={handleMarginWheel}>
+		<!-- Preserve layout under loading so the arriving transcript can measure and scroll to its end. -->
+		<div class="chat-content" class:is-opening={opening} inert={opening} onwheel={handleMarginWheel}>
 			<div class="chat-center-shell">
 				<div class="chat-message-pane">
 					<MessageList bind:scrollEl messages={activePath} {allMessages} {isStreaming} {streamingContent} {streamingThinking} {continuingMessageId} {replacingMessageId} {openingSceneStream} onContentShift={handleContentShift} />
@@ -217,8 +217,14 @@
 		padding: 0 1rem;
 	}
 
-	.chat-content[hidden] {
-		display: none;
+	.chat-content.is-opening {
+		visibility: hidden;
+	}
+
+	.chat-loading-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
 	}
 
 	.chat-loading {

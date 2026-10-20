@@ -2203,6 +2203,9 @@ input:not(
 [contenteditable='plaintext-only'],
 [contenteditable=''] {
 	font-family: var(--font-mono) !important;
+	/* Render typed characters independently: Brave's contextual dot ligatures can
+	   leave only the last two periods in a run visible. */
+	font-variant-ligatures: none !important;
 }
 
 /* ===== Touch: no form control renders below 16px =====
