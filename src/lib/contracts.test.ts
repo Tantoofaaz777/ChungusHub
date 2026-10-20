@@ -956,7 +956,7 @@ describe('prompt target (architecture/prompt-pipeline.md #10)', () => {
 	// third and nothing on screen saying so. `resolvePromptTarget` is the one resolution.
 	const ASSEMBLY_SITES = [
 		['src', 'lib', 'utils', 'prompt-builder.ts'],
-		['src', 'lib', 'components', 'chat', 'InputArea.svelte'],
+		['src', 'lib', 'stores', 'promptTokens.svelte.ts'],
 		['src', 'lib', 'components', 'promptBuilder', 'PromptBuilderView.svelte']
 	];
 
@@ -965,9 +965,10 @@ describe('prompt target (architecture/prompt-pipeline.md #10)', () => {
 			const where = site.join('/');
 			const source = read(...site);
 			expect(source, `${where} must resolve a prompt target`).toContain('resolvePromptTarget(');
+			const target = where.endsWith('promptTokens.svelte.ts') ? 'this.target' : 'promptTarget';
 			for (const field of ['model', 'postProcessing', 'contextBudget']) {
-				expect(source, `${where} must assemble with promptTarget.${field}`).toContain(
-					`${field}: promptTarget.${field}`
+				expect(source, `${where} must assemble with ${target}.${field}`).toContain(
+					`${field}: ${target}.${field}`
 				);
 			}
 		}

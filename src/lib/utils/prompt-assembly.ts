@@ -58,6 +58,8 @@ export interface PromptRecall {
 /** Everything the assembly primitives need, sourced from the db for the real prompt, or
  *  reactively from stores for the live token meters. */
 export interface AssembleInput {
+	/** Enabled chat notes; only included where {{authorsNote}} is referenced. */
+	authorsNote?: string;
 	preset: PromptPreset | null;
 	resolvedCharacters: PromptCharacter[];
 	resolvedPersona: PromptCharacter | null;
@@ -185,6 +187,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 				}
 			: undefined;
 	const base: MacroContext = {
+		authorsNote: input.authorsNote,
 		cardLorePositions: cardLorePositions(input.preset?.items ?? []),
 		resolvedPersona: input.resolvedPersona,
 		resolvedCharacters: input.resolvedCharacters,

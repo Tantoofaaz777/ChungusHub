@@ -9,6 +9,7 @@
 
 import type { CallTarget, LLMMessage } from '$lib/types/llm';
 import type { Message } from '$lib/types/chat';
+import { chatAuthorsNote } from '$lib/types/chat';
 import { activeSteeringNotes, resolveSteeringForPrompt, steeringTargetForChat } from '$lib/types/steering';
 import type { PromptPreset } from '$lib/types/database';
 import type { Lorebook, LorebookTrace, LorebookTrigger } from '$lib/lorebook/types';
@@ -156,6 +157,7 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	const promptTarget = resolvePromptTarget(chat, context.target ?? 'primary');
 
 	const { messages, lorebook, continuationSent } = assemblePrompt({
+		authorsNote: chatAuthorsNote(chat),
 		preset,
 		resolvedCharacters: character ? [toPromptCharacter(character)!] : [],
 		resolvedPersona: toPromptCharacter(personaEntry),

@@ -222,7 +222,8 @@ describe('duplicateChat', () => {
 
 	test('copies the whole forest with fresh ids and remapped pointers', () => {
 		const { chatId, ids } = seedBranchedChat('Source');
-		serverDb.updateChat({ id: chatId, canonLeafId: ids.reply, featureState: '{"steering":null}' });
+		const featureState = JSON.stringify({ authorsNote: { text: 'Keep the mystery.', enabled: false }, steeringHistory: ['Earlier guidance'] });
+		serverDb.updateChat({ id: chatId, canonLeafId: ids.reply, featureState });
 		serverDb.updateChatFavorite(chatId, true);
 
 		const copyId = serverDb.duplicateChat({ chatId, title: 'Source (copy)', includeMemory: false });
@@ -244,7 +245,7 @@ describe('duplicateChat', () => {
 		expect(stats.path).toBe(3);
 
 		// Story state rides along; the star and the title do not.
-		expect(copy.featureState).toBe('{"steering":null}');
+		expect(copy.featureState).toBe(featureState);
 		expect(copy.isFavorite).toBe(false);
 		expect(copy.title).toBe('Source (copy)');
 	});

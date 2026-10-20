@@ -101,6 +101,8 @@ export interface ChatScene {
  *  so that key is simply not parsed: the blob still reads fine and drops it on the chat's
  *  next write. */
 export interface ChatFeatureState {
+	/** Persistent, chat-scoped text exposed only through {{authorsNote}}. */
+	authorsNote: { text: string; enabled: boolean };
 	/** The last 10 consumed one-shot steering texts, most-recent first, for quick reuse
 	 *  from the composer's popover. */
 	steeringHistory: string[];
@@ -141,6 +143,7 @@ export interface ChatFeatureState {
 
 function defaultChatFeatureState(): ChatFeatureState {
 	return {
+		authorsNote: { text: '', enabled: true },
 		steeringHistory: [],
 		impersonatePerspective: 'first',
 		scene: null,
@@ -153,6 +156,20 @@ function defaultChatFeatureState(): ChatFeatureState {
 }
 
 export const DEFAULT_CHAT_FEATURE_STATE: ChatFeatureState = defaultChatFeatureState();
+
+function normalizeAuthorsNote(raw: unknown): ChatFeatureState['authorsNote'] {
+	const note = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+	return {
+		text: typeof note.text === 'string' ? note.text : '',
+		enabled: typeof note.enabled === 'boolean' ? note.enabled : true
+	};
+}
+
+/** Shared by db-sourced generation and reactive previews; disabled text stays saved. */
+export function chatAuthorsNote(chat: Pick<Chat, 'featureState'> | null | undefined): string {
+	const note = normalizeChatFeatureState(chat?.featureState).authorsNote;
+	return note.enabled ? note.text : '';
+}
 
 function normalizeSteeringHistory(raw: unknown): string[] {
 	if (!Array.isArray(raw)) return [];
@@ -208,6 +225,7 @@ export function normalizeChatFeatureState(raw: unknown): ChatFeatureState {
 	}
 	const obj = value as Record<string, unknown>;
 	return {
+		authorsNote: normalizeAuthorsNote(obj.authorsNote),
 		steeringHistory: normalizeSteeringHistory(obj.steeringHistory),
 		impersonatePerspective: normalizeImpersonatePerspective(obj.impersonatePerspective),
 		scene: normalizeChatScene(obj.scene),

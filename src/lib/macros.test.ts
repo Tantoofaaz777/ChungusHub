@@ -14,6 +14,19 @@ import { expandMacros } from './macros';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+describe("author's notes macro", () => {
+	test('uses chat context and resolves to empty without one', () => {
+		expect(expandMacros('{{authorsNote}}', { authorsNote: 'Keep the tension.' })).toBe('Keep the tension.');
+		expect(expandMacros('{{authorsNote}}', {})).toBe('');
+		expect(expandMacros('{{AUTHORSNOTE}}', { authorsNote: 'Keep the tension.' })).toBe('Keep the tension.');
+	});
+
+	test('stored notes remain data rather than executing nested macros', () => {
+		expect(expandMacros('{{authorsNote}}', { authorsNote: '{{authorsNote}} {{chatHistory}} $&' }))
+			.toBe('{{authorsNote}} {{chatHistory}} $&');
+	});
+});
+
 const MONTHS = [
 	'January',
 	'February',

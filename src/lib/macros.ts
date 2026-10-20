@@ -99,6 +99,7 @@ export const MACROS: readonly MacroDef[] = [
 	{ name: 'character', description: "The active character's full profile (the whole-sheet blob).", engine: true, group: 'context' },
 	{ name: 'lorebook', description: 'Lorebook entries, keyword-matched against recent messages.', engine: true, group: 'context' },
 	{ name: 'memory', description: 'Chat-memory recall block (episode summaries).', engine: true, group: 'context' },
+	{ name: 'authorsNote', description: "This chat's author's notes. Empty when disabled or unset; place in a preset or lorebook entry.", engine: true, group: 'context' },
 	{ name: 'chatHistory', description: 'Every turn, as native-role messages. Prompt items only: anywhere else it resolves to nothing.', engine: true, structural: true, group: 'context' },
 	{ name: 'chatHistoryLastN', description: 'Only the newest N turns, as a plain transcript. Write the number: {{chatHistoryLast20}}.', engine: true, parameterized: true, group: 'context' },
 	{ name: 'lastMessage', description: 'The newest turn, as inline text. A copy: the turn itself still rides {{chatHistory}}.', engine: true, group: 'context' },
@@ -338,6 +339,8 @@ export function pruneEmptyTagBlocks(text: string, values: Record<string, string>
 // ============================================================================
 
 export interface MacroContext {
+	/** Enabled author's notes for this chat, returned as stored in a single substitution pass. */
+	authorsNote?: string;
 	resolvedPersona?: PromptCharacter | null;
 	resolvedCharacters?: PromptCharacter[];
 	/** The lorebook block injected at {{lorebook}}, already scanned and rendered by the context
@@ -527,6 +530,7 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 	const canonical = MACROS.find((macro) => macro.engine && macro.name.toLowerCase() === name.toLowerCase())?.name;
 	if (canonical && canonical !== name) return resolveMacro(canonical, context);
 	const { resolvedPersona, resolvedCharacters } = context;
+	if (name === 'authorsNote') return context.authorsNote ?? '';
 
 	// Structural macros belong to prompt-assembly, which preserves their native roles. Empty
 	// here is the fallback for one reached through nested expansion.

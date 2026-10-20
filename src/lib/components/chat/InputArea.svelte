@@ -5,6 +5,8 @@
 	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import ChatSetupChip from './ChatSetupChip.svelte';
 	import ChatPersonaDialog from './ChatPersonaDialog.svelte';
+	import AuthorsNotesDialog from './AuthorsNotesDialog.svelte';
+	import { chatAuthorsNote } from '$lib/types/chat';
 	import TransformPanel from './TransformPanel.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
@@ -167,6 +169,8 @@
 	});
 
 	let activePath = $derived(chatStore.currentChatState?.activePath ?? []);
+	let authorsNotesOpen = $state(false);
+	let authorsNotesActive = $derived(!!chatAuthorsNote(chatStore.activeChat).trim());
 
 	// The popover that edits the notes lives in its own component.
 	let steeringTarget = $derived(steeringTargetForChat(chatStore.activeChat));
@@ -197,6 +201,7 @@
 		// via its own timer (it captured its chat id at schedule time). Command mode goes with
 		// them: its gates were resolved against the chat that just left the screen.
 		steeringOpen = false;
+		authorsNotesOpen = false;
 		transformKind = null;
 		commandArmed = false;
 		if (!chatId) return;
@@ -1058,6 +1063,24 @@
 						</Dialog>
 					</div>
 
+					{#if chatStore.activeChatId}
+						<button
+							type="button"
+							onclick={() => (authorsNotesOpen = true)}
+							class="composer-icon-btn steering-trigger"
+							class:steering-trigger--active={authorsNotesActive}
+							aria-label="Author's notes"
+							aria-haspopup="dialog"
+							aria-expanded={authorsNotesOpen}
+							title="Author's notes"
+						>
+							<Icon name="document" class="w-4 h-4" />
+							{#if authorsNotesActive}
+								<span class="steering-dot" aria-hidden="true"></span>
+							{/if}
+						</button>
+					{/if}
+
 					{#if featurePromptsStore.steeringEnabled && chatStore.activeChatId}
 						<div class="composer-menu-wrap relative">
 							<!-- Deliberately never disabled while streaming: steering is next-turn
@@ -1103,6 +1126,12 @@
 		</div>
 	</div>
 </div>
+
+{#if authorsNotesOpen && chatStore.activeChatId}
+	{#key chatStore.activeChatId}
+		<AuthorsNotesDialog chatId={chatStore.activeChatId} onClose={() => (authorsNotesOpen = false)} />
+	{/key}
+{/if}
 
 {#if chatStore.activeChatId}
 	<ChatPersonaDialog

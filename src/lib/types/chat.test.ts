@@ -10,11 +10,39 @@ import { describe, expect, test } from 'bun:test';
 
 import {
 	DEFAULT_CHAT_FEATURE_STATE,
+	chatAuthorsNote,
 	normalizeChatFeatureState,
 	pushSteeringHistoryEntry,
 	withLorebookClaim,
 	withLorebookMute
 } from './chat';
+
+describe("author's notes", () => {
+	test('legacy and malformed notes normalize without losing the rest of the chat state', () => {
+		for (const authorsNote of [undefined, null, 42, 'text', { text: 12, enabled: 'no' }]) {
+			const state = normalizeChatFeatureState({ authorsNote, persona: 'persona-1' });
+			expect(state.authorsNote).toEqual({ text: '', enabled: true });
+			expect(state.persona).toBe('persona-1');
+		}
+	});
+
+	test('saved notes survive the JSON round trip and disabling keeps their text', () => {
+		const state = normalizeChatFeatureState({ authorsNote: { text: 'Slow pacing.\nStay in the scene.', enabled: false } });
+		const chat = { featureState: JSON.stringify(state) };
+		expect(normalizeChatFeatureState(chat.featureState).authorsNote).toEqual(state.authorsNote);
+		expect(chatAuthorsNote(chat)).toBe('');
+		state.authorsNote.enabled = true;
+		expect(chatAuthorsNote({ featureState: JSON.stringify(state) })).toBe(state.authorsNote.text);
+		expect(chatAuthorsNote(null)).toBe('');
+	});
+
+	test('default notes are independent across chats', () => {
+		const first = normalizeChatFeatureState(null);
+		first.authorsNote.text = 'Only this story.';
+		expect(normalizeChatFeatureState(null).authorsNote.text).toBe('');
+		expect(DEFAULT_CHAT_FEATURE_STATE.authorsNote.text).toBe('');
+	});
+});
 
 describe('normalizeChatFeatureState: degrading to defaults', () => {
 	test('null degrades to the defaults', () => {
@@ -45,6 +73,7 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 			impersonatePerspective: 'third'
 		});
 		expect(normalizeChatFeatureState(raw)).toEqual({
+			authorsNote: { text: '', enabled: true },
 			steeringHistory: ['earlier note'],
 			impersonatePerspective: 'third',
 			scene: null,
@@ -58,6 +87,7 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 
 	test('accepts an already-parsed object directly', () => {
 		const value = {
+			authorsNote: { text: '', enabled: true },
 			steeringHistory: ['x'],
 			impersonatePerspective: 'second' as const,
 			scene: null,
@@ -80,6 +110,7 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 			impersonatePerspective: 'third'
 		});
 		expect(result).toEqual({
+			authorsNote: { text: '', enabled: true },
 			steeringHistory: ['earlier note'],
 			impersonatePerspective: 'third',
 			scene: null,

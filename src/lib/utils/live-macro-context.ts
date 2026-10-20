@@ -13,6 +13,7 @@ import { memoryStore } from '$lib/memory/scene-store.svelte';
  */
 
 import type { Message } from '$lib/types/chat';
+import { chatAuthorsNote } from '$lib/types/chat';
 import { expandMacros, cardLoreContext, cardLorePositions, withLorebookFields, type MacroContext } from '$lib/macros';
 import { resolveLorebooks } from '$lib/lorebook/engine';
 import { lorebookHistory, lorebookScanFields, type LorebookTrigger } from '$lib/lorebook/types';
@@ -68,6 +69,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 			: undefined;
 	const persona = chatPersonaEntry(chatStore.activeChat);
 	const base: MacroContext = {
+		authorsNote: chatAuthorsNote(chatStore.activeChat),
 		cardLorePositions: cardLorePositions(preset?.items ?? []),
 		resolvedPersona: toPromptCharacter(persona),
 		resolvedCharacters: character ? [character] : [],

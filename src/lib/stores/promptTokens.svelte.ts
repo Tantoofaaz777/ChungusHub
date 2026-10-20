@@ -15,6 +15,7 @@ import {
 } from '$lib/utils/chat-setup';
 import { steeringTargetForChat } from '$lib/types/steering';
 import type { Message } from '$lib/types/chat';
+import { chatAuthorsNote } from '$lib/types/chat';
 
 /** The composer and inspector share one estimate, assembled by the real send pipeline. */
 class PromptTokensStore {
@@ -48,6 +49,7 @@ class PromptTokensStore {
 		return notes.length ? { notes, wrapper: featurePromptsStore.promptFor('steeringWrapper') } : undefined;
 	});
 	private assembly = $derived(this.chat && this.currentPreset ? assemblePrompt({
+		authorsNote: chatAuthorsNote(this.chat),
 		preset: this.currentPreset,
 		resolvedPersona: toPromptCharacter(this.persona),
 		resolvedCharacters: this.character && this.characterData

@@ -23,6 +23,7 @@ import {
 	createEmptyLorebook,
 	createEmptyLorebookEntry,
 	DEFAULT_LOREBOOK_GLOBAL_SETTINGS,
+	LOREBOOK_POSITION_AT_DEPTH,
 	type Lorebook,
 	type LorebookEntry
 } from '$lib/lorebook/types';
@@ -64,6 +65,45 @@ const CHAT = [
 	msg('m4', 'assistant', 'Second assistant reply.'),
 	msg('m5', 'user', 'Latest user turn.')
 ];
+
+describe("author's notes in prompts", () => {
+	test('notes are only included at macro references and inherit the preset item role', () => {
+		const options = { authorsNote: 'Keep the scene intimate.', postProcessing: { mode: 'none' as const } };
+		const unused = input(preset([item('Rules.')]), options);
+		expect(assemblePrompt(unused)).toEqual(assemblePrompt({ ...unused, authorsNote: '' }));
+		const used = assemblePrompt(input(preset([item('{{authorsNote}}', { role: 'assistant' })]), options));
+		expect(used.messages).toEqual([{ role: 'assistant', content: options.authorsNote }]);
+		expect(used.breakdown.total).toBe(used.breakdown.preset + used.breakdown.context + used.breakdown.memory + used.breakdown.chat);
+	});
+
+	test('a lorebook entry can place the notes in chat with its own depth and role', () => {
+		const book = createEmptyLorebook('Notes placement');
+		book.entries = [{ ...createEmptyLorebookEntry(), constant: true, content: '{{authorsNote}}',
+			position: LOREBOOK_POSITION_AT_DEPTH, depth: 1, role: 2 }];
+		const p = preset([item('{{chatHistory}}')]);
+		const options = input(p, { authorsNote: 'Keep the scene intimate.', lorebooks: [book],
+			chatMessages: CHAT, postProcessing: { mode: 'none' } });
+		const result = assemblePrompt(options);
+		expect(result.messages.map((m) => m.content)).toEqual([
+			...CHAT.slice(0, -1).map((m) => m.content), options.authorsNote!, CHAT.at(-1)!.content
+		]);
+		expect(result.messages.at(-2)?.role).toBe('assistant');
+		expect(result.breakdown.context).toBeGreaterThan(0);
+		const empty = assemblePrompt({ ...options, authorsNote: '' });
+		expect(empty.messages.map((m) => m.content)).toEqual(CHAT.map((m) => m.content));
+	});
+
+	test('notes and steering coexist without changing how steering is injected', () => {
+		const options = input(preset([item('{{authorsNote}}'), item('{{chatHistory}}')]), {
+			authorsNote: 'Persistent direction.', chatMessages: CHAT, postProcessing: { mode: 'none' },
+			steering: { notes: [{ text: 'Next reply direction.', role: 'system', depth: 0 }], wrapper: '{{steering}}' }
+		});
+		const result = assemblePrompt(options);
+		expect(result.messages[0]).toEqual({ role: 'system', content: 'Persistent direction.' });
+		expect(result.messages.at(-1)).toEqual({ role: 'system', content: 'Next reply direction.' });
+		expect(assemblePrompt({ ...options, authorsNote: '' }).messages.some((m) => m.content === 'Next reply direction.')).toBe(true);
+	});
+});
 
 describe('manual message exclusion', () => {
 	test('hidden text and images leave history, last-turn macros and token counts together', () => {
