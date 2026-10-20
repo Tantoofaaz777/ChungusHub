@@ -3271,11 +3271,19 @@ class ServerDatabase {
 	insertPromptLogEntry(id: string, startedAt: number, entry: string, cap: number): void {
 		this.inTransaction(() => {
 			this.execute('INSERT OR REPLACE INTO prompt_log (id, started_at, entry) VALUES (?, ?, ?)', [id, startedAt, entry]);
-			this.execute(
-				'DELETE FROM prompt_log WHERE id IN (SELECT id FROM prompt_log ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?)',
-				[cap]
-			);
+			this.prunePromptLog(cap);
 		});
+	}
+
+	prunePromptLog(cap: number): void {
+		this.execute(
+			'DELETE FROM prompt_log WHERE id IN (SELECT id FROM prompt_log ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?)',
+			[cap]
+		);
+	}
+
+	getPromptLogIds(): string[] {
+		return this.select<{ id: string }[]>('SELECT id FROM prompt_log ORDER BY started_at DESC, rowid DESC').map(row => row.id);
 	}
 
 	getPromptLogEntry(id: string): string | null {

@@ -59,6 +59,7 @@ import { requestClientIp } from './request-client';
 import { downloadCardAsset } from './card-assets';
 import { complete, fetchAccount, fetchAvailableModels, fetchModelEndpoints, isProvider, providerMetadata, resolvedBaseUrl, validateCredentials, type RoutingConfig } from './llm/registry';
 import * as promptLog from './promptLog';
+import { MAX_PROMPT_LOG_LIMIT, validPromptLogLimit } from '../shared/prompt-log';
 
 /** Stop with a reason, where the reader can read it. A portable build's console closes
  *  with the process, so it is held there, and only where there is a console to hold. */
@@ -164,6 +165,12 @@ function anyDebug(): boolean {
 function broadcastPromptLog(event: promptLog.PromptLogEvent): void {
 	const payload = JSON.stringify({ t: 'prompt-log', event });
 	for (const ws of debugSockets) ws.send(payload);
+}
+
+/** Paused panels also need to remove entries aged out by another device. */
+function broadcastPromptRetention(): void {
+	const payload = JSON.stringify({ t: 'prompt-log', event: promptLog.retention() });
+	for (const ws of sockets) ws.send(payload);
 }
 
 function json(data: unknown, status = 200, extraHeaders?: Record<string, string>): Response {
@@ -595,7 +602,16 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 	// ----- Shared prompt debug log -----
 	// Backfill the panel when a device opens it (the live feed rides the WebSocket).
 	if (path === '/api/debug/prompt-log' && req.method === 'GET') {
-		return json({ entries: promptLog.snapshot() });
+		return json({ entries: promptLog.snapshot(), limit: promptLog.getLimit() });
+	}
+	if (path === '/api/debug/prompt-log/limit' && req.method === 'POST') {
+		let body: unknown;
+		try { body = await req.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+		const limit = body && typeof body === 'object' ? (body as { limit?: unknown }).limit : undefined;
+		if (!validPromptLogLimit(limit)) return json({ error: `Limit must be an integer from 1 to ${MAX_PROMPT_LOG_LIMIT}` }, 400);
+		promptLog.setLimit(limit);
+		broadcastPromptRetention();
+		return json({ entries: promptLog.snapshot(), limit: promptLog.getLimit() });
 	}
 	// Clear from any device wipes it for all of them.
 	if (path === '/api/debug/prompt-log/clear' && req.method === 'POST') {
@@ -1218,6 +1234,7 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 		};
 		promptLog.recordRequest(entry);
 		broadcastPromptLog({ type: 'request', entry });
+		broadcastPromptRetention();
 	}
 
 	// A committing generation stamps its own clocks, because it also writes the row they land

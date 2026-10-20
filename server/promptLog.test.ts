@@ -4,7 +4,8 @@
  * test's env dance: CHUNGUS_DATA_DIR is pinned to a throwaway dir before the first
  * db call, so no test can silently point db writes at the real user-data.
  */
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { MAX_PROMPT_LOG_LIMIT } from '../shared/prompt-log';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,6 +36,11 @@ afterAll(() => {
 	}
 });
 
+beforeEach(() => {
+	serverDb.deleteSetting('promptLogLimit');
+	promptLog.clear();
+});
+
 function entry(id: string, startedAt: number): PromptLogEntry {
 	return {
 		id,
@@ -50,6 +56,62 @@ function entry(id: string, startedAt: number): PromptLogEntry {
 }
 
 describe('prompt log persistence', () => {
+	test('defaults to ten requests and evicts the oldest as new ones arrive', () => {
+		expect(promptLog.getLimit()).toBe(10);
+		for (let i = 1; i <= 12; i++) promptLog.recordRequest(entry(`p${i}`, i * 100));
+		expect(promptLog.snapshot().map(e => e.id)).toEqual(['p12', 'p11', 'p10', 'p9', 'p8', 'p7', 'p6', 'p5', 'p4', 'p3']);
+		expect(serverDb.getPromptLogEntry('p1')).toBeNull();
+		expect(promptLog.retention()).toEqual({ type: 'retention', limit: 10, ids: promptLog.snapshot().map(e => e.id) });
+	});
+
+	test('saved limit survives reopening the database and lowering it prunes immediately', () => {
+		promptLog.setLimit(15);
+		serverDb.closeForTests();
+		expect(promptLog.getLimit()).toBe(15);
+		for (let i = 1; i <= 15; i++) promptLog.recordRequest(entry(`p${i}`, i));
+		promptLog.setLimit(3);
+		expect(serverDb.getPromptLogIds()).toEqual(['p15', 'p14', 'p13']);
+		expect(promptLog.getLimit()).toBe(3);
+	});
+
+	test('legacy stored logs are pruned to the new default on backfill', () => {
+		for (let i = 1; i <= 20; i++) serverDb.insertPromptLogEntry(`p${i}`, i, JSON.stringify(entry(`p${i}`, i)), 500);
+		expect(serverDb.getPromptLogIds()).toHaveLength(20);
+		expect(promptLog.snapshot()).toHaveLength(10);
+		expect(serverDb.getPromptLogIds()).toHaveLength(10);
+	});
+
+	test('equal timestamps keep the most recently inserted requests', () => {
+		promptLog.setLimit(2);
+		for (const id of ['a', 'b', 'c']) promptLog.recordRequest(entry(id, 1000));
+		expect(promptLog.snapshot().map(e => e.id)).toEqual(['c', 'b']);
+	});
+
+	test('boot also applies retention to logs saved by older versions', () => {
+		for (let i = 1; i <= 20; i++) serverDb.insertPromptLogEntry(`p${i}`, i, JSON.stringify(entry(`p${i}`, i)), 500);
+		expect(promptLog.settleInterrupted()).toBe(10);
+		expect(serverDb.getPromptLogIds()).toHaveLength(10);
+		expect(serverDb.getPromptLogEntry('p10')).toBeNull();
+	});
+
+	test('a late result cannot resurrect an evicted request', () => {
+		promptLog.setLimit(1);
+		promptLog.recordRequest(entry('old-pending', 1000));
+		promptLog.recordRequest(entry('new', 2000));
+		expect(promptLog.patchResult('old-pending', { status: 'done', endedAt: 3000 })).toBe(false);
+		expect(promptLog.snapshot().map(e => e.id)).toEqual(['new']);
+	});
+
+	test('invalid retention values are rejected and corrupt saved limits use the default', () => {
+		for (const value of [0, -1, 1.5, MAX_PROMPT_LOG_LIMIT + 1, Infinity, NaN]) {
+			expect(() => promptLog.setLimit(value)).toThrow('Invalid prompt log limit');
+		}
+		for (const raw of ['broken', 'null', '"20"', '0', '-1', '1.5', '1001']) {
+			serverDb.setSetting('promptLogLimit', raw);
+			expect(promptLog.getLimit()).toBe(10);
+		}
+	});
+
 	test('records, patches the result, and survives a snapshot round-trip', () => {
 		promptLog.clear();
 		promptLog.recordRequest(entry('a', 1000));

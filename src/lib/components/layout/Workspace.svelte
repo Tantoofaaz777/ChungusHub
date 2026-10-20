@@ -12,7 +12,7 @@
 	import MemoryPanel from '$lib/components/memory/MemoryPanel.svelte';
 	import StatsView from '$lib/components/stats/StatsView.svelte';
 	import WelcomeView from '$lib/components/layout/WelcomeView.svelte';
-	import PromptDebugPanel from '$lib/components/debug/PromptDebugPanel.svelte';
+	import PromptInspector from '$lib/components/debug/PromptInspector.svelte';
 	import PromptReviewDialog from '$lib/components/chat/PromptReviewDialog.svelte';
 	import { untrack } from 'svelte';
 	import { surfaceMotion, scrimMotion } from '$lib/components/ui/surface-motion';
@@ -156,13 +156,10 @@
 	// overlay like every other panel.
 	let chatsPopup = $derived(activeOverlay === 'chats' && !viewport.isMobile);
 
-	// Prompt debug panel: an opt-in dev tool. Keep the transport-level capture flag in
-	// sync with the Advanced toggle so logging turns on/off the moment it's flipped.
-	let promptDebugEnabled = $derived(advancedSettingsStore.promptDebugPanel);
+	// Capture is optional; the inspector and its live token breakdown are always accessible.
 	$effect(() => {
 		const on = advancedSettingsStore.promptDebugPanel;
 		promptLogStore.setEnabled(on);
-		if (!on) uiStore.closeDebugPanel();
 	});
 
 	// Full-cover overlays (chat-area panels) take over the chat column. We hide the
@@ -177,7 +174,7 @@
 			libraryOverlay ||
 			libraryEditorOpen ||
 			lorebookEditorOpen ||
-			(promptDebugEnabled && uiStore.debugPanelOpen)
+			uiStore.debugPanelOpen
 	);
 	let chatCovered = $derived(welcomeOpen || coveringOverlay);
 
@@ -380,12 +377,11 @@
 			</div>
 		{/if}
 
-		<!-- Prompt debug log: a chat-sized panel listing every logged query, opened from
-		     the Advanced settings tab. Only exists while the toggle is on. -->
-		{#if promptDebugEnabled && uiStore.debugPanelOpen}
+		<!-- Prompt tokens and captured requests, opened from the top bar. -->
+		{#if uiStore.debugPanelOpen}
 			<div class="chat-overlay chat-overlay-front" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
-					<PromptDebugPanel />
+					<PromptInspector />
 				</div>
 			</div>
 		{/if}

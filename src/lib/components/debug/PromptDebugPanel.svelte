@@ -1,10 +1,14 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import Toggle from '$lib/components/ui/Toggle.svelte';
+	import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
 	import ImageLightbox from '$lib/components/ui/ImageLightbox.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { promptLogStore } from '$lib/debug/promptLog.svelte';
+	import { MAX_PROMPT_LOG_LIMIT, validPromptLogLimit } from '$shared/prompt-log';
 	import {
 		entryImages,
 		formatDuration,
@@ -25,6 +29,17 @@
 	// Set by the /debug window, which IS the panel: nothing to pop out (it already is)
 	// and nothing to close to. Closing the window is the way out.
 	let { standalone = false }: { standalone?: boolean } = $props();
+	onMount(() => {
+		// A paused capture still has a shared history to inspect.
+		if (!standalone && !advancedSettingsStore.promptDebugPanel) promptLogStore.load();
+	});
+
+	async function changeLimit(event: Event): Promise<void> {
+		const input = event.currentTarget as HTMLInputElement;
+		const value = input.valueAsNumber;
+		if (validPromptLogLimit(value)) await promptLogStore.setLimit(value);
+		input.value = String(promptLogStore.limit);
+	}
 
 	let entries = $derived(promptLogStore.entries);
 	let selected = $derived(promptLogStore.selected);
@@ -157,7 +172,7 @@
 		<div class="title-wrap">
 			<Icon name="wrench" class="w-4 h-4" strokeWidth={1.75} />
 			<h2 class="title">Prompt Debug</h2>
-			<span class="count-chip">{entries.length}</span>
+			<span class="count-chip" title="Stored prompts / retention limit">{entries.length} / {promptLogStore.limit}</span>
 		</div>
 		<div class="head-actions">
 			<!-- Phones have no second screen to move the panel to, and a named pop-up window is
@@ -179,18 +194,25 @@
 			{/if}
 		</div>
 	</header>
+	{#if !standalone}
+		<div class="capture-row">
+			<span>Prompt logging <span class="capture-state">{advancedSettingsStore.promptDebugPanel ? 'On' : 'Paused'}</span></span>
+			<Toggle checked={advancedSettingsStore.promptDebugPanel} onchange={(value) => advancedSettingsStore.setPromptDebugPanel(value)} label="Enable prompt logging" />
+		</div>
+	{/if}
+	<div class="retention-row">
+		<label for="prompt-log-limit">Keep last <input id="prompt-log-limit" class="input-base" type="number" min="1" max={MAX_PROMPT_LOG_LIMIT} step="1" value={promptLogStore.limit} disabled={promptLogStore.savingLimit} onchange={changeLimit} aria-label="Prompt retention limit" /> prompts</label>
+		<span>Oldest prompts are deleted automatically.</span>
+	</div>
 
 	{#if promptLogStore.error}
 		<div class="banner error">Couldn't load the shared log: {promptLogStore.error}</div>
-	{/if}
-	{#if promptLogStore.large}
-		<div class="banner warn">The log is large ({entries.length} entries). Consider Clear to keep things snappy. Nothing is dropped automatically.</div>
 	{/if}
 
 	<div class="panel-body" class:mobile-detail={mobileDetail}>
 		<aside class="list panel-scroll">
 			{#if entries.length === 0}
-				<p class="empty">No prompts logged yet. Send a message and it will appear here.</p>
+				<p class="empty">{standalone || advancedSettingsStore.promptDebugPanel ? 'No prompts logged yet. Send a message and it will appear here.' : 'No prompts logged yet. Enable prompt logging to capture requests.'}</p>
 			{:else}
 				{#each entries as entry (entry.id)}
 					{@const rowSize = promptSize(entry)}
@@ -449,6 +471,7 @@
 	}
 
 	.panel-head {
+		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -463,6 +486,12 @@
 		gap: 0.5rem;
 		color: var(--color-text-primary);
 	}
+
+	.capture-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .45rem .8rem; border-bottom: 1px solid var(--color-border-subtle); color: var(--color-text-secondary); font-family: var(--font-ui); font-size: .74rem; flex-shrink: 0; }
+	.capture-state { margin-left: .4rem; color: var(--color-text-muted); font-size: .68rem; }
+	.retention-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .4rem .8rem; padding: .45rem .8rem; border-bottom: 1px solid var(--color-border-subtle); color: var(--color-text-muted); font-family: var(--font-ui); font-size: .68rem; flex-shrink: 0; }
+	.retention-row label { display: inline-flex; align-items: center; gap: .4rem; color: var(--color-text-secondary); font-size: .74rem; }
+	.retention-row input { width: 4.5rem; padding: .25rem .4rem; font-variant-numeric: tabular-nums; }
 
 	.title {
 		margin: 0;
@@ -528,12 +557,6 @@
 		color: var(--color-error);
 		background: color-mix(in srgb, var(--color-error) 12%, transparent);
 		border-bottom: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
-	}
-
-	.banner.warn {
-		color: var(--color-warning);
-		background: color-mix(in srgb, var(--color-warning) 14%, transparent);
-		border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
 	}
 
 	.panel-body {

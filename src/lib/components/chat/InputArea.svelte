@@ -1,17 +1,13 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { countTokens, tokenCalibration } from '$lib/tokenizer';
+	import { promptTokensStore } from '$lib/stores/promptTokens.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import ChatSetupChip from './ChatSetupChip.svelte';
 	import ChatPersonaDialog from './ChatPersonaDialog.svelte';
 	import TransformPanel from './TransformPanel.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { presetControlsStore } from '$lib/stores/presetControls.svelte';
-	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { chatSearch } from '$lib/stores/chatSearch.svelte';
 	import { chatCursor } from '$lib/stores/chatCursor.svelte';
@@ -23,20 +19,12 @@
 	import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
-	import { assemblePrompt } from '$lib/utils/prompt-assembly';
-	import {
-		chatLorebookClaim,
-		chatMutedLorebookClaim,
-		chatPersonaEntry,
-		chatPreset,
-		resolvePromptTarget,
-		toPromptCharacter
-	} from '$lib/utils/chat-setup';
+	import { chatPersonaEntry } from '$lib/utils/chat-setup';
 	import { relativeClock } from '$lib/utils/time-format.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import { imageService, imageRejectionReason, isImageFile } from '$lib/services/imageService';
 	import { duplicateAsksAboutMemory } from '$lib/types/chat';
-	import type { Chat, ChatMemoryFootprint, Message, MessageAttachment } from '$lib/types/chat';
+	import type { Chat, ChatMemoryFootprint, MessageAttachment } from '$lib/types/chat';
 	import SteeringPopover from '$lib/components/chat/SteeringPopover.svelte';
 	import CommandPalette from './CommandPalette.svelte';
 	import DuplicateChatDialog from '$lib/components/sidebar/DuplicateChatDialog.svelte';
@@ -106,7 +94,9 @@
 	});
 
 	let content = $state('');
-	let inputTokens = $derived(countTokens(content));
+	$effect(() => {
+		promptTokensStore.draft = { chatId: chatStore.activeChatId, text: content };
+	});
 	let textareaElement: HTMLTextAreaElement;
 
 	let menuOpen = $state(false);
@@ -123,14 +113,6 @@
 		menuOpen = false;
 		personaDialogOpen = true;
 	}
-
-	// The preset this story is built from: its own claim while it resolves, else the app's
-	// active one. Read-only here; claiming lives in the setup chip, switching the app's in the
-	// Prompt Builder.
-	let currentPreset = $derived(chatPreset(chatStore.activeChat));
-
-	// The token breakdown popup opens on hover/focus-within via CSS (.token-anchor), with no
-	// JS state, so there is no race where crossing the gap to the popup dismisses it.
 
 	// Back to the welcome landing. This is a real exit, not just raising the layer: the
 	// chat closes to the boot zero state (memory shows no chat).
@@ -184,24 +166,9 @@
 		return characterLibraryStore.entries.find((e) => e.id === cid && e.type === 'character') ?? null;
 	});
 
-	// The data this chat actually plays against: its pinned version's, not necessarily
-	// the entry's live data. The meter must count exactly what the generation path sends.
-	let activeCharacterData = $derived(
-		activeCharacterEntry
-			? characterLibraryStore.dataForVersion(
-					activeCharacterEntry,
-					chatStore.activeChat?.characterVersionId ?? null
-				)
-			: null
-	);
-
-	// The live token breakdown is computed from the SAME assembler the real prompt uses
-	// (assemblePrompt), so the meter can never drift from what is actually sent. Inputs are
-	// sourced reactively from stores here; the generation path sources them from the db.
 	let activePath = $derived(chatStore.currentChatState?.activePath ?? []);
 
-	// Steering reads live up here because the meter's assembly below consumes
-	// steeringForPrompt. The popover that edits the notes lives in its own component.
+	// The popover that edits the notes lives in its own component.
 	let steeringTarget = $derived(steeringTargetForChat(chatStore.activeChat));
 	let activeSteering = $derived(steeringStore.activeFor(steeringTarget));
 	let steeringActive = $derived(activeSteering.length > 0);
@@ -212,91 +179,7 @@
 		return `Steering: ${first} (+${activeSteering.length - 1} more)`;
 	});
 
-	// The meter's steering input, resolved through the SAME pure resolver prompt-builder
-	// uses on the generation side, under the same engine gate, so the meter prices exactly
-	// the stack a send would inject (prompt-pipeline coupling 8).
-	let steeringForPrompt = $derived.by(() => {
-		if (!featurePromptsStore.steeringEnabled) return undefined;
-		const notes = steeringStore.resolveForPrompt(steeringTarget);
-		if (notes.length === 0) return undefined;
-		return { notes, wrapper: featurePromptsStore.promptFor('steeringWrapper') };
-	});
-
-	/**
-	 * The path a send would assemble against: the thread plus the turn about to be added.
-	 *
-	 * Sending inserts the user's turn first, so a meter priced against the resting path is one
-	 * turn short of what the send injects. The placeholder stands in for that turn, so the
-	 * injected history (and the budget trim measured against it) match the real send.
-	 *
-	 * The placeholder is deliberately EMPTY. The draft's own tokens are the meter's separate
-	 * "your message" number; putting them here would count them twice.
-	 */
-	let pricedPath = $derived.by<Message[]>(() => {
-		const last = activePath[activePath.length - 1];
-		if (!last) return activePath;
-		return [
-			...activePath,
-			{
-				...last,
-				id: '__composer_draft__',
-				parentId: last.id,
-				role: 'user',
-				content: '',
-				attachments: null,
-				thinking: null
-			}
-		];
-	});
-
-	// Model, budget and prompt shape from the SAME resolver the send runs, so the meter can
-	// never price this chat against one connection while the send rides another.
-	let promptTarget = $derived(resolvePromptTarget(chatStore.activeChat));
-	// Who this story plays as: its own persona while it names one, else the app's.
 	let chatPersona = $derived(chatPersonaEntry(chatStore.activeChat));
-
-	let assembly = $derived(
-		currentPreset
-			? assemblePrompt({
-					preset: currentPreset,
-					resolvedPersona: toPromptCharacter(chatPersona),
-					resolvedCharacters: activeCharacterEntry && activeCharacterData
-						? [toPromptCharacter(activeCharacterEntry, activeCharacterData)!]
-						: [],
-					lorebooks: lorebookStore.booksForChat({
-						cards: [
-							...(activeCharacterData?.lorebookIds ?? []),
-							...(chatPersona?.data.lorebookIds ?? [])
-						],
-						chat: chatLorebookClaim(chatStore.activeChat),
-						muted: chatMutedLorebookClaim(chatStore.activeChat)
-					}),
-					lorebookSettings: lorebookSettingsStore.settings,
-					controls: currentPreset.controls ?? [],
-					customFields: presetControlsStore.valuesFor(currentPreset.id),
-					chatMessages: pricedPath,
-					recall: { text: memoryStore.recall || null, archivedIds: memoryStore.archivedMessageIds, scenes: memoryStore.scenes },
-					model: promptTarget.model,
-					postProcessing: promptTarget.postProcessing,
-					contextBudget: promptTarget.contextBudget,
-					regexRules: regexRulesStore.effectiveFor(currentPreset),
-					steering: steeringForPrompt
-				})
-			: null
-	);
-
-	// The breakdown is a model-aware base estimate; scale it by the active model's learned
-	// calibration factor so the meter predicts the provider's real prompt_tokens. One factor
-	// applied to every bucket keeps the bar proportional and the parts summing to the total.
-	let ratio = $derived(tokenCalibration.ratioFor(promptTarget.model));
-	let modelLabel = $derived(promptTarget.model);
-	let presetTokens = $derived(Math.round((assembly?.breakdown.preset ?? 0) * ratio));
-	let contextTokens = $derived(Math.round((assembly?.breakdown.context ?? 0) * ratio));
-	let memoryTokens = $derived(Math.round((assembly?.breakdown.memory ?? 0) * ratio));
-	let chatTokens = $derived(Math.round((assembly?.breakdown.chat ?? 0) * ratio));
-	let totalContextTokens = $derived(Math.round((assembly?.breakdown.total ?? 0) * ratio));
-	let trimmedMessages = $derived(assembly?.trimmedMessages ?? 0);
-	let overBudget = $derived(assembly?.overBudget ?? false);
 
 	// ===== Persisted draft (per chat, survives reloads and device switches) =====
 
@@ -807,87 +690,6 @@
 		}
 	}
 
-	// Token popup: hover/focus reveal is dead on touch, so a tap on the trigger pins
-	// it open; outside taps and Escape (consumed, per the workspace Esc contract)
-	// release the pin. The popup is portaled to <body> and fixed-positioned off the
-	// trigger's box: the chat column is its own stacking context (isolation on
-	// .chat-center-shell), so an in-place popup can never paint over fixed overlays.
-	let tokenPopupPinned = $state(false);
-	let tokenPopupHovered = $state(false);
-	let tokenPopupFocused = $state(false);
-	let tokenAnchorEl = $state<HTMLDivElement | null>(null);
-	let tokenPopupEl = $state<HTMLDivElement | null>(null);
-	let tokenPopupLeft = $state(0);
-	let tokenPopupBottom = $state(0);
-	let tokenPopupReady = $state(false);
-	let tokenPopupOpen = $derived(tokenPopupPinned || tokenPopupHovered || tokenPopupFocused);
-
-	// Grace delay so the pointer can cross the gap between trigger and popup
-	// without the popup collapsing.
-	let tokenHoverTimer: ReturnType<typeof setTimeout> | undefined;
-	function tokenHoverIn() {
-		clearTimeout(tokenHoverTimer);
-		tokenPopupHovered = true;
-	}
-	function tokenHoverOut() {
-		clearTimeout(tokenHoverTimer);
-		tokenHoverTimer = setTimeout(() => (tokenPopupHovered = false), 140);
-	}
-
-	function placeTokenPopup() {
-		if (!tokenAnchorEl || !tokenPopupEl) return;
-		const a = tokenAnchorEl.getBoundingClientRect();
-		const w = tokenPopupEl.offsetWidth;
-		const EDGE = 8;
-		// Right-aligned to the trigger, clamped inside the viewport. Anchored by
-		// bottom so the popup grows upward as its content does.
-		tokenPopupLeft = Math.min(Math.max(a.right - w, EDGE), window.innerWidth - w - EDGE);
-		tokenPopupBottom = window.innerHeight - a.top + 7;
-	}
-
-	$effect(() => {
-		if (!tokenPopupOpen || !tokenPopupEl) {
-			tokenPopupReady = false;
-			return;
-		}
-		placeTokenPopup();
-		tokenPopupReady = true;
-		const reflow = () => placeTokenPopup();
-		window.addEventListener('scroll', reflow, true);
-		window.addEventListener('resize', reflow);
-		return () => {
-			window.removeEventListener('scroll', reflow, true);
-			window.removeEventListener('resize', reflow);
-		};
-	});
-
-	function portalToBody(node: HTMLElement) {
-		document.body.appendChild(node);
-		return { destroy: () => node.remove() };
-	}
-
-	$effect(() => {
-		if (!tokenPopupPinned) return;
-		const onDown = (e: PointerEvent) => {
-			const t = e.target as Node;
-			if (tokenAnchorEl?.contains(t) || tokenPopupEl?.contains(t)) return;
-			tokenPopupPinned = false;
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				e.preventDefault();
-				e.stopPropagation();
-				tokenPopupPinned = false;
-			}
-		};
-		document.addEventListener('pointerdown', onDown, true);
-		document.addEventListener('keydown', onKey);
-		return () => {
-			document.removeEventListener('pointerdown', onDown, true);
-			document.removeEventListener('keydown', onKey);
-		};
-	});
-
 	function handleKeydown(e: KeyboardEvent) {
 		// Frozen under an open transform strip: the box is readonly-in-effect, so neither
 		// Enter-to-send nor history recall may rewrite the draft the proposal is about.
@@ -1297,135 +1099,6 @@
 					<ChatSetupChip />
 				</div>
 
-				<div class="composer-right-group">
-					{#if inputTokens > 0 || totalContextTokens > 0}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div
-							class="token-anchor"
-							bind:this={tokenAnchorEl}
-							onpointerenter={tokenHoverIn}
-							onpointerleave={tokenHoverOut}
-							onfocusin={() => (tokenPopupFocused = true)}
-							onfocusout={() => (tokenPopupFocused = false)}
-						>
-							<button
-								type="button"
-								class="token-trigger"
-								class:is-trimmed={trimmedMessages > 0 || overBudget}
-								aria-label="Show token usage breakdown"
-								aria-expanded={tokenPopupPinned}
-								onclick={() => (tokenPopupPinned = !tokenPopupPinned)}
-							>
-								{#if inputTokens > 0}
-									<span>{inputTokens} input</span>
-								{/if}
-								{#if totalContextTokens > 0}
-									<span>~{totalContextTokens.toLocaleString()} total</span>
-								{/if}
-								<!-- Trimming drops the OLDEST live turns, and turns that are live are by
-								     definition not covered by a memory summary, so a silent trim is the one
-								     way story text leaves the prompt with nothing recalling it. It cannot
-								     live only inside a popover nobody opened. -->
-								{#if trimmedMessages > 0 || overBudget}
-									<span
-										class="inline-flex"
-										title={overBudget
-											? 'Prompt exceeds the context size even with all history trimmed'
-											: `${trimmedMessages} older ${trimmedMessages === 1 ? 'message is' : 'messages are'} being dropped to fit the context size`}
-									>
-										<Icon name="warning" class="w-3 h-3" />
-									</span>
-								{/if}
-							</button>
-
-							{#if tokenPopupOpen && totalContextTokens > 0}
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div
-									class="token-popup surface-float"
-									class:token-popup-ready={tokenPopupReady}
-									use:portalToBody
-									bind:this={tokenPopupEl}
-									style="left: {tokenPopupLeft}px; bottom: {tokenPopupBottom}px"
-									onpointerenter={tokenHoverIn}
-									onpointerleave={tokenHoverOut}
-								>
-									<div class="token-popup-head">
-										<span class="token-popup-title">Prompt tokens</span>
-										<span class="token-popup-tag">estimate</span>
-									</div>
-
-									<div class="token-bar">
-										{#if presetTokens > 0}
-											<div class="token-bar-seg bg-accent" style="width: {(presetTokens / totalContextTokens) * 100}%"></div>
-										{/if}
-										{#if contextTokens > 0}
-											<div class="token-bar-seg bg-orange-400" style="width: {(contextTokens / totalContextTokens) * 100}%"></div>
-										{/if}
-										{#if memoryTokens > 0}
-											<div class="token-bar-seg bg-violet-400" style="width: {(memoryTokens / totalContextTokens) * 100}%"></div>
-										{/if}
-										{#if chatTokens > 0}
-											<div class="token-bar-seg bg-emerald-500" style="width: {(chatTokens / totalContextTokens) * 100}%"></div>
-										{/if}
-									</div>
-
-									<div class="token-rows">
-										<div class="token-row" title="System instructions & format from your preset">
-											<span class="token-dot bg-accent"></span>
-											<span class="token-row-name">Preset</span>
-											<span class="token-row-val">{presetTokens.toLocaleString()}</span>
-										</div>
-										<div class="token-row" title="Persona, characters, lorebook, steering & preset controls">
-											<span class="token-dot bg-orange-400"></span>
-											<span class="token-row-name">Context</span>
-											<span class="token-row-val">{contextTokens.toLocaleString()}</span>
-										</div>
-										{#if memoryTokens > 0}
-											<div class="token-row" title="Chat memory: the chapters in play on this branch">
-												<span class="token-dot bg-violet-400"></span>
-												<span class="token-row-name">Memory</span>
-												<span class="token-row-val">{memoryTokens.toLocaleString()}</span>
-											</div>
-										{/if}
-										<div class="token-row" title="Conversation history included in the prompt">
-											<span class="token-dot bg-emerald-500"></span>
-											<span class="token-row-name">Chat</span>
-											<span class="token-row-val">{chatTokens.toLocaleString()}</span>
-										</div>
-									</div>
-
-									{#if trimmedMessages > 0}
-										<div class="token-trim" title="Oldest chat turns dropped so the prompt fits the context size set on the Connection page">
-											<Icon name="warning" class="w-3 h-3" strokeWidth={2} />
-											{trimmedMessages} older {trimmedMessages === 1 ? 'message' : 'messages'} trimmed to fit the context size
-										</div>
-									{/if}
-									{#if overBudget}
-										<div class="token-trim over">
-											<Icon name="warning" class="w-3 h-3" strokeWidth={2} />
-											Prompt exceeds the context size even with all history trimmed
-										</div>
-									{/if}
-
-									<div class="token-total">
-										<span>Total context</span>
-										<span class="token-total-val">~{totalContextTokens.toLocaleString()}</span>
-									</div>
-									{#if inputTokens > 0}
-										<div class="token-total token-total-sub">
-											<span>+ your message</span>
-											<span>{inputTokens.toLocaleString()}</span>
-										</div>
-									{/if}
-
-									<div class="token-foot">
-										{#if modelLabel}Estimated for <b>{modelLabel}</b>, auto-calibrated from real usage.{:else}Estimate: calibrates from real usage.{/if}
-									</div>
-								</div>
-							{/if}
-						</div>
-					{/if}
-				</div>
 			</div>
 		</div>
 	</div>
@@ -1592,9 +1265,7 @@
 		color: var(--color-text-secondary);
 	}
 
-	/* Nowrap on purpose: with wrap, flexbox drops the whole right group to a second
-	   line (where space-between lands it flush left, pushing the token popup
-	   off-screen) before letting the feature group wrap internally. */
+	/* The feature group handles its own wrapping on narrow screens. */
 	.composer-meta {
 		padding-top: 0.45rem;
 		border-top: 1px solid var(--color-border-raised);
@@ -1662,14 +1333,6 @@
 		height: 1.15rem;
 		margin: 0 0.2rem;
 		background: var(--color-border-raised);
-		flex-shrink: 0;
-	}
-
-	.composer-right-group {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		justify-content: flex-end;
 		flex-shrink: 0;
 	}
 
@@ -1745,177 +1408,6 @@
 		background: var(--color-accent);
 	}
 
-	.token-trigger {
-		height: 1.75rem;
-		padding: 0 0.52rem;
-		border: 1px solid var(--color-border-subtle);
-		border-radius: var(--radius-sm);
-		background: color-mix(in srgb, var(--color-bg-tertiary) 70%, transparent);
-		display: inline-flex;
-		align-items: center;
-		gap: 0.28rem;
-		font-family: var(--font-ui);
-		font-size: 0.67rem;
-		color: var(--color-text-muted);
-		cursor: pointer;
-	}
-	/* History being dropped is the one prompt change with no other tell on screen. */
-	.token-trigger.is-trimmed {
-		color: var(--color-warning);
-		border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
-	}
-
-	.token-trigger:hover {
-		color: var(--color-text-primary);
-	}
-
-	/* Portaled to <body>, fixed off the trigger's box. That puts it above every fixed
-	   overlay and immune to the chat column's stacking context.
-	   Carries .surface-float in markup. */
-	.token-popup {
-		position: fixed;
-		z-index: 1000;
-		width: min(17.5rem, calc(100vw - 2rem));
-		padding: 0.7rem;
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-md);
-		/* Hidden until the placement effect has measured and positioned it. */
-		visibility: hidden;
-	}
-
-	.token-popup-ready {
-		visibility: visible;
-	}
-
-	.token-popup-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 0.55rem;
-	}
-
-	.token-popup-title {
-		font-family: var(--font-ui);
-		font-size: 0.76rem;
-		font-weight: 640;
-		color: var(--color-text-primary);
-	}
-
-	.token-popup-tag {
-		font-family: var(--font-ui);
-		font-size: 0.56rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-		border: 1px solid var(--color-border-subtle);
-		border-radius: var(--radius-sm);
-		padding: 0.04rem 0.32rem;
-	}
-
-	.token-bar {
-		height: 0.5rem;
-		border-radius: 9999px;
-		overflow: hidden;
-		display: flex;
-		background: var(--color-bg-tertiary);
-		margin-bottom: 0.62rem;
-	}
-
-	.token-bar-seg {
-		height: 100%;
-	}
-
-	.token-rows {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.token-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.token-dot {
-		width: 0.6rem;
-		height: 0.6rem;
-		border-radius: var(--radius-sm);
-		flex-shrink: 0;
-	}
-
-	.token-row-name {
-		flex: 1;
-		min-width: 0;
-		font-family: var(--font-ui);
-		font-size: 0.72rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-		line-height: 1.2;
-	}
-
-	.token-row-val {
-		font-family: var(--font-ui);
-		font-size: 0.74rem;
-		font-weight: 640;
-		color: var(--color-text-primary);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.token-total {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-top: 0.6rem;
-		padding-top: 0.55rem;
-		border-top: 1px solid var(--color-border-subtle);
-		font-family: var(--font-ui);
-		font-size: 0.74rem;
-		color: var(--color-text-secondary);
-	}
-
-	.token-total-val {
-		font-weight: 720;
-		color: var(--color-text-primary);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.token-total-sub {
-		margin-top: 0.2rem;
-		padding-top: 0;
-		border-top: 0;
-		font-size: 0.66rem;
-		color: var(--color-text-muted);
-	}
-
-	.token-trim {
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
-		margin-top: 0.55rem;
-		padding: 0.35rem 0.5rem;
-		border-radius: var(--radius-md);
-		background: color-mix(in srgb, var(--color-warning) 12%, transparent);
-		color: var(--color-warning);
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		line-height: 1.35;
-	}
-
-	.token-trim.over {
-		background: color-mix(in srgb, var(--color-error) 12%, transparent);
-		color: var(--color-error);
-	}
-
-	.token-foot {
-		margin-top: 0.55rem;
-		font-family: var(--font-ui);
-		font-size: 0.6rem;
-		line-height: 1.35;
-		color: var(--color-text-muted);
-	}
-
 	@media (max-width: 900px) {
 		.input-shell {
 			padding-inline: 0.45rem;
@@ -1933,10 +1425,6 @@
 
 		.composer-main {
 			gap: 0.32rem;
-		}
-
-		.token-popup {
-			width: min(15rem, calc(100vw - 1rem));
 		}
 	}
 </style>

@@ -6,6 +6,7 @@
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { memoryStore } from '$lib/memory/scene-store.svelte';
+	import { promptTokensStore } from '$lib/stores/promptTokens.svelte';
 
 	let activeOverlay = $derived(uiStore.activeOverlay);
 	let settingsOpen = $derived(uiStore.settingsOpen);
@@ -99,6 +100,19 @@
 		</div>
 
 		<div class="nav-group nav-group-end">
+			<button
+				type="button"
+				class="overlay-btn"
+				class:is-active-tint={uiStore.debugPanelOpen}
+				class:has-warning={!!promptTokensStore.warning}
+				title={promptTokensStore.warning ? `Prompt Debug · ${promptTokensStore.warning}` : 'Prompt Debug'}
+				aria-label={promptTokensStore.warning ? `Prompt Debug · ${promptTokensStore.warning}` : 'Prompt Debug'}
+				aria-expanded={uiStore.debugPanelOpen}
+				onclick={() => uiStore.toggleDebugPanel(flush)}
+			>
+				<Icon name="wrench" class="w-3.5 h-3.5" />
+				{#if promptTokensStore.warning}<span class="prompt-warning"><Icon name="warning" class="w-2.5 h-2.5" /></span>{/if}
+			</button>
 			<div class="overlay-split" class:is-open={libraryOpen}>
 				{#if canDock}
 					<button
@@ -204,6 +218,9 @@
 		background: color-mix(in srgb, var(--color-accent) 13%, transparent);
 		border-color: color-mix(in srgb, var(--color-accent) 33%, transparent);
 	}
+
+	.overlay-btn.has-warning { color: var(--color-warning); }
+	.prompt-warning { position: absolute; top: -2px; right: -2px; display: inline-flex; color: var(--color-warning); }
 
 	/* Settings and Library are split pills: each has a main toggle plus a lock segment
 	   that pins the panel open. */

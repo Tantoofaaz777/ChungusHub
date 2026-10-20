@@ -9,12 +9,13 @@
  *
  * Entries persist in SQLite (`prompt_log`, opaque JSON rows only this module reads
  * or writes), so the log survives server restarts and reaches devices that connect
- * later. Bounded: past CAP the oldest rows are pruned on insert. Capture stays gated
+ * later. Bounded: past the configured limit the oldest rows are pruned on insert. Capture stays gated
  * on a device actually debugging (`anyDebug` in index.ts). Toggled off, nothing is
  * ever written.
  */
 
 import { serverDb } from './db';
+import { DEFAULT_PROMPT_LOG_LIMIT, validPromptLogLimit } from '../shared/prompt-log';
 import type { GenerationTuning } from './llm/types';
 import type { RoutingConfig } from './llm/registry';
 
@@ -74,14 +75,37 @@ export interface PromptLogResult {
 /** The incremental change broadcast to panels, mirroring the client bus shape. */
 export type PromptLogEvent =
 	| { type: 'request'; entry: PromptLogEntry }
-	| { type: 'result'; id: string; result: PromptLogResult };
+	| { type: 'result'; id: string; result: PromptLogResult }
+	| { type: 'retention'; limit: number; ids: string[] };
 
-/** Above this the oldest entries are pruned. Newest-first. */
-const CAP = 500;
+const LIMIT_KEY = 'promptLogLimit';
+
+export function getLimit(): number {
+	const raw = serverDb.getSetting(LIMIT_KEY);
+	if (raw === null) return DEFAULT_PROMPT_LOG_LIMIT;
+	try {
+		const value: unknown = JSON.parse(raw);
+		return validPromptLogLimit(value) ? value : DEFAULT_PROMPT_LOG_LIMIT;
+	} catch {
+		return DEFAULT_PROMPT_LOG_LIMIT;
+	}
+}
+
+/** Lowering retention takes effect immediately, including already stored requests. */
+export function setLimit(limit: number): void {
+	if (!validPromptLogLimit(limit)) throw new Error('Invalid prompt log limit');
+	serverDb.setSetting(LIMIT_KEY, JSON.stringify(limit));
+	serverDb.prunePromptLog(limit);
+}
+
+/** Exact retained ids keep selected/compared entries consistent across devices. */
+export function retention(): Extract<PromptLogEvent, { type: 'retention' }> {
+	return { type: 'retention', limit: getLimit(), ids: serverDb.getPromptLogIds() };
+}
 
 /** Persist a fresh request snapshot, pruning the oldest rows past the cap. */
 export function recordRequest(entry: PromptLogEntry): void {
-	serverDb.insertPromptLogEntry(entry.id, entry.startedAt, JSON.stringify(entry), CAP);
+	serverDb.insertPromptLogEntry(entry.id, entry.startedAt, JSON.stringify(entry), getLimit());
 }
 
 /** Merge a result envelope onto the matching request. Returns false when that request
@@ -113,6 +137,7 @@ export function patchResult(id: string, result: PromptLogResult): boolean {
  * throws loudly, and a debug-log row must not take the whole server's boot down with it.
  */
 export function settleInterrupted(): number {
+	serverDb.prunePromptLog(getLimit());
 	let settled = 0;
 	for (const raw of serverDb.getAllPromptLogEntries()) {
 		let e: PromptLogEntry;
@@ -134,6 +159,8 @@ export function settleInterrupted(): number {
 /** Every stored entry, newest first. Served for backfill when a panel opens. A corrupt
  *  row throws (the panel surfaces the error loudly) instead of being silently dropped. */
 export function snapshot(): PromptLogEntry[] {
+	// Apply the current policy to logs saved by versions with a larger default too.
+	serverDb.prunePromptLog(getLimit());
 	return serverDb.getAllPromptLogEntries().map((raw) => JSON.parse(raw) as PromptLogEntry);
 }
 

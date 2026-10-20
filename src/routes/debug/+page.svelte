@@ -37,7 +37,7 @@
 			});
 			// Ask the server for the feed and backfill the shared buffer. Capture runs while
 			// ANY socket is listening, so this window keeps logging even with the app
-			// window's Advanced toggle off.
+			// window's logging toggle off.
 			promptLogStore.setEnabled(true);
 			phase = 'ready';
 		} catch (e) {

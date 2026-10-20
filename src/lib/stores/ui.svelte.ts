@@ -75,7 +75,7 @@ class UiStore {
 	// would stack the other on top of it.
 	lorebookEditorId = $state<string | null>(null);
 	// Prompt debug panel: a chat-area cover like the overlays, but opened from its own
-	// handle. Mutually exclusive with every other panel, no lock.
+	// top-bar button. Mutually exclusive with every other panel, no lock.
 	debugPanelOpen = $state(false);
 	// The two-step New chat flow, guided through the Library panel itself: pick a
 	// character (step 'character'), then a persona (step 'persona'), then a fresh

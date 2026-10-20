@@ -451,7 +451,8 @@ export interface PromptLogResult {
 
 export type PromptLogEvent =
 	| { type: 'request'; entry: PromptLogRequest }
-	| { type: 'result'; id: string; result: PromptLogResult };
+	| { type: 'result'; id: string; result: PromptLogResult }
+	| { type: 'retention'; limit: number; ids: string[] };
 
 type PromptLogHandler = (ev: PromptLogEvent) => void;
 const promptLogHandlers = new Set<PromptLogHandler>();
@@ -471,7 +472,7 @@ export function onPromptLogClear(handler: PromptLogClearHandler): () => void {
 }
 
 /**
- * The store keeps this in sync with the Advanced toggle. Logs are captured and
+ * The store keeps this in sync with the inspector’s logging toggle. Logs are captured and
  * broadcast server-side now, so this just tells the server whether this device wants
  * the feed. The server only records while at least one device is listening.
  */

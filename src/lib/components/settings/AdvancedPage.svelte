@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { advancedSettingsStore, type DeleteConfirmRung } from '$lib/stores/advanced-settings.svelte';
+	import type { DeleteConfirmRung } from '$lib/stores/advanced-settings.svelte';
 	import { deleteGuard, WINDOW_CHOICES, QUICK_WINDOW_MS } from '$lib/stores/delete-guard.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { promptLogStore } from '$lib/debug/promptLog.svelte';
 	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
 	import { HOLD_GATES } from '$lib/config/prompt-hold';
 	import Icon from '$lib/components/ui/Icon.svelte';
@@ -14,8 +12,6 @@
 	import { imageService } from '$lib/services/imageService';
 	import { failureText } from '$lib/stores/toast.svelte';
 
-	let promptDebugPanel = $derived(advancedSettingsStore.promptDebugPanel);
-	let logCount = $derived(promptLogStore.entries.length);
 
 	const RUNGS = [
 		{ value: 'hold', label: 'Ask and hold', title: 'A big loss needs a press and hold' },
@@ -128,34 +124,7 @@
 		</div>
 	</section>
 
-	<section class="card" data-setting="prompt-debug-panel">
-		<div class="card-head">
-			<span class="card-title">Prompt Debug Panel</span>
-			<InfoTip
-				text="Logs every prompt the app sends into a panel you open from a handle on the right edge of the chat. Logs survive a refresh and only the panel's Clear button wipes them."
-			/>
-		</div>
-		<div class="toggle-row" use:toggleRow>
-			<span class="toggle-label">Enable prompt logging &amp; debug panel</span>
-			<Toggle
-				checked={promptDebugPanel}
-				onchange={(v) => advancedSettingsStore.setPromptDebugPanel(v)}
-				label="Enable prompt logging & debug panel"
-			/>
-		</div>
-		{#if promptDebugPanel}
-			<button type="button" class="card-btn" onclick={() => uiStore.openDebugPanel()}>
-				<Icon name="wrench" class="w-3.5 h-3.5" strokeWidth={1.75} />
-				Open debug panel
-				{#if logCount > 0}
-					<span class="open-panel-count">{logCount > 999 ? '999+' : logCount}</span>
-				{/if}
-			</button>
-		{/if}
-	</section>
 
-	<!-- Sits beside the debug panel because the two answer the same question at opposite ends
-	     of a request: that one shows what was sent, this one shows what is about to be. -->
 	<section class="card" data-setting="prompt-review">
 		<div class="card-head">
 			<span class="card-title">Prompt Review</span>
@@ -227,11 +196,6 @@
 		margin-top: 0.8rem;
 	}
 
-	.toggle-label {
-		font-family: var(--font-ui);
-		font-size: 0.8rem;
-		color: var(--color-text-primary);
-	}
 
 	/* The glyph each action already wears, so a row reads as the press it holds. */
 	.gate-label {
@@ -269,12 +233,6 @@
 		border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border));
 	}
 
-	/* The one button standing outside a card body brings the gap that body would have
-	   given it. */
-	.toggle-row + .card-btn {
-		margin-top: 0.7rem;
-	}
-
 	/* Stands where the button stands, so a run in progress reads as a state the card is in
 	   rather than as a control that went missing. */
 	.rebuild-progress {
@@ -301,16 +259,4 @@
 		color: var(--color-error);
 	}
 
-	.open-panel-count {
-		min-width: 1.1rem;
-		padding: 0.05rem 0.28rem;
-		border-radius: 999px;
-		background: var(--color-accent);
-		color: var(--color-on-accent);
-		font-family: var(--font-mono, monospace);
-		font-size: 0.62rem;
-		font-weight: 700;
-		line-height: 1.3;
-		text-align: center;
-	}
 </style>
