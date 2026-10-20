@@ -801,6 +801,7 @@ class ChatStore {
 		this.streamPaint.cancel();
 		this.stream = {
 			chatId,
+			startedAt: Date.now(),
 			content: '',
 			thinking: '',
 			continuingMessageId: opts.continuingMessageId ?? null,

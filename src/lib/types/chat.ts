@@ -387,6 +387,8 @@ export type MessagesDelta =
  *  as idle, which unlocks a second generation over the same abort controller. */
 export interface ChatStream {
 	chatId: string;
+	/** Request start time, shared by live timers even when the transcript remounts. */
+	startedAt: number;
 	content: string;
 	thinking: string;
 	/** Assistant turn a continue is streaming into: its bubble renders the live tail

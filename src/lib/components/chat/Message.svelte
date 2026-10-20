@@ -30,6 +30,7 @@
 	import { canSpliceMessage, collectSubtree, subtreeBlastRadius } from '$lib/utils/message-tree';
 	import { countTokens } from '$lib/tokenizer';
 	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
+	import { liveGenerationTime } from '$lib/utils/live-generation-time.svelte';
 	import { imageService } from '$lib/services/imageService';
 	import ImageLightbox from '$lib/components/ui/ImageLightbox.svelte';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
@@ -495,6 +496,13 @@
 	const showModelName = $derived(themeStore.appearance.showModelName);
 	const showTokenCount = $derived(themeStore.appearance.showTokenCount);
 	const showGenerationTime = $derived(themeStore.appearance.showGenerationTime);
+	const generationTimer = liveGenerationTime({
+		startedAt: () => streamReplacement ? chatStore.stream?.startedAt ?? null : null,
+		enabled: () => showGenerationTime
+	});
+	const generationDuration = $derived(showGenerationTime
+		? streamReplacement ? generationTimer.value : message.generationMs
+		: null);
 	const replacementTokens = liveTokenCount({ text: () => displayedContent,
 		enabled: () => showTokenCount && streamReplacement, streaming: () => streamReplacement,
 		identity: () => chatStore.stream });
@@ -536,7 +544,7 @@
 					imagePath={speakerImagePath}
 					focus={speakerFocus}
 					ordinal={avatarOrdinal}
-					durationMs={showGenerationTime && !streamReplacement ? message.generationMs : null}
+					durationMs={generationDuration}
 				/>
 			{/if}
 
@@ -559,7 +567,7 @@
 										imagePath={speakerImagePath}
 										focus={speakerFocus}
 										ordinal={avatarOrdinal}
-										durationMs={showGenerationTime && !streamReplacement ? message.generationMs : null}
+										durationMs={generationDuration}
 									/>
 								</div>
 							{/if}
@@ -575,7 +583,7 @@
 									streaming={streamReplacement}
 									tokens={showTokenCount ? streamReplacement ? `~${replacementTokens.value} tok` : tokenLabel : null}
 									ordinal={metaReadouts ? avatarOrdinal : null}
-									durationMs={metaReadouts && showGenerationTime && !streamReplacement ? message.generationMs : null}
+									durationMs={metaReadouts ? generationDuration : null}
 									archived={archived && !streamReplacement}
 									lorebook={loreTrace}
 									onLorebook={() => (loreOpen = true)}

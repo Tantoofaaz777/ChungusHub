@@ -3,6 +3,7 @@
 	import { renderedHtml } from '$lib/actions/renderedHtml';
 	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
+	import { liveGenerationTime } from '$lib/utils/live-generation-time.svelte';
 	import MessageReasoning from './MessageReasoning.svelte';
 	import MessageAvatar from './MessageAvatar.svelte';
 	import MessageMeta from './MessageMeta.svelte';
@@ -20,7 +21,8 @@
 
 	let { content, thinking = '' }: Props = $props();
 
-	const startedAt = Date.now();
+	const mountedAt = Date.now();
+	const startedAt = $derived(chatStore.stream?.startedAt ?? mountedAt);
 	const speaker = $derived.by(() => {
 		const cid = chatStore.activeChat?.characterId;
 		if (!cid) return null;
@@ -62,15 +64,11 @@
 	const avatarsHidden = $derived(!themeStore.appearance.showAvatars);
 	const metaReadouts = $derived(avatarsHidden || isManuscript);
 
-	// Live generation timer: ticks against mount time (the indicator mounts when the
-	// request starts). The persisted number is measured in messageStore around the LLM
-	// call itself, so live and saved agree to within a frame. No interval while hidden.
+	// Fresh replies and replacements use the same request clock, including after remount.
 	const showGenerationTime = $derived(themeStore.appearance.showGenerationTime);
-	let nowTick = $state(Date.now());
-	$effect(() => {
-		if (!showGenerationTime) return;
-		const id = setInterval(() => (nowTick = Date.now()), 100);
-		return () => clearInterval(id);
+	const generationTimer = liveGenerationTime({
+		startedAt: () => startedAt,
+		enabled: () => showGenerationTime
 	});
 </script>
 
@@ -82,7 +80,7 @@
 				name={speakerName}
 				imagePath={speakerImagePath}
 				focus={speakerFocus}
-				durationMs={showGenerationTime ? nowTick - startedAt : null}
+				durationMs={generationTimer.value}
 			/>
 		{/if}
 
@@ -95,7 +93,7 @@
 								role="assistant"
 								name={speakerName}
 								imagePath={speakerImagePath}
-								durationMs={showGenerationTime ? nowTick - startedAt : null}
+								durationMs={generationTimer.value}
 							/>
 						</div>
 					{/if}
@@ -105,7 +103,7 @@
 								name={speakerName}
 								timestamp={themeStore.appearance.showTimestamps ? startedAt : null}
 								tokens={isManuscript && !avatarsHidden && themeStore.appearance.showTokenCount && streamingTokens > 0 ? `~${streamingTokens} tok` : null}
-								durationMs={metaReadouts && showGenerationTime ? nowTick - startedAt : null}
+								durationMs={metaReadouts ? generationTimer.value : null}
 								streaming={true}
 							/>
 						</MessageHeader>
