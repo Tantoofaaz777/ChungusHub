@@ -36,7 +36,7 @@ interface SillyTavernCharacter {
 	creator?: string;
 	character_version?: string;
 	alternate_greetings?: string[];
-	character_book?: Record<string, unknown>;
+	character_book?: Record<string, unknown> | null;
 	extensions?: Record<string, unknown>;
 	// V2 spec fields
 	spec?: string;
@@ -55,7 +55,7 @@ interface SillyTavernCharacter {
 		creator?: string;
 		character_version?: string;
 		alternate_greetings?: string[];
-		character_book?: Record<string, unknown>;
+		character_book?: Record<string, unknown> | null;
 		extensions?: Record<string, unknown>;
 	};
 }

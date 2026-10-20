@@ -26,7 +26,9 @@ export function validateCharacterCard(value: unknown): Record<string, unknown> {
 		(!Array.isArray(data[name]) || (data[name] as unknown[]).some((v) => typeof v !== 'string'))) {
 		throw new Error(`Invalid character card: ${name} must be an array of strings.`);
 	}
-	for (const name of ['extensions', 'character_book', 'creator_notes_multilingual']) {
+	// Some card exporters spell an absent embedded lorebook as null.
+	if (data.character_book != null) cardObject(data.character_book, 'character_book');
+	for (const name of ['extensions', 'creator_notes_multilingual']) {
 		if (data[name] !== undefined) cardObject(data[name], name);
 	}
 	if (data.creator_notes_multilingual && Object.values(data.creator_notes_multilingual).some((v) => typeof v !== 'string')) {

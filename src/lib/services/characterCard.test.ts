@@ -175,6 +175,27 @@ describe('Character Card V3 interchange', () => {
 		const png = new Uint8Array(PNG); new DataView(png.buffer).setUint32(8, 0xffffffff);
 		await expect(importSillyTavernCard(new File([png], 'broken.png'))).rejects.toThrow(/Truncated/);
 	});
+	test.each(['V1', 'V2', 'V3'])('treats a null character_book as absent in %s JSON and PNG cards', async (format) => {
+		const data = { name: 'Alice', description: 'A curious traveler.', first_mes: 'Hello {{user}}', character_book: null };
+		const card = format === 'V1' ? data : { spec: `chara_card_${format.toLowerCase()}`, spec_version: format === 'V3' ? '3.0' : '2.0', data };
+		const json = JSON.stringify(card);
+		const png = insertTextChunk(PNG, buildTextChunk(format === 'V3' ? 'ccv3' : 'chara', encodeBase64Utf8(json)), []);
+		for (const file of [new File([json], 'card.json'), new File([png as BlobPart], 'card.png')]) {
+			const result = await importSillyTavernCard(file);
+			expect(result.character.name).toBe('Alice');
+			expect(result.character.traits.description).toBe(data.description);
+			expect(result.character.traits.firstMessage).toBe(data.first_mes);
+			expect(result.lorebook).toBeNull();
+			expect(result.character.cardMetadata?.characterBook).toBeUndefined();
+			expect(result.warnings).toEqual([]);
+			expect(buildCharacterCardV3(entryFrom(result), [], 'all').data.character_book).toBeUndefined();
+			if (file.name.endsWith('.png')) expect(result.imageFile).not.toBeNull();
+		}
+	});
+	test.each([{ book: [] }, { book: '' }, { book: 0 }, { book: false }])('still rejects an invalid non-null character_book: %j', async ({ book }) => {
+		await expect(importSillyTavernCard(new File([JSON.stringify({ name: 'Alice', character_book: book })], 'card.json')))
+			.rejects.toThrow('character_book must be an object');
+	});
 	test.each([{ name: [] }, { name: 'A', assets: [{}] }, { name: 'A', source: [1] }, { name: 'A', creation_date: -1 }])('rejects malformed V3 data %j', async (data) => {
 		await expect(importSillyTavernCard(new File([JSON.stringify({ spec: 'chara_card_v3', spec_version: '3.0', data })], 'card.json'))).rejects.toThrow();
 	});

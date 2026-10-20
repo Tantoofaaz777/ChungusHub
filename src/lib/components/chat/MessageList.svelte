@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { chapterTitle, memoryLabel, sceneLevel } from '../../../../shared/memory-scenes';
 	import SceneSelectionBar from '$lib/components/memory/SceneSelectionBar.svelte';
 	import type { Message } from '$lib/types/chat';
@@ -16,6 +17,7 @@
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { reducedMotion } from '$lib/components/ui/surface-motion';
 
 	interface Props {
 		messages: Message[];
@@ -107,11 +109,27 @@
 	const NEAR_BOTTOM_PX = 120;
 	let nearBottom = $state(true);
 	let hasUnseen = $state(false);
-	let showJumpToLatest = $derived(!nearBottom && (isStreaming || hasUnseen));
+	// Button visibility measures the edges exactly; the wider pin band only controls streaming.
+	let awayFromTop = $state(false);
+	let awayFromBottom = $state(false);
 	let lastScrollTop = 0;
+	let navigationNonce = 0;
 	// Set right before a programmatic snap so the resulting scroll event isn't mistaken for
 	// the user scrolling. Otherwise our own auto-follow reads as intent and releases the pin.
 	let programmaticScroll = false;
+
+	function updateScrollBounds(): void {
+		if (!listElement) return;
+		awayFromTop = listElement.scrollTop > 1;
+		awayFromBottom = listElement.scrollHeight - listElement.clientHeight - listElement.scrollTop > 1;
+	}
+
+	/** Images, reasoning panels and viewport changes can move an edge without a scroll event. */
+	function observeScrollBounds(node: HTMLElement) {
+		const observer = new ResizeObserver(updateScrollBounds);
+		observer.observe(node);
+		return { destroy: () => observer.disconnect() };
+	}
 
 	/** `smooth` is for a deliberate travel (the jump-to-latest pill). The auto-follow uses
 	 *  `instant`, the only value that overrides this scroller's CSS `scroll-behavior: smooth`
@@ -136,6 +154,7 @@
 
 	function updateNearBottom() {
 		if (!listElement) return;
+		updateScrollBounds();
 		const st = listElement.scrollTop;
 		// Reading back through the top edge pulls the next stretch in before the reader hits
 		// the wall, so the story keeps flowing under a fast scroll. In button mode the
@@ -156,9 +175,27 @@
 	}
 
 	function jumpToLatest() {
-		snapToBottom('smooth');
+		navigationNonce++;
+		loadPending = false;
+		snapToBottom(listElement && reducedMotion(listElement) ? 'instant' : 'smooth');
 		nearBottom = true;
 		hasUnseen = false;
+	}
+
+	async function jumpToFirst(): Promise<void> {
+		const el = listElement;
+		if (!el || !messages.length) return;
+		const chatId = pathChatId;
+		const navigation = ++navigationNonce;
+		loadPending = false;
+		nearBottom = false;
+		programmaticScroll = false;
+		// The first turn can be behind several unloaded pages. Reveal it before travelling.
+		showFrom(0);
+		await tick();
+		if (navigation !== navigationNonce || el !== listElement || chatId !== pathChatId) return;
+		el.scrollTo({ top: 0, behavior: reducedMotion(el) ? 'instant' : 'smooth' });
+		lastScrollTop = el.scrollTop;
 	}
 
 	// ===== Transcript window =====
@@ -204,6 +241,7 @@
 	 *  badge, the depth a regex rule is scoped by and the memory boundary all count from the
 	 *  start of the branch, and a window that shifted them would renumber the story. */
 	let windowStart = $derived(anchorIndex >= 0 ? Math.min(anchorIndex, baseStart) : baseStart);
+	let showJumpToFirst = $derived(!openingSceneStream && messages.length > 0 && (windowStart > 0 || awayFromTop));
 	let shown = $derived(windowStart > 0 ? messages.slice(windowStart) : messages);
 	let nextChunk = $derived(Math.min(pageSize, windowStart));
 	// The count is the point of the marker: it is the only thing on screen saying how much
@@ -258,9 +296,12 @@
 		// it already fixed simply is not in this number, so the two can never double up.
 		const heldTop = held.getBoundingClientRect().top;
 		const scrollBefore = el.scrollTop;
+		const navigation = navigationNonce;
 		loadPending = true;
 		showFrom(Math.max(0, windowStart - pageSize));
 		requestAnimationFrame(() => {
+			// An explicit jump supersedes this older reading-position correction.
+			if (navigation !== navigationNonce) return;
 			loadPending = false;
 			// The turn we measured against went away in the meantime (a delete landing, a sync).
 			// A detached node measures as zero, which would "correct" the view by a whole screen.
@@ -295,7 +336,12 @@
 		// The turns arrive above, so the moment they finally overflow, the reader is left at the
 		// TOP of a story that is supposed to open at its end: nothing else re-snaps for them,
 		// since no message landed. Idempotent, so the loads before that one cost nothing.
-		if (nearBottom) requestAnimationFrame(() => snapToBottom());
+		if (nearBottom) {
+			const navigation = navigationNonce;
+			requestAnimationFrame(() => {
+				if (navigation === navigationNonce && nearBottom) snapToBottom();
+			});
+		}
 	});
 
 	$effect(() => {
@@ -322,6 +368,8 @@
 
 		if (listElement) {
 			if (chatId !== prevChatId) {
+				navigationNonce++;
+				loadPending = false;
 				snapToBottom();
 				nearBottom = true;
 				hasUnseen = false;
@@ -409,6 +457,7 @@
 <SceneSelectionBar />
 <div
 	bind:this={listElement}
+	use:observeScrollBounds
 	class="message-list panel-scroll"
 	role="log"
 	aria-label="Chat messages"
@@ -419,11 +468,11 @@
 		<!-- The scene arriving is a new beginning, so it is the only thing on screen while it
 		     writes: leaving the path up would read as a reply to the turns above it. This is
 		     also what gives an opening a visible stream and a reachable Stop at last. -->
-		<div class="message-list-content">
+		<div class="message-list-content" use:observeScrollBounds>
 			<StreamingIndicator content={streamingContent} thinking={streamingThinking} />
 		</div>
 	{:else if messages.length === 0}
-		<div class="message-empty-wrap">
+		<div class="message-empty-wrap" use:observeScrollBounds>
 			<div class="message-empty-card card-elevated">
 				<div class="message-empty-icon">
 					<Icon name="bookOpen" class="w-8 h-8 text-accent" strokeWidth={1.5} />
@@ -460,7 +509,7 @@
 			</div>
 		</div>
 	{:else}
-		<div class="message-list-content">
+		<div class="message-list-content" use:observeScrollBounds>
 			{#if windowStart > 0}
 				<div class="window-edge">
 					<span class="window-edge-line"></span>
@@ -518,13 +567,15 @@
 	/>
 {/if}
 
-{#if showJumpToLatest}
-	<button
-		type="button"
-		class="jump-to-latest surface-float shadow-md"
-		onclick={jumpToLatest}
-		aria-label="Jump to latest message"
-	>
+{#if showJumpToFirst}
+	<button type="button" class="scroll-jump scroll-jump-first surface-float shadow-md" onclick={jumpToFirst}
+		aria-label="Jump to first message" title="Jump to first message">
+		<Icon name="chevronUp" class="w-3.5 h-3.5" />
+	</button>
+{/if}
+{#if awayFromBottom}
+	<button type="button" class="scroll-jump scroll-jump-latest surface-float shadow-md" onclick={jumpToLatest}
+		aria-label="Jump to latest message" title="Jump to latest message">
 		<Icon name="chevronDown" class="w-3.5 h-3.5" />
 		{#if hasUnseen}<span>New</span>{/if}
 	</button>
@@ -559,14 +610,15 @@
 		overscroll-behavior-y: contain;
 	}
 
-	.jump-to-latest {
+	.scroll-jump {
 		position: absolute;
-		bottom: 0.85rem;
-		left: 50%;
-		transform: translateX(-50%);
+		right: 0.85rem;
 		z-index: 10;
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
+		min-width: 2.15rem;
+		min-height: 2.15rem;
 		gap: 0.35rem;
 		padding: 0.38rem 0.8rem;
 		border-radius: var(--radius-full);
@@ -575,6 +627,14 @@
 		font-weight: 600;
 		color: var(--color-text-primary);
 		cursor: pointer;
+	}
+
+	.scroll-jump-first { top: 0.85rem; }
+	.scroll-jump-latest { bottom: 0.85rem; }
+	.scroll-jump:hover { color: var(--color-accent); }
+	.scroll-jump:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+	@media (pointer: coarse) {
+		.scroll-jump { min-width: 2.75rem; min-height: 2.75rem; }
 	}
 
 	/* The transcript's content column: capped and centered inside the chat column,
