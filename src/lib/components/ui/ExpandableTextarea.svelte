@@ -3,6 +3,7 @@
 	import Button from './Button.svelte';
 	import Dialog from './Dialog.svelte';
 	import Icon from './Icon.svelte';
+	import MacroReference from './MacroReference.svelte';
 	import { autoResize } from '$lib/actions/autoResize';
 	import { tokenizeEditorSyntax } from '$lib/utils/editor-syntax';
 	import { MAX_MATCHES } from '$lib/utils/chat-search';
@@ -23,6 +24,7 @@
 		disabled?: boolean;
 		readonly?: boolean;
 		spellcheck?: boolean;
+		macroControls?: { name: string; description: string }[];
 	}
 
 	let {
@@ -38,7 +40,8 @@
 		expandedClass = '',
 		disabled = false,
 		readonly = false,
-		spellcheck
+		spellcheck,
+		macroControls
 	}: Props = $props();
 
 	let open = $state(false);
@@ -48,6 +51,7 @@
 	let findInput = $state<HTMLInputElement | null>(null);
 	let replaceInput = $state<HTMLInputElement | null>(null);
 	let findOpen = $state(false);
+	let macrosOpen = $state(false);
 	let query = $state('');
 	let replacement = $state('');
 	let matchCase = $state(false);
@@ -221,9 +225,10 @@
 
 <Dialog
 	{open}
-	onClose={() => { open = false; findOpen = false; }}
+	onClose={() => { open = false; findOpen = false; macrosOpen = false; }}
 	title={dialogTitle}
 	titleAlign="left"
+	titleDivider={false}
 	size="2xl"
 	bare
 	fill
@@ -231,10 +236,16 @@
 >
 	<div class="expanded-editor" use:editorShortcuts>
 		<div class="editor-tools">
-			<Button variant="ghost" size="sm" aria-expanded={findOpen} onclick={() => findOpen ? closeFind() : void showFind()}>
-				<Icon name="search" class="w-3.5 h-3.5" />
-				Find &amp; replace
-			</Button>
+			<div class="editor-tool-buttons">
+				<Button variant="ghost" size="sm" aria-expanded={findOpen} onclick={() => findOpen ? closeFind() : void showFind()}>
+					<Icon name="search" class="w-3.5 h-3.5" />
+					Find &amp; replace
+				</Button>
+				<Button variant="ghost" size="sm" aria-haspopup="dialog" onclick={() => { macrosOpen = true; }}>
+					<Icon name="sparkles" class="w-3.5 h-3.5" />
+					Macros
+				</Button>
+			</div>
 			{#if findOpen}
 				<div class="editor-find" role="search" aria-label="Find and replace in {dialogTitle}">
 					<div class="editor-find-row">
@@ -287,6 +298,12 @@
 	</div>
 </Dialog>
 
+{#if open && macrosOpen}
+	<Dialog open onClose={() => { macrosOpen = false; }} title="Macros" titleAlign="left" size="xl" bare fill mobileFullscreen>
+		<MacroReference collapsible={false} templates controls={macroControls} />
+	</Dialog>
+{/if}
+
 <style>
 	.textarea-shell {
 		position: relative;
@@ -312,6 +329,8 @@
 		padding: 0.4rem 0.65rem;
 		border-bottom: 1px solid var(--color-border-subtle);
 	}
+
+	.editor-tool-buttons { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 
 	.editor-find {
 		display: flex;

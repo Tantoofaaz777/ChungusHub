@@ -3,8 +3,8 @@
   a chat-area overlay below the dock breakpoint), so the whole layout is driven by
   container queries against its own width (.pb, container-name: builder), never
   the viewport. Structure: a preset action row + save state on top,
-  the prompt-item list as the primary surface, controls and the macro reference
-  as quieter secondary sections below.
+  the prompt-item list as the primary surface, with controls as a quieter
+  secondary section below.
 -->
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
@@ -16,7 +16,6 @@
 	import RawExpandedMockup from '$lib/components/mockups/RawExpandedMockup.svelte';
 	import PruneEmptyBlocksMockup from '$lib/components/mockups/PruneEmptyBlocksMockup.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import MacroReference from '$lib/components/ui/MacroReference.svelte';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import PresetManager from '$lib/components/presets/PresetManager.svelte';
 	import ChatOverrideNotice from '$lib/components/ui/ChatOverrideNotice.svelte';
@@ -481,12 +480,11 @@
 		expandedControlIds = toggledSet(expandedControlIds, controlId);
 	}
 
-	// ---- Available Macros reference ----
-	// Rendered by the shared MacroReference component (scope 'preset'); only the
-	// preset's own dynamic control macros are supplied from here.
+	// Supply this preset's custom macros to the expanded editor's catalog.
 	let presetControlMacros = $derived(
 		(currentPreset?.controls ?? []).filter((c) => c.macro.trim())
 	);
+	let macroControls = $derived(presetControlMacros.map((c) => ({ name: c.macro.trim(), description: c.label || 'Custom control' })));
 
 	/** Validate a control's macro name: required, unique, not a built-in. */
 	function macroError(control: PromptControl): string | undefined {
@@ -753,6 +751,7 @@
 								<div class="pb-field">
 									<label for="item-content-{item.id}" class="pb-label">Prompt content</label>
 									<ExpandableTextarea
+										{macroControls}
 										id="item-content-{item.id}"
 										value={item.content}
 										onValueChange={(value) => handleItemFieldChange(item.id, 'content', value)}
@@ -1098,10 +1097,6 @@
 			</div>
 		</section>
 	{/if}
-
-	<MacroReference
-		controls={presetControlMacros.map((c) => ({ name: c.macro.trim(), description: c.label || 'Custom control' }))}
-	/>
 </div>
 
 <ConfirmDialog

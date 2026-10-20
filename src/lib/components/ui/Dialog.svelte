@@ -27,6 +27,7 @@
 		title?: string;
 		size?: DialogSize;
 		titleAlign?: 'center' | 'left';
+		titleDivider?: boolean;
 		/** Keep the established near-top position by default, while allowing compact
 		 *  action pickers to read as a popup in the middle of the screen. */
 		placement?: DialogPlacement;
@@ -58,6 +59,7 @@
 		title,
 		size = 'md',
 		titleAlign = 'center',
+		titleDivider = true,
 		placement = 'top',
 		dismissible = true,
 		bare = false,
@@ -220,7 +222,7 @@
 				class="dialog-body {bare ? 'flex flex-col min-h-0 flex-1' : 'panel-scroll overscroll-contain'}"
 			>
 				{#if title}
-					<div class="dialog-heading px-5 py-3 border-b border-border-subtle">
+					<div class="dialog-heading px-5 py-3 border-border-subtle" class:border-b={titleDivider}>
 						<h2
 							id={titleId}
 							class="dialog-title text-lg font-ui font-semibold text-text-primary"

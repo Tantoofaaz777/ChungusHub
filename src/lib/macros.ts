@@ -69,6 +69,8 @@ export interface MacroDef {
 	 * than on the spelling that works.
 	 */
 	parameterized?: boolean;
+	/** A usable example name for reference UIs to display and copy (without braces). */
+	example?: string;
 }
 
 /**
@@ -80,9 +82,9 @@ export interface MacroDef {
  * same camelCase shape so the registry reads as one system rather than two conventions.
  */
 export const MACROS: readonly MacroDef[] = [
-	{ name: 'random:values', description: 'Choose an item from a comma-separated list; escape commas with a backslash.', engine: true, parameterized: true, group: 'context' },
-	{ name: 'pick:values', description: 'Choose a stable item from a comma-separated list.', engine: true, parameterized: true, group: 'context' },
-	{ name: 'roll:N', description: 'Roll a die with N sides, for example {{roll:d6}}.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'random:values', example: 'random:one,two,three', description: 'Choose an item from a comma-separated list; escape commas with a backslash.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'pick:values', example: 'pick:one,two,three', description: 'Choose a stable item from a comma-separated list.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'roll:N', example: 'roll:d6', description: 'Roll a die with N sides, for example {{roll:d6}}.', engine: true, parameterized: true, group: 'context' },
 	{ name: 'reverse:text', description: 'Reverse the supplied text.', engine: true, parameterized: true, group: 'context' },
 	{ name: '// text', description: 'A hidden comment, excluded from prompts and lorebook scans.', engine: true, parameterized: true, group: 'context' },
 	{ name: 'hidden_key:text', description: 'A hidden keyword available only to recursive lorebook scans.', engine: true, parameterized: true, group: 'context' },
@@ -101,7 +103,7 @@ export const MACROS: readonly MacroDef[] = [
 	{ name: 'memory', description: 'Chat-memory recall block (episode summaries).', engine: true, group: 'context' },
 	{ name: 'authorsNote', description: "This chat's author's notes. Empty when disabled or unset; place in a preset or lorebook entry.", engine: true, group: 'context' },
 	{ name: 'chatHistory', description: 'Every turn, as native-role messages. Prompt items only: anywhere else it resolves to nothing.', engine: true, structural: true, group: 'context' },
-	{ name: 'chatHistoryLastN', description: 'Only the newest N turns, as a plain transcript. Write the number: {{chatHistoryLast20}}.', engine: true, parameterized: true, group: 'context' },
+	{ name: 'chatHistoryLastN', example: 'chatHistoryLast20', description: 'Only the newest N turns, as a plain transcript. Write the number: {{chatHistoryLast20}}.', engine: true, parameterized: true, group: 'context' },
 	{ name: 'lastMessage', description: 'The newest turn, as inline text. A copy: the turn itself still rides {{chatHistory}}.', engine: true, group: 'context' },
 	{ name: 'lastUserMessage', description: 'The newest user turn, as inline text.', engine: true, group: 'context' },
 	{ name: 'lastCharMessage', description: 'The newest character turn, as inline text.', engine: true, group: 'context' },
