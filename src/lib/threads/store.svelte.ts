@@ -12,13 +12,17 @@ import { selectThreadsMessages, threadsPrompt, threadsOnPath, threadsSelectionOv
 import { parseGeneratedThreadsFeed } from '$shared/threads/feed';
 import type { ThreadsFeed, ThreadsRound, ThreadsMessage, SaveThreadsRound, ThreadsNotesPatch } from '$shared/threads/types';
 import { threadsConfigStore } from './config.svelte';
+import { retainLocalChanges } from '$lib/utils/retain-local-changes';
 
 type NotesPatch = ThreadsNotesPatch;
 type PendingResult = { input: SaveThreadsRound } | { round: ThreadsRound; versionId: string; feed: ThreadsFeed };
 export class ThreadsStore {
 	chatId = $state<string | null>(null);
 	loaded = $state(false);
+	refreshing = $state(false);
+	loadError = $state('');
 	rounds = $state<ThreadsRound[]>([]);
+	viewedRoundId = $state<string | null>(null);
 	notes = $state('');
 	promptId = $state<string | null>(null);
 	ao3 = $state<Ao3Information>(emptyAo3Information());
@@ -39,6 +43,7 @@ export class ThreadsStore {
 	private notesTimer: ReturnType<typeof setTimeout> | null = null;
 	private notesQueue: Promise<void> = Promise.resolve();
 	private notesWriting = new Map<string, number>();
+	private notesRevisions = { notes: 0, ao3: 0, promptId: 0 };
 	get instructions() { return featurePromptsStore.threadsPrompts.prompts.find(p => p.id === this.promptId)?.content ?? featurePromptsStore.promptFor('threads'); }
 	get busy() { return this.phase !== 'idle'; }
 	get path() { return chatStore.currentChatState?.chat.id === this.chatId ? chatStore.currentChatState.activePath : []; }
@@ -64,22 +69,30 @@ export class ThreadsStore {
 	private async loadData(chatId: string | null) {
 		if (chatId !== this.chatId) {
 			void this.flushNotes().catch(() => {});
-			this.cancel(); this.chatId = chatId; this.rounds = []; this.selected = []; this.anchor = null;
+			this.cancel(); this.chatId = chatId; this.loaded = false; this.rounds = []; this.viewedRoundId = null; this.selected = []; this.anchor = null;
 			this.notes = ''; this.promptId = null; this.ao3 = emptyAo3Information(); this.label = ''; this.pending = null; this.error = ''; this.notesError = '';
 		}
 		const ticket = ++this.ticket;
-		this.loaded = false; this.error = '';
+		// Once loaded, keep the current chat mounted throughout refreshes and failures.
+		this.refreshing = this.loaded; this.loadError = '';
 		if (!chatId) return;
+		const before = [...this.rounds], notesRevisions = { ...this.notesRevisions };
+		const notesAtStart = { ...this.localNotes.get(chatId) };
 		try {
 			const data = await db.getThreadsData(chatId);
 			if (this.ticket !== ticket || this.chatId !== chatId) return;
-			this.rounds = data.rounds;
+			this.rounds = retainLocalChanges(data.rounds, before, this.rounds);
+			if (!this.rounds.some(round => round.id === this.viewedRoundId)) this.viewedRoundId = this.rounds.at(-1)?.id ?? null;
 			const local = this.localNotes.get(chatId) ?? {};
-			this.notes = local.notes ?? data.notes; this.ao3 = local.ao3 ?? data.ao3;
-			this.promptId = local.promptId !== undefined ? local.promptId : data.promptId ?? null;
+			// A pending save may finish and clear localNotes before this older read returns.
+			const retained = { ...notesAtStart, ...local };
+			if (notesRevisions.notes === this.notesRevisions.notes) this.notes = retained.notes ?? data.notes;
+			if (notesRevisions.ao3 === this.notesRevisions.ao3) this.ao3 = retained.ao3 ?? data.ao3;
+			if (notesRevisions.promptId === this.notesRevisions.promptId) this.promptId = retained.promptId !== undefined ? retained.promptId : data.promptId ?? null;
 			if (!this.notesWriting.get(chatId)) this.notesPatch = { ...local };
 			this.loaded = true;
-		} catch (error) { if (this.ticket === ticket) this.error = error instanceof Error ? error.message : String(error); }
+		} catch (error) { if (this.ticket === ticket) this.loadError = error instanceof Error ? error.message : String(error); }
+		finally { if (this.ticket === ticket) this.refreshing = false; }
 	}
 	async syncReload() { if (this.chatId) await this.load(this.chatId); }
 	toggle(id: string, range = false) {
@@ -94,9 +107,9 @@ export class ThreadsStore {
 	clearSelection() { this.selected = []; this.anchor = null; }
 	updateNotes(patch: NotesPatch) {
 		if (!this.chatId) return;
-		if (patch.notes !== undefined) this.notes = patch.notes;
-		if (patch.promptId !== undefined) this.promptId = patch.promptId;
-		if (patch.ao3) this.ao3 = patch.ao3;
+		if (patch.notes !== undefined) { this.notes = patch.notes; this.notesRevisions.notes++; }
+		if (patch.promptId !== undefined) { this.promptId = patch.promptId; this.notesRevisions.promptId++; }
+		if (patch.ao3) { this.ao3 = patch.ao3; this.notesRevisions.ao3++; }
 		this.notesPatch = { ...this.notesPatch, ...patch };
 		this.localNotes.set(this.chatId, { ...this.localNotes.get(this.chatId), ...structuredClone($state.snapshot(patch)) });
 		if (this.notesTimer) clearTimeout(this.notesTimer);
@@ -212,6 +225,7 @@ export class ThreadsStore {
 				: await db.addThreadsVersion(pending.round.chatId, pending.round.id, pending.round.revision, pending.versionId, pending.feed);
 			if (this.chatId !== round.chatId || this.pending !== pending) return;
 			this.rounds = this.rounds.some(r => r.id === round.id) ? this.rounds.map(r => r.id === round.id ? round : r) : [...this.rounds, round];
+			this.viewedRoundId = round.id;
 			this.pending = null; this.clearSelection(); this.label = ''; this.tab = 'feed';
 		} catch (error) { if (this.pending === pending) this.error = error instanceof Error ? error.message : String(error); }
 		finally { if (this.pending === pending || !this.pending) this.phase = 'idle'; }
@@ -230,7 +244,7 @@ export class ThreadsStore {
 		this.phase = 'saving'; this.error = '';
 		try {
 			await db.resetThreadsContinuity(chatId, expected);
-			if (this.chatId === chatId) { this.rounds = []; this.tab = 'make'; }
+			if (this.chatId === chatId) { this.rounds = []; this.viewedRoundId = null; this.tab = 'make'; }
 		} catch (error) {
 			if (this.chatId === chatId) this.error = error instanceof Error ? error.message : String(error);
 		} finally { this.phase = 'idle'; }
@@ -240,7 +254,10 @@ export class ThreadsStore {
 		this.phase = 'saving';
 		try {
 			await db.deleteThreadsRound(round.chatId, round.id, round.revision);
-			if (this.chatId === round.chatId) this.rounds = this.rounds.filter(r => r.id !== round.id);
+			if (this.chatId === round.chatId) {
+				this.rounds = this.rounds.filter(r => r.id !== round.id);
+				if (this.viewedRoundId === round.id) this.viewedRoundId = this.rounds.at(-1)?.id ?? null;
+			}
 		} catch (error) { if (this.chatId === round.chatId) this.error = error instanceof Error ? error.message : String(error); }
 		finally { this.phase = 'idle'; }
 	}

@@ -34,6 +34,16 @@
 	}
 	let removing = $state<MemoryScene | null>(null);
 	let model = $derived(resolvePromptTarget(chatStore.activeChat).model);
+	async function retryLoad() {
+		const id = chatStore.activeChatId;
+		if (!id || memoryStore.activeChatId !== id) return;
+		try {
+			// A failed first load may have prevented the chat's path from reaching memory.
+			// Restore that context before publishing loaded coverage and enabling swipes.
+			if (!memoryStore.loaded) await chatStore.refreshCurrentChat();
+			if (chatStore.activeChatId === id && memoryStore.activeChatId === id) await memoryStore.loadForChat(id);
+		} catch (error) { toastStore.failed('reload the memory', error); }
+	}
 	async function remove() {
 		const chapter = removing; removing = null;
 		if (!chapter) return;
@@ -49,8 +59,12 @@
 		{#if !chatStore.activeChat}
 			<EmptyState icon="brain" size="sm">Open a chat to manage its memory.</EmptyState>
 		{:else}
-			{#if !memoryStore.loaded || memoryStore.activeChatId !== chatStore.activeChatId}<p class="memory-loading">Loading memory…</p>
-			{:else}
+			{#if memoryStore.activeChatId === chatStore.activeChatId && memoryStore.loadError}
+				<div class="memory-error" role="alert">Could not {memoryStore.loaded ? 'refresh' : 'load'} memory. {memoryStore.loadError}<Button variant="secondary" size="sm" onclick={retryLoad}>{memoryStore.loaded ? 'Retry updating' : 'Retry loading'}</Button></div>
+			{/if}
+			{#if memoryStore.activeChatId !== chatStore.activeChatId || (!memoryStore.loaded && !memoryStore.loadError)}<p class="memory-loading">Loading memory…</p>
+			{/if}
+			{#if memoryStore.loaded && memoryStore.activeChatId === chatStore.activeChatId}
 				{#each sections as { level, items } (level)}
 					<section aria-labelledby={`memory-${level}-heading`}>
 						<div class="memory-section-header">
@@ -85,5 +99,6 @@
 	.memory-section-header { display:flex; align-items:center; justify-content:space-between; gap:.7rem; margin-bottom:.8rem; }
 	.memory-section-heading { font-size:.8rem; font-weight:600; color:var(--color-text-secondary); }
 	.memory-loading { color:var(--color-text-muted); font-size:.8rem; }
+	.memory-error { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin-bottom:.8rem; color:var(--color-error); font-size:.8rem; }
 	.memory-more { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.3rem 0 .8rem; color:var(--color-text-muted); font-size:.75rem; overflow-anchor:none; }
 </style>

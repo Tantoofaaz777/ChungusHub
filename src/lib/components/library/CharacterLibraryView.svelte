@@ -1142,7 +1142,7 @@
 
 	<!-- Browse area -->
 	<div id="library-panel" role="region" aria-label="Characters" class="brw-content">
-		{#if characterLibraryStore.loading}
+		{#if characterLibraryStore.loading && !characterLibraryStore.initialized}
 			<div class="flex items-center justify-center h-full">
 				<div class="flex flex-col items-center gap-3 text-text-muted">
 					<Spinner size="lg" />

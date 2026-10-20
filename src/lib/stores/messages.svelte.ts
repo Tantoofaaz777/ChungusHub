@@ -527,7 +527,8 @@ class MessageStore {
 	}
 
 	/** Swipes belong to the last assistant message, never a hidden or chapter-covered source.
-	 * Cached rows keep arrow navigation immediate; generation rechecks fresh rows and chapters. */
+	 * Cached rows keep arrow navigation immediate, including during memory refresh/failure.
+	 * First loads still wait for matching chat coverage; generation rechecks fresh rows and chapters. */
 	private canSwipe(messageId: string, messages?: Message[], scenes?: MemoryScene[]): boolean {
 		const state = chatStore.currentChatState;
 		if (!state || !memoryStore.loaded || memoryStore.activeChatId !== state.chat.id || state.chat.activeLeafId !== messageId || state.activePath.at(-1)?.id !== messageId) return false;

@@ -64,6 +64,7 @@ export interface DbCharacterLibraryDraft {
 export type PromptRole = 'system' | 'user' | 'assistant';
 
 export interface PromptItem {
+	/** Stable within a saved preset and its draft; public imports/duplicates renew it. */
 	id: string;
 	name: string;
 	role: PromptRole;

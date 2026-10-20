@@ -391,6 +391,8 @@
 	);
 	// Only the actual last message owns swipes; hiding it never moves the bar to an older turn.
 	// Wait for chapter coverage before exposing navigation on a newly opened chat.
+	// `loaded` stays true during same-chat refreshes and failures. Gating on `refreshing`
+	// or `loadError` would unmount this pager on reconnect and change the message's height.
 	const showSwipes = $derived(
 		isLast && message.role === 'assistant' && !message.excludedFromPrompt && !archived &&
 		memoryStore.loaded && memoryStore.activeChatId === message.chatId

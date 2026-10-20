@@ -8,6 +8,7 @@ import { expandSelfRefs } from '$lib/macros';
 import { EMPTY_IMPACT } from './branching';
 import { markSceneBoundary } from './scene-selection';
 import { parseChapterResponse } from './chapter-response';
+import { retainLocalChanges } from '$lib/utils/retain-local-changes';
 import type { ChatCtx } from './store.svelte';
 import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, sceneLevel, memoryLabel, prepareCompaction, type MemoryScene, type SceneSource, type MemoryLevel, type CompactionLevel, type MemoryChild } from '../../../shared/memory-scenes';
 
@@ -16,9 +17,11 @@ interface Draft {
 	title: string; content: string; source: SceneSource[];
 	phase: 'ready' | 'generating' | 'error'; error: string;
 }
-class SceneMemoryStore {
+export class SceneMemoryStore {
 	activeChatId = $state<string | null>(null);
 	loaded = $state(false);
+	refreshing = $state(false);
+	loadError = $state('');
 	scenes = $state<MemoryScene[]>([]);
 	private ctx = $state.raw<ChatCtx | null>(null);
 	private ticket = 0;
@@ -55,13 +58,21 @@ class SceneMemoryStore {
 
 	async loadForChat(chatId: string) {
 		const ticket = ++this.ticket;
-		if (this.activeChatId !== chatId) { this.cancelDraft(); this.compaction = null; this.selection = null; this.ctx = null; this.scenes = []; }
-		this.activeChatId = chatId; this.loaded = false;
-		const scenes = await database.getMemoryScenes(chatId);
-		if (ticket !== this.ticket || this.activeChatId !== chatId) return;
-		this.scenes = scenes; this.loaded = true;
+		if (this.activeChatId !== chatId) { this.cancelDraft(); this.compaction = null; this.selection = null; this.ctx = null; this.scenes = []; this.loaded = false; }
+		this.activeChatId = chatId;
+		// Refreshing the same chat must not collapse expanded chapters or the transcript's controls.
+		this.refreshing = this.loaded; this.loadError = '';
+		const before = [...this.scenes];
+		try {
+			const scenes = await database.getMemoryScenes(chatId);
+			if (ticket !== this.ticket || this.activeChatId !== chatId) return;
+			this.scenes = retainLocalChanges(scenes, before, this.scenes); this.loaded = true;
+		} catch (error) {
+			if (ticket === this.ticket) this.loadError = error instanceof Error ? error.message : String(error);
+			throw error;
+		} finally { if (ticket === this.ticket) this.refreshing = false; }
 	}
-	clear() { ++this.ticket; this.cancelDraft(); this.compaction = null; this.activeChatId = null; this.ctx = null; this.scenes = []; this.selection = null; this.loaded = false; }
+	clear() { ++this.ticket; this.cancelDraft(); this.compaction = null; this.activeChatId = null; this.ctx = null; this.scenes = []; this.selection = null; this.loaded = false; this.refreshing = false; this.loadError = ''; }
 	async syncForPath(ctx: ChatCtx) {
 		if (this.activeChatId !== ctx.chatId) await this.loadForChat(ctx.chatId);
 		if (this.activeChatId === ctx.chatId) this.ctx = ctx;

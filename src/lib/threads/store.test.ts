@@ -28,6 +28,7 @@ mock.module('$lib/services/database',()=>({...realDb,db:{
 	resetThreadsContinuity:async(chatId:string,expected:{id:string;revision:number}[])=>{resets.push({chatId,expected});await resetGate;},
 	getThreadsData:(chatId:string)=>new Promise((resolve,reject)=>reads.push({chatId,resolve,reject})),
 	updateThreadsNotes:async()=>{ await notesGate; },
+	deleteThreadsRound:async()=>{},
 	saveThreadsRound:async(input:SaveThreadsRound):Promise<ThreadsRound>=>{saved.push(input);if(failSave)throw new Error('Disconnected');return {...input,revision:1,createdAt:1,activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed:input.feed}]};}
 }}));
 mock.module('$lib/stores/chat.svelte',()=>({...realChat,chatStore:fakeChat}));
@@ -57,6 +58,69 @@ describe('Threads generation lifecycle',()=>{
 		reads.shift()!.resolve({...empty(),notes:'Another device edited this'});await sync;
 		expect(store.notes).toBe('Another device edited this');
 	});
+	test('live refresh keeps Feed and Make loaded and preserves the viewed episode when new rounds arrive',async()=>{
+		for (const tab of ['feed','make'] as const) {
+			await open();const round=previous();store.rounds=[round];store.viewedRoundId=round.id;
+			store.tab=tab;store.selected=['2','5'];store.label='Next scene';
+			const sync=store.syncReload();
+			expect(store.loaded).toBe(true);expect(store.refreshing).toBe(true);expect(store.rounds).toEqual([round]);
+			await store.ensureLoaded('a');expect(reads).toHaveLength(1);
+			reads.shift()!.resolve({...empty(),rounds:[round,{...round,id:'new-from-another-device'}]});await sync;
+			expect(store.loaded).toBe(true);expect(store.refreshing).toBe(false);expect(store.viewedRoundId).toBe(round.id);
+			expect(store.rounds).toHaveLength(2);expect(store.tab).toBe(tab);expect(store.selected).toEqual(['2','5']);expect(store.label).toBe('Next scene');
+		}
+	});
+	test('a failed refresh keeps the feed and generation error, and can be retried',async()=>{
+		await open();const round=previous();store.rounds=[round];store.viewedRoundId=round.id;store.error='Save failed';
+		const sync=store.syncReload();reads.shift()!.reject(new Error('Offline'));await sync;
+		expect(store.loaded).toBe(true);expect(store.refreshing).toBe(false);expect(store.rounds).toEqual([round]);
+		expect(store.viewedRoundId).toBe(round.id);expect(store.loadError).toBe('Offline');expect(store.error).toBe('Save failed');
+		const retry=store.load('a');expect(store.loaded).toBe(true);expect(store.loadError).toBe('');
+		reads.shift()!.resolve({...empty(),rounds:[{...round,label:'Updated'}]});await retry;
+		expect(store.rounds[0].label).toBe('Updated');expect(store.loadError).toBe('');expect(store.error).toBe('Save failed');
+	});
+	test('the picker starts at the newest round and falls back only when its viewed round disappears',async()=>{
+		const first=previous(),newest={...first,id:'newest'};
+		const opening=store.load('a');reads.shift()!.resolve({...empty(),rounds:[first,newest]});await opening;
+		expect(store.viewedRoundId).toBe(newest.id);store.viewedRoundId=first.id;
+		const sync=store.syncReload();reads.shift()!.resolve({...empty(),rounds:[newest]});await sync;
+		expect(store.viewedRoundId).toBe(newest.id);
+		const next=store.load('b');expect(store.loaded).toBe(false);expect(store.refreshing).toBe(false);expect(store.viewedRoundId).toBeNull();
+		reads.shift()!.resolve(empty());await next;expect(store.viewedRoundId).toBeNull();
+	});
+	test('an older refresh cannot clear a newer refresh or publish a stale error',async()=>{
+		await open();const older=store.syncReload(),newer=store.syncReload();
+		reads.shift()!.reject(new Error('Stale error'));await older;
+		expect(store.loaded).toBe(true);expect(store.refreshing).toBe(true);expect(store.loadError).toBe('');
+		reads.shift()!.resolve(empty());await newer;expect(store.refreshing).toBe(false);
+	});
+	test('a stale refresh cannot remove a thread saved while it was in flight',async()=>{
+		await open();const refresh=store.syncReload();
+		store.pending={input:{id:'new-round',chatId:'a',label:'New',messages:previous().messages,feed,branchLeafId:'5'}};
+		await store.saveResult();reads.shift()!.resolve(empty());await refresh;
+		expect(store.rounds.map(round=>round.id)).toEqual(['new-round']);expect(store.viewedRoundId).toBe('new-round');
+	});
+	test('a stale refresh cannot resurrect deleted rounds or a reset continuity',async()=>{
+		for (const reset of [false,true]) {
+			await open();const round=previous();store.rounds=[round];const refresh=store.syncReload();
+			if(reset)await store.resetContinuity('a',[round]);else await store.remove(round);
+			reads.shift()!.resolve({...empty(),rounds:[round]});await refresh;
+			expect(store.rounds).toEqual([]);expect(store.viewedRoundId).toBeNull();
+		}
+	});
+	test('notes saved successfully during a read cannot be overwritten by its old metadata',async()=>{
+		await open();const refresh=store.syncReload();
+		store.updateNotes({notes:'Saved now',promptId:'local-prompt'});await store.flushNotes();
+		reads.shift()!.resolve({...empty(),notes:'Old notes',promptId:'old-prompt',ao3:{...emptyAo3Information(),title:'Remote title'}});await refresh;
+		expect(store.notes).toBe('Saved now');expect(store.promptId).toBe('local-prompt');expect(store.ao3.title).toBe('Remote title');
+	});
+	test('a read started during a notes save retains the edit even after that save completes',async()=>{
+		await open();let release!:()=>void;notesGate=new Promise<void>(resolve=>release=resolve);
+		store.updateNotes({notes:'Latest note',promptId:null,ao3:{...emptyAo3Information(),title:'Local title'}});
+		const writing=store.flushNotes(),refresh=store.syncReload();release();await writing;
+		reads.shift()!.resolve({...empty(),notes:'Old note',promptId:'old-prompt'});await refresh;
+		expect(store.notes).toBe('Latest note');expect(store.promptId).toBeNull();expect(store.ao3.title).toBe('Local title');
+	});
 	test('reopening during generation does not restart or interrupt the model call',async()=>{
 		await open();const {p}=await start();expect(calls).toHaveLength(1);
 		await store.ensureLoaded('a');expect(reads).toHaveLength(0);expect(calls).toHaveLength(1);
@@ -66,9 +130,9 @@ describe('Threads generation lifecycle',()=>{
 	});
 	test('a failed initial read can be retried on the next opening',async()=>{
 		const opening=store.ensureLoaded('a');reads.shift()!.reject(new Error('Offline'));await opening;
-		expect(store.loaded).toBe(false);expect(store.error).toBe('Offline');
+		expect(store.loaded).toBe(false);expect(store.loadError).toBe('Offline');
 		const retry=store.ensureLoaded('a');expect(reads).toHaveLength(1);
-		reads.shift()!.resolve(empty());await retry;expect(store.loaded).toBe(true);expect(store.error).toBe('');
+		reads.shift()!.resolve(empty());await retry;expect(store.loaded).toBe(true);expect(store.loadError).toBe('');
 	});
 	test('switching chats rejects late data without duplicating the new chat read',async()=>{
 		const a=store.ensureLoaded('a'),b=store.ensureLoaded('b');expect(reads).toHaveLength(2);
@@ -123,6 +187,7 @@ describe('Threads generation lifecycle',()=>{
 		const prompt=calls[0].messages[0].content;expect(prompt).toContain('Turn 2');expect(prompt).toContain('Turn 5');expect(prompt).not.toContain('Turn 3');
 		calls[0].resolve({content:JSON.stringify(feed)});await p;
 		expect(saved[0].messages.map(m=>m.id)).toEqual(['2','5']);expect(store.rounds).toHaveLength(1);expect(store.selected).toEqual([]);expect(store.tab).toBe('feed');
+		expect(store.viewedRoundId).toBe(store.rounds[0].id);
 	});
 	test('long picker ranges and sparse selections reach preview and generation beyond the first 50 rows',async()=>{
 		await open();

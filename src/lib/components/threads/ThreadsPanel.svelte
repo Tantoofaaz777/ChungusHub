@@ -32,10 +32,7 @@
 	let removing = $state<ThreadsRound | null>(null);
 	let resetting = $state<{ chatId: string; rounds: { id: string; revision: number }[] } | null>(null);
 	$effect(() => { if (resetting && resetting.chatId !== store.chatId) resetting = null; });
-	let viewedRoundId = $state<string | null>(null);
-	let viewedChatId: string | null = null;
-	let newestRoundId: string | null = null;
-	const viewedRound = $derived(store.rounds.find(round => round.id === viewedRoundId) ?? store.rounds.at(-1));
+	const viewedRound = $derived(store.rounds.find(round => round.id === store.viewedRoundId) ?? store.rounds.at(-1));
 	let notesOpen = $state(false);
 	let ao3Open = $state(false);
 	let touch: { id: string; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -63,13 +60,6 @@
 		if (!panelActive()) return;
 		const id = chatId;
 		untrack(() => { void store.ensureLoaded(id); });
-	});
-	$effect(() => {
-		const id = chatId, newest = store.rounds.at(-1)?.id ?? null;
-		untrack(() => {
-			if (id !== viewedChatId || newest !== newestRoundId) viewedRoundId = null;
-			viewedChatId = id; newestRoundId = newest;
-		});
 	});
 	function settings() { uiStore.gotoSettingsPage('engines'); uiStore.settingsEngineId = 'threads'; uiStore.openSettings(); }
 	function ao3(patch: Partial<Ao3Information>) { store.updateNotes({ ao3: { ...store.ao3, ...patch } }); }
@@ -123,8 +113,9 @@
 			<p class="muted">Loading threads…</p>
 		{:else}
 			<div class="tabs"><PillRow options={[{value:'feed',label:'Feed'}, {value:'make',label:'Make'}]} current={store.tab} onpick={(value) => store.tab = value as 'feed' | 'make'} label="Threads view" /></div>
-			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} value={viewedRound.id} onchange={(id) => viewedRoundId = id} />{/if}
-			{#if store.error}<div class="error" role="alert">{store.error}{#if !store.loaded}<Button variant="secondary" size="sm" onclick={() => store.load(chatId)}>Retry loading</Button>{/if}</div>{/if}
+			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} value={viewedRound.id} onchange={(id) => store.viewedRoundId = id} />{/if}
+			{#if store.loadError}<div class="error" role="alert">Could not {store.loaded ? 'refresh' : 'load'} threads. {store.loadError}<Button variant="secondary" size="sm" onclick={() => store.load(chatId)}>{store.loaded ? 'Retry updating' : 'Retry loading'}</Button></div>{/if}
+			{#if store.error}<div class="error" role="alert">{store.error}</div>{/if}
 			{#if store.pending}
 				<div class="status" role="status"><span>Thread generated. Save it without making another model call.</span><div class="actions"><Button size="sm" onclick={() => store.saveResult()} disabled={store.busy}>Retry saving</Button><Button variant="ghost" size="sm" disabled={store.busy} onclick={() => {store.pending = null; store.error = '';}}>Discard result</Button></div></div>
 			{/if}
@@ -137,7 +128,7 @@
 					{#if store.phase === 'generating'}<Button variant="secondary" size="sm" onclick={() => store.cancel()}>Cancel</Button>{/if}
 				</div>
 			{/if}
-			{#if !store.loaded && !store.error}<p class="muted">Loading threads…</p>
+			{#if !store.loaded && !store.loadError}<p class="muted">Loading threads…</p>
 			{:else if store.loaded && store.tab === 'feed'}
 				{#if !store.rounds.length}
 					<EmptyState icon="threads" title="No threads yet">Select a scene in Make to hear from its fictional audience.

@@ -25,8 +25,8 @@ function slugify(name: string): string {
 		.substring(0, 50);
 }
 
-/** A preset minus its items' runtime ids: the shape on disk and on the wire. */
-type StoredPreset = Omit<PromptPreset, 'items'> & { items: Omit<PromptItem, 'id'>[] };
+/** Older files have no item ids; new writes persist them so live editors keep their rows. */
+type StoredPreset = Omit<PromptPreset, 'items'> & { items: (Omit<PromptItem, 'id'> & { id?: string })[] };
 
 /** Deep-copy controls so nested option arrays aren't shared between presets. */
 function cloneControls(controls?: PromptControl[]): PromptControl[] {
@@ -44,7 +44,7 @@ function cloneRules(rules?: RegexRule[]): RegexRule[] | undefined {
 
 /**
  * Deep copy of everything a preset owns EXCEPT its items, whose ids are the caller's
- * business (minted fresh on load, dropped on the wire, kept when cloning in place).
+ * business (preserved on reload/save, renewed on import/duplicate, ignored for content equality).
  *
  * This is the single per-preset field list, the one architecture/prompt-pipeline.md
  * coupling 9 keeps pointing at. `hydrate`, `strip`, `clone`, `duplicatePreset` and the
@@ -79,15 +79,17 @@ export function clonePreset(preset: PromptPreset): PromptPreset {
 	};
 }
 
-class PresetService {
+export class PresetService {
 	// Reactive so every consumer ($derived over getAllPresets/getActivePresetId in
 	// InputArea, PromptBuilder, etc.) refreshes the instant the set or selection changes,
 	// with no page reload needed. Plain Map/field reads weren't tracked by Svelte.
 	private presets = new SvelteMap<string, PromptPreset>(); // committed (saved) presets
 	private drafts = new SvelteMap<string, PromptPreset>(); // unsaved working copies
 	private initialized = false;
+	private loadTicket = 0;
+	private pendingWrites = new Map<string, number>();
 	private activePresetId = $state<string | null>(null);
-	// Only external/full replacements tick this. Prompt Builder uses it to refresh an
+	// Only changes to the active effective preset tick this. Prompt Builder refreshes an
 	// already-open editor when the active id stays the same (remote draft/default reset).
 	private contentVersion = $state(0);
 
@@ -144,9 +146,8 @@ class PresetService {
 
 	/** Reload file-backed presets after the server's `presets` sync hint. */
 	async syncReload(): Promise<void> {
-		await this.loadAll();
+		if (await this.loadAll()) this.contentVersion++;
 		await this.syncActivePresetId();
-		this.contentVersion++;
 	}
 
 	private async syncActivePresetId(): Promise<void> {
@@ -161,57 +162,94 @@ class PresetService {
 		await this.activatePreset(next.id);
 	}
 
-	private async loadAll(): Promise<void> {
+	private async loadAll(): Promise<boolean> {
+		const ticket = ++this.loadTicket;
+		const beforePresets = new Map(this.presets), beforeDrafts = new Map(this.drafts);
+		const writingAtStart = new Set(this.pendingWrites.keys());
 		const data = (await apiGet('/api/presets')) as { presets: StoredPreset[]; drafts: StoredPreset[] };
-		this.presets.clear();
-		this.drafts.clear();
+		if (ticket !== this.loadTicket) return false;
+		const presets = new Map<string, PromptPreset>(), drafts = new Map<string, PromptPreset>();
 		for (const stored of data.presets) {
-			this.presets.set(stored.id, this.hydrate(stored));
+			presets.set(stored.id, this.hydrate(stored, beforePresets.get(stored.id)));
 		}
 		for (const stored of data.drafts ?? []) {
 			// Ignore orphan drafts whose committed preset no longer exists.
-			const committed = this.presets.get(stored.id);
+			const committed = presets.get(stored.id);
 			if (!committed) continue;
-			const draft = this.hydrate(stored);
-			// A draft identical to its committed preset is a phantom "unsaved changes"
-			// flag (e.g. left behind by a no-op edit), so clean it up instead of loading it.
-			if (this.sameContent(draft, committed)) {
-				await apiSend(`/api/presets/${encodeURIComponent(stored.id)}/draft`, 'DELETE', { clientId: getClientId() });
-				continue;
-			}
-			this.drafts.set(stored.id, draft);
+			const draft = this.hydrate(stored, beforeDrafts.get(stored.id) ?? beforePresets.get(stored.id) ?? committed);
+			// Redundant drafts do not mean unsaved work. A read must never delete the file:
+			// another device (or a local write) may have replaced it since the snapshot.
+			if (this.sameContent(draft, committed)) continue;
+			drafts.set(stored.id, draft);
 		}
+		// A read must not rewind edits, saves, imports or deletions made while it was in flight.
+		const ids = new Set([...beforePresets.keys(), ...beforeDrafts.keys(), ...this.presets.keys(), ...this.drafts.keys(), ...writingAtStart, ...this.pendingWrites.keys()]);
+		for (const id of ids) {
+			if (!writingAtStart.has(id) && !this.pendingWrites.has(id) && this.presets.get(id) === beforePresets.get(id) && this.drafts.get(id) === beforeDrafts.get(id)) continue;
+			const committed = this.presets.get(id), draft = this.drafts.get(id);
+			if (committed) presets.set(id, committed); else presets.delete(id);
+			if (draft) drafts.set(id, draft); else drafts.delete(id);
+		}
+		const before = this.activePresetId ? this.getEffective(this.activePresetId) : null;
+		// Publish only after the read succeeds, with no await between the two maps.
+		for (const id of this.presets.keys()) if (!presets.has(id)) this.presets.delete(id);
+		for (const [id, preset] of presets) if (this.presets.get(id) !== preset) this.presets.set(id, preset);
+		for (const id of this.drafts.keys()) if (!drafts.has(id)) this.drafts.delete(id);
+		for (const [id, draft] of drafts) if (this.drafts.get(id) !== draft) this.drafts.set(id, draft);
+		return before !== (this.activePresetId ? this.getEffective(this.activePresetId) : null);
 	}
 
 	/**
-	 * Material equality: same wire payload (strip() drops the runtime item ids, so only
-	 * name, items and controls are compared). This is what decides whether an edit state
-	 * is actually a draft or just the committed preset again.
+	 * Material equality ignores item ids and compares every authored field. This decides
+	 * whether an edit state is actually a draft or just the committed preset again.
 	 */
 	private sameContent(a: PromptPreset, b: PromptPreset): boolean {
 		return JSON.stringify(this.strip(a)) === JSON.stringify(this.strip(b));
 	}
 
-	private hydrate(stored: StoredPreset): PromptPreset {
-		return {
-			id: stored.id,
-			...clonePresetBody(stored),
-			items: (stored.items ?? []).map((item) => ({ ...item, id: crypto.randomUUID() }))
+	private hydrate(stored: StoredPreset, previous?: PromptPreset): PromptPreset {
+		const items = stored.items ?? [];
+		const validId = (item: { id?: string }) => typeof item.id === 'string' && item.id.trim() ? item.id : null;
+		const preset: PromptPreset = {
+			id: stored.id, ...clonePresetBody(stored),
+			items: items.map(item => ({ ...item, id: validId(item) ?? '' }))
 		};
+		// The usual reconnect is unchanged: reuse it before doing any legacy row matching.
+		if (previous && this.sameContent(preset, previous) && preset.items.every((item, index) => !item.id || item.id === previous.items[index]?.id)) return previous;
+		const reserved = new Set(items.map(validId).filter((id): id is string => id !== null));
+		const used = new Set<string>();
+		const fingerprint = (item: Omit<PromptItem, 'id'>) => JSON.stringify([item.name, item.role, item.content, item.enabled, item.note ?? null]);
+		preset.items = items.map((item) => {
+			let id = validId(item);
+			if (!id || used.has(id)) {
+				// Legacy files: match unchanged items first (also across reorders), then a
+				// uniquely named row whose text/role may have been edited. Never reuse an id twice.
+				const candidates = (previous?.items ?? []).filter(old => !used.has(old.id) && !reserved.has(old.id));
+				const exact = candidates.find(old => fingerprint(old) === fingerprint(item));
+				const named = item.name ? candidates.filter(old => old.name === item.name) : [];
+				const uniqueName = named.length === 1 && items.filter(other => other.name === item.name).length === 1 ? named[0] : undefined;
+				id = exact?.id ?? uniqueName?.id ?? crypto.randomUUID();
+			}
+			used.add(id);
+			return { ...item, id };
+		});
+		return previous && this.sameContent(preset, previous) && preset.items.every((item, index) => item.id === previous.items[index]?.id)
+			? previous : preset;
 	}
 
 	/**
-	 * Wire payload for persistence. Runtime item ids are regenerated on load, but control +
-	 * option ids are kept stable: option ids ARE the stored value for select/radio/tags, so
-	 * regenerating one resets every reader's saved choice. (Control VALUES key on the
-	 * control's macro name, not its id, and they are global rather than per-chat. See
-	 * architecture/preset-authoring.md coupling 1.)
+	 * Content comparison omits item ids; storage preserves them. Public JSON/PNG exports
+	 * still use preset-io's document shape, which omits item ids and renews them on import.
 	 */
 	private strip(preset: PromptPreset): Omit<StoredPreset, 'id'> {
 		return {
 			...clonePresetBody(preset),
 			items: preset.items.map(({ id: _id, ...item }) => item)
 		};
+	}
+
+	private toStored(preset: PromptPreset): Omit<StoredPreset, 'id'> {
+		return { ...this.strip(preset), items: preset.items.map(item => ({ ...item })) };
 	}
 
 	private clone(preset: PromptPreset): PromptPreset {
@@ -259,6 +297,15 @@ class PresetService {
 
 	// ===== Editing (drafts) =====
 
+	private async withPendingWrite<T>(id: string, write: () => Promise<T>): Promise<T> {
+		this.pendingWrites.set(id, (this.pendingWrites.get(id) ?? 0) + 1);
+		try { return await write(); }
+		finally {
+			const count = this.pendingWrites.get(id)! - 1;
+			if (count) this.pendingWrites.set(id, count); else this.pendingWrites.delete(id);
+		}
+	}
+
 	/**
 	 * Persist the in-progress edit to the preset's draft. Does not touch the committed
 	 * file. If the edit state matches the committed preset (an edit typed and reverted,
@@ -266,37 +313,43 @@ class PresetService {
 	 * "unsaved changes" exists exactly when the content actually differs.
 	 */
 	async saveDraft(preset: PromptPreset): Promise<void> {
-		const committed = this.presets.get(preset.id);
-		if (committed && this.sameContent(preset, committed)) {
-			await this.discardDraft(preset.id);
-			return;
-		}
-		this.drafts.set(preset.id, this.clone(preset));
-		await apiSend(`/api/presets/${encodeURIComponent(preset.id)}/draft`, 'PUT', {
-			...this.strip(preset),
-			clientId: getClientId()
+		return this.withPendingWrite(preset.id, async () => {
+			const committed = this.presets.get(preset.id);
+			if (committed && this.sameContent(preset, committed)) {
+				await this.discardDraft(preset.id);
+				return;
+			}
+			this.drafts.set(preset.id, this.clone(preset));
+			await apiSend(`/api/presets/${encodeURIComponent(preset.id)}/draft`, 'PUT', {
+				...this.toStored(preset),
+				clientId: getClientId()
+			});
 		});
 	}
 
 	/** Save: write the draft onto the committed preset and drop the draft. */
 	async commitDraft(id: string): Promise<PromptPreset | null> {
-		const draft = this.drafts.get(id);
-		if (!draft) return this.presets.get(id) ?? null;
-		await apiSend(`/api/presets/${encodeURIComponent(id)}`, 'PUT', { ...this.strip(draft), clientId: getClientId() });
-		await apiSend(`/api/presets/${encodeURIComponent(id)}/draft`, 'DELETE', { clientId: getClientId() });
-		const committed = this.clone(draft);
-		this.presets.set(id, committed);
-		this.drafts.delete(id);
-		return committed;
+		return this.withPendingWrite(id, async () => {
+			const draft = this.drafts.get(id);
+			if (!draft) return this.presets.get(id) ?? null;
+			await apiSend(`/api/presets/${encodeURIComponent(id)}`, 'PUT', { ...this.toStored(draft), clientId: getClientId() });
+			await apiSend(`/api/presets/${encodeURIComponent(id)}/draft`, 'DELETE', { clientId: getClientId() });
+			const committed = this.clone(draft);
+			this.presets.set(id, committed);
+			this.drafts.delete(id);
+			return committed;
+		});
 	}
 
 	/** Discard: drop the draft, reverting to the committed preset. */
 	async discardDraft(id: string): Promise<PromptPreset | null> {
-		if (this.drafts.has(id)) {
-			this.drafts.delete(id);
-			await apiSend(`/api/presets/${encodeURIComponent(id)}/draft`, 'DELETE', { clientId: getClientId() });
-		}
-		return this.presets.get(id) ?? null;
+		return this.withPendingWrite(id, async () => {
+			if (this.drafts.has(id)) {
+				this.drafts.delete(id);
+				await apiSend(`/api/presets/${encodeURIComponent(id)}/draft`, 'DELETE', { clientId: getClientId() });
+			}
+			return this.presets.get(id) ?? null;
+		});
 	}
 
 	// ===== Preset lifecycle =====
@@ -304,7 +357,7 @@ class PresetService {
 	async createPreset(name: string): Promise<PromptPreset> {
 		const id = this.generateUniqueId(name);
 		const newPreset: PromptPreset = { id, name: name.trim(), items: [], controls: [] };
-		await apiSend(`/api/presets/${encodeURIComponent(id)}`, 'PUT', { ...this.strip(newPreset), clientId: getClientId() });
+		await apiSend(`/api/presets/${encodeURIComponent(id)}`, 'PUT', { ...this.toStored(newPreset), clientId: getClientId() });
 		this.presets.set(id, newPreset);
 		return newPreset;
 	}
@@ -321,7 +374,7 @@ class PresetService {
 			name: newName.trim(),
 			items: source.items.map((item) => ({ ...item, id: crypto.randomUUID() }))
 		};
-		await apiSend(`/api/presets/${encodeURIComponent(id)}`, 'PUT', { ...this.strip(newPreset), clientId: getClientId() });
+		await apiSend(`/api/presets/${encodeURIComponent(id)}`, 'PUT', { ...this.toStored(newPreset), clientId: getClientId() });
 		this.presets.set(id, newPreset);
 		return newPreset;
 	}
@@ -355,7 +408,7 @@ class PresetService {
 			...(cover ? { meta: { ...imported.meta, cover } } : {})
 		};
 		await apiSend(`/api/presets/${encodeURIComponent(complete.id)}`, 'PUT', {
-			...this.strip(complete),
+			...this.toStored(complete),
 			clientId: getClientId()
 		});
 		this.presets.set(complete.id, complete);

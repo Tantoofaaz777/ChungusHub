@@ -59,6 +59,8 @@ move its swipe bar to an earlier turn. Keyboard arrows and `/swipe` obey the sam
 alternatives remain stored; a later visible assistant reply can have swipes normally. Initial opening
 scene generation in an empty chat and the separate Replace action retain their existing behavior.
 
+Swipe visibility and arrow navigation depend on the first loaded memory snapshot for the matching chat, never on `refreshing` or `loadError`. A reconnect therefore keeps the pager mounted and both arrows available over the cached chapter coverage, including after a failed refresh. An initial load, or a switch to a chat whose memory has not arrived, still blocks swipes. Real chapter coverage changes continue to update eligibility. `src/lib/stores/response-swipes-refresh.test.ts` exercises these transitions through the real scene store and the public message navigation action.
+
 
 Memory has three manual levels: Chapters summarize message ranges, Arcs summarize selected
 consecutive Chapters, and Volumes summarize selected consecutive Arcs. The chat's Memory panel
@@ -83,3 +85,5 @@ remain stale even though copied summary revisions restart at one. Database snaps
 new columns through the existing schema and migration path.
 
 The retained Memory panel renders a prefix of 50 cards independently for chapters, arcs and volumes. A per-section IntersectionObserver rooted in the panel scroller appends another 50 within 200px of the viewport; each section also has a manual Load more button. Observers disconnect while hidden, saving, loading or unmounted, and queued callbacks cannot expand a detached list. Loaded prefixes and expanded cards survive panel toggles for the same chat; the workspace chat key resets them on chat changes. This limits presentation only: resolution, compaction candidates, source coverage and prompt assembly retain every saved scene. Collapsed card previews do not mount their summary text; expanding mounts it on demand. Token counts still appear in card headings and reuse their content/model cache.
+
+Same-chat refreshes, including reconnect resync, retain `loaded` and the existing scenes while reading in the background (`refreshing`). The panel keeps its keyed cards mounted, preserving expanded previews, loaded prefixes and scrolling; response swipes in the transcript also remain available. Read failures expose `loadError` with retry without removing saved scenes or local draft/selection state. Initial loads and chat changes still wait for the correct chat's data; retrying a failed first load restores the chat's path context before publishing loaded coverage. Request tickets guard data, errors and refresh completion; `clear()` invalidates pending reads and resets both loading and error state. Snapshot reconciliation retains saves and deletions completed during the read, while accepting a higher server revision for an edited scene.
