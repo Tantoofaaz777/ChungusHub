@@ -80,8 +80,8 @@
 	});
 </script>
 
-<Dialog open={true} onClose={close} title="Author's notes" titleAlign="left" size="lg" placement="center">
-	<div class="notes-form">
+<Dialog open={true} onClose={close} title="Author's notes" titleAlign="left" size="lg" placement="center" bare>
+	<div class="notes-form panel-scroll">
 		<div class="notes-status font-ui">
 			<span>Enabled</span>
 			<Toggle checked={enabled} onchange={toggle} disabled={closing} label="Enable author's notes" />
@@ -98,7 +98,6 @@
 			class="input-base w-full px-3 py-2 text-sm text-text-primary"
 			disabled={closing}
 		/>
-		<p class="notes-hint font-ui">Saves automatically for this chat. Included only where its macro is used.</p>
 	</div>
 </Dialog>
 
@@ -107,6 +106,10 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		min-height: 0;
+		padding: 1.25rem;
+		/* Match the header's inset without reserving an unused scrollbar on the right. */
+		scrollbar-gutter: auto;
 	}
 
 	.notes-status {
@@ -115,12 +118,6 @@
 		justify-content: space-between;
 		font-size: 0.8rem;
 		color: var(--color-text-secondary);
-	}
-
-	.notes-hint {
-		margin: 0;
-		font-size: 0.72rem;
-		color: var(--color-text-muted);
 	}
 
 </style>
