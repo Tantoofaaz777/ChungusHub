@@ -206,10 +206,11 @@
 		commandArmed = false;
 		if (!chatId) return;
 		void inputDraftStore.load(chatId).then(async (draft) => {
-			// The user may have switched again (or started typing) while the
-			// draft was in flight; never stomp what's already in the box.
-			if (chatStore.activeChatId !== chatId || !draft || content !== '') return;
-			content = draft;
+			// An empty box may have just SENT the draft. Reject reads superseded by
+			// a send, typing or a newer load, even when they resolved before this callback.
+			if (chatStore.activeChatId !== chatId || !draft?.content ||
+				!inputDraftStore.isCurrent(draft) || content !== '') return;
+			content = draft.content;
 			await tick();
 			handleInput();
 		});
@@ -234,6 +235,7 @@
 		if (!remote) return;
 		untrack(() => {
 			inputDraftStore.remote = null; // consume: each push applies at most once
+			if (!inputDraftStore.isCurrent(remote)) return;
 			if (remote.chatId !== chatStore.activeChatId) return;
 			if (document.activeElement === textareaElement && content !== '') return;
 			if (remote.content === content) return;

@@ -7,6 +7,9 @@
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { memoryStore } from '$lib/memory/scene-store.svelte';
 	import { promptTokensStore } from '$lib/stores/promptTokens.svelte';
+	import { chatStore } from '$lib/stores/chat.svelte';
+	import { messageStore } from '$lib/stores/messages.svelte';
+	import { toastStore } from '$lib/stores/toast.svelte';
 
 	let activeOverlay = $derived(uiStore.activeOverlay);
 	let settingsOpen = $derived(uiStore.settingsOpen);
@@ -24,6 +27,20 @@
 	function handleToggleOverlay(overlay: OverlayType) {
 		// Toggle: clicking the active button again closes the panel.
 		uiStore.toggleOverlay(overlay, flush);
+	}
+
+	async function handleGoHome() {
+		if (uiStore.guardBlocksNav() || messageStore.warnIfBusy()) return;
+		try {
+			await flush();
+			await chatStore.goHome();
+			uiStore.closeOverlay();
+			uiStore.closeSettings();
+			uiStore.closeLibrary();
+			uiStore.closeDebugPanel();
+		} catch (error) {
+			toastStore.failed('go home', error);
+		}
 	}
 
 	// The centred navigation cluster: each opens a chat-area overlay. Characters, Personas
@@ -78,6 +95,16 @@
 					</button>
 				{/if}
 			</div>
+			<button
+				type="button"
+				class="overlay-btn"
+				class:is-active-tint={uiStore.welcomeOpen}
+				title="Home"
+				aria-label="Home"
+				onclick={handleGoHome}
+			>
+				<Icon name="home" class="w-3.5 h-3.5" />
+			</button>
 		</div>
 
 		<div class="nav-cluster">

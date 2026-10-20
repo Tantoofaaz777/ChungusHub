@@ -10,9 +10,13 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import GenerationDots from '$lib/components/ui/GenerationDots.svelte';
 	import type { MessageAttachment } from '$lib/types/chat';
 
 	let chatState = $derived(chatStore.currentChatState);
+	// A background refresh keeps its loaded chat. Only navigation gets a loading screen.
+	let opening = $derived(chatStore.openingChatId !== null ||
+		(chatStore.activeChatId !== null && chatState?.chat.id !== chatStore.activeChatId));
 	// Everything the transcript paints comes off the VISIBLE stream, so a reply still
 	// arriving in a chat the reader has left cannot spill its tokens into this one.
 	let stream = $derived(chatStore.visibleStreamPreview);
@@ -143,8 +147,17 @@
 </script>
 
 <div class="chat-shell">
+	{#if opening}
+		<div class="chat-empty-wrap" role="status">
+			<div class="chat-loading">
+				<p>Loading chat…</p>
+				<GenerationDots label="Loading chat" />
+			</div>
+		</div>
+	{/if}
 	{#if chatState}
-		<div class="chat-content" onwheel={handleMarginWheel}>
+		<!-- Keep the current composer mounted so a failed navigation retains its draft and pictures. -->
+		<div class="chat-content" hidden={opening} onwheel={handleMarginWheel}>
 			<div class="chat-center-shell">
 				<div class="chat-message-pane">
 					<MessageList bind:scrollEl messages={activePath} {allMessages} {isStreaming} {streamingContent} {streamingThinking} {continuingMessageId} {replacingMessageId} {openingSceneStream} onContentShift={handleContentShift} />
@@ -164,7 +177,7 @@
 				</div>
 			</div>
 		</div>
-	{:else}
+	{:else if !opening}
 		<div class="chat-empty-wrap">
 			<EmptyState icon="bookOpen" title="No chat open">
 				Pick a character and a persona, and the story starts from their first
@@ -202,6 +215,24 @@
 		flex: 1;
 		min-height: 0;
 		padding: 0 1rem;
+	}
+
+	.chat-content[hidden] {
+		display: none;
+	}
+
+	.chat-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.75rem;
+		font-family: var(--font-ui);
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
+	}
+
+	.chat-loading p {
+		margin: 0;
 	}
 
 	.chat-center-shell {

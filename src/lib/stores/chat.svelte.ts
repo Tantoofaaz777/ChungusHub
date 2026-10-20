@@ -37,6 +37,9 @@ class ChatStore {
 	chats = $state<Chat[]>([]);
 	activeChatId = $state<string | null>(null);
 	currentChatState = $state<ChatState | null>(null);
+	/** Covers navigation from the click, including saving edits before the chat is read. */
+	openingChatId = $state<string | null>(null);
+	private selectionTicket = 0;
 	/** The one generation in flight, tagged with the chat that owns it. Null when idle. */
 	stream = $state<ChatStream | null>(null);
 	/** A display-only copy. Raw received text above is never delayed or truncated. */
@@ -275,6 +278,8 @@ class ChatStore {
 	 *  (import cycle), and nulling `currentChatState` mid-generation would orphan
 	 *  the stream that writes into it. */
 	async goHome(): Promise<void> {
+		++this.selectionTicket;
+		this.openingChatId = null;
 		if (!this.activeChatId) {
 			uiStore.openWelcome();
 			return;
@@ -288,20 +293,29 @@ class ChatStore {
 	}
 
 	async selectChat(chatId: string): Promise<void> {
+		const selection = ++this.selectionTicket;
 		// Opening a chat is the sole trigger that retires the landing screen, and it runs
 		// before the early-return, so re-selecting the active chat still dismisses it.
 		uiStore.dismissWelcome();
 		// Opening any chat also ends an in-flight New chat wizard: either this IS
 		// its final step, or the user wandered into an existing story and abandoned it.
 		uiStore.clearNewChat();
-		if (this.activeChatId === chatId && this.currentChatState) return;
-		// Persist any pending lorebook edits before leaving.
-		await lorebookStore.flush();
-		const previousChatId = this.activeChatId;
-		this.activeChatId = chatId;
+		if (this.activeChatId === chatId && this.currentChatState?.chat.id === chatId) {
+			this.openingChatId = null;
+			return;
+		}
+		this.openingChatId = chatId;
+		// A previous selection may itself still be loading. Fall back to the chat
+		// actually on screen, rather than another unfinished navigation.
+		const previousChatId = this.currentChatState?.chat.id ?? null;
 		try {
+			// Persist any pending lorebook edits before leaving. Loading is already visible.
+			await lorebookStore.flush();
+			if (selection !== this.selectionTicket) return;
+			this.activeChatId = chatId;
 			await this.loadChatState(chatId);
 		} catch (e) {
+			if (selection !== this.selectionTicket) return;
 			// The id is claimed before the load, so a failure leaves the store naming a chat
 			// whose state never arrived. Left there, the guard above reads that pair as
 			// "already open" and swallows every retry: the row goes dead until a reload, with
@@ -310,6 +324,8 @@ class ChatStore {
 			if (previousChatId === null) uiStore.openWelcome();
 			toastStore.failed('open that chat', e);
 			throw e;
+		} finally {
+			if (selection === this.selectionTicket) this.openingChatId = null;
 		}
 	}
 

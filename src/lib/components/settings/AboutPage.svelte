@@ -1,18 +1,14 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import BrandGlyph from '$lib/components/ui/BrandGlyph.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import { MOD_KEY } from '$lib/components/ui/ShortcutsSheet.svelte';
-	import { shortcutsSheet } from '$lib/commands/shortcuts.svelte';
-	import { LINKS, newIssueUrl } from '$lib/config/links';
+	import { LINKS } from '$lib/config/links';
 	import { checkLatestRelease, getInstallInfo, type InstallInfo } from '$lib/services/transport';
 	import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
 	import { bytes } from '$lib/utils/bytes';
 	import { copyText } from '$lib/utils/clipboard';
 	import { APP_VERSION } from '$lib/version';
@@ -158,15 +154,6 @@
 		}
 	}
 
-	async function copyHandle(): Promise<void> {
-		try {
-			await copyText(LINKS.discordHandle);
-			toastStore.success('Copied the Discord handle');
-		} catch (error) {
-			toastStore.failed('copy the handle', error);
-		}
-	}
-
 	async function copyEnvironment(): Promise<void> {
 		try {
 			await copyText(environment);
@@ -300,76 +287,6 @@
 				{/if}
 			</div>
 			<Alert message={update.kind === 'failed' ? update.message : null} />
-		</div>
-	</section>
-
-	<section class="card">
-		<div class="card-head">
-			<span class="card-title">Help &amp; community</span>
-		</div>
-		<nav class="rows" aria-label="Help and community">
-			<a class="row" href={LINKS.docs} target="_blank" rel="noopener noreferrer">
-				<Icon name="bookOpen" class="w-4 h-4 row-icon" strokeWidth={1.75} />
-				<span class="row-label">Documentation</span>
-				<Icon name="externalLink" class="w-3.5 h-3.5 row-out" strokeWidth={1.75} />
-			</a>
-
-			<!-- Gone on touch, where the sheet lists keys that device doesn't have and its only
-			     other trigger (Ctrl+/) is unreachable: the row would open a dead end. Hidden, not
-			     shown inert, the same rule the Chat controls follow. -->
-			{#if !viewport.isTouch}
-				<button type="button" class="row" onclick={() => shortcutsSheet.toggle()}>
-					<Icon name="keyboard" class="w-4 h-4 row-icon" strokeWidth={1.75} />
-					<span class="row-label">Keyboard shortcuts</span>
-					<span class="row-value">{MOD_KEY} /</span>
-				</button>
-			{/if}
-
-			<a class="row" href={LINKS.discord} target="_blank" rel="noopener noreferrer">
-				<BrandGlyph name="discord" class="w-4 h-4 row-icon" />
-				<span class="row-label">Discord</span>
-				<Icon name="externalLink" class="w-3.5 h-3.5 row-out" strokeWidth={1.75} />
-			</a>
-
-			<a class="row" href={LINKS.repo} target="_blank" rel="noopener noreferrer">
-				<BrandGlyph name="github" class="w-4 h-4 row-icon" />
-				<span class="row-label">GitHub</span>
-				<Icon name="externalLink" class="w-3.5 h-3.5 row-out" strokeWidth={1.75} />
-			</a>
-
-			<!-- Opens an issue with the build already written into it, which is the part of a
-			     report nobody thinks to include and the part that decides whether it can be
-			     reproduced. -->
-			<a
-				class="row"
-				href={newIssueUrl(environment)}
-				target="_blank"
-				rel="noopener noreferrer"
-			>
-				<Icon name="annotation" class="w-4 h-4 row-icon" strokeWidth={1.75} />
-				<span class="row-label">Report a bug</span>
-				<Icon name="externalLink" class="w-3.5 h-3.5 row-out" strokeWidth={1.75} />
-			</a>
-		</nav>
-	</section>
-
-	<!-- The one block on the page written by a person rather than by the app, which is what a
-	     reader with no GitHub account is left with once the links above run out. It stays one
-	     card: the author's voice belongs here and nowhere else in the interface. -->
-	<section class="card">
-		<div class="card-head">
-			<span class="card-title">Reach me</span>
-		</div>
-		<div class="reach">
-			<p class="personal">
-				If you would rather talk to a person, or you simply have an idea to share, I am on
-				Discord: the server above, or straight to me here.
-			</p>
-			<button type="button" class="handle" onclick={copyHandle} title="Copy this handle">
-				<BrandGlyph name="discord" class="w-3.5 h-3.5 handle-glyph" />
-				<code>{LINKS.discordHandle}</code>
-				<Icon name="copy" class="w-3 h-3" strokeWidth={1.75} />
-			</button>
 		</div>
 	</section>
 
@@ -631,118 +548,6 @@
 		color: var(--color-accent);
 		text-decoration: underline;
 		text-underline-offset: 0.15em;
-	}
-
-	/* ===== Help & community ===== */
-
-	.rows {
-		display: flex;
-		flex-direction: column;
-	}
-
-	/* Bleeds out to the card's padding edge so the hover band lines up with the card's own
-	   frame, the same shape .toggle-row uses. The width is stated rather than left to `auto`,
-	   because half these rows are buttons and a button sizes to its content: the band would
-	   stop at the end of the label on one row and reach the frame on the next. */
-	.row {
-		display: flex;
-		align-items: center;
-		gap: 0.55rem;
-		width: calc(100% + 1rem);
-		margin-inline: -0.5rem;
-		padding: 0.42rem 0.5rem;
-		border: none;
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		text-align: left;
-		text-decoration: none;
-		cursor: pointer;
-		transition: background-color 120ms ease;
-	}
-
-	.row:hover {
-		background: color-mix(in srgb, var(--color-bg-tertiary) 55%, transparent);
-	}
-
-	.row-label {
-		font-family: var(--font-ui);
-		font-size: 0.8rem;
-		color: var(--color-text-primary);
-	}
-
-	.row-value {
-		margin-left: auto;
-		font-family: var(--font-ui);
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-	}
-
-	.row :global(.row-icon) {
-		flex-shrink: 0;
-		color: var(--color-text-muted);
-	}
-
-	.row:hover :global(.row-icon) {
-		color: var(--color-accent);
-	}
-
-	.row :global(.row-out) {
-		margin-left: auto;
-		flex-shrink: 0;
-		color: var(--color-text-muted);
-		opacity: 0.65;
-	}
-
-	/* ===== Reach me ===== */
-
-	.reach {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.7rem;
-	}
-
-	/* A shade warmer than the notes around it: this one is somebody talking, not the app
-	   stating a fact, and the muted tone every other caption wears would bury it. */
-	.personal {
-		margin: 0;
-		font-family: var(--font-ui);
-		font-size: 0.78rem;
-		line-height: 1.6;
-		color: var(--color-text-secondary);
-	}
-
-	.handle {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.45rem;
-		padding: 0.32rem 0.65rem;
-		border-radius: var(--radius-full);
-		border: 1px solid var(--theme-border-raised);
-		background: var(--theme-input-bg);
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		transition: color 120ms ease, border-color 120ms ease;
-	}
-
-	.handle:hover {
-		color: var(--color-text-primary);
-		border-color: color-mix(in srgb, var(--color-accent) 45%, var(--theme-border-raised));
-	}
-
-	.handle code {
-		font-size: 0.75rem;
-	}
-
-	.handle :global(.handle-glyph) {
-		flex-shrink: 0;
-		color: var(--color-text-muted);
-	}
-
-	.handle:hover :global(.handle-glyph) {
-		color: var(--color-accent);
 	}
 
 	/* ===== This install ===== */

@@ -11,7 +11,7 @@
  * and `$derived` are shimmed to identity BEFORE the store module loads, exactly as
  * new-chat-flow.test.ts does. Ordering is under test; reactivity is not.
  */
-import { describe, test, expect, beforeEach, afterAll, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from 'bun:test';
 
 const identity = <T>(value?: T): T | undefined => value;
 (globalThis as unknown as { $state: unknown }).$state = Object.assign(identity, { raw: identity });
@@ -26,7 +26,7 @@ type Delta =
 /** Deltas the fake server owes, one entry per call, each settled by hand so the test
  *  decides which read comes back first. The chat row is taken when the call arrives,
  *  as the server's one read takes it. */
-let owed: { resolve: (delta: Delta) => void }[] = [];
+let owed: { resolve: (delta: Delta) => void; reject: (error: Error) => void }[] = [];
 let memoryGate: Promise<void> | null = null;
 let memoryLeaves: (string | null)[] = [];
 let writes: { leafId: string; resolve: () => void; reject: (error: Error) => void }[] = [];
@@ -68,7 +68,7 @@ mock.module('$lib/services/database', () => ({
 		getChat: async () => ({ ...(chatReadApart ?? serverChat) }),
 		getMessagesDelta: () => {
 			const chat = { ...serverChat };
-			return new Promise((resolve) => owed.push({ resolve: (delta: Delta) => resolve({ ...delta, chat }) }));
+			return new Promise((resolve, reject) => owed.push({ resolve: (delta: Delta) => resolve({ ...delta, chat }), reject }));
 		},
 		getAllChats: async () => [{ ...serverChat }]
 	}
@@ -85,6 +85,8 @@ mock.module('$lib/memory/scene-store.svelte', () => ({
 }));
 
 const { chatStore } = await import('./chat.svelte');
+const { uiStore } = await import('./ui.svelte');
+const { toastStore } = await import('./toast.svelte');
 
 const row = (id: string, parentId: string | null, role: string, content = `${id} text`) => ({
 	id,
@@ -105,6 +107,8 @@ beforeEach(() => {
 	writes = [];
 	serverChat = { ...CHAT };
 	chatReadApart = null;
+	chatStore.openingChatId = null;
+	uiStore.welcomeOpen = false;
 	chatStore.activeChatId = CHAT.id;
 	chatStore.chats = [{ ...CHAT }] as never;
 	chatStore.currentChatState = {
@@ -133,6 +137,138 @@ const NOTHING_CHANGED: Delta = { rev: 5, full: false, upserts: [], deletedIds: [
 
 const ids = () => chatStore.currentChatState!.allMessages.map((m) => m.id);
 const userTurn = () => chatStore.currentChatState!.allMessages.find((m) => m.id === 'user')!.content;
+
+describe('opening a chat', () => {
+	function startAtHome() {
+		chatStore.activeChatId = null;
+		chatStore.currentChatState = null;
+		uiStore.openWelcome();
+	}
+
+	test('shows loading from the click until the first transcript has arrived', async () => {
+		startAtHome();
+		const opening = chatStore.selectChat(CHAT.id);
+		// This must be true before even the lorebook flush has had a chance to finish.
+		expect(chatStore.openingChatId).toBe(CHAT.id);
+		expect(uiStore.welcomeOpen).toBe(false);
+		expect(chatStore.currentChatState).toBeNull();
+		await settle();
+		expect(chatStore.openingChatId).toBe(CHAT.id);
+		owed[0].resolve({ rev: 5, full: true, messages: [...BASE] });
+		await opening;
+		expect(chatStore.openingChatId).toBeNull();
+		expect(chatStore.currentChatState?.chat.id).toBe(CHAT.id);
+	});
+
+	test('does not show loading when reselecting the loaded chat or refreshing it', async () => {
+		await chatStore.selectChat(CHAT.id);
+		expect(chatStore.openingChatId).toBeNull();
+		expect(owed).toHaveLength(0);
+		const refresh = chatStore.loadChatState(CHAT.id);
+		await settle();
+		expect(chatStore.openingChatId).toBeNull();
+		owed[0].resolve(NOTHING_CHANGED);
+		await refresh;
+	});
+
+	test('retains the loaded transcript while the next chat opens', async () => {
+		const previous = chatStore.currentChatState;
+		serverChat = { ...CHAT, id: 'chat-2' };
+		const opening = chatStore.selectChat('chat-2');
+		await settle();
+		expect(chatStore.openingChatId).toBe('chat-2');
+		expect(chatStore.currentChatState).toBe(previous);
+		owed[0].resolve({ rev: 1, full: true, messages: [] });
+		await opening;
+		expect(chatStore.openingChatId).toBeNull();
+		expect(chatStore.currentChatState?.chat.id).toBe('chat-2');
+	});
+
+	test('a failed first open leaves loading and allows a retry', async () => {
+		startAtHome();
+		const notice = spyOn(toastStore, 'failed').mockImplementation(() => {});
+		try {
+			const opening = chatStore.selectChat(CHAT.id).catch((error: Error) => error);
+			await settle();
+			owed[0].reject(new Error('offline'));
+			expect(await opening).toEqual(new Error('offline'));
+			expect(chatStore.openingChatId).toBeNull();
+			expect(chatStore.activeChatId).toBeNull();
+			expect(uiStore.welcomeOpen).toBe(true);
+			const retry = chatStore.selectChat(CHAT.id);
+			await settle();
+			expect(chatStore.openingChatId).toBe(CHAT.id);
+			owed[1].resolve({ rev: 5, full: true, messages: [...BASE] });
+			await retry;
+			expect(chatStore.currentChatState?.chat.id).toBe(CHAT.id);
+			expect(chatStore.openingChatId).toBeNull();
+		} finally {
+			notice.mockRestore();
+		}
+	});
+
+	test('an older opening cannot clear a newer chat loading screen', async () => {
+		startAtHome();
+		const first = chatStore.selectChat(CHAT.id);
+		await settle();
+		serverChat = { ...CHAT, id: 'chat-2' };
+		const second = chatStore.selectChat('chat-2');
+		await settle();
+		owed[0].resolve({ rev: 5, full: true, messages: [...BASE] });
+		await first;
+		expect(chatStore.openingChatId).toBe('chat-2');
+		expect(chatStore.currentChatState).toBeNull();
+		owed[1].resolve({ rev: 1, full: true, messages: [] });
+		await second;
+		expect(chatStore.openingChatId).toBeNull();
+		expect(chatStore.currentChatState?.chat.id).toBe('chat-2');
+	});
+
+	test('a failed second opening returns home when neither selection had loaded', async () => {
+		startAtHome();
+		const notice = spyOn(toastStore, 'failed').mockImplementation(() => {});
+		try {
+			const first = chatStore.selectChat(CHAT.id);
+			await settle();
+			serverChat = { ...CHAT, id: 'chat-2' };
+			const second = chatStore.selectChat('chat-2').catch((error: Error) => error);
+			await settle();
+			owed[1].reject(new Error('offline'));
+			await second;
+			expect(chatStore.openingChatId).toBeNull();
+			expect(chatStore.activeChatId).toBeNull();
+			expect(uiStore.welcomeOpen).toBe(true);
+			owed[0].resolve({ rev: 5, full: true, messages: [...BASE] });
+			await first;
+			expect(chatStore.currentChatState).toBeNull();
+		} finally {
+			notice.mockRestore();
+		}
+	});
+
+	test('going home cancels an opening before its initial flush completes', async () => {
+		startAtHome();
+		const opening = chatStore.selectChat(CHAT.id);
+		await chatStore.goHome();
+		await opening;
+		expect(chatStore.openingChatId).toBeNull();
+		expect(chatStore.activeChatId).toBeNull();
+		expect(uiStore.welcomeOpen).toBe(true);
+		expect(owed).toHaveLength(0);
+	});
+
+	test('going home during a read dismisses loading and rejects the late transcript', async () => {
+		startAtHome();
+		const opening = chatStore.selectChat(CHAT.id);
+		await settle();
+		await chatStore.goHome();
+		expect(chatStore.openingChatId).toBeNull();
+		expect(uiStore.welcomeOpen).toBe(true);
+		owed[0].resolve({ rev: 5, full: true, messages: [...BASE] });
+		await opening;
+		expect(chatStore.currentChatState).toBeNull();
+	});
+});
 
 describe('immediate branch navigation', () => {
 	function addAlternative() {
