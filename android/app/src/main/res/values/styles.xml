@@ -1,0 +1,20 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#7EC9BB</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#101619</item>
+        <item name="android:statusBarColor">#101619</item>
+        <item name="android:navigationBarColor">#101619</item>
+    </style>
+    <string name="server_settings">Chungus server</string>
+    <string name="app_name">Chungus</string>
+    <string name="connect_description">Connect to the same server you use in your browser. Your chats stay on the VPS.</string>
+    <string name="server_url_label">Server HTTPS address</string>
+    <string name="server_url_hint">https://chungus.yourdomain.com</string>
+    <string name="connect">Connect</string>
+    <string name="resume_chat">Back to chat</string>
+    <string name="settings_help">To change the address later: Settings → Android app. You can also long-press the Chungus app icon and choose Chungus server.</string>
+    <string name="update_webview">Update Android System WebView (or Chrome) from the Play Store, then reopen the app.</string>
+</resources>

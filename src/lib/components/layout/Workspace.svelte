@@ -5,7 +5,8 @@
 	import { panels } from './panel-loaders';
 	import WelcomeView from '$lib/components/layout/WelcomeView.svelte';
 	import PromptReviewDialog from '$lib/components/chat/PromptReviewDialog.svelte';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { installAndroidBack } from '$lib/services/android-client';
 	import { surfaceMotion, scrimMotion } from '$lib/components/ui/surface-motion';
 	import { retainedPanel } from '$lib/components/ui/retained-panel';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -227,10 +228,27 @@
 				// Bottom of the ladder, and the reason there is no shortcut of its own for the
 				// composer: with nothing left to close, Escape is the way back to the box you
 				// type in, from a turn the keyboard was parked on or from anywhere else.
-				else chatCursor.toComposer();
+				else if (!('chungusAndroidBack' in e)) chatCursor.toComposer();
 			}, 0);
 		}
 	}
+
+	// Let existing Escape owners peel dialogs, editors and settings one level at a time.
+	// The native shell hides the IME first; this path must never focus the composer again.
+	onMount(() => installAndroidBack(() => {
+		const layer = document.querySelector('.dialog-portal:not([inert])') || uiStore.debugPanelOpen ||
+			uiStore.activeOverlay || (uiStore.settingsOpen && !uiStore.settingsLocked) ||
+			(uiStore.libraryOpen && !uiStore.libraryLocked);
+		const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+		Object.defineProperty(event, 'chungusAndroidBack', { value: true });
+		window.dispatchEvent(event);
+		if (event.defaultPrevented || layer) return true;
+		if (!uiStore.welcomeOpen) {
+			if (!uiStore.guardBlocksNav()) uiStore.openWelcome();
+			return true;
+		}
+		return false;
+	}));
 </script>
 
 <svelte:window onkeydown={handleKeydown} onmousedown={handleBackgroundMouseDown} />

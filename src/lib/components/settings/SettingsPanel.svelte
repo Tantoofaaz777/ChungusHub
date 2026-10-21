@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { isAndroidClient, openAndroidSettings } from '$lib/services/android-client';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import SettingsPageView from './SettingsPageView.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -154,6 +155,16 @@
 								</nav>
 							</div>
 						{/each}
+						{#if isAndroidClient()}
+							<div class="group">
+								<span class="section-label group-label">Android</span>
+								<button type="button" class="drill-row" onclick={() => void openAndroidSettings()}>
+									<Icon name="settings" class="w-4 h-4 drill-icon" strokeWidth={1.75} />
+									<span class="drill-label">Android app</span>
+									<Icon name="chevronRight" class="w-4 h-4 drill-chev" strokeWidth={2} />
+								</button>
+							</div>
+						{/if}
 					{:else}
 						<SettingsPageView {page} />
 					{/if}

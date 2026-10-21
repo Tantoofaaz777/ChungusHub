@@ -1,0 +1,33 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <FrameLayout android:id="@+id/web_container" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent" android:layout_height="3dp" android:layout_gravity="top" android:visibility="gone" />
+    <ScrollView android:id="@+id/setup" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:background="#101619" android:fillViewport="true">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="28dp" android:gravity="center_vertical">
+            <ImageView android:layout_width="80dp" android:layout_height="80dp" android:src="@mipmap/chungus" android:contentDescription="@string/app_name" android:layout_marginBottom="22dp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/app_name"
+                android:textColor="#EEF3F2" android:textSize="30sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp"
+                android:text="@string/connect_description"
+                android:textColor="#AAB9B6" android:textSize="16sp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="28dp"
+                android:text="@string/server_url_label" android:textColor="#EEF3F2" android:textSize="14sp" />
+            <EditText android:id="@+id/server_url" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="56dp" android:singleLine="true" android:inputType="textUri" android:imeOptions="actionGo|flagNoExtractUi"
+                android:hint="@string/server_url_hint" android:textColor="#EEF3F2" android:textColorHint="#6F817D"
+                android:autofillHints="" android:importantForAutofill="no" />
+            <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" android:minHeight="52dp" android:text="@string/connect" android:textAllCaps="false" />
+            <Button android:id="@+id/resume" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/resume_chat" android:textAllCaps="false" android:visibility="gone" />
+            <TextView android:id="@+id/setup_message" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="14dp" android:textColor="#AAB9B6" android:textSize="14sp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp"
+                android:text="@string/settings_help"
+                android:textColor="#7F928D" android:textSize="13sp" />
+        </LinearLayout>
+    </ScrollView>
+</FrameLayout>
