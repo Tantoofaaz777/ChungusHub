@@ -296,6 +296,11 @@ export const uiFonts: FontOption[] = [
 		stack: "'Manrope', 'Segoe UI', system-ui, sans-serif"
 	},
 	{
+		id: 'jetbrains-mono',
+		label: 'JetBrains Mono',
+		stack: "'JetBrains Mono', ui-monospace, monospace"
+	},
+	{
 		id: 'poppins',
 		label: 'Poppins',
 		stack: "'Poppins', 'Segoe UI', system-ui, sans-serif",

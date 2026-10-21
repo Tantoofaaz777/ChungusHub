@@ -24,6 +24,7 @@
 	import ThreadsChapterPicker from './ThreadsChapterPicker.svelte';
 	import ThreadsEngagement from './ThreadsEngagement.svelte';
 	import ThreadsContextPreview from './ThreadsContextPreview.svelte';
+	import ThreadsTagsInput from './ThreadsTagsInput.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import type { ThreadsComment as Comment } from '$shared/threads/types';
 	const panelActive = panelActivity();
@@ -178,11 +179,22 @@
 						{#if ao3Open}
 						<div id="threads-ao3-content" class="ao3-fields">
 							<label class="field-label" for="threads-rating">Rating</label><select id="threads-rating" class="input-base field" value={store.ao3.rating ?? ''} onchange={(e) => ao3({rating: e.currentTarget.value as Ao3Information['rating'] || null})}><option value="">None</option>{#each AO3_RATINGS as rating}<option value={rating}>{rating}</option>{/each}</select>
-							<label class="field-label" for="threads-warning">Archive warnings</label><select id="threads-warning" class="input-base field" value={store.ao3.archiveWarnings[0] ?? ''} onchange={(e) => ao3({archiveWarnings: e.currentTarget.value ? [e.currentTarget.value as Ao3Information['archiveWarnings'][number]] : []})}><option value="">None</option>{#each AO3_WARNINGS as warning}<option value={warning}>{warning}</option>{/each}</select>
+							<fieldset>
+								<legend>Archive warnings</legend>
+								{#each AO3_WARNINGS as warning}
+									<label class="check-row"><input type="checkbox" checked={store.ao3.archiveWarnings.includes(warning)} onchange={(e) => ao3({archiveWarnings: e.currentTarget.checked ? [...store.ao3.archiveWarnings, warning] : store.ao3.archiveWarnings.filter(value => value !== warning)})} />{warning}</label>
+								{/each}
+							</fieldset>
 							<fieldset><legend>Categories</legend><div class="categories">{#each AO3_CATEGORIES as category}<label class="check-row"><input type="checkbox" checked={store.ao3.categories.includes(category)} onchange={(e) => ao3({categories:e.currentTarget.checked ? [...store.ao3.categories,category] : store.ao3.categories.filter(v => v !== category)})} />{category}</label>{/each}</div></fieldset>
 							{#each AO3_TEXT_FIELDS as [key,label]}
 								<label class="field-label" for={`threads-ao3-${key}`}>{label}</label>
-								{#if key === 'summary'}<ExpandableTextarea id={`threads-ao3-${key}`} value={store.ao3[key]} onValueChange={(value) => ao3({[key]:value})} dialogTitle="AO3 summary" rows={3} class="input-base threads-textarea" />{:else}<input id={`threads-ao3-${key}`} class="input-base field" value={store.ao3[key]} oninput={(e) => ao3({[key]:e.currentTarget.value})} />{/if}
+								{#if key === 'summary'}
+									<ExpandableTextarea id={`threads-ao3-${key}`} value={store.ao3[key]} onValueChange={(value) => ao3({[key]:value})} dialogTitle="AO3 summary" rows={3} class="input-base threads-textarea" />
+								{:else if key === 'additionalTags'}
+									{#key store.chatId}<ThreadsTagsInput id={`threads-ao3-${key}`} value={store.ao3.additionalTags} onchange={(value) => ao3({additionalTags: value})} />{/key}
+								{:else}
+									<input id={`threads-ao3-${key}`} class="input-base field" value={store.ao3[key]} oninput={(e) => ao3({[key]:e.currentTarget.value})} />
+								{/if}
 							{/each}
 						</div>
 						{/if}

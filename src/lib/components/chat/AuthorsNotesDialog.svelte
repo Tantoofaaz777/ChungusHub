@@ -2,7 +2,6 @@
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 
@@ -12,7 +11,6 @@
 	const targetChatId = untrack(() => chatId);
 	const initial = untrack(() => chatStore.featureState(targetChatId).authorsNote);
 	let text = $state(initial.text);
-	let enabled = $state(initial.enabled);
 	let closing = $state(false);
 	let mounted = true;
 	let dirty = false;
@@ -24,7 +22,7 @@
 		timer = undefined;
 		if (!dirty) return lastWrite;
 		dirty = false;
-		lastWrite = chatStore.updateChatFeatureState(targetChatId, { authorsNote: { text, enabled } });
+		lastWrite = chatStore.updateChatFeatureState(targetChatId, { authorsNote: { text } });
 		return lastWrite;
 	}
 
@@ -40,12 +38,6 @@
 		dirty = true;
 		clearTimeout(timer);
 		timer = setTimeout(persist, 400);
-	}
-
-	function toggle(value: boolean): void {
-		enabled = value;
-		dirty = true;
-		persist();
 	}
 
 	async function close(): Promise<void> {
@@ -82,10 +74,6 @@
 
 <Dialog open={true} onClose={close} title="Author's notes" titleAlign="left" size="lg" placement="center" bare>
 	<div class="notes-form panel-scroll">
-		<div class="notes-status font-ui">
-			<span>Enabled</span>
-			<Toggle checked={enabled} onchange={toggle} disabled={closing} label="Enable author's notes" />
-		</div>
 		<label class="sr-only" for="authors-notes-text">Author's notes</label>
 		<ExpandableTextarea
 			id="authors-notes-text"
@@ -110,14 +98,6 @@
 		padding: 1.25rem;
 		/* Match the header's inset without reserving an unused scrollbar on the right. */
 		scrollbar-gutter: auto;
-	}
-
-	.notes-status {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		font-size: 0.8rem;
-		color: var(--color-text-secondary);
 	}
 
 </style>

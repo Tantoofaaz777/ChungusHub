@@ -12,9 +12,8 @@
 	 *    switch writes the scope, that one derived reads it, and the list, the row faces
 	 *    and the New chat button all read the derived, so the panel cannot end up
 	 *    showing one thing while its button does another.
-	 *  - The counts are two numbers, labelled. `path` is the branch you would read;
-	 *    `total - path` is everything hanging off it. One unlabelled count is what makes
-	 *    a list and its preview disagree by four.
+	 *  - Rows and previews count the active path, matching the transcript. The whole
+	 *    tree's `total` is retained for deletion, which also removes alternate turns.
 	 *  - The preview starts empty, fills with the row the pointer touches, and HOLDS it.
 	 *    Nothing but the list changing under it empties it again: the trip from a row to
 	 *    the pane crosses the list's padding, its scrollbar and the section labels, so a

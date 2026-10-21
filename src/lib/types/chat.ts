@@ -102,7 +102,7 @@ export interface ChatScene {
  *  next write. */
 export interface ChatFeatureState {
 	/** Persistent, chat-scoped text exposed only through {{authorsNote}}. */
-	authorsNote: { text: string; enabled: boolean };
+	authorsNote: { text: string };
 	/** The last 10 consumed one-shot steering texts, most-recent first, for quick reuse
 	 *  from the composer's popover. */
 	steeringHistory: string[];
@@ -143,7 +143,7 @@ export interface ChatFeatureState {
 
 function defaultChatFeatureState(): ChatFeatureState {
 	return {
-		authorsNote: { text: '', enabled: true },
+		authorsNote: { text: '' },
 		steeringHistory: [],
 		impersonatePerspective: 'first',
 		scene: null,
@@ -160,15 +160,15 @@ export const DEFAULT_CHAT_FEATURE_STATE: ChatFeatureState = defaultChatFeatureSt
 function normalizeAuthorsNote(raw: unknown): ChatFeatureState['authorsNote'] {
 	const note = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
 	return {
-		text: typeof note.text === 'string' ? note.text : '',
-		enabled: typeof note.enabled === 'boolean' ? note.enabled : true
+		// The former enabled flag is ignored: content alone determines activation.
+		text: typeof note.text === 'string' ? note.text : ''
 	};
 }
 
-/** Shared by db-sourced generation and reactive previews; disabled text stays saved. */
+/** Shared by db-sourced generation and reactive previews; blank notes resolve empty. */
 export function chatAuthorsNote(chat: Pick<Chat, 'featureState'> | null | undefined): string {
 	const note = normalizeChatFeatureState(chat?.featureState).authorsNote;
-	return note.enabled ? note.text : '';
+	return note.text.trim() ? note.text : '';
 }
 
 function normalizeSteeringHistory(raw: unknown): string[] {

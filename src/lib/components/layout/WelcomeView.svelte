@@ -179,6 +179,7 @@
 						{#each recent as chat (chat.id)}
 							{@const cast = chatCastStore.charactersForChat(chat.id)}
 							{@const persona = chatCastStore.personaForChat(chat.id)}
+							{@const pathCount = stats[chat.id]?.path ?? 0}
 							<button type="button" class="recent-card" class:is-selected={selecting && selectedIds.has(chat.id)} aria-pressed={selecting ? selectedIds.has(chat.id) : undefined} onclick={() => continueStory(chat.id)}>
 								{#if selecting}
 									<span class="selection-check" class:is-checked={selectedIds.has(chat.id)} aria-hidden="true">
@@ -198,6 +199,10 @@
 										{formatRelativeTime(chatActivityAt(chat, stats))}{#if persona}<span class="recent-meta-sep" aria-hidden="true">·</span>as {persona.name}{/if}
 									</span>
 								</div>
+								<span class="recent-count" title="{pathCount} message{pathCount === 1 ? '' : 's'} in this chat">
+									<Icon name="chat" class="w-3.5 h-3.5" />
+									{pathCount}
+								</span>
 								{#if chat.isFavorite}<Icon name="heart" class="w-4 h-4 fill-current text-accent shrink-0" />{/if}
 								{#if !selecting}<Icon name="arrowRight" class="w-4 h-4 recent-arrow" />{/if}
 							</button>
@@ -509,6 +514,18 @@
 
 	.recent-meta-sep {
 		opacity: 0.6;
+	}
+
+	.recent-count {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		flex-shrink: 0;
+		font-family: var(--font-ui);
+		font-size: 0.74rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		color: var(--color-text-muted);
 	}
 
 	:global(.recent-arrow) {

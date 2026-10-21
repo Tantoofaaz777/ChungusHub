@@ -21,19 +21,31 @@ describe("author's notes", () => {
 	test('legacy and malformed notes normalize without losing the rest of the chat state', () => {
 		for (const authorsNote of [undefined, null, 42, 'text', { text: 12, enabled: 'no' }]) {
 			const state = normalizeChatFeatureState({ authorsNote, persona: 'persona-1' });
-			expect(state.authorsNote).toEqual({ text: '', enabled: true });
+			expect(state.authorsNote).toEqual({ text: '' });
 			expect(state.persona).toBe('persona-1');
 		}
 	});
 
-	test('saved notes survive the JSON round trip and disabling keeps their text', () => {
+	test('saved notes survive the JSON round trip and ignore the former enabled flag', () => {
 		const state = normalizeChatFeatureState({ authorsNote: { text: 'Slow pacing.\nStay in the scene.', enabled: false } });
 		const chat = { featureState: JSON.stringify(state) };
 		expect(normalizeChatFeatureState(chat.featureState).authorsNote).toEqual(state.authorsNote);
-		expect(chatAuthorsNote(chat)).toBe('');
-		state.authorsNote.enabled = true;
-		expect(chatAuthorsNote({ featureState: JSON.stringify(state) })).toBe(state.authorsNote.text);
+		expect(state.authorsNote).toEqual({ text: 'Slow pacing.\nStay in the scene.' });
+		for (const enabled of [true, false, undefined]) {
+			expect(chatAuthorsNote({ featureState: JSON.stringify({ authorsNote: { text: state.authorsNote.text, enabled } }) }))
+				.toBe(state.authorsNote.text);
+		}
+		expect(chatAuthorsNote(chat)).toBe(state.authorsNote.text);
 		expect(chatAuthorsNote(null)).toBe('');
+	});
+
+	test('clearing the text deactivates notes while nonblank content keeps its formatting', () => {
+		for (const text of ['', '   ', '\t\n\r ']) {
+			expect(chatAuthorsNote({ featureState: JSON.stringify({ authorsNote: { text } }) })).toBe('');
+		}
+		const text = '\n  Keep the tension.\nStay in the scene.  \n';
+		expect(chatAuthorsNote({ featureState: JSON.stringify({ authorsNote: { text } }) })).toBe(text);
+		expect(chatAuthorsNote({ featureState: JSON.stringify({ authorsNote: { text: '' } }) })).toBe('');
 	});
 
 	test('default notes are independent across chats', () => {
@@ -73,7 +85,7 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 			impersonatePerspective: 'third'
 		});
 		expect(normalizeChatFeatureState(raw)).toEqual({
-			authorsNote: { text: '', enabled: true },
+			authorsNote: { text: '' },
 			steeringHistory: ['earlier note'],
 			impersonatePerspective: 'third',
 			scene: null,
@@ -87,7 +99,7 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 
 	test('accepts an already-parsed object directly', () => {
 		const value = {
-			authorsNote: { text: '', enabled: true },
+			authorsNote: { text: '' },
 			steeringHistory: ['x'],
 			impersonatePerspective: 'second' as const,
 			scene: null,
@@ -110,7 +122,7 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 			impersonatePerspective: 'third'
 		});
 		expect(result).toEqual({
-			authorsNote: { text: '', enabled: true },
+			authorsNote: { text: '' },
 			steeringHistory: ['earlier note'],
 			impersonatePerspective: 'third',
 			scene: null,

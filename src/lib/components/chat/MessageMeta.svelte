@@ -14,7 +14,6 @@
 		timestamp: number | null;
 		model?: string | null;
 		provider?: string | null;
-		edited?: boolean;
 		streaming?: boolean;
 		/** Preformatted token count, shown directly in the metadata row. */
 		tokens?: string | null;
@@ -38,7 +37,6 @@
 		timestamp,
 		model = null,
 		provider = null,
-		edited = false,
 		streaming = false,
 		tokens = null,
 		archived = false,
@@ -91,7 +89,6 @@
 			tokens !== null ||
 			durationLabel !== null ||
 			ordinal !== null ||
-			edited ||
 			archived ||
 			lorebook !== null ||
 			streaming
@@ -125,10 +122,6 @@
 
 		{#if generationTitle}
 			<InfoTip text={generationTitle} />
-		{/if}
-
-		{#if edited}
-			<span class="message-edited">Edited</span>
 		{/if}
 
 		{#if archived}
@@ -227,12 +220,6 @@
 		letter-spacing: 0.02em;
 		font-variant-numeric: lining-nums tabular-nums;
 		white-space: nowrap;
-	}
-
-	.message-edited {
-		font-size: 0.68rem;
-		color: var(--color-text-muted);
-		letter-spacing: 0.02em;
 	}
 
 	.message-ghost-tag {

@@ -156,7 +156,6 @@
 	}
 
 	let pathCount = $derived(stats?.path ?? 0);
-	let offPathCount = $derived(Math.max(0, (stats?.total ?? 0) - pathCount));
 </script>
 
 {#if chat}
@@ -168,14 +167,7 @@
 			<div class="preview-head-text">
 				<h3 class="preview-title">{chat.title}</h3>
 				<p class="preview-meta">
-					<span>{pathCount} message{pathCount === 1 ? '' : 's'} on this branch</span>
-					{#if offPathCount > 0}
-						<span class="preview-meta-sep">·</span>
-						<span class="preview-meta-branch">
-							<Icon name="branch" class="w-3 h-3" />
-							{offPathCount} off it
-						</span>
-					{/if}
+					<span>{pathCount} message{pathCount === 1 ? '' : 's'}</span>
 					<span class="preview-meta-sep">·</span>
 					<span>started {formatDate(chat.createdAt)}</span>
 				</p>
@@ -315,12 +307,6 @@
 		font-family: var(--font-ui);
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
-	}
-
-	.preview-meta-branch {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.15rem;
 	}
 
 	.preview-meta-sep {

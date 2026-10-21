@@ -51,7 +51,7 @@ export function normalizeAo3Information(value: unknown): Ao3Information {
   const raw = value as Record<string, unknown>
   result.enabled = raw.enabled === true
   result.rating = AO3_RATINGS.find((rating) => rating === raw.rating) ?? null
-  result.archiveWarnings = AO3_WARNINGS.filter((warning) => Array.isArray(raw.archiveWarnings) && raw.archiveWarnings.includes(warning)).slice(0, 1)
+  result.archiveWarnings = AO3_WARNINGS.filter((warning) => Array.isArray(raw.archiveWarnings) && raw.archiveWarnings.includes(warning))
   result.categories = AO3_CATEGORIES.filter((category) => Array.isArray(raw.categories) && raw.categories.includes(category))
   for (const [key] of AO3_TEXT_FIELDS) {
     if (typeof raw[key] === 'string') result[key] = raw[key]

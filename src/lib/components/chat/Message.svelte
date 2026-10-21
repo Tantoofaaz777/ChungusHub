@@ -577,7 +577,6 @@
 									timestamp={showTimestamps && !streamReplacement ? message.createdAt : null}
 									model={showModelName && !streamReplacement ? message.model : null}
 									provider={showModelName && !streamReplacement ? message.provider : null}
-									edited={!streamReplacement && !!(message.editedAt || message.minorEditedAt)}
 									streaming={streamReplacement}
 								tokens={showTokenCount ? streamReplacement ? replacementTokens.value === null ? '… tok' : `~${replacementTokens.value} tok` : tokenLabel : null}
 									ordinal={metaReadouts ? avatarOrdinal : null}

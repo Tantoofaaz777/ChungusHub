@@ -803,7 +803,12 @@ class ChatStore {
 	async branchChat(chatId: string, messageId: string, content: string): Promise<string> {
 		const source = this.chats.find(c => c.id === chatId);
 		if (!source) throw new Error(`branchChat: no chat with id ${chatId}`);
-		const newChatId = await db.branchChat({ chatId, messageId, content, title: this.copyTitle(source.title, 'branch') });
+		const messages = this.currentChatState?.chat.id === chatId
+			? this.currentChatState.allMessages
+			: await db.getMessagesByChat(chatId);
+		const ordinal = findActivePath(messages, messageId).length;
+		if (!ordinal) throw new Error('branchChat: message not found');
+		const newChatId = await db.branchChat({ chatId, messageId, content, title: this.copyTitle(source.title, 'branch', ordinal) });
 		await this.registerCopiedChat(chatId, newChatId);
 		await this.selectChat(newChatId);
 		if (this.currentChatState?.chat.id === newChatId) {
@@ -827,14 +832,17 @@ class ChatStore {
 		chatCastStore.setPersonaForChat(chat.id, chatCastStore.personaForChat(chatId)?.libraryEntryId ?? null);
 	}
 
-	/** "<title> (copy)" or "<title> (branch)", counting up when that name is taken: copying twice must
+	/** "<title> (copy)" or "<title> (branch at #N)", counting up when that name is taken: copying twice must
 	 *  not leave two rows nothing can tell apart. Re-copying a copy re-uses the base
 	 *  name instead of stacking "(copy) (copy)". */
-	private copyTitle(title: string, kind: 'copy' | 'branch' = 'copy'): string {
-		const base = title.replace(new RegExp(`\\s*\\(${kind}(?: \\d+)?\\)$`), '');
+	private copyTitle(title: string, kind: 'copy' | 'branch' = 'copy', ordinal?: number): string {
+		const suffix = kind === 'branch' ? `branch at #${ordinal}` : 'copy';
+		const base = title.replace(kind === 'branch'
+			? /\s*\(branch(?: at #\d+)?(?: \d+)?\)$/
+			: /\s*\(copy(?: \d+)?\)$/, '');
 		const taken = new Set(this.chats.map((c) => c.title));
-		let candidate = `${base} (${kind})`;
-		for (let n = 2; taken.has(candidate); n++) candidate = `${base} (${kind} ${n})`;
+		let candidate = `${base} (${suffix})`;
+		for (let n = 2; taken.has(candidate); n++) candidate = `${base} (${suffix} ${n})`;
 		return candidate;
 	}
 

@@ -101,7 +101,7 @@ export const MACROS: readonly MacroDef[] = [
 	{ name: 'character', description: "The active character's full profile (the whole-sheet blob).", engine: true, group: 'context' },
 	{ name: 'lorebook', description: 'Lorebook entries, keyword-matched against recent messages.', engine: true, group: 'context' },
 	{ name: 'memory', description: 'Chat-memory recall block (episode summaries).', engine: true, group: 'context' },
-	{ name: 'authorsNote', description: "This chat's author's notes. Empty when disabled or unset; place in a preset or lorebook entry.", engine: true, group: 'context' },
+	{ name: 'authorsNote', description: "This chat's author's notes. Empty when the text box is blank; place in a preset or lorebook entry.", engine: true, group: 'context' },
 	{ name: 'chatHistory', description: 'Every turn, as native-role messages. Prompt items only: anywhere else it resolves to nothing.', engine: true, structural: true, group: 'context' },
 	{ name: 'chatHistoryLastN', example: 'chatHistoryLast20', description: 'Only the newest N turns, as a plain transcript. Write the number: {{chatHistoryLast20}}.', engine: true, parameterized: true, group: 'context' },
 	{ name: 'lastMessage', description: 'The newest turn, as inline text. A copy: the turn itself still rides {{chatHistory}}.', engine: true, group: 'context' },
@@ -341,7 +341,7 @@ export function pruneEmptyTagBlocks(text: string, values: Record<string, string>
 // ============================================================================
 
 export interface MacroContext {
-	/** Enabled author's notes for this chat, returned as stored in a single substitution pass. */
+	/** This chat's nonblank author's notes, returned as stored in a single substitution pass. */
 	authorsNote?: string;
 	resolvedPersona?: PromptCharacter | null;
 	resolvedCharacters?: PromptCharacter[];

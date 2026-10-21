@@ -1510,9 +1510,9 @@ class ServerDatabase {
 	/** Per-chat row data for the chats panel: how many turns the active branch holds
 	 *  (`path`: what a reader would actually read), how many rows the whole tree holds
 	 *  (`total`: every swipe, alternate greeting and abandoned fork), and when that
-	 *  branch was last written to (`lastAt`). The two counts are deliberately BOTH
-	 *  returned: the panel labels them separately instead of showing one unexplained
-	 *  number. No message text: the rows show times and counts, and the only snippet
+	 *  branch was last written to (`lastAt`). Lists and previews display `path`;
+	 *  deletion uses `total` because it also removes alternate turns.
+	 *  No message text: the rows show times and counts, and the only snippet
 	 *  the panel renders is the one searchChatMessages cuts around a hit. */
 	getChatListStats(): Record<string, { path: number; total: number; lastAt: number | null }> {
 		const out: Record<string, { path: number; total: number; lastAt: number | null }> = {};

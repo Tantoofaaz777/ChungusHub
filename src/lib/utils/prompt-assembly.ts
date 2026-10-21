@@ -58,7 +58,7 @@ export interface PromptRecall {
 /** Everything the assembly primitives need, sourced from the db for the real prompt, or
  *  reactively from stores for the live token meters. */
 export interface AssembleInput {
-	/** Enabled chat notes; only included where {{authorsNote}} is referenced. */
+	/** Nonblank chat notes; only included where {{authorsNote}} is referenced. */
 	authorsNote?: string;
 	preset: PromptPreset | null;
 	resolvedCharacters: PromptCharacter[];

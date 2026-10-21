@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeDatabaseFixture } from './test-fixtures';
-import { emptyAo3Information } from '../shared/threads/ao3';
+import { emptyAo3Information, serializeAo3Information } from '../shared/threads/ao3';
 import type { ThreadsFeed, ThreadsMessage } from '../shared/threads/types';
 
 let dir:string, db: typeof import('./db').serverDb;
@@ -71,6 +71,22 @@ describe('Threads persistence',()=>{
 		save(chatId,messages);db.deleteChat(chatId);
 		expect(db.select<{n:number}[]>('SELECT COUNT(*) AS n FROM threads_rounds WHERE chat_id = ?',[chatId])[0].n).toBe(0);
 		expect(db.select<{n:number}[]>('SELECT COUNT(*) AS n FROM threads_notes WHERE chat_id = ?',[chatId])[0].n).toBe(0);
+	});
+	test('multiple AO3 warnings and additional tags survive saving and reach the prompt together',()=>{
+		const {chatId}=fixture();
+		const ao3={...emptyAo3Information(),enabled:true,
+			archiveWarnings:['Graphic Depictions Of Violence','Major Character Death'] as const,
+			additionalTags:'Slow Burn, Found Family'};
+		db.updateThreadsNotes(chatId,{ao3:{...ao3,archiveWarnings:[...ao3.archiveWarnings]}});
+		db.closeForTests();
+		const saved=db.getThreadsData(chatId).ao3;
+		expect(saved.archiveWarnings).toEqual([...ao3.archiveWarnings]);
+		expect(saved.additionalTags).toBe(ao3.additionalTags);
+		const prompt=serializeAo3Information(saved);
+		expect(prompt).toContain('Archive Warnings: Graphic Depictions Of Violence, Major Character Death');
+		expect(prompt).toContain('Additional Tags: Slow Burn, Found Family');
+		db.updateThreadsNotes(chatId,{ao3:{...saved,archiveWarnings:saved.archiveWarnings.slice(1),additionalTags:'Found Family'}});
+		expect(db.getThreadsData(chatId).ao3).toMatchObject({archiveWarnings:['Major Character Death'],additionalTags:'Found Family'});
 	});
 	test('chat prompt selection persists independently from notes and AO3 and can return to the engine default',()=>{
 		const {chatId}=fixture(),other=fixture();

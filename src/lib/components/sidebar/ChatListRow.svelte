@@ -3,10 +3,8 @@
 	 * One row of the chats panel. Presentation only: every mutation is a callback the
 	 * panel owns, so this file never touches a store.
 	 *
-	 * The row deliberately shows BOTH message counts: `path` (the branch you would
-	 * actually read) as the number, and the extra rows hanging off other branches as a
-	 * separate `+N` chip. One unlabeled count is what makes a list and its preview
-	 * disagree; see architecture/chat-sessions.md.
+	 * The message count follows the active path, matching the transcript and preview.
+	 * Swipes and alternate greetings aren't additional turns in that conversation.
 	 */
 	import { untrack } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
@@ -86,8 +84,6 @@
 	});
 
 	let pathCount = $derived(stats?.path ?? 0);
-	// Rows that exist off the read branch: swipes, alternate greetings, abandoned forks.
-	let offPathCount = $derived(Math.max(0, (stats?.total ?? 0) - pathCount));
 	let timeLabel = $derived(formatRelativeTime(stats?.lastAt ?? chat.updatedAt));
 
 	function commitRename() {
@@ -195,19 +191,10 @@
 		</div>
 
 		<div class="chat-row-meta">
-			<span class="chat-row-count" title="{pathCount} message{pathCount === 1 ? '' : 's'} on this branch">
+			<span class="chat-row-count" title="{pathCount} message{pathCount === 1 ? '' : 's'} in this chat">
 				<Icon name="chat" class="w-3 h-3" />
 				{pathCount}
 			</span>
-			{#if offPathCount > 0}
-				<span
-					class="chat-row-count chat-row-count-offpath"
-					title="{offPathCount} more message{offPathCount === 1 ? '' : 's'} on other branches"
-				>
-					<Icon name="branch" class="w-3 h-3" />
-					{offPathCount}
-				</span>
-			{/if}
 		</div>
 	</button>
 
@@ -403,13 +390,11 @@
 		white-space: nowrap;
 	}
 
-	/* The two counts, stacked: the branch you read on top, what hangs off it below. */
+	/* The number of turns in the conversation currently selected for this chat. */
 	.chat-row-meta {
 		flex-shrink: 0;
 		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 0.1rem;
+		align-items: center;
 		font-family: var(--font-ui);
 		font-size: 0.68rem;
 		font-weight: 600;
@@ -420,10 +405,6 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.2rem;
-	}
-
-	.chat-row-count-offpath {
-		opacity: 0.75;
 	}
 
 	.chat-row-actions {
