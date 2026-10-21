@@ -7,8 +7,7 @@
   the label, or printed on the card where they asked for that) and, on the reader's side
   of the same line, whether this control has drifted from
   its baseline (the adopted setup's value where one names it, the author's default
-  otherwise), with one click back. The footer prices the control in tokens, because what
-  a knob costs is part of deciding whether to turn it.
+  otherwise), with one click back.
 -->
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
@@ -17,12 +16,8 @@
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import { autoResize } from '$lib/actions/autoResize';
 	import { rangeReset } from '$lib/actions/rangeReset';
-	import { countTokens } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { llmService } from '$lib/services/llm/provider';
 	import {
 		getControlValue,
-		formatControlForPrompt,
 		type RangeValue
 	} from '$lib/utils/prompt-controls';
 	import type { PromptControl, PromptControlAdvice } from '$lib/types/database';
@@ -50,10 +45,6 @@
 
 	/** Compared as serialized values so a range's pair and a tag list compare by content. */
 	let modified = $derived(JSON.stringify(value) !== JSON.stringify(baselineValue));
-
-	// What this control actually adds to the prompt, in the model the chat is on, the same
-	// text formatControlForPrompt hands the assembler, so the number is the real one.
-	let tokens = $derived(tokenEstimate(() => countTokens(formatControlForPrompt(control, raw), llmService.getPrimaryModel())));
 
 	// Worded to hold for every control type: most of these are a choice between options,
 	// not a switch, so "leave this on" would be wrong on the majority of them.
@@ -294,12 +285,6 @@
 				</button>
 			</div>
 		{/if}
-	{/if}
-
-	{#if tokens === null || tokens > 0}
-		<p class="pcf-cost" title="What this control adds to every prompt">
-			{tokens?.toLocaleString() ?? '…'} token{tokens === 1 ? '' : 's'}
-		</p>
 	{/if}
 </div>
 
@@ -646,15 +631,5 @@
 	.pcf-custom-add:disabled {
 		opacity: 0.4;
 		cursor: default;
-	}
-
-	.pcf-cost {
-		margin: 0.6rem 0 0;
-		text-align: right;
-		font-family: var(--font-ui);
-		font-size: 0.66rem;
-		font-variant-numeric: tabular-nums;
-		color: var(--color-text-muted);
-		cursor: help;
 	}
 </style>

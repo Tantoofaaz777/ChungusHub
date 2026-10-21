@@ -29,10 +29,7 @@
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { chatPreset } from '$lib/utils/chat-setup';
 	import { toastStore } from '$lib/stores/toast.svelte';
-	import { countTokens } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { formatControlForPrompt, getControlValue } from '$lib/utils/prompt-controls';
+	import { getControlValue } from '$lib/utils/prompt-controls';
 	import type { PromptControl, PromptPresetBundle } from '$lib/types/database';
 
 	// Make sure presets are loaded; the guard inside initialize() makes re-runs free.
@@ -317,15 +314,6 @@
 		}
 	}
 
-	// --- what the whole form costs -----------------------------------------------------
-
-	let totalTokens = $derived(tokenEstimate(() =>
-		activeControls.reduce(
-			(sum, c) => sum + countTokens(formatControlForPrompt(c, values[c.macro]), llmService.getPrimaryModel()),
-			0
-		)
-	));
-
 	function openPromptBuilder(): void {
 		uiStore.settingsPage = 'prompt-builder';
 		uiStore.openSettings();
@@ -606,7 +594,7 @@
 					{/if}
 
 					<!-- The reader's own status line: how far from the lit baseline they have
-					     wandered, what the whole form costs, and the one way back. -->
+					     wandered and the one way back. -->
 					<div class="pcv-status">
 						{#if modifiedCount > 0}
 							<span class="pcv-status-dot"></span>
@@ -617,12 +605,6 @@
 						{:else}
 							<span class="pcv-status-text pcv-status-text--calm">
 								{selectedSetup ? `Every control matches “${selectedSetup.name}”` : "Every control is on the author's defaults"}
-							</span>
-						{/if}
-						<span class="pcv-status-spacer"></span>
-						{#if totalTokens === null || totalTokens > 0}
-							<span class="pcv-status-cost" title="What the whole form adds to every prompt">
-								{totalTokens?.toLocaleString() ?? '…'} tokens
 							</span>
 						{/if}
 					</div>
@@ -1132,18 +1114,6 @@
 
 	.pcv-status-reset:hover {
 		color: var(--color-accent);
-	}
-
-	.pcv-status-spacer {
-		flex: 1 1 0;
-		min-width: 0.25rem;
-	}
-
-	.pcv-status-cost {
-		flex-shrink: 0;
-		color: var(--color-text-muted);
-		font-variant-numeric: tabular-nums;
-		cursor: help;
 	}
 
 	/* ---- Sections ---- */

@@ -16,7 +16,6 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
-	import { memoryStore } from '$lib/memory/scene-store.svelte';
 	import { inputDraftStore } from '$lib/stores/inputDraft.svelte';
 	import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
@@ -939,7 +938,6 @@
 							     role glyphs MessageAvatar draws, so a row reads the same here as it
 							     does in the transcript. -->
 							<div class="composer-dialog-menu py-1">
- <button type="button" class="composer-menu-item" disabled={isStreaming || !memoryStore.loaded || !memoryStore.path.length} onclick={() => { menuOpen = false; memoryStore.startSelection(); }}><Icon name="brain" class="w-4 h-4" />Select chapter range</button>
 								<button
 									type="button"
 									class="composer-menu-item"

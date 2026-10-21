@@ -6,7 +6,6 @@ keywords, a verbatim tail or the `{{memory}}` macro. The old pipeline and its st
 remain for compatibility; its panel is unmounted and its store is no longer used by runtime consumers.
 
 1. Use ↓ (start) and ↑ (end) directly in each message’s actions. Either endpoint can be marked first.
-   Chat actions → Select chapter range also opens this selection mode.
 2. Mark both boundaries on the same message for a single turn. Adjust either arrow to change the range;
    crossing the other boundary clears it. The selected range is highlighted, with Generate chapter and Cancel above.
 3. Generate, review/edit, then Save chapter. Cancel never changes the prompt.
