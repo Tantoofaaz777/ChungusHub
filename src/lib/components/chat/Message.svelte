@@ -17,8 +17,10 @@
 	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
+	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { renderedHtml } from '$lib/actions/renderedHtml';
+	import { editOnDoublePress } from '$lib/actions/editOnDoublePress';
 	import { copyText } from '$lib/utils/clipboard';
 	import { previewContinuation } from '$lib/utils/continuation';
 	import { displaySelfRefs } from '$lib/macros';
@@ -664,7 +666,10 @@
 									     use:renderedHtml rather than {@html}: it patches this subtree
 									     instead of rebuilding it, which is what lets a folding panel
 									     take a click while the reply is still arriving. -->
-									<div class="prose message-prose" data-search-text use:renderedHtml={bodyHtml}></div>
+									<div class="prose message-prose" data-search-text use:editOnDoublePress={{
+										enabled: generalSettingsStore.doubleClickToEdit && !messageStore.busy,
+										onEdit: handleEditClick
+									}} use:renderedHtml={bodyHtml}></div>
 								</div>
 							{/if}
 							</div>

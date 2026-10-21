@@ -1,8 +1,7 @@
 <script lang="ts">
 	/**
-	 * The composer's steering surface, and the ONLY one: everything a note can be has to be
-	 * reachable from here. Two views: the stack of notes steering the next reply, and one
-	 * note's editor (the shared SteeringNoteEditor).
+	 * The composer's steering surface: quick guidance, recent reuse and switches for saved
+	 * steering. The footer opens the Steering library in Settings; saved rows only toggle.
 	 *
 	 * Its quick box is the cheap half of exactly one axis: guidance that rides one request
 	 * and deletes itself. Everything configurable about a note (lifetime, scope, placement,
@@ -14,40 +13,36 @@
 	 */
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import SteeringNoteEditor from '$lib/components/chat/SteeringNoteEditor.svelte';
 	import { autoResize } from '$lib/actions/autoResize';
+	import { toggleRow } from '$lib/actions/toggleRow';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { steeringStore } from '$lib/stores/steering.svelte';
 	import { bindingLabel } from '$lib/utils/steering-labels';
 	import { noteLabel, steeringTargetForChat, type SteeringScope } from '$lib/types/steering';
 
+	let { onManageLibrary }: { onManageLibrary: () => void } = $props();
+
 	let chat = $derived(chatStore.activeChat);
 	let target = $derived(steeringTargetForChat(chat));
-	// The list shows every note bound here, on or off; `activeCount` is the subset that
-	// actually injects, which is what the header counts.
+	// The list shows every note bound here, on or off.
 	let scoped = $derived(steeringStore.scopedFor(target));
-	let activeCount = $derived(steeringStore.activeFor(target).length);
 	let history = $derived(chat ? chatStore.featureState(chat.id).steeringHistory : []);
-
-	// Which note's editor is open; null = the stack list.
-	let editingId = $state<string | null>(null);
-	let editing = $derived(editingId ? steeringStore.getNote(editingId) : null);
 
 	// The quick box: guidance for THIS reply and nothing more. Deliberately one-shot with no
 	// lifetime picker and no commit button: anything that outlives one request is what the
 	// editor below is for, and duplicating it here with a mode pill only made the cheap
 	// action look like the expensive one. Write, it fires, it's gone.
 	let quickText = $state('');
+	let recentOpen = $state(false);
 
-	// A chat switch under the popover invalidates both views: the editor may hold a note
-	// bound to the chat we just left.
+	// A chat switch discards guidance that belonged to the previous chat.
 	let seenChatId: string | null = null;
 	$effect(() => {
 		const id = chatStore.activeChatId;
 		if (id === seenChatId) return;
 		seenChatId = id;
-		editingId = null;
 		quickText = '';
+		recentOpen = false;
 	});
 
 	/** Where a fresh note goes: the story you're in, or globally when there is none, since
@@ -80,104 +75,71 @@
 		void addQuick();
 	}
 
-	async function newNote() {
-		const note = await steeringStore.create({ text: '', ...freshScope(), mode: 'pinned' });
-		editingId = note.id;
-	}
 </script>
 
 <div class="steering-popover">
-	{#if editing}
-		<div class="pop-body panel-scroll">
-			<SteeringNoteEditor
-				note={editing}
-				rows={4}
-				maxHeight={180}
-				onback={() => (editingId = null)}
-				ondeleted={() => (editingId = null)}
-			/>
-		</div>
-	{:else}
-		<div class="pop-status">
-			<span class="pop-count font-ui">
-				{#if scoped.length}
-					{activeCount} of {scoped.length} on
-				{:else}
-					nothing set
-				{/if}
-			</span>
-		</div>
+	<div class="quick">
+		<span class="field-label font-ui">Steer the next reply</span>
+		<textarea
+			class="quick-box"
+			rows="2"
+			bind:value={quickText}
+			use:autoResize={{ maxHeight: 140, value: quickText, grip: false }}
+			onkeydown={handleQuickKeydown}
+			placeholder="Rides the next request, then it's gone…"
+		></textarea>
+	</div>
 
-		<!-- Both lists live in the one scroller, so however many notes and reused lines
-		     pile up they take space from each other and never from the panel. -->
-		<div class="pop-body panel-scroll">
-			{#if scoped.length}
-				<div class="stack">
-					{#each scoped as note (note.id)}
-						<div class="row" class:row--off={!note.enabled}>
-							<Toggle
-								checked={note.enabled}
-								size="sm"
-								label={note.enabled ? 'Disable this note' : 'Enable this note'}
-								onchange={(on) => steeringStore.update(note.id, { enabled: on })}
-							/>
-							<button type="button" class="row-main" onclick={() => (editingId = note.id)}>
-								<span class="row-title font-ui">{noteLabel(note)}</span>
-								<span class="row-scope font-ui">
-									{bindingLabel(note)}{#if note.mode === 'once'}<span class="row-once">next reply</span>{/if}
-								</span>
-							</button>
-							<!-- Straight delete, no dialog: the editor's own Delete has never asked
-							     either, and a note is one line of guidance, not a document. -->
-							<button
-								type="button"
-								class="row-del"
-								aria-label="Delete steering"
-								title="Delete"
-								onclick={() => steeringStore.remove(note.id)}
-							>
-								<Icon name="trash" class="w-3 h-3" />
-							</button>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<p class="empty">No guidance here yet. Type below to steer the next reply.</p>
-			{/if}
-
-			{#if history.length > 0}
-				<div class="history">
-					<span class="field-label font-ui">Recent</span>
+	<!-- Recent and saved steering share a scroller; the quick field stays at the top. -->
+	<div class="pop-body panel-scroll">
+		{#if history.length > 0}
+			<details class="history" bind:open={recentOpen}>
+				<summary class="history-head">
+					<Icon name="chevronDown" class="history-chevron w-3.5 h-3.5" aria-hidden="true" />
+					<Icon name="clock" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+					<span>Recent</span>
+					<span class="history-rule" aria-hidden="true"></span>
+				</summary>
+				<div class="history-list">
 					{#each history as entry (entry)}
 						<button type="button" class="hist-row" title={entry} onclick={() => (quickText = entry)}>
 							{entry}
 						</button>
 					{/each}
 				</div>
-			{/if}
-		</div>
+			</details>
+		{/if}
 
-		<!-- Under the Recent list it fills, and outside the scroller: the cheap action is
-		     never the one you have to scroll for. -->
-		<div class="quick">
-			<span class="field-label font-ui">Steer the next reply</span>
-			<textarea
-				class="quick-box"
-				rows="2"
-				bind:value={quickText}
-				use:autoResize={{ maxHeight: 140, value: quickText, grip: false }}
-				onkeydown={handleQuickKeydown}
-				placeholder="Rides the next request, then it's gone…"
-			></textarea>
-		</div>
+		{#if scoped.length}
+			<div class="stack">
+				{#each scoped as note (note.id)}
+					<div class="row" class:row--on={note.enabled} class:row--off={!note.enabled} use:toggleRow>
+						<Toggle
+							checked={note.enabled}
+							size="sm"
+							label={noteLabel(note)}
+							onchange={(on) => steeringStore.update(note.id, { enabled: on })}
+						/>
+						<span class="row-main">
+							<span class="row-title font-ui">{noteLabel(note)}</span>
+							<span class="row-scope font-ui">
+								{bindingLabel(note)}{#if note.mode === 'once'}<span class="row-once">next reply</span>{/if}
+							</span>
+						</span>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<p class="empty">No saved steering here yet. Type above to steer the next reply.</p>
+		{/if}
+	</div>
 
-		<div class="foot">
-			<button type="button" class="foot-link font-ui" onclick={newNote}>
-				<Icon name="plus" class="w-3 h-3" />
-				New steering
-			</button>
-		</div>
-	{/if}
+	<div class="foot">
+		<button type="button" class="foot-link font-ui" onclick={onManageLibrary}>
+			Manage library
+			<Icon name="arrowRight" class="w-3 h-3" />
+		</button>
+	</div>
 </div>
 
 <style>
@@ -202,26 +164,14 @@
 		overscroll-behavior: contain;
 	}
 
-	.pop-status,
 	.quick,
 	.foot {
 		flex: none;
 	}
 
-	.pop-status {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 0.5rem;
-	}
-
-	.pop-count,
 	.empty {
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
-	}
-
-	.empty {
 		margin: 0;
 		font-family: var(--font-body);
 		font-style: italic;
@@ -230,6 +180,8 @@
 	/* ===== the stack ===== */
 
 	.stack {
+		padding-top: 0.45rem;
+		border-top: 1px solid var(--color-border-subtle);
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
@@ -240,7 +192,12 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.25rem 0.3rem;
+		border: 1px solid transparent;
 		border-radius: var(--radius-sm);
+	}
+
+	.row--on {
+		border-color: var(--color-accent);
 	}
 
 	.row:hover {
@@ -295,34 +252,6 @@
 		color: var(--color-text-muted);
 	}
 
-	/* Out of the way until the row is under the pointer, but never out of the tab
-	   order: focus brings it back on its own. */
-	.row-del {
-		flex: none;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0.2rem;
-		border-radius: var(--radius-sm);
-		color: var(--color-text-muted);
-		opacity: 0;
-		cursor: pointer;
-		transition: opacity 120ms ease, color 120ms ease;
-	}
-
-	.row:hover .row-del,
-	.row-del:focus-visible {
-		opacity: 1;
-	}
-
-	.row-del:hover {
-		color: var(--color-error);
-	}
-
-
-
-
-
 	/* ===== quick add, history, foot ===== */
 
 	.field-label {
@@ -336,8 +265,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.35rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid var(--color-border-subtle);
 	}
 
 	/* No resize grip. See `autoResize`'s `grip: false`: this panel is anchored to its
@@ -364,11 +291,44 @@
 	}
 
 	.history {
+		padding-top: 0.45rem;
+	}
+
+	.history-head {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.125rem 0;
+		list-style: none;
+		cursor: pointer;
+		font-family: var(--font-ui);
+		font-size: 0.75rem;
+		color: var(--color-accent);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+	}
+
+	.history-head::-webkit-details-marker { display: none; }
+	.history-head :global(.history-chevron) {
+		flex-shrink: 0;
+		transform: rotate(-90deg);
+		transition: transform 150ms;
+	}
+	.history[open] .history-head :global(.history-chevron) { transform: rotate(0); }
+	.history-rule {
+		flex: 1;
+		min-width: 0.5rem;
+		border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+		margin-left: 0.25rem;
+	}
+	.history + .stack { border-top: 0; }
+
+	.history-list {
 		display: flex;
 		flex-direction: column;
 		gap: 0.15rem;
-		padding-top: 0.45rem;
-		border-top: 1px solid var(--color-border-subtle);
+		padding-top: 0.15rem;
 	}
 
 	.hist-row {
@@ -392,7 +352,7 @@
 	.foot {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: flex-end;
 		padding-top: 0.45rem;
 		border-top: 1px solid var(--color-border-subtle);
 	}

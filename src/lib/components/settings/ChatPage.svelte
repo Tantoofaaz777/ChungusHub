@@ -10,10 +10,11 @@
 	 * scrims"): one is the app's own surface tone over the reading column, the other is
 	 * plain black over a photograph, and neither offers a color to pick.
 	 *
-	 * Every control here writes one `appearance` field (architecture/ui-shell-settings.md,
+	 * Appearance controls write one `appearance` field (architecture/ui-shell-settings.md,
 	 * "the settings spine"); the theme store turns those into `--msg-*`/`--prose-*`
 	 * custom properties that Message/StreamingIndicator/MessageAvatar/MessageMeta
-	 * read. Nothing on this page touches a component directly.
+	 * read. Interaction preferences use the general settings spine instead.
+	 * Nothing on this page touches a component directly.
 	 *
 	 * A control with nothing left to style is HIDDEN, not shown inert, the same rule
 	 * the chat-width slider follows on phones. Message cards apply to every style;
@@ -30,6 +31,7 @@
 	import ColorSwatchPicker from '$lib/components/ui/ColorSwatchPicker.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
+	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { DEFAULT_APPEARANCE, proseQuoteDefault } from '$lib/themes/presets';
 	import { rangeReset } from '$lib/actions/rangeReset';
@@ -198,6 +200,23 @@
 {/snippet}
 
 <div class="chat-page">
+	<section class="card" data-setting="message-interactions">
+		<div class="card-head">
+			<span class="card-title">Interactions</span>
+		</div>
+		<div class="card-body">
+			<div class="toggle-row" use:toggleRow>
+				<span class="slider-label">Double-click to edit messages</span>
+				<Toggle
+					checked={generalSettingsStore.doubleClickToEdit}
+					label="Double-click to edit messages"
+					onchange={(on) => generalSettingsStore.setDoubleClickToEdit(on)}
+				/>
+			</div>
+			<p class="field-hint">Double-click a message's text, or double-tap on mobile, to open its editor.</p>
+		</div>
+	</section>
+
 	<section class="card" data-setting="reading-column">
 		<div class="card-head">
 			<span class="card-title">Reading Column</span>

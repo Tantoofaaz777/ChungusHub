@@ -16,6 +16,7 @@ import {
 	createSteeringNote,
 	resolveSteeringForPrompt,
 	scopedSteeringNotes,
+	sortSteeringNotes,
 	type ResolvedSteeringNote,
 	type SteeringMode,
 	type SteeringNote,
@@ -36,6 +37,8 @@ class SteeringStore {
 	get notes(): SteeringNote[] {
 		return this._notes;
 	}
+
+	get orderedNotes(): SteeringNote[] { return sortSteeringNotes(this._notes); }
 
 	get initialized(): boolean {
 		return this._initialized;
@@ -98,7 +101,8 @@ class SteeringStore {
 		depth?: number | null;
 		role?: SteeringRole | null;
 	}): Promise<SteeringNote> {
-		const note = createSteeringNote(fields);
+		const lastPosition = this._notes.reduce((max, note) => Number.isSafeInteger(note.sortOrder) ? Math.max(max, note.sortOrder!) : max, -1);
+		const note = createSteeringNote({ ...fields, ...(lastPosition < 0 ? {} : { sortOrder: lastPosition + 1 }) });
 		this._notes = [...this._notes, note];
 		await db.insertSteeringNote(note);
 		return note;
@@ -123,6 +127,13 @@ class SteeringStore {
 		this.writer.cancel(id);
 		this._notes = this._notes.filter((n) => n.id !== id);
 		await db.deleteSteeringNote(id);
+	}
+
+	async reorder(ids: string[]): Promise<void> {
+		await this.flush();
+		const ordered = await db.reorderSteeringNotes(ids);
+		const positions = new Map(ordered.map((id, index) => [id, index]));
+		this._notes = this._notes.map(note => positions.has(note.id) ? { ...note, sortOrder: positions.get(note.id)! } : note);
 	}
 
 	/** Debounced edit for the note editor's text/title fields. The in-memory note updates

@@ -164,7 +164,7 @@ export class ThreadsStore {
 		const label = round?.label ?? this.label;
 		const input = $state.snapshot({ messages: messages.map(expand), label,
 			previous: previous.map(r => ({ ...r, messages: r.messages.map(expand) })), notes: this.notes, ao3: this.ao3,
-			instructions: this.instructions, config: threadsConfigStore.value });
+			instructions: expandSelfRefs(this.instructions, charName, userName, persona?.pronouns ?? {}), config: threadsConfigStore.value });
 		return { messages, branchLeafId, label, input };
 	}
 	get promptPreview(): Parameters<typeof threadsPrompt>[0] | null {

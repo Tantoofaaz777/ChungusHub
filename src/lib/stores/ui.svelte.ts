@@ -35,6 +35,8 @@ class UiStore {
 	// so the split view's history and the drill back chip can step out of the
 	// detail, and every page navigation clears it via gotoSettingsPage.
 	settingsEngineId = $state<string | null>(null);
+	/** One-shot scroll target for the composer's Manage library shortcut. */
+	pendingSteeringLibrary = $state(false);
 
 	// One-shot deep link: when set, the Library panel opens this entry's editor on
 	// mount and clears the field. Set by "Edit in Library" style buttons.
@@ -285,6 +287,7 @@ class UiStore {
 	 *  here so the connection editor, its routing sub-view, and the engine detail
 	 *  can't survive a page switch. */
 	gotoSettingsPage(page: string) {
+		this.pendingSteeringLibrary = false;
 		this.settingsPage = page;
 		this.settingsConnectionId = null;
 		this.settingsRoutingModel = null;

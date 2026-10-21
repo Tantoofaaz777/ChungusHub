@@ -16,6 +16,7 @@ import {
 	resolvePlacement,
 	resolveSteeringForPrompt,
 	sortSteeringNotes,
+	scopedSteeringNotes,
 	type SteeringDefaults,
 	type SteeringNote,
 	type SteeringScope,
@@ -43,7 +44,8 @@ function note(over: Partial<SteeringNote> = {}): SteeringNote {
 		depth: over.depth ?? null,
 		role: over.role ?? null,
 		createdAt: over.createdAt ?? 1000,
-		updatedAt: over.updatedAt ?? 1000
+		updatedAt: over.updatedAt ?? 1000,
+		...(over.sortOrder === undefined ? {} : { sortOrder: over.sortOrder })
 	};
 }
 
@@ -88,6 +90,16 @@ describe('noteApplies: the scope ladder', () => {
 });
 
 describe('sortSteeringNotes: injection order', () => {
+	test('explicit library positions apply to the composer and prompt while preserving unranked additions', () => {
+		const notes = [
+			note({ text: 'global', sortOrder: 1 }),
+			note({ text: 'chat first', scope: 'chat', scopeId: 'chat-1', sortOrder: 0 }),
+			note({ text: 'new unranked' })
+		];
+		expect(scopedSteeringNotes(notes, TARGET).map(n => n.text)).toEqual(['chat first', 'global', 'new unranked']);
+		expect(resolveSteeringForPrompt(notes, TARGET, DEFAULTS).map(n => n.text)).toEqual(['chat first', 'global', 'new unranked']);
+	});
+
 	test('orders scopes broad to narrow so the most specific guidance lands last', () => {
 		const notes = [
 			note({ scope: 'chat', scopeId: 'chat-1', text: 'd' }),

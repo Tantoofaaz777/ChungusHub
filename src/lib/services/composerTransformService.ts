@@ -31,6 +31,8 @@ export interface ComposerTransformParams {
 	draft: string;
 	chatMessages: Message[];
 	signal?: AbortSignal;
+	onToken?: (text: string) => void;
+	onThinkingToken?: (text: string) => void;
 }
 
 /** Exported so the panel's cost estimate is counted off the exact messages a real run
@@ -99,7 +101,10 @@ export async function runComposerTransform(opts: ComposerTransformParams): Promi
 	// Unlike a background sidecar, these transforms are user-triggered foreground actions
 	// the caller is actively waiting on, so errors (including AbortError) PROPAGATE: no
 	// catch-and-null here. The approve/reject dialog renders them.
-	const result = await llmService.complete({ engine: kind }, { messages: approved, source: kind, signal });
+	const result = await llmService.complete({ engine: kind }, {
+		messages: approved, source: kind, signal,
+		onToken: opts.onToken, onThinkingToken: opts.onThinkingToken
+	});
 
 	const text = result.content.trim();
 	if (!text) throw new Error('The transform returned an empty result');

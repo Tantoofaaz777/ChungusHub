@@ -8,7 +8,7 @@ import { join } from 'node:path';
 let source: string;
 beforeAll(async () => {
 	const mocks: Record<string, string> = {
-		'$lib/services/llm/provider': `export const llmService={getPromptPostProcessing:()=>fixture.mode,getPromptPlaceholder:()=> '[Start]',complete:async(target,request)=>{fixture.sent.push({target,request});return {content:'A new draft'}}};`,
+		'$lib/services/llm/provider': `export const llmService={getPromptPostProcessing:()=>fixture.mode,getPromptPlaceholder:()=> '[Start]',complete:async(target,request)=>{fixture.sent.push({target,request});request.onThinkingToken?.('First ');request.onThinkingToken?.('thought');request.onToken?.('A new ');request.onToken?.('draft');return {content:'A new draft'}}};`,
 		'$lib/stores/featurePrompts.svelte': `export const featurePromptsStore={promptFor:()=>fixture.template,spellcheckEnabled:true,impersonateEnabled:true};`,
 		'$lib/stores/promptHold.svelte': `export const promptHoldStore={review:async(kind,messages,target)=>{fixture.reviewed.push({kind,messages,target});return fixture.approved??messages}};`,
 		'$lib/stores/chat.svelte': `export const chatStore={get activeChat(){return fixture.chat},get currentChatState(){return {activePath:fixture.messages}}};`,
@@ -112,4 +112,19 @@ test('spellcheck keeps its existing context and single-message shape', () => {
 	expect(fixture.access).toContain('preset');
 	expect(fixture.access).toContain('controls');
 	expect(fixture.access).toContain('lorebook-scan');
+});
+
+test('composer transforms forward separate reasoning and response streams for progress', async () => {
+	for (const kind of ['impersonate', 'spellcheck'] as const) {
+		const { service, fixture, params } = harness();
+		let reasoning = '', response = '';
+		expect(await service.runComposerTransform({
+			...params, kind,
+			onThinkingToken: text => { reasoning += text; },
+			onToken: text => { response += text; }
+		})).toBe('A new draft');
+		expect(reasoning).toBe('First thought');
+		expect(response).toBe('A new draft');
+		expect(fixture.sent).toHaveLength(1);
+	}
 });

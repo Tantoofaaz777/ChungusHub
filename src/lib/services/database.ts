@@ -215,6 +215,7 @@ class DatabaseService {
 	insertSteeringNote(note: SteeringNote): Promise<void> { return this.call('insertSteeringNote', note); }
 	updateSteeringNote(note: SteeringNote): Promise<void> { return this.call('updateSteeringNote', note); }
 	deleteSteeringNote(id: string): Promise<void> { return this.call('deleteSteeringNote', id); }
+	reorderSteeringNotes(ids: string[]): Promise<string[]> { return this.call('reorderSteeringNotes', ids); }
 
 	// ===== SESSION MEMORY =====
 	getThreadsData(chatId: string): Promise<ThreadsData> { return this.call('getThreadsData', chatId); }

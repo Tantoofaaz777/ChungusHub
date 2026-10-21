@@ -1,8 +1,7 @@
 <script lang="ts">
 	/**
-	 * One steering note's editor: the SHARED body of both steering surfaces
-	 * (architecture/engines.md): the composer popover drills into it, and the manager
-	 * panel mounts it beside its list. Extracted the moment it had two mounts, not before.
+	 * One steering note's editor, mounted inside the Steering library in Engines settings.
+	 * The composer only toggles saved guidance and links to this manager.
 	 *
 	 * Every field writes through the store immediately except text and title, which ride
 	 * the store's debounce (`scheduleEdit`): a click must never sit in a timer, while

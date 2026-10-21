@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, test, expect, mock } from 'bun:test';
 import { emptyAo3Information } from '$shared/threads/ao3';
 import type { SaveThreadsRound, ThreadsData, ThreadsRound, ThreadsFeed } from '$shared/threads/types';
-import { DEFAULT_THREADS_CONFIG } from '$shared/threads/model';
+import { DEFAULT_THREADS_CONFIG, DEFAULT_THREADS_INSTRUCTIONS } from '$shared/threads/model';
 const identity = <T>(value:T)=>value;
 (globalThis as any).$state = Object.assign(identity,{raw:identity,snapshot:structuredClone});
 (globalThis as any).$derived = Object.assign(identity,{by:(fn:()=>unknown)=>fn()});
@@ -44,6 +44,25 @@ async function open() {const p=store.load('a');reads.shift()!.resolve(empty());a
 async function start() {store.selected=['5','2'];const p=store.generate();for(let i=0;i<100 && !calls.length;i++) await Promise.resolve();return {p};}
 function previous():ThreadsRound {return {id:'previous',chatId:'a',label:'Prior scene',revision:1,createdAt:1,messages:[{...path[0],role:'assistant',index:0,speaker:'Narrator'}],activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed}]};}
 describe('Threads generation lifecycle',()=>{
+	test('instructions resolve the chat persona in both the preview and generated prompt',async()=>{
+		const {characterLibraryStore}=await import('$lib/stores/characterLibrary.svelte');
+		const entry:any={id:'threads-test-persona',type:'persona',identity:{name:'Persona card',alias:'Aster'},data:{traits:{}}};
+		characterLibraryStore.entries.push(entry);
+		try {
+			fakeChat.activeChat.featureState=JSON.stringify({persona:entry.id});
+			await open();store.selected=['2','5'];
+			const expected=DEFAULT_THREADS_INSTRUCTIONS.replaceAll('{{user}}','Aster');
+			expect(store.promptPreview!.instructions).toBe(expected);
+			expect(store.instructions).toBe(DEFAULT_THREADS_INSTRUCTIONS);
+			const {p}=await start();
+			expect(calls[0].messages[0].content).toContain(expected);
+			expect(calls[0].messages[0].content).not.toContain('{{user}}');
+			calls[0].resolve({content:JSON.stringify(feed)});await p;
+		} finally {
+			const index=characterLibraryStore.entries.findIndex(item=>item.id===entry.id);
+			if(index>=0)characterLibraryStore.entries.splice(index,1);
+		}
+	});
 	test('ordinary panel reopens reuse data and preserve scene selection and notes',async()=>{
 		await open();store.rounds=[previous()];store.selected=['2','5'];store.label='Next chapter';store.notes='A local note';store.tab='make';
 		await store.ensureLoaded('a');

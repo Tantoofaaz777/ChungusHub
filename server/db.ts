@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { IMAGES_ROOT, resolveDbPath } from './config';
 import { deleteImage } from './files';
 import type { SyncScope } from '../shared/sync';
+import { sortSteeringNotes, type SteeringNote } from '../src/lib/types/steering';
 import { captureScene, resolveScenes, scenePath, sceneLevel, MEMORY_LEVELS, type MemoryScene, type SaveMemoryScene, type SceneMessage } from '../shared/memory-scenes';
 
 /** Short stable digest, the chat-tree fingerprint's building block. Truncated SHA-1:
@@ -2613,7 +2614,8 @@ class ServerDatabase {
 			enabled: note.enabled,
 			mode: note.mode,
 			depth: note.depth,
-			role: note.role
+			role: note.role,
+			sortOrder: note.sortOrder
 		});
 	}
 
@@ -2639,12 +2641,15 @@ class ServerDatabase {
 	}
 
 	updateSteeringNote(note: Record<string, unknown>): void {
+		// Only the reorder mutation changes position: a stale toggle/editor must not undo it.
+		const current = this.select<{ data_json: string }[]>('SELECT data_json FROM steering_notes WHERE id = ?', [note.id])[0];
+		const sortOrder = current ? (JSON.parse(current.data_json) as Record<string, unknown>).sortOrder : undefined;
 		// Scope is rewritten too: re-binding a note to another character or chat is an
 		// ordinary edit, not a delete-and-recreate.
 		this.execute('UPDATE steering_notes SET scope = ?, scope_id = ?, data_json = ?, updated_at = ? WHERE id = ?', [
 			note.scope,
 			note.scopeId ?? null,
-			this.steeringNotePayload(note),
+			this.steeringNotePayload({ ...note, sortOrder }),
 			Date.now(),
 			note.id
 		]);
@@ -2652,6 +2657,23 @@ class ServerDatabase {
 
 	deleteSteeringNote(id: string): void {
 		this.execute('DELETE FROM steering_notes WHERE id = ?', [id]);
+	}
+
+	reorderSteeringNotes(ids: string[]): string[] {
+		if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid steering order');
+		return this.inTransaction(() => {
+			const current = sortSteeringNotes(this.getAllSteeringNotes() as SteeringNote[]);
+			const remaining = new Set(current.map(note => note.id));
+			const ordered: string[] = [];
+			for (const id of ids) if (remaining.delete(id)) ordered.push(id);
+			// Concurrent additions remain present; deleted/duplicate ids cannot recreate rows.
+			ordered.push(...current.filter(note => remaining.has(note.id)).map(note => note.id));
+			ordered.forEach((id, index) => this.execute(
+				"UPDATE steering_notes SET data_json = json_set(data_json, '$.sortOrder', ?), updated_at = ? WHERE id = ?",
+				[index, Date.now(), id]
+			));
+			return ordered;
+		});
 	}
 
 	// ===== CHAT MEMORY =====
@@ -3159,6 +3181,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	insertSteeringNote: 'steering',
 	updateSteeringNote: 'steering',
 	deleteSteeringNote: 'steering',
+	reorderSteeringNotes: 'steering',
 	memSetState: 'memory',
 	memApplyBatch: 'memory',
 	memApplyPromotion: 'memory',

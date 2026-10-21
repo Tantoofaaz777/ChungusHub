@@ -352,6 +352,14 @@
 		else steeringOpen = true;
 	}
 
+	function manageSteeringLibrary() {
+		closeSteering();
+		uiStore.gotoSettingsPage('engines');
+		uiStore.settingsEngineId = 'steering';
+		uiStore.pendingSteeringLibrary = true;
+		uiStore.openSettings();
+	}
+
 	// ===== Persona quick switch =====
 
 	// ===== Composer transforms (Spellcheck / Impersonate) =====
@@ -1075,7 +1083,7 @@
 								placement="center"
 								bare
 							>
-								<SteeringPopover bind:this={steeringPopover} />
+								<SteeringPopover bind:this={steeringPopover} onManageLibrary={manageSteeringLibrary} />
 							</Dialog>
 						</div>
 					{/if}

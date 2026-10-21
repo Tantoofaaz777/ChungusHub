@@ -22,6 +22,7 @@
 	import PillRow from '$lib/components/ui/PillRow.svelte';
 	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
 	import ThreadsPromptEditor from '$lib/components/threads/ThreadsPromptEditor.svelte';
+	import SteeringLibrary from './SteeringLibrary.svelte';
 	import { STEERING_ROLES, type SteeringRole } from '$lib/types/steering';
 	import { engineById, type EngineId } from '$lib/engines/registry';
 	import {
@@ -351,6 +352,7 @@
 			{/each}
 		</div>
 	</section>
+	{#if engine.id === 'steering'}<SteeringLibrary />{/if}
 </div>
 
 <style>

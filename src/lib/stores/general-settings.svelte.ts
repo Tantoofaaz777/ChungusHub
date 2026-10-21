@@ -23,6 +23,8 @@ interface GeneralSettings {
 	transcriptLoadMode: TranscriptLoadMode;
 	/** Open the per-message reasoning box by default (streaming and saved turns). */
 	autoExpandReasoning: boolean;
+	/** Open the normal message editor by double-clicking the rendered story text. */
+	doubleClickToEdit: boolean;
 	/** Read by nothing. Who a story plays as is claimed in the chat itself (the composer's
 	 *  setup chip), so there is no app-wide switch to show or hide. The key is still parsed
 	 *  and written back so an install that recorded a value keeps it byte for byte. */
@@ -53,6 +55,7 @@ const DEFAULT_SETTINGS: GeneralSettings = {
 	transcriptPageSize: 100,
 	transcriptLoadMode: 'scroll',
 	autoExpandReasoning: false,
+	doubleClickToEdit: false,
 	personaSwitcher: false,
 	settingsSplitView: false,
 	welcomeSeen: false
@@ -99,6 +102,10 @@ function normalize(raw: Partial<GeneralSettings> | null): GeneralSettings {
 			typeof raw?.autoExpandReasoning === 'boolean'
 				? raw.autoExpandReasoning
 				: DEFAULT_SETTINGS.autoExpandReasoning,
+		doubleClickToEdit:
+			typeof raw?.doubleClickToEdit === 'boolean'
+				? raw.doubleClickToEdit
+				: DEFAULT_SETTINGS.doubleClickToEdit,
 		personaSwitcher:
 			typeof raw?.personaSwitcher === 'boolean'
 				? raw.personaSwitcher
@@ -123,6 +130,7 @@ class GeneralSettingsStore {
 	transcriptPageSize = $derived(this.settings.transcriptPageSize);
 	transcriptLoadMode = $derived(this.settings.transcriptLoadMode);
 	autoExpandReasoning = $derived(this.settings.autoExpandReasoning);
+	doubleClickToEdit = $derived(this.settings.doubleClickToEdit);
 	settingsSplitView = $derived(this.settings.settingsSplitView);
 	welcomeSeen = $derived(this.settings.welcomeSeen);
 
@@ -172,6 +180,11 @@ class GeneralSettingsStore {
 
 	setAutoExpandReasoning(enabled: boolean): void {
 		this.settings.autoExpandReasoning = enabled;
+		this.persist();
+	}
+
+	setDoubleClickToEdit(enabled: boolean): void {
+		this.settings.doubleClickToEdit = enabled;
 		this.persist();
 	}
 

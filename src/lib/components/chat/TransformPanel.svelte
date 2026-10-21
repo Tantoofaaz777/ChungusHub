@@ -5,11 +5,9 @@
 	 * screen underneath it and the story stays readable behind it, which is the whole
 	 * context for judging what the model proposes.
 	 *
-	 * NOTHING here spends a token without a press. Impersonate opens in `setup` having
-	 * called nothing. Its button calls the model and shows the estimated cost, counted
-	 * off the exact messages the run will send. Spellcheck has
-	 * nothing to choose, so its menu row was the press and it opens mid-run; stopping it
-	 * lands in the same `setup`, which is why that phase exists for both kinds.
+	 * The composer's Impersonate button starts the rewrite immediately. Spellcheck's
+	 * menu row also starts it, unless its prompt hold is armed. Stopping either lands
+	 * in `setup`, where the reader can explicitly retry; mounting never retries a stop.
 	 *
 	 * Presentation splits by kind because the two produce different shapes of text. A
 	 * spellcheck is small edits over the draft, so it reads as an inline redline. An
@@ -22,9 +20,10 @@
 	 * Approve swaps the text in, close/Escape/error leave the composer byte-for-byte
 	 * untouched.
 	 */
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import GenerationProgress from '$lib/components/ui/GenerationProgress.svelte';
 	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
 	import { engineById } from '$lib/engines/registry';
 	import { failureText } from '$lib/stores/toast.svelte';
@@ -33,6 +32,7 @@
 	import { countMessages, tokenCalibration } from '$lib/tokenizer';
 	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { diffWords } from '$lib/utils/text-diff';
+	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
 	import type { Message } from '$lib/types/chat';
 
 	interface Props {
@@ -49,16 +49,30 @@
 
 	let { kind, original, chatMessages, onClose, onApprove }: Props = $props();
 
-	/** `setup` is the phase that exists so a call is never made before the user has said
-	 *  what they want. Spellcheck opens past it and falls back into it after a stop. */
+	/** `setup` offers an explicit retry after a stop or cancelled prompt review. */
 	type Phase = 'setup' | 'running' | 'ready' | 'error';
 
-	let phase = $state<Phase>('setup');
+	let phase = $state<Phase>(untrack(() => kind === 'impersonate' ? 'running' : 'setup'));
 	let proposed = $state('');
 	let errorMessage = $state('');
 	let abortController: AbortController | null = null;
+	let generationId = $state(0);
+	let generationModel = $state('');
+	let reasoningText = $state('');
+	let responseText = $state('');
+	// The same throttled estimates as Memory, counted with this run's assigned model.
+	const reasoning = liveTokenCount({
+		text: () => reasoningText,
+		enabled: () => phase === 'running' && !!reasoningText,
+		streaming: () => true, identity: () => generationId, model: () => generationModel
+	});
+	const response = liveTokenCount({
+		text: () => responseText,
+		enabled: () => phase === 'running' && !!responseText,
+		streaming: () => true, identity: () => generationId, model: () => generationModel
+	});
 
-	// Name and glyph off the registry, not spelled again here: the menu row that opened
+	// Name and glyph off the registry, not spelled again here: the button that opened
 	// this strip wears the same ones (architecture/engines.md).
 	let engine = $derived(engineById(kind));
 
@@ -117,13 +131,19 @@
 		abortController?.abort();
 		abortController = new AbortController();
 		const signal = abortController.signal;
+		generationId++;
+		generationModel = engineModel;
+		reasoningText = '';
+		responseText = '';
 		phase = 'running';
 		try {
 			const result = await runComposerTransform({
 				kind,
 				draft: original,
 				chatMessages,
-				signal
+				signal,
+				onToken: text => { if (!signal.aborted) responseText += text; },
+				onThinkingToken: text => { if (!signal.aborted) reasoningText += text; }
 			});
 			if (signal.aborted) return; // superseded by a re-run or the panel closing
 			// Cancelled at the prompt review: nothing was spent, so this lands exactly where a
@@ -142,11 +162,13 @@
 	}
 
 	onMount(() => {
+		// The mask button is the generation trigger, with no intermediate Ghostwrite step.
+		// The service still honors an armed prompt hold before sending the request.
 		// Spellcheck's own menu row was the press; there is nothing here to decide first.
 		// Unless its prompt is held: the review would then arrive over a strip the reader
 		// never saw, and cancelling it would land them on a button that had not existed yet.
 		// A held gate says they want a step before the call, so this is that step.
-		if (kind === 'spellcheck' && !promptHoldStore.armed('spellcheck')) void run();
+		if (kind === 'impersonate' || !promptHoldStore.armed('spellcheck')) void run();
 		return () => abortController?.abort();
 	});
 
@@ -201,8 +223,14 @@
 
 	{#if phase === 'running'}
 		<div class="body body--state font-ui" aria-live="polite">
-			<Icon name="refresh" class="w-4 h-4 animate-spin shrink-0" />
-			<span>{runningNote}</span>
+			{#if promptHoldStore.holding}
+				<span>{runningNote}</span>
+			{:else}
+				<GenerationProgress label={runningNote} progress={{
+					reasoning: reasoningText ? reasoning.value : null,
+					response: responseText ? response.value : null
+				}} />
+			{/if}
 		</div>
 	{:else if phase === 'error'}
 		<div class="body body--state body--error font-ui" aria-live="polite">

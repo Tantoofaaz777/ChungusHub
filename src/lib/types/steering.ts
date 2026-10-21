@@ -41,6 +41,8 @@ export interface SteeringNote {
 	role: SteeringRole | null;
 	createdAt: number;
 	updatedAt: number;
+	/** Saved library position; absent on legacy notes until the first explicit reorder. */
+	sortOrder?: number;
 }
 
 /** The app-wide placement every note inherits until it overrides one of these. */
@@ -82,8 +84,7 @@ export const STEERING_SCOPES: readonly SteeringScope[] = ['global', 'character',
 
 export const STEERING_ROLES: readonly SteeringRole[] = ['system', 'user', 'assistant'];
 
-/** Injection order: broad first, so the most specific guidance sits closest to the
- *  reply. Also the grouping order of every note list in the UI. */
+/** Legacy fallback order: broad scopes precede narrow scopes until explicitly reordered. */
 const SCOPE_RANK: Record<SteeringScope, number> = {
 	global: 0,
 	character: 1,
@@ -109,6 +110,7 @@ export function createSteeringNote(fields: {
 	enabled?: boolean;
 	depth?: number | null;
 	role?: SteeringRole | null;
+	sortOrder?: number;
 }): SteeringNote {
 	const now = Date.now();
 	return {
@@ -122,7 +124,8 @@ export function createSteeringNote(fields: {
 		depth: fields.depth ?? null,
 		role: fields.role ?? null,
 		createdAt: now,
-		updatedAt: now
+		updatedAt: now,
+		...(fields.sortOrder === undefined ? {} : { sortOrder: fields.sortOrder })
 	};
 }
 
@@ -150,11 +153,12 @@ export function noteApplies(note: SteeringNote, target: SteeringTarget): boolean
 	}
 }
 
-/** Sort a note list into injection order: scope broad → narrow, then oldest first so
- *  the stack a user built up keeps a stable, explainable order. */
+/** Explicit library order wins; legacy/unranked notes retain broad-to-narrow creation order. */
 export function sortSteeringNotes(notes: SteeringNote[]): SteeringNote[] {
+	const position = (note: SteeringNote) => Number.isSafeInteger(note.sortOrder) && note.sortOrder! >= 0 ? note.sortOrder! : Infinity;
 	return [...notes].sort(
-		(a, b) => SCOPE_RANK[a.scope] - SCOPE_RANK[b.scope] || a.createdAt - b.createdAt
+		(a, b) => (position(a) !== position(b) ? position(a) - position(b) : 0)
+			|| SCOPE_RANK[a.scope] - SCOPE_RANK[b.scope] || a.createdAt - b.createdAt
 	);
 }
 
