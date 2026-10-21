@@ -2,10 +2,30 @@
  import Dialog from '$lib/components/ui/Dialog.svelte';
  import Button from '$lib/components/ui/Button.svelte';
  import Icon from '$lib/components/ui/Icon.svelte';
+ import GenerationProgress from '$lib/components/ui/GenerationProgress.svelte';
  import { memoryStore } from '$lib/memory/scene-store.svelte';
  import { memoryLabel } from '../../../../shared/memory-scenes';
  import { uiStore } from '$lib/stores/ui.svelte';
+ import { chatStore } from '$lib/stores/chat.svelte';
+ import { resolvePromptTarget } from '$lib/utils/chat-setup';
+ import { countMessages } from '$lib/tokenizer';
+ import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
+ import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
  let draft = $derived(memoryStore.draft);
+ const model = $derived(resolvePromptTarget(chatStore.activeChat).model);
+ // Read only source text/model, so typing a title or content and stream progress do not recount it.
+ const sources = $derived(memoryStore.draftSourceMessages?.map(message => ({ content: message.content })) ?? null);
+ const sourceTokens = $derived(sources === null ? null : tokenEstimate(() => countMessages(sources, model)));
+ const reasoning = liveTokenCount({
+  text: () => memoryStore.generation?.reasoning ?? '',
+  enabled: () => draft?.phase === 'generating' && !!memoryStore.generation?.reasoning,
+  streaming: () => true, identity: () => memoryStore.generation?.id, model: () => memoryStore.generation?.model
+ });
+ const response = liveTokenCount({
+  text: () => memoryStore.generation?.response ?? '',
+  enabled: () => draft?.phase === 'generating' && !!memoryStore.generation?.response,
+  streaming: () => true, identity: () => memoryStore.generation?.id, model: () => memoryStore.generation?.model
+ });
  function reselect() {
   memoryStore.reselectDraft();
   if (memoryStore.compaction) uiStore.openOverlay('memory'); else uiStore.closeOverlay();
@@ -15,8 +35,8 @@
  {#if draft}
   <div class="scene-draft">
    <label>Title<input class="input-base px-3 py-2 text-text-primary" bind:value={draft.title} maxlength="200" disabled={memoryStore.saving || draft.phase === 'generating'} /></label>
-   <p>{draft.source.length} {draft.source.length === 1 ? 'message' : 'messages'} {#if draft.level !== 'chapter'} · {draft.children.length} {draft.level === 'arc' ? 'chapters' : 'arcs'}{/if} · Only a saved {draft.level} changes the prompt.</p>
-   {#if draft.phase === 'generating'}<div class="scene-progress" role="status"><Icon name="refresh" class="w-4 h-4 animate-spin" />Generating {draft.level}…</div>{/if}
+   <p>{draft.source.length} {draft.source.length === 1 ? 'message' : 'messages'} · <span class="source-tokens" title={`Estimated original message text tokens, before summarizing${model ? ` · ${model}` : ''}. Excludes reasoning and prompt instructions.`}>{sources === null ? '-' : sourceTokens === null ? '…' : `~${sourceTokens.toLocaleString()}`} tokens</span>{#if draft.level !== 'chapter'} · {draft.children.length} {draft.level === 'arc' ? 'chapters' : 'arcs'}{/if}</p>
+   {#if draft.phase === 'generating'}<div class="scene-progress"><GenerationProgress label={`Generating ${draft.level}`} progress={{ reasoning: memoryStore.generation?.reasoning ? reasoning.value : null, response: memoryStore.generation?.response ? response.value : null }} /></div>{/if}
    <label>Content<textarea class="input-base px-3 py-2 text-text-primary" rows="10" bind:value={draft.content} disabled={memoryStore.saving || draft.phase === 'generating'} placeholder={`Review the generated ${draft.level} or write your own.`}></textarea></label>
    {#if draft.error}<p class="scene-error" role="alert">{draft.error}</p>{/if}
    <div class="scene-draft-actions">
@@ -35,6 +55,7 @@
  textarea { resize:vertical; min-height:10rem; max-height:45dvh; font-size:1rem; }
  p { color:var(--color-text-muted); font-size:.75rem; }
  .scene-error { color:var(--color-error); }
- .scene-progress { display:flex; align-items:center; gap:.5rem; font-size:.85rem; color:var(--color-accent); }
+ .source-tokens { font-variant-numeric:tabular-nums; }
+ .scene-progress { font-size:.85rem; color:var(--color-accent); }
  .scene-draft-actions { display:flex; justify-content:flex-end; gap:.4rem; flex-wrap:wrap; }
 </style>

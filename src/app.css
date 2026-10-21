@@ -923,6 +923,30 @@
 		margin-bottom: 0;
 	}
 
+	/* Tailwind's reset removes list markers. Restore them only in rendered prose,
+	   with enough inset for markers on every Markdown surface and nesting level. */
+	.prose :is(ul, ol) {
+		margin: 0.86em 0;
+		padding-inline-start: 1.34em;
+		list-style-position: outside;
+	}
+
+	.prose ul {
+		list-style-type: disc;
+	}
+
+	.prose ol {
+		list-style-type: decimal;
+	}
+
+	.prose :is(ul, ol) ul {
+		list-style-type: circle;
+	}
+
+	.prose :is(ul, ol) :is(ul, ol) ul {
+		list-style-type: square;
+	}
+
 	/* --- The three story accents ------------------------------------------------
 	   Each answers three questions: a colour (a `--prose-*-color` var) and two faces,
 	   bold and slant, which ride `data-*` attributes on <html> rather than a pair of
@@ -1033,16 +1057,10 @@
 		color: inherit;
 	}
 
-	/* --- Panels a preset prints -------------------------------------------------
-	   Presets have the model emit <details> blocks of story state, and the reply is
-	   meant to arrive looking the way its author designed it. The split is strict and
-	   it is the whole security boundary: the APP owns the box (its width, padding,
-	   corners, accent bar and chevron) and the PRESET owns only the colour, which it
-	   sets on the summary and which everything below inherits through `currentColor`.
-	   Say nothing and the panel is app-toned; say `color: #3fa7c4` and the title, the
-	   bar and the tint all turn teal together. Nothing here can be resized or moved,
-	   because a block that can be moved can be drawn over the interface as a fake one
-	   (see utils/inline-decoration.ts for the allowlist that enforces it). */
+	/* Panels printed by a preset use these theme defaults. Validated inline typography,
+	   spacing and decoration may override them, except for the chevron's reserved slot.
+	   Title, bar and chevron follow the app accent unless the summary has its own colour.
+	   Positioning and layout modes remain blocked by utils/inline-decoration.ts. */
 	.prose details {
 		/* Padding on the container, not the children, so loose text nodes inside a
 		   hand-written panel are inset exactly like wrapped ones.
@@ -1062,7 +1080,7 @@
 		padding: 0 var(--disclosure-inset);
 		border: 1px solid var(--color-border-subtle);
 		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--color-bg-secondary) 55%, transparent);
+		background: var(--color-bg-primary);
 	}
 
 	/* A closed panel is its header and nothing else. The body's breathing room arrives
@@ -1072,15 +1090,19 @@
 	}
 
 	.prose details > summary {
-		/* The one property a preset overrides. Everything else on this line is ours. */
-		color: var(--color-text-secondary);
+		/* Defaults for a summary without its own validated formatting. */
+		color: var(--color-accent);
+		position: relative;
 		margin-inline: calc(var(--disclosure-inset) * -1);
 		/* The accent bar is part of the inset, not extra to it, so the title starts on the
 		   same vertical as the body text under it. */
-		padding: 0.56em var(--disclosure-inset) 0.56em calc(var(--disclosure-inset) - 3px);
+		padding-block: 0.56em;
+		padding-inline-start: calc(var(--disclosure-inset) - 3px);
+		/* Inline padding may style the header, but cannot put its text under the icon. */
+		padding-inline-end: calc(var(--disclosure-inset) + 1.4em) !important;
 		border-inline-start: 3px solid currentColor;
 		border-radius: calc(var(--radius-lg) - 1px);
-		background: color-mix(in srgb, currentColor 11%, transparent);
+		background: color-mix(in srgb, var(--color-bg-primary) 94%, currentColor 6%);
 		font-family: var(--font-ui);
 		font-size: 0.82em;
 		font-weight: 650;
@@ -1115,27 +1137,28 @@
 		display: none;
 	}
 
-	/* Floated rather than flexed: a flex summary would swallow the `text-align` a
-	   preset is allowed to set, and then "alignment is yours" would be a lie. */
+	/* Keep text alignment and wrapping native. A reserved icon slot, centred on the
+	   whole header, avoids the baseline-dependent float and tiny rotated border. */
 	.prose details > summary::after {
 		content: '';
-		float: right;
-		width: 0.42em;
-		height: 0.42em;
-		margin: 0.3em 0 0 0.6em;
-		border-right: 2px solid currentColor;
-		border-bottom: 2px solid currentColor;
-		transform: rotate(-45deg);
-		opacity: 0.5;
+		position: absolute;
+		inset-inline-end: var(--disclosure-inset);
+		top: 50%;
+		width: 1em;
+		height: 1em;
+		background: currentColor;
+		mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 5l7 7-7 7' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+		transform: translateY(-50%);
+		opacity: 0.9;
 		transition: transform 160ms ease;
 	}
 
 	.prose details[open] > summary::after {
-		transform: rotate(45deg);
+		transform: translateY(-50%) rotate(90deg);
 	}
 
 	.prose details > summary:hover {
-		background: color-mix(in srgb, currentColor 17%, transparent);
+		background: color-mix(in srgb, var(--color-bg-primary) 90%, currentColor 10%);
 	}
 
 	/* A panel inside a panel is a sub-heading, not a second card: quieter, and it

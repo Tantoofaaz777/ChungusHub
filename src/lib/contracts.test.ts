@@ -588,10 +588,14 @@ describe('transcript refresh order (architecture/chat-sessions.md #4)', () => {
 		);
 		expect(assignments.filter((a) => a.includes('allMessages'))).toHaveLength(1);
 
-		const load = block(source, /\tasync loadChatState\(chatId: string\)[\s\S]*?\n\t\}/, 'loadChatState');
-		expect(load).toContain('allMessages: messages');
-		expect(load.indexOf('this.overtaken(')).toBeGreaterThan(-1);
-		expect(load.indexOf('this.overtaken(')).toBeLessThan(load.indexOf('this.currentChatState = {'));
+		const publish = block(source, /\tprivate publishTranscript\([\s\S]*?\n\t\}/, 'publishTranscript');
+		expect(publish).toContain('allMessages: messages');
+		expect(publish.indexOf('this.overtaken(')).toBeGreaterThan(-1);
+		expect(publish.indexOf('this.overtaken(')).toBeLessThan(publish.indexOf('this.currentChatState = {'));
+		for (const method of ['loadChatState', 'setMessageExcludedFromPrompt']) {
+			const caller = block(source, new RegExp(`\\tasync ${method}\\([\\s\\S]*?\\n\\t\\}`), method);
+			expect(caller).toContain('this.publishTranscript(');
+		}
 	});
 });
 

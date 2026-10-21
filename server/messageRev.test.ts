@@ -98,6 +98,31 @@ function seedChain(): { chatId: string; greeting: string; user: string; reply: s
 }
 
 describe('getMessagesDelta', () => {
+	test('visibility mutation returns its committed delta, including unseen edits and deletions', () => {
+		const { chatId, greeting, user } = seedChain();
+		const alternate = addMessage(chatId, user, 'assistant', 'An old alternative.', 1);
+		const before = delta(chatId, null)!.rev;
+		serverDb.updateMessageContent(greeting, 'Edited remotely.');
+		serverDb.deleteMessageAndDescendants(alternate);
+		const ack = serverDb.setMessageExcludedFromPrompt(user, true, before);
+		expect(ack).toEqual(delta(chatId, before));
+		expect(ack.full).toBe(false);
+		expect(ack.upserts.find((m: any) => m.id === user).excludedFromPrompt).toBe(true);
+		expect(ack.upserts.find((m: any) => m.id === greeting).content).toBe('Edited remotely.');
+		expect(ack.deletedIds).toContain(alternate);
+		const full = serverDb.setMessageExcludedFromPrompt(user, false, null);
+		expect(full.full).toBe(true);
+		expect(full.messages.find((m: any) => m.id === user).excludedFromPrompt).toBe(false);
+	});
+
+	test('invalid or deleted visibility targets fail without advancing the chat revision', () => {
+		const { chatId, user } = seedChain();
+		const before = delta(chatId, null)!.rev;
+		expect(() => serverDb.setMessageExcludedFromPrompt(user, 'yes')).toThrow('boolean');
+		expect(() => serverDb.setMessageExcludedFromPrompt('missing', true)).toThrow('no longer exists');
+		expect(delta(chatId, null)!.rev).toBe(before);
+	});
+
 	test('prompt exclusion syncs, survives duplication, and changes neither text nor tree', () => {
 		const { chatId, user, reply } = seedChain();
 		const before = serverDb.getMessage(user);

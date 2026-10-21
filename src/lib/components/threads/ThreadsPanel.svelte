@@ -2,7 +2,7 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import GenerationDots from '$lib/components/ui/GenerationDots.svelte';
+	import GenerationProgress from '$lib/components/ui/GenerationProgress.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import PillRow from '$lib/components/ui/PillRow.svelte';
@@ -121,10 +121,7 @@
 			{/if}
 			{#if store.busy}
 				<div class="status">
-					<div class="generation-progress">
-						<span class="generation-label" role="status">{#if store.phase === 'generating'}<GenerationDots label="Generating thread" />Generating thread{:else}Saving thread…{/if}</span>
-						{#if store.phase === 'generating'}<span class="generation-tokens" title="Estimated tokens from received text, using the assigned model’s tokenizer.">Reasoning {store.tokenProgress.reasoning === null ? '-' : `~${store.tokenProgress.reasoning.toLocaleString()}`} · Response {store.tokenProgress.response === null ? '-' : `~${store.tokenProgress.response.toLocaleString()}`} tok</span>{/if}
-					</div>
+					{#if store.phase === 'generating'}<GenerationProgress label="Generating thread" progress={store.tokenProgress} />{:else}<span role="status">Saving thread…</span>{/if}
 					{#if store.phase === 'generating'}<Button variant="secondary" size="sm" onclick={() => store.cancel()}>Cancel</Button>{/if}
 				</div>
 			{/if}
@@ -282,9 +279,6 @@
 	.error, .status { padding:.75rem; margin-bottom:1rem; border-radius:var(--radius-md); font-size:.78rem; overflow-wrap:anywhere; }
 	.error { color:var(--color-error); border:1px solid color-mix(in srgb,var(--color-error) 40%,transparent); display:flex; flex-direction:column; gap:.6rem; }
 	.status { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.7rem; background:var(--color-bg-tertiary); color:var(--color-text-secondary); }
-	.generation-progress { display:flex; flex-direction:column; gap:.4rem; min-width:0; }
-	.generation-label { display:flex; align-items:center; gap:.5rem; }
-	.generation-tokens { font-family:var(--font-mono); font-size:.68rem; font-variant-numeric:tabular-nums; color:var(--color-text-muted); }
 	.text-link { color:var(--color-accent); text-decoration:underline; }
 	@media(max-width:480px) { .threads-body { padding:.75rem; } .make-card { padding:.85rem; } .feed-post { padding:.85rem .75rem; } .round-info { padding:.55rem .75rem; } .message-row { gap:.45rem; padding:.65rem .5rem; } }
 </style>

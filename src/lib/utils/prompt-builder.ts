@@ -8,12 +8,13 @@
  */
 
 import type { CallTarget, LLMMessage } from '$lib/types/llm';
-import type { Message } from '$lib/types/chat';
+import type { Chat, Message } from '$lib/types/chat';
 import { chatAuthorsNote } from '$lib/types/chat';
 import { activeSteeringNotes, resolveSteeringForPrompt, steeringTargetForChat } from '$lib/types/steering';
 import type { PromptPreset } from '$lib/types/database';
 import type { Lorebook, LorebookTrace, LorebookTrigger } from '$lib/lorebook/types';
 import { resolveLorebookLinks } from '$lib/lorebook/types';
+import type { MemoryScene } from '$shared/memory-scenes';
 import { db } from '$lib/services/database';
 import { presetService } from '$lib/services/presets.svelte';
 import { readPresetControlValues } from '$lib/stores/presetControls.svelte';
@@ -38,6 +39,8 @@ const ACTIVE_PERSONA_KEY = 'activePersonaId';
 export interface PromptBuildContext {
 	chatId: string | null;
 	chatMessages: Message[]; // Full chat path for history and last_message macros
+	/** Fresh inputs already read by this action, never a persistent cache. */
+	snapshot?: { chat: Chat; scenes: MemoryScene[] };
 	/** Continue-in-place: the assistant turn being extended (see AssembleInput.continuation;
 	 *  the instruction that follows it comes from the preset). `chatMessages` then carries
 	 *  the path up to that turn's parent, the same prompt that would regenerate it. */
@@ -82,11 +85,25 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 
 	// Resolve the chat's bound character, the persona it plays as, and that character's
 	// lorebook + the claimed preset's own control values for macro expansion.
-	const chat = chatId ? await db.getChat(chatId) : null;
+	if (context.snapshot && context.snapshot.chat.id !== chatId) throw new Error('Prompt snapshot belongs to another chat');
+	const chat = context.snapshot?.chat ?? (chatId ? await db.getChat(chatId) : null);
 	// The preset this story is built from: its own claim while it resolves, else the app's
 	// active one, effective either way. Read after the chat, since the chat is what answers it.
 	const preset: PromptPreset | null = chatPreset(chat);
-	const libraryEntries = chat ? await db.getAllLibraryEntries() : [];
+	const recallRead: Promise<PromptRecall> = context.snapshot
+		? Promise.resolve({ text: null, archivedIds: new Set<string>(), scenes: context.snapshot.scenes })
+		: chatId ? memoryStore.getRecall(chatId, chatMessages) : Promise.resolve({ text: null, archivedIds: new Set<string>() });
+	// These sources are independent once the chat/preset is known. Keep each read fresh
+	// while paying one network round instead of waiting on them one after another.
+	const [libraryEntries, activePersona, allLorebooks, recall, steeringNotes, customFields, version] = await Promise.all([
+		chat ? db.getAllLibraryEntries() : Promise.resolve([]),
+		db.getSetting(ACTIVE_PERSONA_KEY),
+		db.getAllLorebooks(),
+		recallRead,
+		featurePromptsStore.steeringEnabled ? db.getAllSteeringNotes() : Promise.resolve([]),
+		readPresetControlValues(preset?.id ?? null),
+		chat?.characterId && chat.characterVersionId ? db.getCharacterVersion(chat.characterVersionId) : Promise.resolve(null)
+	]);
 	let character = chat?.characterId
 		? libraryEntries.find((entry) => entry.id === chat.characterId && entry.type === 'character') ?? null
 		: null;
@@ -96,7 +113,6 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	// switched variants somewhere else. A missing row means the pin dangles: surface
 	// it, never silently fall back to a different variant of the character.
 	if (character && chat?.characterVersionId) {
-		const version = await db.getCharacterVersion(chat.characterVersionId);
 		if (!version || version.entryId !== character.id) {
 			throw new Error(
 				`This chat is pinned to a character version that no longer exists. Repin it from the version menu.`
@@ -110,7 +126,7 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	const personaId = resolvePersonaId(
 		chatPersonaClaim(chat),
 		libraryEntries,
-		(await db.getSetting(ACTIVE_PERSONA_KEY)) || null
+		activePersona || null
 	);
 	const personaEntry = personaId
 		? libraryEntries.find((entry) => entry.id === personaId && entry.type === 'persona') ?? null
@@ -123,15 +139,11 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	// block than is sent. Generation reads the books fresh instead of trusting the store.
 	// Always asked, even with nothing linked: a book switched into every chat reaches this
 	// prompt through no id at all, so a short-circuit on an empty link list would drop it.
-	const lorebooks: Lorebook[] = resolveLorebookLinks(await db.getAllLorebooks(), {
+	const lorebooks: Lorebook[] = resolveLorebookLinks(allLorebooks, {
 		cards: [...(character?.data.lorebookIds ?? []), ...(personaEntry?.data.lorebookIds ?? [])],
 		chat: chatLorebookClaim(chat),
 		muted: chatMutedLorebookClaim(chat)
 	});
-
-	const recall: PromptRecall = chatId
-		? await memoryStore.getRecall(chatId, chatMessages)
-		: { text: null, archivedIds: new Set<string>() };
 
 	// Steering: guidance that never becomes a chat row (see AssembleInput.steering). Notes
 	// are read FRESH from the db rather than the store's cache (the same doctrine as the
@@ -139,7 +151,6 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	// (which resolves the store's copy) can never price a different stack than this sends.
 	// assemblePrompt alone decides placement and pricing; this is only the gate and the
 	// scope match.
-	const steeringNotes = featurePromptsStore.steeringEnabled ? await db.getAllSteeringNotes() : [];
 	const steeringTarget = steeringTargetForChat(chat);
 	const resolvedSteering = resolveSteeringForPrompt(
 		steeringNotes,
@@ -157,7 +168,6 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	// composer's meter runs, so the price on screen is the price of the request.
 	const promptTarget = resolvePromptTarget(chat, context.target ?? 'primary');
 
-	const customFields = await readPresetControlValues(preset?.id ?? null);
 	const { messages, lorebook, continuationSent } = await withTokenizers(() => assemblePrompt({
 		authorsNote: chatAuthorsNote(chat),
 		preset,

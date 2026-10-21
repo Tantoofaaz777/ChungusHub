@@ -1728,13 +1728,16 @@ class ServerDatabase {
 		});
 	}
 
-	setMessageExcludedFromPrompt(messageId: string, excluded: boolean): void {
+	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null): unknown {
 		if (typeof excluded !== 'boolean') throw new Error('Expected a boolean prompt exclusion flag.');
-		this.inTransaction(() => {
-			const rev = this.revForMessageWrite(messageId);
+		return this.inTransaction(() => {
+			const message = this.select<{ chat_id: string }[]>('SELECT chat_id FROM messages WHERE id = ?', [messageId])[0];
+			if (!message) throw new Error('The message no longer exists.');
+			const rev = this.bumpMessagesRev(message.chat_id);
 			this.execute('UPDATE messages SET excluded_from_prompt = ?, rev = ? WHERE id = ?', [
 				excluded ? 1 : 0, rev, messageId
 			]);
+			return this.getMessagesDelta(message.chat_id, sinceRev);
 		});
 	}
 

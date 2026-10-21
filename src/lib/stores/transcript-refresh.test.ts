@@ -30,6 +30,8 @@ let owed: { resolve: (delta: Delta) => void; reject: (error: Error) => void }[] 
 let memoryGate: Promise<void> | null = null;
 let memoryLeaves: (string | null)[] = [];
 let writes: { leafId: string; resolve: () => void; reject: (error: Error) => void }[] = [];
+let visibility: { sinceRev: number; resolve: (delta: Delta) => void; reject: (error: Error) => void }[] = [];
+let chatReads = 0;
 
 const CHAT = { id: 'chat-1', title: 'Overlap', activeLeafId: 'reply', rootMessageId: 'greeting' };
 /** The chat row as the server currently holds it. Moved between reads to model a swipe,
@@ -65,7 +67,10 @@ mock.module('$lib/services/database', () => ({
 		updateChatActiveLeaf: (_chatId: string, leafId: string) => new Promise<void>((resolve, reject) => {
 			writes.push({ leafId, reject, resolve: () => { serverChat = { ...serverChat, activeLeafId: leafId }; resolve(); } });
 		}),
-		getChat: async () => ({ ...(chatReadApart ?? serverChat) }),
+		getChat: async () => { chatReads++; return { ...(chatReadApart ?? serverChat) }; },
+		setMessageExcludedFromPrompt: (_id: string, _excluded: boolean, sinceRev: number) =>
+			new Promise((resolve, reject) => visibility.push({ sinceRev, reject,
+				resolve: (delta) => resolve({ ...delta, chat: { ...serverChat } }) })),
 		getMessagesDelta: () => {
 			const chat = { ...serverChat };
 			return new Promise((resolve, reject) => owed.push({ resolve: (delta: Delta) => resolve({ ...delta, chat }), reject }));
@@ -105,6 +110,8 @@ beforeEach(() => {
 	memoryLeaves = [];
 	owed = [];
 	writes = [];
+	visibility = [];
+	chatReads = 0;
 	serverChat = { ...CHAT };
 	chatReadApart = null;
 	chatStore.openingChatId = null;
@@ -137,6 +144,70 @@ const NOTHING_CHANGED: Delta = { rev: 5, full: false, upserts: [], deletedIds: [
 
 const ids = () => chatStore.currentChatState!.allMessages.map((m) => m.id);
 const userTurn = () => chatStore.currentChatState!.allMessages.find((m) => m.id === 'user')!.content;
+
+describe('single-call prompt visibility', () => {
+	test('adopts the acknowledged delta and preserves text without another transcript/chat request', async () => {
+		const before = chatStore.currentChatState!;
+		const work = chatStore.setMessageExcludedFromPrompt(CHAT.id, 'user', true);
+		expect(visibility[0].sinceRev).toBe(5);
+		expect(chatStore.currentChatState).toBe(before);
+		visibility[0].resolve({ rev: 7, full: false,
+			upserts: [{ ...BASE[1], excludedFromPrompt: true }, { ...BASE[2], content: 'Edited remotely' }], deletedIds: [] });
+		await work;
+		expect(chatStore.currentChatState?.activePath[1].excludedFromPrompt).toBe(true);
+		expect(chatStore.currentChatState?.activePath[2].content).toBe('Edited remotely');
+		expect(chatStore.currentChatState?.messagesRev).toBe(7);
+		expect(before.activePath[1].excludedFromPrompt).toBeUndefined();
+		expect(owed).toHaveLength(0);
+		expect(chatReads).toBe(0);
+	});
+
+	test('a failed write leaves the transcript unchanged', async () => {
+		const before = chatStore.currentChatState;
+		const work = chatStore.setMessageExcludedFromPrompt(CHAT.id, 'user', true);
+		visibility[0].reject(new Error('Disk unavailable'));
+		await expect(work).rejects.toThrow('Disk unavailable');
+		expect(chatStore.currentChatState).toBe(before);
+		expect(owed).toHaveLength(0);
+	});
+
+	test('a late acknowledgement cannot replace another open chat', async () => {
+		const work = chatStore.setMessageExcludedFromPrompt(CHAT.id, 'user', true);
+		chatStore.activeChatId = 'other';
+		chatStore.currentChatState = { chat: { id: 'other' }, allMessages: [], activePath: [], messagesRev: 0 } as never;
+		visibility[0].resolve({ rev: 6, full: false, upserts: [{ ...BASE[1], excludedFromPrompt: true }], deletedIds: [] });
+		await work;
+		expect(chatStore.currentChatState.chat.id).toBe('other');
+		expect(owed).toHaveLength(0);
+	});
+
+	test('a read started before the mutation cannot restore an older leaf at the same revision', async () => {
+		const oldRead = chatStore.loadChatState(CHAT.id);
+		await settle();
+		const work = chatStore.setMessageExcludedFromPrompt(CHAT.id, 'user', true);
+		serverChat = { ...serverChat, activeLeafId: 'user' };
+		const ack: Delta = { rev: 6, full: false, upserts: [{ ...BASE[1], excludedFromPrompt: true }], deletedIds: [] };
+		visibility[0].resolve(ack); await work;
+		owed[0].resolve(ack); await oldRead;
+		expect(chatStore.currentChatState?.chat.activeLeafId).toBe('user');
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe('user');
+	});
+
+	test('an overlapping refresh causes a fresh read instead of publishing an older acknowledgement', async () => {
+		const work = chatStore.setMessageExcludedFromPrompt(CHAT.id, 'user', true);
+		const refresh = chatStore.loadChatState(CHAT.id);
+		await settle();
+		visibility[0].resolve({ rev: 6, full: false, upserts: [{ ...BASE[1], excludedFromPrompt: true }], deletedIds: [] });
+		await settle();
+		expect(owed).toHaveLength(2);
+		owed[1].resolve({ rev: 8, full: false, upserts: [{ ...BASE[1], excludedFromPrompt: false }], deletedIds: [] });
+		await work;
+		owed[0].resolve({ rev: 6, full: false, upserts: [{ ...BASE[1], excludedFromPrompt: true }], deletedIds: [] });
+		await refresh;
+		expect(chatStore.currentChatState?.messagesRev).toBe(8);
+		expect(chatStore.currentChatState?.activePath[1].excludedFromPrompt).toBe(false);
+	});
+});
 
 describe('opening a chat', () => {
 	function startAtHome() {

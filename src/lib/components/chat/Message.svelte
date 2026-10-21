@@ -468,16 +468,13 @@
 	// The story text as it reaches the page: display-scope regex rules (measured against this
 	// turn's depth), then live identity macros, then markdown. Derived rather than inlined
 	// so the action below re-runs on exactly these inputs and nothing else.
-	const bodyHtml = $derived(
-		renderMarkdown(
-				displaySelfRefs(
-					regexRulesStore.forDisplay(displayedContent, message.role, depth, displayPreset),
-					selfRefChar,
-					selfRefUser,
-					selfRefPronouns
-				)
-		)
-	);
+	const bodyText = $derived(displaySelfRefs(
+		regexRulesStore.forDisplay(displayedContent, message.role, depth, displayPreset),
+		selfRefChar, selfRefUser, selfRefPronouns
+	));
+	// A refreshed row or visibility flag can invalidate preprocessing without changing
+	// its result. Keep that string boundary so unchanged prose never reparses/sanitizes.
+	const bodyHtml = $derived(renderMarkdown(bodyText));
 	// Portraits style renders the portrait INSIDE the card (floated top-left),
 	// so the outer avatar column has to come off the DOM, not just hide.
 	const isPortraitStyle = $derived(themeStore.appearance.chatStyle === 'portrait');

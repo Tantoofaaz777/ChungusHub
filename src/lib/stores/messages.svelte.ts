@@ -23,7 +23,6 @@ import { buildLiveMacroContext } from '$lib/utils/live-macro-context';
 import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { steeringStore } from './steering.svelte';
 import { steeringTargetForChat } from '$lib/types/steering';
-import type { LorebookTrigger } from '$lib/lorebook/types';
 import { countMessages, tokenCalibration, withTokenizers } from '$lib/tokenizer';
 import { resolveScenes, type MemoryScene } from '../../../shared/memory-scenes';
 
@@ -247,8 +246,7 @@ class MessageStore {
 		if (!chatId) return;
 		this.isProcessing = true;
 		try {
-			await db.setMessageExcludedFromPrompt(messageId, excluded);
-			await chatStore.refreshChat(chatId);
+			await chatStore.setMessageExcludedFromPrompt(chatId, messageId, excluded);
 		} catch (error) {
 			toastStore.failed('change message visibility in the prompt', error);
 		} finally {
@@ -533,10 +531,10 @@ class MessageStore {
 		return !resolveScenes(scenes, path, messages).some(r => r.status === 'active' && r.scene.source.some(s => s.id === messageId));
 	}
 
-	private async canSwipeFresh(chatId: string, messageId: string, messages?: Message[]): Promise<boolean> {
-		const fresh = messages ?? await chatStore.freshMessages(chatId);
-		const scenes = await db.getMemoryScenes(chatId);
-		return chatStore.currentChatState?.chat.id === chatId && this.canSwipe(messageId, fresh, scenes);
+	private async canSwipeFresh(chatId: string, messageId: string): Promise<boolean> {
+		const [snapshot, scenes] = await Promise.all([chatStore.freshSnapshot(chatId), db.getMemoryScenes(chatId)]);
+		return chatStore.currentChatState?.chat.id === chatId && snapshot.chat.activeLeafId === messageId &&
+			this.canSwipe(messageId, snapshot.messages, scenes);
 	}
 
 	async navigateToSibling(messageId: string, direction: 'prev' | 'next'): Promise<void> {
@@ -585,22 +583,33 @@ class MessageStore {
 		}
 		this.isProcessing = true;
 		try {
-			const messages = await chatStore.freshMessages(state.chat.id);
+			const [snapshot, scenes] = await Promise.all([
+				chatStore.freshSnapshot(state.chat.id), db.getMemoryScenes(state.chat.id)
+			]);
+			if (snapshot.chat.activeLeafId !== messageId) return;
+			const messages = snapshot.messages;
 			const message = messages.find(m => m.id === messageId);
-			if (action === 'branch' && !await this.canSwipeFresh(state.chat.id, messageId, messages)) return;
+			if (action === 'branch' && !this.canSwipe(messageId, messages, scenes)) return;
 			if (!message || (message.role !== 'user' && message.role !== 'assistant')) return;
 			const parentId = message.role === 'user' ? message.id : message.parentId;
 			if (!parentId) return;
-			const prompt = await this.prepareFromLeaf('regenerate', state.chat.id, parentId, 'swipe');
+			const prompt = await this.prepare('regenerate', {
+				chatId: state.chat.id, chatMessages: findActivePath(messages, parentId), lorebookTrigger: 'swipe',
+				snapshot: { chat: snapshot.chat, scenes }
+			});
 			if (!prompt) return;
-			const fresh = await chatStore.freshMessages(state.chat.id);
-			if (action === 'branch' && !await this.canSwipeFresh(state.chat.id, messageId, fresh)) return;
+			const [fresh, freshScenes] = await Promise.all([
+				chatStore.freshSnapshot(state.chat.id),
+				action === 'branch' ? db.getMemoryScenes(state.chat.id) : Promise.resolve(undefined)
+			]);
+			if (chatStore.currentChatState?.chat.id !== state.chat.id || fresh.chat.activeLeafId !== messageId) return;
+			if (action === 'branch' && !this.canSwipe(messageId, fresh.messages, freshScenes)) return;
 			// Keep the selected reply and every alternative until the server commits success.
 			// Only the siblings present when this request leaves may be replaced.
 			await this.generateResponse(state.chat.id, parentId, prompt, {
-				expectedLeafId: state.chat.activeLeafId,
+				expectedLeafId: fresh.chat.activeLeafId,
 				replacingMessageId: message.role === 'assistant' ? message.id : undefined,
-				replaceMessageIds: action === 'replace' ? fresh.filter(m => m.parentId === parentId).map(m => m.id) : undefined
+				replaceMessageIds: action === 'replace' ? fresh.messages.filter(m => m.parentId === parentId).map(m => m.id) : undefined
 			});
 		} catch (error) {
 			if (error instanceof Error && error.name !== 'AbortError') toastStore.failed('generate the new reply', error);
@@ -1104,17 +1113,6 @@ class MessageStore {
 		return { ...built, messages: approved };
 	}
 
-	/** `prepare` for the paths whose prompt is simply the story up to a leaf. Chat history
-	 *  reaches it through the preset's own {{chatHistory}} macro. */
-	private async prepareFromLeaf(
-		gate: HoldGate,
-		chatId: string,
-		leafId: string,
-		lorebookTrigger: LorebookTrigger
-	): Promise<BuiltPrompt | null> {
-		const messages = await chatStore.freshMessages(chatId);
-		return this.prepare(gate, { chatId, chatMessages: findActivePath(messages, leafId), lorebookTrigger });
-	}
 }
 
 export const messageStore = new MessageStore();

@@ -26,6 +26,22 @@ until Save chapter. JSON fences and a leading explanation are tolerated through 
 extractor. Invalid structured output shows an error without overwriting the previous draft fields.
 Custom prompts remain unchanged: plain-text responses still fill content and keep the draft title.
 
+The review dialog shows `N messages · ~N tokens` for the complete original source range,
+including excluded rows. This sums original message contents using the chat model's local
+encoding, without display regex, self-reference expansion, reasoning, attachments, summary
+text or prompt framing. Arc/volume drafts likewise count original source messages rather
+than child summaries. Missing source rows leave the total unknown; unloaded vocabularies
+show a loading placeholder. Only source text and the chat model invalidate this count.
+
+While generating, Memory and Threads share `GenerationProgress` (generation dots plus
+separate Reasoning/Response estimates). Memory counts accumulated received text with the
+Memory engine's captured model through `liveTokenCount`, throttled to 200ms. These are
+local estimates, not provider usage. The connection's streaming setting is respected;
+channels without received text remain unknown. Cancellation, errors, completion and chat
+switches clear progress, and callbacks verify ownership before appending. Reasoning and
+partial response text never overwrite the editable draft or save memory; the completed
+response is still parsed and reviewed before saving.
+
 Prompt assembly substitutes scenes before regex transforms, lorebook scanning, last-turn macros,
 Impersonate and token counting. Summaries count in Memory, originals leave Chat. They are fixed
 context cost when budgeting; raw history is trimmed first and over-budget remains visible if the

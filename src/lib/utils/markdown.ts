@@ -10,7 +10,7 @@ marked.setOptions({
 });
 
 /**
- * Strip every inline style down to the four decoration properties, and hold the legacy
+ * Validate inline typography and decoration, and hold the legacy
  * `<font color>` to the same colour grammar. Registered once, globally: this is the only
  * sanitize call in the app, and narrowing `style` is safe for anything that joins it.
  *

@@ -10,6 +10,7 @@ import { markSceneBoundary } from './scene-selection';
 import { parseChapterResponse } from './chapter-response';
 import { retainLocalChanges } from '$lib/utils/retain-local-changes';
 import type { ChatCtx } from './store.svelte';
+import type { Message } from '$lib/types/chat';
 import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, sceneLevel, memoryLabel, prepareCompaction, type MemoryScene, type SceneSource, type MemoryLevel, type CompactionLevel, type MemoryChild } from '../../../shared/memory-scenes';
 
 interface Draft {
@@ -32,10 +33,19 @@ export class SceneMemoryStore {
 	selection = $state<{ chatId: string; startId: string | null; endId: string | null; sceneId?: string; seed?: Pick<Draft, 'title' | 'content' | 'expectedRevision'> } | null>(null);
 	compaction = $state<{ level: CompactionLevel; ids: string[]; sceneId?: string; seed?: Pick<Draft, 'title' | 'content' | 'expectedRevision'> } | null>(null);
 	draft = $state<Draft | null>(null);
+	/** Received text for the dialog's throttled counters; never persisted as chapter content. */
+	generation = $state<{ id: string; model: string; reasoning: string; response: string } | null>(null);
 	saving = $state(false);
 	private currentPath = $derived(this.ctx ? scenePath(this.ctx.allMessages, this.ctx.leafId) : []);
 	private sceneStates = $derived(resolveScenes(this.scenes, this.currentPath, this.ctx?.allMessages ?? []));
 	get path() { return this.currentPath; }
+	get draftSourceMessages(): Message[] | null {
+		const draft = this.draft;
+		if (!draft || this.ctx?.chatId !== draft.chatId) return null;
+		const all = new Map(this.ctx.allMessages.map(message => [message.id, message]));
+		const messages = draft.source.map(source => all.get(source.id));
+		return messages.every((message): message is Message => !!message) ? messages : null;
+	}
 	get resolved() { return this.sceneStates; }
 	get archivedMessageIds() { return new Set(this.resolved.filter((r) => r.status === 'active').flatMap((r) => r.scene.source.map((s) => s.id))); }
 	get activeScenes() { return this.resolved.filter((r) => r.status === 'active').map((r) => r.scene); }
@@ -174,6 +184,7 @@ export class SceneMemoryStore {
 		if (!draft || this.saving || draft.phase === 'generating') return;
 		this.abort?.abort();
 		const controller = this.abort = new AbortController();
+		this.generation = null;
 		draft.phase = 'generating'; draft.error = '';
 		try {
 			if (!featurePromptsStore.memoryEnabled) throw new Error(`Enable Chat Memory in Settings → Engines to generate a ${draft.level}, or write one below.`);
@@ -194,7 +205,14 @@ export class SceneMemoryStore {
 				transcript = draft.children.map(c => this.scenes.find(s => s.id === c.id)!).map(s => `[${memoryLabel(sceneLevel(s))}: ${chapterTitle(s.title)}]\n${s.content}`).join('\n\n');
 			}
 			const promptKey = draft.level === 'chapter' ? 'memoryScene' : draft.level === 'arc' ? 'memoryArc' : 'memoryVolume';
-			const result = await llmService.complete({ engine: 'memory' }, { source: 'memory', signal: controller.signal,
+			const target = { engine: 'memory' } as const;
+			this.generation = { id: crypto.randomUUID(), model: llmService.modelFor(target), reasoning: '', response: '' };
+			const receive = (text: string, thinking: boolean) => {
+				if (controller.signal.aborted || this.abort !== controller || this.draft !== draft || !this.generation) return;
+				if (thinking) this.generation.reasoning += text; else this.generation.response += text;
+			};
+			const result = await llmService.complete(target, { source: 'memory', signal: controller.signal,
+				onToken: text => receive(text, false), onThinkingToken: text => receive(text, true),
 				messages: [{ role: 'system', content: featurePromptsStore.promptFor(promptKey) },
 					{ role: 'user', content: `Create a ${draft.level} summarizing these ${draft.level === 'chapter' ? 'messages' : draft.level === 'arc' ? 'chapters' : 'arcs'}:\n\n${transcript}` }] });
 			if (controller.signal.aborted || this.abort !== controller || this.draft !== draft) return;
@@ -204,9 +222,9 @@ export class SceneMemoryStore {
 		} catch (error) {
 			if (controller.signal.aborted || this.draft !== draft) return;
 			draft.error = error instanceof Error ? error.message : String(error); draft.phase = 'error';
-		} finally { if (this.abort === controller) this.abort = null; }
+		} finally { if (this.abort === controller) { this.abort = null; this.generation = null; } }
 	}
-	cancelDraft() { this.abort?.abort(); this.abort = null; this.draft = null; }
+	cancelDraft() { this.abort?.abort(); this.abort = null; this.generation = null; this.draft = null; }
 	async saveDraft() {
 		const draft = this.draft;
 		if (!draft || this.saving || draft.phase === 'generating') return;

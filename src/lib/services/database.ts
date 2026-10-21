@@ -102,8 +102,8 @@ class DatabaseService {
 	insertMessage(message: Message): Promise<void> { return this.call('insertMessage', message); }
 	/** `minor: true` records the touch without advancing `edited_at`, so the summary covering
 	 *  this turn survives it (architecture/memory.md). */
-	setMessageExcludedFromPrompt(messageId: string, excluded: boolean): Promise<void> {
-		return this.call('setMessageExcludedFromPrompt', messageId, excluded);
+	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null): Promise<MessagesDelta> {
+		return this.call('setMessageExcludedFromPrompt', messageId, excluded, sinceRev);
 	}
 	updateMessageContent(messageId: string, content: string, opts?: { minor?: boolean }): Promise<void> {
 		return this.call('updateMessageContent', messageId, content, opts);

@@ -1,4 +1,4 @@
-import type { Chat, Message, ChatState, ChatStream } from '$lib/types/chat';
+import type { Chat, Message, ChatState, ChatStream, MessagesDelta } from '$lib/types/chat';
 import {
 	DEFAULT_CHAT_FEATURE_STATE,
 	normalizeChatFeatureState,
@@ -356,7 +356,12 @@ class ChatStore {
 		await this.flushLeafWrites(chatId);
 		if (chatId !== this.activeChatId || ticket !== this.loadTicket) return;
 		const { chat, messages, rev } = await this.fetchMessages(chatId);
-		if (this.overtaken(ticket, chatId, rev)) return;
+		if (this.publishTranscript(ticket, chat, messages, rev)) void this.refreshLiveElsewhere(chatId);
+	}
+
+	/** One guarded publisher for reads and canonical mutation acknowledgements. */
+	private publishTranscript(ticket: number, chat: Chat, messages: Message[], rev: number): boolean {
+		if (this.overtaken(ticket, chat.id, rev)) return false;
 
 		const activePath = chat.activeLeafId ? findActivePath(messages, chat.activeLeafId) : [];
 
@@ -371,7 +376,7 @@ class ChatStore {
 		// archive boundary for the current active path so the ghost markers stay correct
 		// after swipes/branches/edits. No-op when memory is off for this chat.
 		void this.refreshMemory(chat, messages);
-		void this.refreshLiveElsewhere(chatId);
+		return true;
 	}
 
 	/**
@@ -392,11 +397,14 @@ class ChatStore {
 		const delta = await db.getMessagesDelta(chatId, loaded ? loaded.messagesRev : null);
 		if (!delta) throw new Error(`Chat ${chatId} not found`);
 		const { chat, rev } = delta;
-		if (delta.full) return { chat, messages: delta.messages, rev };
+		return { chat, messages: this.mergeMessageDelta(baseMessages ?? [], delta), rev };
+	}
+
+	private mergeMessageDelta(base: Message[], delta: MessagesDelta): Message[] {
+		if (delta.full) return delta.messages;
 		// `full` is the answer wherever there is no baseline, so a non-full delta implies one.
-		const base = baseMessages!;
 		if (delta.upserts.length === 0 && delta.deletedIds.length === 0) {
-			return { chat, messages: base, rev };
+			return base;
 		}
 		const upserts = new Map(delta.upserts.map((m) => [m.id, m]));
 		const deleted = new Set(delta.deletedIds);
@@ -410,7 +418,7 @@ class ChatStore {
 		// What is left arrived new since the baseline; appending matches insertion order,
 		// which is all the full read ever guaranteed (every consumer sorts or walks by id).
 		for (const row of delta.upserts) if (upserts.has(row.id)) merged.push(row);
-		return { chat, messages: merged, rev };
+		return merged;
 	}
 
 	/**
@@ -422,6 +430,11 @@ class ChatStore {
 	 * from; a leaf that moved is `loadChatState`'s to publish, together with its rows.
 	 */
 	async freshMessages(chatId: string): Promise<Message[]> {
+		return (await this.freshSnapshot(chatId)).messages;
+	}
+
+	/** The chat row and messages from the same fresh delta, reusable within one action. */
+	async freshSnapshot(chatId: string): Promise<{ chat: Chat; messages: Message[]; rev: number }> {
 		await this.flushLeafWrites(chatId);
 		const { chat, messages, rev } = await this.fetchMessages(chatId);
 		const state = this.currentChatState;
@@ -440,7 +453,28 @@ class ChatStore {
 			// The path must never hold objects the merge replaced or dropped.
 			state.activePath = state.chat.activeLeafId ? findActivePath(messages, state.chat.activeLeafId) : [];
 		}
-		return messages;
+		return { chat, messages, rev };
+	}
+
+	/** The mutation returns its canonical delta, so a simple visibility change needs
+	 * one round trip. Never apply it over a newer refresh or a different navigation. */
+	async setMessageExcludedFromPrompt(chatId: string, messageId: string, excluded: boolean): Promise<void> {
+		const base = this.currentChatState?.chat.id === chatId ? this.currentChatState : null;
+		const messages = base?.allMessages ?? [];
+		const rev = base?.messagesRev ?? null;
+		const leaf = base?.chat.activeLeafId;
+		const ticket = ++this.loadTicket;
+		const delta = await db.setMessageExcludedFromPrompt(messageId, excluded, rev);
+		if (this.activeChatId !== chatId) return;
+		if (!base || this.currentChatState !== base || base.messagesRev !== rev ||
+			base.allMessages !== messages || base.chat.activeLeafId !== leaf || ticket !== this.loadTicket) {
+			await this.refreshChat(chatId);
+			return;
+		}
+		const merged = this.mergeMessageDelta(messages, delta);
+		if (this.publishTranscript(ticket, delta.chat, merged, delta.rev)) {
+			this.chats = this.chats.map(chat => chat.id === chatId ? delta.chat : chat);
+		}
 	}
 
 	/**
