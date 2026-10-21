@@ -1,9 +1,10 @@
 /**
  * Client database service.
  *
- * Every call forwards to the server's DatabaseService over the HTTP RPC bridge. The real
+ * Calls forward to the server's DatabaseService over the HTTP RPC bridge. The real
  * SQL (and the single source of truth) lives on the server; this is a thin, typed proxy,
- * so nothing above it knows where the data comes from.
+ * so nothing above it knows where the data comes from. Boot can reuse one short-lived
+ * settings snapshot; normal reads always reach the server.
  */
 import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta } from '$lib/types/chat';
 import type { CharacterVersion, LibraryEntry } from '$lib/types/library';
@@ -12,10 +13,27 @@ import type { SteeringNote } from '$lib/types/steering';
 import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '$shared/threads/types';
 import type { MemoryScene, SaveMemoryScene } from '../../../shared/memory-scenes';
 import type { BatchResult, Episode, MemoryState, PromotionResult } from '$lib/memory/types';
-import type { UserStats } from '$lib/types/stats';
-import { connectWs, dbRpc } from '$lib/services/transport';
+import { connectWs, dbRpc, onSync, onReconnect } from '$lib/services/transport';
+import { SettingsSnapshot } from '$lib/services/settings-snapshot';
 
 class DatabaseService {
+	private settingsSnapshot = new SettingsSnapshot();
+
+	/** Reuse one settings read while stores initialize in their existing dependency order.
+	 * All later reads (including sync and prompt assembly) go straight to the server. */
+	async withSettingsSnapshot<T>(task: () => Promise<T>): Promise<T> {
+		const stopSync = onSync((scope) => {
+			if (scope === 'settings') this.settingsSnapshot.invalidate();
+		});
+		const stopReconnect = onReconnect(() => this.settingsSnapshot.invalidate());
+		try {
+			return await this.settingsSnapshot.run(() => this.getAllSettings(), task);
+		} finally {
+			stopSync();
+			stopReconnect();
+		}
+	}
+
 	async initialize(): Promise<void> {
 		// The schema is created and migrated server-side; here we just make sure the
 		// live-sync socket is up before the app starts reading data.
@@ -60,10 +78,6 @@ class DatabaseService {
 	searchChatMessages(query: string): Promise<Record<string, { hits: number; snippet: string }>> {
 		return this.call('searchChatMessages', query);
 	}
-	/** The whole-library aggregate behind the stats screen: one server-side pass over every
-	 *  message, no bodies over the wire. Expensive by nature, so call it when the screen
-	 *  opens and never on a render. */
-	getUserStats(): Promise<UserStats> { return this.call('getUserStats'); }
 	getChatMemoryFootprint(chatId: string): Promise<ChatMemoryFootprint> {
 		return this.call('getChatMemoryFootprint', chatId);
 	}
@@ -117,9 +131,18 @@ class DatabaseService {
 	getNextSiblingIndex(chatId: string, parentId: string | null): Promise<number> { return this.call('getNextSiblingIndex', chatId, parentId); }
 
 	// ===== SETTINGS =====
-	getSetting(key: string): Promise<string | null> { return this.call('getSetting', key); }
-	setSetting(key: string, value: string): Promise<void> { return this.call('setSetting', key, value); }
-	deleteSetting(key: string): Promise<void> { return this.call('deleteSetting', key); }
+	getAllSettings(): Promise<Record<string, string>> { return this.call('getAllSettings'); }
+	getSetting(key: string): Promise<string | null> {
+		return this.settingsSnapshot.read(key, () => this.call('getSetting', key));
+	}
+	setSetting(key: string, value: string): Promise<void> {
+		this.settingsSnapshot.invalidate(key);
+		return this.call<void>('setSetting', key, value).finally(() => this.settingsSnapshot.invalidate(key));
+	}
+	deleteSetting(key: string): Promise<void> {
+		this.settingsSnapshot.invalidate(key);
+		return this.call<void>('deleteSetting', key).finally(() => this.settingsSnapshot.invalidate(key));
+	}
 
 	// ===== CHAT DRAFTS =====
 	getChatDraft(chatId: string): Promise<{ chatId: string; content: string; updatedAt: number } | null> {

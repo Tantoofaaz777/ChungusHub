@@ -24,7 +24,7 @@ import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { steeringStore } from './steering.svelte';
 import { steeringTargetForChat } from '$lib/types/steering';
 import type { LorebookTrigger } from '$lib/lorebook/types';
-import { countMessages, tokenCalibration } from '$lib/tokenizer';
+import { countMessages, tokenCalibration, withTokenizers } from '$lib/tokenizer';
 import { resolveScenes, type MemoryScene } from '../../../shared/memory-scenes';
 
 /**
@@ -44,6 +44,15 @@ function spentSteeringTexts(
 }
 
 class MessageStore {
+	private async recordCalibration(model: string, messages: LLMMessage[], actual: number): Promise<void> {
+		try {
+			const estimate = await withTokenizers(() => countMessages(messages, model));
+			tokenCalibration.record(model, estimate, actual);
+		} catch (error) {
+			// A missing vocabulary must never keep an already committed reply off screen.
+			console.warn('Could not calibrate token estimate:', error);
+		}
+	}
 	abortController = $state<AbortController | null>(null);
 	private isProcessing = $state(false);
 	get busy(): boolean { return this.isProcessing || this.isStreaming; }
@@ -202,7 +211,7 @@ class MessageStore {
 			if (!result.committedMessageId) return null;
 
 			// Teach the per-model token calibration from the provider's real prompt_tokens.
-			tokenCalibration.record(result.model, countMessages(messages, result.model), result.usage.promptTokens);
+			await this.recordCalibration(result.model, messages, result.usage.promptTokens);
 
 			await chatStore.refreshChat(chatId);
 
@@ -710,7 +719,7 @@ class MessageStore {
 			const generationMs = result.reattached ? null : Math.round(performance.now() - startedAt);
 
 			// Teach the per-model token calibration from the provider's real prompt_tokens.
-			tokenCalibration.record(result.model, countMessages(messages, result.model), result.usage.promptTokens);
+			await this.recordCalibration(result.model, messages, result.usage.promptTokens);
 
 			if (!result.content.trim()) {
 				// A stop before the first token is the user's own doing, not a model that
@@ -819,10 +828,10 @@ class MessageStore {
 			// substitution deliberately not a macros.ts entry. It is NOT {{scenario}}:
 			// that macro belongs to the character card's scenario field, which resolves
 			// normally here alongside this direction.
-			const openingSceneDirection = substitute(openingSceneTemplate, {
+			const openingSceneDirection = await withTokenizers(() => substitute(openingSceneTemplate, {
 				...resolveMacroValues(openingSceneTemplate, buildLiveMacroContext({ memory: memoryStore.recall })),
 				idea: sceneIdea
-			});
+			}));
 
 			const virtualUserMessage: Message = {
 				id: 'virtual-opening-scene',
@@ -899,7 +908,7 @@ class MessageStore {
 			if (!result.committedMessageId) return;
 
 			// Teach the per-model token calibration from the provider's real prompt_tokens.
-			tokenCalibration.record(result.model, countMessages(messages, result.model), result.usage.promptTokens);
+			await this.recordCalibration(result.model, messages, result.usage.promptTokens);
 
 			await chatStore.refreshChat(state.chat.id);
 

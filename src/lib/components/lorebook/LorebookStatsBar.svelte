@@ -6,6 +6,7 @@
 	 * real answer is what the Test scan strip is for (architecture/lorebook.md).
 	 */
 	import { countTokens } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import { partitionEntries, type Lorebook } from '$lib/lorebook/types';
 
@@ -31,7 +32,7 @@
 	// tokenizer. Cached per entry by content: a keystroke re-prices one entry, not the book.
 	let model = $derived(llmService.getPrimaryModel());
 	let priced = new Map<string, { content: string; model: string; count: number }>();
-	let tokens = $derived.by(() => {
+	let tokens = $derived(tokenEstimate(() => {
 		const next = new Map<string, { content: string; model: string; count: number }>();
 		let total = 0;
 		for (const e of book.entries) {
@@ -46,10 +47,10 @@
 		}
 		priced = next;
 		return total;
-	});
+	}));
 
-	function num(value: number): string {
-		return value.toLocaleString();
+	function num(value: number | null): string {
+		return value?.toLocaleString() ?? '…';
 	}
 </script>
 

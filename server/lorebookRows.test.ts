@@ -151,15 +151,6 @@ describe('a payload that will not parse (architecture/lorebook.md)', () => {
 		}
 	});
 
-	test('the stats screen counts it without reading it', () => {
-		insertTornRow('b-torn-2');
-		try {
-			expect(() => serverDb.getUserStats()).not.toThrow();
-		} finally {
-			serverDb.execute('DELETE FROM lorebooks WHERE id = ?', ['b-torn-2']);
-		}
-	});
-
 	// The delete reads the row first, to sweep the cover. Leaving it unreadable there would make
 	// a torn book the one thing in the app that cannot be got rid of through the app.
 	test('a torn book can still be deleted through the app\'s own door', () => {

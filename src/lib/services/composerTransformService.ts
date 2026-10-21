@@ -24,6 +24,7 @@ import { promptHoldStore } from '$lib/stores/promptHold.svelte';
 import { resolveMacroValues, substitute } from '$lib/macros';
 import { buildLiveMacroContext } from '$lib/utils/live-macro-context';
 import { shapeComposerTransform } from '$lib/utils/composer-transforms';
+import { withTokenizers } from '$lib/tokenizer/loader';
 
 export interface ComposerTransformParams {
 	kind: 'spellcheck' | 'impersonate';
@@ -88,7 +89,8 @@ export async function runComposerTransform(opts: ComposerTransformParams): Promi
 	}
 	if (!draft.trim()) throw new Error('Cannot transform an empty draft');
 
-	const messages = buildComposerTransformPrompt(opts);
+	const messages = await withTokenizers(() => buildComposerTransformPrompt(opts));
+	if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
 	// The hold, when this gate is armed: what the reader approves is what goes out. It sits
 	// here rather than in the panel so the request cannot be built twice, once to review and

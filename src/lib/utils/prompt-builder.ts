@@ -31,6 +31,7 @@ import {
 	toPromptCharacter
 } from './chat-setup';
 import { assemblePrompt, type PromptRecall } from './prompt-assembly';
+import { withTokenizers } from '$lib/tokenizer/loader';
 
 const ACTIVE_PERSONA_KEY = 'activePersonaId';
 
@@ -156,7 +157,8 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	// composer's meter runs, so the price on screen is the price of the request.
 	const promptTarget = resolvePromptTarget(chat, context.target ?? 'primary');
 
-	const { messages, lorebook, continuationSent } = assemblePrompt({
+	const customFields = await readPresetControlValues(preset?.id ?? null);
+	const { messages, lorebook, continuationSent } = await withTokenizers(() => assemblePrompt({
 		authorsNote: chatAuthorsNote(chat),
 		preset,
 		resolvedCharacters: character ? [toPromptCharacter(character)!] : [],
@@ -165,7 +167,7 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 		lorebookSettings: lorebookSettingsStore.settings,
 		lorebookTrigger: context.lorebookTrigger,
 		controls: preset?.controls ?? [],
-		customFields: await readPresetControlValues(preset?.id ?? null),
+		customFields,
 		chatMessages,
 		recall,
 		model: promptTarget.model,
@@ -176,7 +178,7 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 		steering: resolvedSteering.length
 			? { notes: resolvedSteering, wrapper: featurePromptsStore.promptFor('steeringWrapper') }
 			: undefined
-	});
+	}));
 
 	return { messages, target: promptTarget.target, lorebook, continuationSent, oneShotSteering };
 }

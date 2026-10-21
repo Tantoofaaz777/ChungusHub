@@ -1,18 +1,9 @@
 <script lang="ts">
 	import ChatContainer from '$lib/components/chat/ChatContainer.svelte';
-	import LibraryView from '$lib/components/library/LibraryView.svelte';
-	import LibraryEditorOverlay from '$lib/components/library/LibraryEditorOverlay.svelte';
-	import LorebookView from '$lib/components/lorebook/LorebookView.svelte';
-	import PresetControlsView from '$lib/components/presetControls/PresetControlsView.svelte';
 	import RetainedView from '$lib/components/ui/RetainedView.svelte';
-	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
-	import SettingsContentPanel from '$lib/components/settings/SettingsContentPanel.svelte';
-	import ChatsView from '$lib/components/sidebar/ChatsView.svelte';
-	import ThreadsPanel from '$lib/components/threads/ThreadsPanel.svelte';
-	import MemoryPanel from '$lib/components/memory/MemoryPanel.svelte';
-	import StatsView from '$lib/components/stats/StatsView.svelte';
+	import LazyPanel from '$lib/components/ui/LazyPanel.svelte';
+	import { panels } from './panel-loaders';
 	import WelcomeView from '$lib/components/layout/WelcomeView.svelte';
-	import PromptInspector from '$lib/components/debug/PromptInspector.svelte';
 	import PromptReviewDialog from '$lib/components/chat/PromptReviewDialog.svelte';
 	import { untrack } from 'svelte';
 	import { surfaceMotion, scrimMotion } from '$lib/components/ui/surface-motion';
@@ -223,10 +214,11 @@
 			if (document.querySelector('.dialog-portal:not([inert])')) return;
 			// Panels that consume Esc (lorebook collapse, message editors, image
 			// viewers…) mark the event with preventDefault, but their window listeners
-			// are registered after this one. Defer to a microtask so their claim is
-			// visible before closing anything. One press closes one surface, top-most
+			// are registered after this one when loaded on demand. Native keyboard
+			// events can run microtasks BETWEEN listeners; wait for the next task so
+			// every panel has had its turn. One press closes one surface, top-most
 			// first; pinned (locked) side docks are left alone.
-			queueMicrotask(() => {
+			setTimeout(() => {
 				if (e.defaultPrevented) return;
 				if (uiStore.debugPanelOpen) uiStore.closeDebugPanel();
 				else if (uiStore.activeOverlay) uiStore.closeOverlay(flush);
@@ -236,7 +228,7 @@
 				// composer: with nothing left to close, Escape is the way back to the box you
 				// type in, from a turn the keyboard was parked on or from anywhere else.
 				else chatCursor.toComposer();
-			});
+			}, 0);
 		}
 	}
 </script>
@@ -300,18 +292,16 @@
 			     ChatsView lands focus in its own search field and Escape closes it. -->
 			<div class="chats-modal" role="dialog" aria-label="Chats" transition:scrimMotion>
 				<div class="chats-modal-panel surface-float" data-panel transition:surfaceMotion={{ fade: false }}>
-					<ChatsView />
+					<LazyPanel load={panels.chats} label="chats" />
 				</div>
 			</div>
 		{:else if activeOverlay && activeOverlay !== 'memory' && activeOverlay !== 'threads'}
 			<div class="chat-overlay" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
 					{#if activeOverlay === 'chats'}
-						<ChatsView />
+						<LazyPanel load={panels.chats} label="chats" />
 					{:else if activeOverlay === 'presetControls'}
-						<PresetControlsView />
-					{:else if activeOverlay === 'stats'}
-						<StatsView />
+						<LazyPanel load={panels.presetControls} label="preset controls" />
 					{/if}
 				</div>
 			</div>
@@ -322,14 +312,14 @@
 		<div class="chat-overlay" hidden data-retained-panel use:retainedPanel={activeOverlay === 'memory'} inert={activeOverlay !== 'memory'} aria-hidden={activeOverlay !== 'memory'}>
 			<div class="chat-overlay-panel" data-panel>
 				<RetainedView present active={activeOverlay === 'memory'}>
-					{#key chatStore.activeChatId}<MemoryPanel />{/key}
+					{#key chatStore.activeChatId}<LazyPanel load={panels.memory} label="memory" />{/key}
 				</RetainedView>
 			</div>
 		</div>
 		<div class="chat-overlay" hidden data-retained-panel use:retainedPanel={activeOverlay === 'threads'} inert={activeOverlay !== 'threads'} aria-hidden={activeOverlay !== 'threads'}>
 			<div class="chat-overlay-panel" data-panel>
 				<RetainedView present active={activeOverlay === 'threads'}>
-					{#key chatStore.activeChatId}<ThreadsPanel />{/key}
+					{#key chatStore.activeChatId}<LazyPanel load={panels.threads} label="threads" />{/key}
 				</RetainedView>
 			</div>
 		</div>
@@ -338,19 +328,19 @@
 		     Activity and interaction stop immediately; the painted shells finish their outro. -->
 		<aside class:settings-dock={canDock} class:chat-overlay={!canDock} class:chat-overlay-front={!canDock} hidden data-retained-panel use:retainedPanel={settingsOpen} inert={!settingsOpen} aria-hidden={!settingsOpen}>
 			<div class:chat-overlay-panel={!canDock} class:dock-body={canDock} data-panel>
-				<RetainedView present active={settingsOpen}><SettingsPanel split={settingsSplit} /></RetainedView>
+				<RetainedView present active={settingsOpen}><LazyPanel load={panels.settings} componentProps={{ split: settingsSplit }} label="settings" /></RetainedView>
 			</div>
 		</aside>
 
 		<div class="chat-overlay chat-overlay-front" hidden data-retained-panel use:retainedPanel={settingsContentOpen} inert={!settingsContentOpen} aria-hidden={!settingsContentOpen}>
 			<div class="chat-overlay-panel" data-panel>
-				<RetainedView present active={settingsContentOpen}><SettingsContentPanel /></RetainedView>
+				<RetainedView present active={settingsContentOpen}><LazyPanel load={panels.settingsContent} label="settings" /></RetainedView>
 			</div>
 		</div>
 
 		<aside class:library-dock={canDock} class:chat-overlay={!canDock} class:chat-overlay-front={!canDock} hidden data-retained-panel use:retainedPanel={libraryOpen} inert={!libraryOpen} aria-hidden={!libraryOpen}>
 			<div class:chat-overlay-panel={!canDock} class:dock-body={canDock} data-panel>
-				<RetainedView present active={libraryOpen}><LibraryView /></RetainedView>
+				<RetainedView present active={libraryOpen}><LazyPanel load={panels.library} label="library" /></RetainedView>
 			</div>
 		</aside>
 
@@ -359,7 +349,7 @@
 		{#if libraryEditorOpen}
 			<div class="chat-overlay chat-overlay-front" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
-					<LibraryEditorOverlay />
+					<LazyPanel load={panels.libraryEditor} label="editor" />
 				</div>
 			</div>
 		{/if}
@@ -369,10 +359,7 @@
 		{#if lorebookEditorOpen && uiStore.lorebookEditorId}
 			<div class="chat-overlay chat-overlay-front" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
-					<LorebookView
-						bookId={uiStore.lorebookEditorId}
-						onClose={() => (uiStore.lorebookEditorId = null)}
-					/>
+					<LazyPanel load={panels.lorebook} componentProps={{ bookId: uiStore.lorebookEditorId, onClose: () => { uiStore.lorebookEditorId = null; } }} label="lorebook" />
 				</div>
 			</div>
 		{/if}
@@ -381,7 +368,7 @@
 		{#if uiStore.debugPanelOpen}
 			<div class="chat-overlay chat-overlay-front" transition:surfaceMotion>
 				<div class="chat-overlay-panel" data-panel>
-					<PromptInspector />
+					<LazyPanel load={panels.debug} label="prompt inspector" />
 				</div>
 			</div>
 		{/if}

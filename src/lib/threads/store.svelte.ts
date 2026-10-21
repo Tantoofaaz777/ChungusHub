@@ -5,7 +5,7 @@ import { chatPersonaClaim, personaEntryFor, toPromptCharacter } from '$lib/utils
 import { llmService } from '$lib/services/llm/provider';
 import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 import { expandSelfRefs } from '$lib/macros';
-import { countTokens } from '$lib/tokenizer';
+import { countTokens, withTokenizers } from '$lib/tokenizer';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { emptyAo3Information, type Ao3Information } from '$shared/threads/ao3';
 import { selectThreadsMessages, threadsPrompt, threadsOnPath, threadsSelectionOverlaps } from '$shared/threads/model';
@@ -184,9 +184,11 @@ export class ThreadsStore {
 			const { messages, branchLeafId, label, input } = this.preparePrompt(round);
 			const target = { engine: 'threads' }, model = llmService.modelFor(target);
 			if (!model) throw new Error('Choose a model for Threads on Connections before generating.');
-			const prompt = await threadsPrompt({ ...input, countTokens: text => countTokens(text, model) });
+			const prompt = await withTokenizers(() => threadsPrompt({ ...input, countTokens: text => countTokens(text, model) }));
 			if (controller.signal.aborted || this.controller !== controller || this.chatId !== chatId) return;
-			if (countTokens(prompt, model) > llmService.getPromptTokenBudget(target)) throw new Error('This scene and its context exceed the connection’s context window. Select fewer messages or lower the Threads continuity limits in Engines.');
+			const promptTokens = await withTokenizers(() => countTokens(prompt, model));
+			if (controller.signal.aborted || this.controller !== controller || this.chatId !== chatId) return;
+			if (promptTokens > llmService.getPromptTokenBudget(target)) throw new Error('This scene and its context exceed the connection’s context window. Select fewer messages or lower the Threads continuity limits in Engines.');
 			let response = '', reasoning = '';
 			const current = () => !controller.signal.aborted && this.controller === controller && this.chatId === chatId;
 			const updateProgress = (finished = false) => {

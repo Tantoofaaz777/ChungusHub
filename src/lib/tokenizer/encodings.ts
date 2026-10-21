@@ -6,10 +6,19 @@
  * table), so new models work without any code change.
  */
 
-import { countTokens as countCl100k } from 'gpt-tokenizer/encoding/cl100k_base';
-import { countTokens as countO200k } from 'gpt-tokenizer/encoding/o200k_base';
+import { createEncodingLoader, type EncodingName } from './loader';
 
-export type EncodingName = 'o200k_base' | 'cl100k_base';
+export type { EncodingName } from './loader';
+const encoders = createEncodingLoader({
+	cl100k_base: () => import('gpt-tokenizer/encoding/cl100k_base'),
+	o200k_base: () => import('gpt-tokenizer/encoding/o200k_base')
+});
+export const onEncodingReady = encoders.subscribe;
+export function prepareTokenizer(model?: string): Promise<void> {
+	return encoders.load(resolveEncoding(model));
+}
+/** Readiness guard for throttled callbacks that must remain synchronous. */
+export function requireTokenizer(model?: string): void { encoders.read(resolveEncoding(model)); }
 
 /** Pick the closest local encoding for a model id. */
 export function resolveEncoding(model?: string): EncodingName {
@@ -64,7 +73,7 @@ export function encodingCount(text: string, encoding: EncodingName): number {
 	const cache = caches[encoding];
 	const hit = cache.counts.get(text);
 	if (hit !== undefined) return hit;
-	const count = encoding === 'cl100k_base' ? countCl100k(text) : countO200k(text);
+	const count = encoders.read(encoding)(text);
 	if (cache.chars >= COUNT_CACHE_MAX_CHARS) {
 		cache.counts.clear();
 		cache.chars = 0;

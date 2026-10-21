@@ -28,6 +28,7 @@
 		type ResolvedRecursion
 	} from '$lib/lorebook/types';
 	import { countTokens } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
@@ -62,7 +63,7 @@
 	let titleEl = $state<HTMLInputElement | null>(null);
 
 	let nature = $derived<Nature>(entry ? natureOf(entry) : 'keyword');
-	let contentTokens = $derived(entry ? countTokens(entry.content) : 0);
+	let contentTokens = $derived(entry ? tokenEstimate(() => countTokens(entry.content)) : 0);
 	/** What actually applies at generation: useProbability off means the roll is skipped. */
 	let effectiveProbability = $derived(entry ? (entry.useProbability ? entry.probability : 100) : 100);
 
@@ -556,7 +557,7 @@
 				<div>
 					<div class="flex items-baseline justify-between gap-2 mb-1.5">
 						<label for="entry-content-{entryId}" class="ed-label section-label !mb-0">Content</label>
-						<span class="font-mono text-[0.65rem] text-text-muted tabular-nums">~{contentTokens} tokens</span>
+						<span class="font-mono text-[0.65rem] text-text-muted tabular-nums">~{contentTokens ?? '…'} tokens</span>
 					</div>
 					<ExpandableTextarea
 						id="entry-content-{entryId}"

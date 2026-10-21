@@ -15,6 +15,7 @@
 	import CharacterTokenCountsDialog from './CharacterTokenCountsDialog.svelte';
 	import { countCharacterTokens, type CharacterTokenCounts } from '$lib/utils/character-token-counts';
 	import { llmService } from '$lib/services/llm/provider';
+	import { withTokenizers } from '$lib/tokenizer/loader';
 	import type { CharacterTraits, ChatDefaultKey } from '$lib/types/library';
 
 	interface Props {
@@ -264,12 +265,14 @@
 	let showConvert = $state(false);
 	let tokenSnapshot = $state<{ entryId: string; counts: CharacterTokenCounts } | null>(null);
 
-	function openTokenCounts() {
+	async function openTokenCounts() {
 		if (!entry) return;
-		tokenSnapshot = {
-			entryId: entry.id,
-			counts: countCharacterTokens(entry.data.traits, entry.data.alternateGreetings, llmService.getPrimaryModel())
-		};
+		const id = entry.id, model = llmService.getPrimaryModel();
+		const data = $state.snapshot(entry.data);
+		try {
+			const counts = await withTokenizers(() => countCharacterTokens(data.traits, data.alternateGreetings, model));
+			if (entryId === id) tokenSnapshot = { entryId: id, counts };
+		} catch (error) { toastStore.failed('count tokens', error); }
 	}
 
 	async function handleDuplicate() {

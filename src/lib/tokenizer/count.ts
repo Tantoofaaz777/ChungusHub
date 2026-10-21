@@ -5,7 +5,8 @@
 
 import { encodingCount, resolveEncoding } from './encodings';
 
-/** Token count of `text` under the model's encoding. */
+/** Token count of `text` under the model's encoding. For nonempty text, first prepare the
+ * encoding or call through withTokenizers (actions) / tokenEstimate (reactive views). */
 export function countTokens(text: string, model?: string): number {
 	return encodingCount(text, resolveEncoding(model));
 }

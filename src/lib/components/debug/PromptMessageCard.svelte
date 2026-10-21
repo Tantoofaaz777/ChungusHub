@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	/**
 	 * One message of a logged request, rendered whole: role, position, every image attachment
 	 * it carried, and its text. Nothing here is shortened: the panel exists to show what was
@@ -28,7 +29,7 @@
 
 	let color = $derived(roleColor(message.role));
 	let content = $derived(message.content ?? '');
-	let tokens = $derived(messageTokens(message, model));
+	let tokens = $derived(tokenEstimate(() => messageTokens(message, model)));
 	let lineCount = $derived(content ? content.split('\n').length : 0);
 	let images = $derived(message.images ?? []);
 
@@ -54,7 +55,7 @@
 					{images.length}
 				</span>
 			{/if}
-			<span class="meta">{lineCount.toLocaleString()} ln · ~{tokens.toLocaleString()} tok</span>
+			<span class="meta">{lineCount.toLocaleString()} ln · ~{tokens?.toLocaleString() ?? '…'} tok</span>
 		</button>
 		<CopyButton quiet text={() => content} title="Copy this message's text" />
 	</div>

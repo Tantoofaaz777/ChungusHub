@@ -132,14 +132,6 @@
 		uiStore.openChats();
 	}
 
-	// The stats screen covers the whole library rather than this story, so it sits with
-	// Home and Chats rather than with the rows that act on the open chat. This and the
-	// welcome landing are its only two doors: the TitleBar cluster is for chat tools.
-	function handleOpenStats() {
-		menuOpen = false;
-		uiStore.openOverlay('stats');
-	}
-
 	// Another chat with this story's character, greeting and all: the Chats panel's own
 	// New chat button without the trip through the panel. Refused mid-generation for the
 	// same reason Home is: createChat opens the chat it makes, which swaps out the state
@@ -989,15 +981,6 @@
 								>
 									<Icon name="search" class="w-4 h-4" />
 									Find in chat…
-								</button>
-								<button
-									type="button"
-									class="composer-menu-item"
-									title="Everything you have written here, counted"
-									onclick={handleOpenStats}
-								>
-									<Icon name="chart" class="w-4 h-4" />
-									Your stats
 								</button>
 								<div class="composer-menu-sep"></div>
 								<button

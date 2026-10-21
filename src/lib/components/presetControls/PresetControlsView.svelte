@@ -30,6 +30,7 @@
 	import { chatPreset } from '$lib/utils/chat-setup';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { countTokens } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import { formatControlForPrompt, getControlValue } from '$lib/utils/prompt-controls';
 	import type { PromptControl, PromptPresetBundle } from '$lib/types/database';
@@ -318,12 +319,12 @@
 
 	// --- what the whole form costs -----------------------------------------------------
 
-	let totalTokens = $derived(
+	let totalTokens = $derived(tokenEstimate(() =>
 		activeControls.reduce(
 			(sum, c) => sum + countTokens(formatControlForPrompt(c, values[c.macro]), llmService.getPrimaryModel()),
 			0
 		)
-	);
+	));
 
 	function openPromptBuilder(): void {
 		uiStore.settingsPage = 'prompt-builder';
@@ -619,9 +620,9 @@
 							</span>
 						{/if}
 						<span class="pcv-status-spacer"></span>
-						{#if totalTokens > 0}
+						{#if totalTokens === null || totalTokens > 0}
 							<span class="pcv-status-cost" title="What the whole form adds to every prompt">
-								{totalTokens.toLocaleString()} tokens
+								{totalTokens?.toLocaleString() ?? '…'} tokens
 							</span>
 						{/if}
 					</div>

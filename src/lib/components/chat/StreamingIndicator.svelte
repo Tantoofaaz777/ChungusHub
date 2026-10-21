@@ -102,7 +102,7 @@
 							<MessageMeta
 								name={speakerName}
 								timestamp={themeStore.appearance.showTimestamps ? startedAt : null}
-								tokens={isManuscript && !avatarsHidden && themeStore.appearance.showTokenCount && streamingTokens > 0 ? `~${streamingTokens} tok` : null}
+							tokens={isManuscript && !avatarsHidden && themeStore.appearance.showTokenCount && (streamingTokens ?? 0) > 0 ? `~${streamingTokens} tok` : null}
 								durationMs={metaReadouts ? generationTimer.value : null}
 								streaming={true}
 							/>
@@ -122,7 +122,7 @@
 						{/if}
 
 						<!-- The shared estimator cancels pending counts while this readout is off. -->
-						{#if !(isManuscript && !avatarsHidden) && themeStore.appearance.showTokenCount && streamingTokens > 0}
+						{#if !(isManuscript && !avatarsHidden) && themeStore.appearance.showTokenCount && (streamingTokens ?? 0) > 0}
 							<div class="stream-tokens-row">
 								<span class="stream-tokens" title="Estimated tokens">~{streamingTokens}</span>
 							</div>

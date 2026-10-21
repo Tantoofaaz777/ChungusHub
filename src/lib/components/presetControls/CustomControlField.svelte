@@ -18,6 +18,7 @@
 	import { autoResize } from '$lib/actions/autoResize';
 	import { rangeReset } from '$lib/actions/rangeReset';
 	import { countTokens } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import {
 		getControlValue,
@@ -52,7 +53,7 @@
 
 	// What this control actually adds to the prompt, in the model the chat is on, the same
 	// text formatControlForPrompt hands the assembler, so the number is the real one.
-	let tokens = $derived(countTokens(formatControlForPrompt(control, raw), llmService.getPrimaryModel()));
+	let tokens = $derived(tokenEstimate(() => countTokens(formatControlForPrompt(control, raw), llmService.getPrimaryModel())));
 
 	// Worded to hold for every control type: most of these are a choice between options,
 	// not a switch, so "leave this on" would be wrong on the majority of them.
@@ -295,9 +296,9 @@
 		{/if}
 	{/if}
 
-	{#if tokens > 0}
+	{#if tokens === null || tokens > 0}
 		<p class="pcf-cost" title="What this control adds to every prompt">
-			{tokens.toLocaleString()} token{tokens === 1 ? '' : 's'}
+			{tokens?.toLocaleString() ?? '…'} token{tokens === 1 ? '' : 's'}
 		</p>
 	{/if}
 </div>

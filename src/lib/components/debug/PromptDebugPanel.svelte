@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { onMount } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
@@ -89,8 +90,8 @@
 	// ===== Derived views of the selected entry =====
 
 	let images = $derived(selected ? entryImages(selected) : []);
-	let size = $derived(selected ? promptSize(selected) : { tokens: 0, reported: false });
-	let messageSize = $derived(selected ? messagesSize(selected) : 0);
+	let size = $derived(selected ? tokenEstimate(() => promptSize(selected!)) : { tokens: 0, reported: false });
+	let messageSize = $derived(selected ? tokenEstimate(() => messagesSize(selected!)) : 0);
 
 	let messageKeys = $derived(selected ? selected.messages.map((_, i) => `m${i}`) : []);
 	let allMessagesFolded = $derived(messageKeys.length > 0 && messageKeys.every((k) => fold.keys.includes(k)));
@@ -215,7 +216,7 @@
 				<p class="empty">{standalone || advancedSettingsStore.promptDebugPanel ? 'No prompts logged yet. Send a message and it will appear here.' : 'No prompts logged yet. Enable prompt logging to capture requests.'}</p>
 			{:else}
 				{#each entries as entry (entry.id)}
-					{@const rowSize = promptSize(entry)}
+					{@const rowSize = tokenEstimate(() => promptSize(entry))}
 					{@const rowImages = entryImages(entry).length}
 					<div
 						class="row"
@@ -254,9 +255,9 @@
 							<span class="sep">·</span>
 							<span
 								class="tok"
-								class:reported={rowSize.reported}
-								title={rowSize.reported ? 'Prompt tokens reported by the provider' : 'Our estimate; the provider has not reported prompt usage for this request'}
-							>{rowSize.reported ? '' : '~'}{rowSize.tokens.toLocaleString()} tok</span>
+								class:reported={rowSize?.reported}
+								title={rowSize?.reported ? 'Prompt tokens reported by the provider' : 'Our estimate; the provider has not reported prompt usage for this request'}
+								>{rowSize?.reported ? '' : '~'}{rowSize?.tokens.toLocaleString() ?? '…'} tok</span>
 							{#if formatDuration(entry.startedAt, entry.endedAt)}
 								<span class="sep">·</span>
 								<span>{formatDuration(entry.startedAt, entry.endedAt)}</span>
@@ -317,8 +318,8 @@
 							<span class="v st">{statusLabel(entry.status)}</span>
 						</div>
 						<div class="stat">
-							<span class="k">prompt · {size.reported ? 'reported' : 'estimated'}</span>
-							<span class="v" class:est={!size.reported}>{size.reported ? '' : '~'}{size.tokens.toLocaleString()}</span>
+							<span class="k">prompt · {size?.reported ? 'reported' : 'estimated'}</span>
+							<span class="v" class:est={!size?.reported}>{size?.reported ? '' : '~'}{size?.tokens.toLocaleString() ?? '…'}</span>
 						</div>
 						{#if entry.usage}
 							<div class="stat">
@@ -354,7 +355,7 @@
 						{/if}
 					</div>
 
-					{#if !size.reported && images.length}
+					{#if !size?.reported && images.length}
 						<p class="note">
 							The estimate covers text only. The {images.length} image attachment{images.length === 1 ? '' : 's'}
 							below also cost tokens, priced by the provider from dimensions we don't have.
@@ -388,7 +389,7 @@
 								<span
 									class="sec-meta"
 									title={images.length ? 'Image attachments are logged from the wire payload, so a picture listed here did ride this request' : undefined}
-								>~{messageSize.toLocaleString()} tok{images.length ? ` · ${images.length} image${images.length === 1 ? '' : 's'} attached` : ''}</span>
+								>~{messageSize?.toLocaleString() ?? '…'} tok{images.length ? ` · ${images.length} image${images.length === 1 ? '' : 's'} attached` : ''}</span>
 								<span class="spacer"></span>
 								<button
 									class="sec-btn"

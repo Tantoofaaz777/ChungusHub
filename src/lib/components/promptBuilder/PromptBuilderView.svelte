@@ -37,6 +37,7 @@
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { imageService } from '$lib/services/imageService';
 	import { countTokens, tokenCalibration } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { cappedHistoryTurns, extractMacroNames, isBuiltinMacro, MACROS, SYSTEM_MACROS } from '$lib/macros';
 	import {
 		assemblePrompt,
@@ -154,7 +155,7 @@
 		contextBudget: promptTarget.contextBudget,
 		regexRules: regexRulesStore.effectiveFor(currentPreset)
 	});
-	let macroContext = $derived(buildMacroContext(assembleInput));
+	let macroContext = $derived(tokenEstimate(() => buildMacroContext(assembleInput)));
 	let activeModel = $derived(promptTarget.model);
 
 	// Offered to the carried-rule tester as a one-click sample: a rule that styles the
@@ -169,26 +170,30 @@
 	// macro/structural resolution (context + injected chat). "Raw" is the plain authored-text
 	// size; "Expanded" predicts the real sent size, so it carries the model's calibration,
 	// keeping the Expanded total in lockstep with the chat input box for the same chat.
-	function getItemTokenBreakdown(item: PromptItem): { total: number; macroTokens: number } {
+	function getItemTokenBreakdown(item: PromptItem): { total: number; macroTokens: number } | null {
+		return tokenEstimate(() => {
 		const raw = countTokens(item.content, activeModel);
 		if (!showExpandedTokens) return { total: raw, macroTokens: 0 };
+		if (!macroContext) return null;
 		const r = resolveItem(item, macroContext, activeModel);
 		const ratio = tokenCalibration.ratioFor(activeModel);
 		const resolved = Math.round((r.preset + r.context + r.memory + r.chat) * ratio);
 		return { total: resolved, macroTokens: Math.max(0, resolved - Math.round(raw * ratio)) };
+		});
 	}
 
 	// Enabled-item total. In expanded mode it comes straight from the shared assembler (then
 	// calibrated), so it equals what the chat input box reports; raw mode is plain text.
-	let expandedAssembly = $derived(currentPreset && showExpandedTokens ? assemblePrompt(assembleInput) : null);
+	let expandedAssembly = $derived(currentPreset && showExpandedTokens ? tokenEstimate(() => assemblePrompt(assembleInput)) : null);
 
-	let totalEnabledTokens = $derived.by(() => {
+	let totalEnabledTokens = $derived(tokenEstimate(() => {
 		if (!currentPreset) return 0;
+		if (showExpandedTokens && !expandedAssembly) return null;
 		if (expandedAssembly) {
 			return Math.round(expandedAssembly.breakdown.total * tokenCalibration.ratioFor(activeModel));
 		}
 		return currentPreset.items.filter((item) => item.enabled).reduce((sum, item) => sum + countTokens(item.content, activeModel), 0);
-	});
+	}));
 
 	// The trim is why the per-item numbers can add up to more than the total: each row prices
 	// what its item resolves to, and the total prices what actually fits the context size.
@@ -605,8 +610,8 @@
 	<section class="pb-sec" data-setting="prompt-builder">
 		<div class="pb-sec-head">
 			<span class="pb-sec-title">Prompt items</span>
-			{#if totalEnabledTokens > 0}
-				<span class="pb-sec-meta">{totalEnabledTokens.toLocaleString()} tokens</span>
+			{#if totalEnabledTokens === null || totalEnabledTokens > 0}
+				<span class="pb-sec-meta">{totalEnabledTokens?.toLocaleString() ?? '…'} tokens</span>
 			{/if}
 			{#if overBudget || trimmedMessages > 0}
 				<span
@@ -691,7 +696,7 @@
 								</span>
 								<span class="pb-name">{item.name || 'Untitled'}</span>
 								<span class="pb-tokens">
-									{breakdown.total.toLocaleString()}{#if showExpandedTokens && breakdown.macroTokens > 0}<em>+{breakdown.macroTokens.toLocaleString()}</em>{/if}
+									{breakdown?.total.toLocaleString() ?? '…'}{#if showExpandedTokens && breakdown && breakdown.macroTokens > 0}<em>+{breakdown.macroTokens.toLocaleString()}</em>{/if}
 								</span>
 							</div>
 

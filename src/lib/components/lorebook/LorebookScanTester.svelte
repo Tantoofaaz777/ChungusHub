@@ -11,6 +11,7 @@
 	 * writes nothing: no generation, no store, no row.
 	 */
 	import { resolveLorebooks } from '$lib/lorebook/engine';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
 	import LorebookTraceList from './LorebookTraceList.svelte';
 	import type { Lorebook } from '$lib/lorebook/types';
@@ -36,12 +37,12 @@
 	// entry row's business, matching is this box's.
 	const result = $derived(
 		turns.length > 0
-			? resolveLorebooks({
+			? tokenEstimate(() => resolveLorebooks({
 					books: [book],
 					messages: turns,
 					settings: lorebookSettingsStore.settings,
 					rng: () => 0
-				})
+				}))
 			: null
 	);
 </script>
@@ -60,7 +61,7 @@
 		<p class="st-note">Trigger rolls always pass here, so an entry's chance never hides it.</p>
 		<LorebookTraceList trace={result.trace} />
 	{:else}
-		<p class="st-note">Nothing to scan yet.</p>
+		<p class="st-note">{turns.length ? 'Loading token counter…' : 'Nothing to scan yet.'}</p>
 	{/if}
 </div>
 

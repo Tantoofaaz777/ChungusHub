@@ -26,7 +26,7 @@
 		/** Position in the request, as the JSON view numbers it. */
 		index: number;
 		/** This message's size, already calibrated: the panel counts every card in one pass. */
-		tokens: number;
+		tokens: number | null;
 		collapsed: boolean;
 		edited: boolean;
 		onToggle: () => void;
@@ -62,7 +62,7 @@
 				</span>
 			{/if}
 			{#if edited}<span class="edited">edited</span>{/if}
-			<span class="meta">{lineCount.toLocaleString()} ln · ~{tokens.toLocaleString()} tok</span>
+			<span class="meta">{lineCount.toLocaleString()} ln · ~{tokens?.toLocaleString() ?? '…'} tok</span>
 		</button>
 		<button
 			class="drop"

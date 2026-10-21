@@ -2,6 +2,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { countTokens } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { panelActivity } from '$lib/components/ui/panelActivity';
 	import { chapterTitle, sceneLevel, type MemoryScene, type ResolvedScene } from '../../../../shared/memory-scenes';
 
@@ -17,14 +18,14 @@
 	// Only saved content and the chat's model affect this count. Expanding a preview
 	// or typing in the review dialog does not tokenize the chapter again.
 	const panelActive = panelActivity();
-	let tokens = $state(0);
+	let tokens = $state<number | null>(null);
 	let counted: { content: string; model: string } | null = null;
 	$effect(() => {
 		if (!panelActive()) return;
 		const content = item.scene.content, assignedModel = model;
 		if (counted?.content === content && counted.model === assignedModel) return;
-		tokens = countTokens(content, assignedModel);
-		counted = { content, model: assignedModel };
+		tokens = tokenEstimate(() => countTokens(content, assignedModel));
+		if (tokens !== null) counted = { content, model: assignedModel };
 	});
 </script>
 
@@ -38,7 +39,7 @@
 			</div>
 			<div class="chapter-meta">
 				<span>{#if level !== 'chapter'}{item.scene.children?.length ?? 0} {level === 'arc' ? 'chapters' : 'arcs'}{' · '}{/if}{item.scene.source.length} {item.scene.source.length === 1 ? 'message' : 'messages'}</span>
-				<span class="chapter-tokens" title={`Estimated ${level} text tokens${model ? ` · ${model}` : ''}`}># {tokens.toLocaleString()} tokens</span>
+				<span class="chapter-tokens" title={`Estimated ${level} text tokens${model ? ` · ${model}` : ''}`}># {tokens?.toLocaleString() ?? '…'} tokens</span>
 			</div>
 		</summary>
 		{#if expanded}<div class="chapter-content"><p>{item.scene.content}</p></div>{/if}

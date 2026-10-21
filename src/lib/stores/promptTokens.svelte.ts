@@ -1,4 +1,5 @@
 import { tokenCalibration, countTokens } from '$lib/tokenizer';
+import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 import { chatStore } from './chat.svelte';
 import { characterLibraryStore } from './characterLibrary.svelte';
 import { featurePromptsStore } from './featurePrompts.svelte';
@@ -48,7 +49,7 @@ class PromptTokensStore {
 		const notes = steeringStore.resolveForPrompt(steeringTargetForChat(this.chat));
 		return notes.length ? { notes, wrapper: featurePromptsStore.promptFor('steeringWrapper') } : undefined;
 	});
-	private assembly = $derived(this.chat && this.currentPreset ? assemblePrompt({
+	private assembly = $derived(this.chat && this.currentPreset ? tokenEstimate(() => assemblePrompt({
 		authorsNote: chatAuthorsNote(this.chat),
 		preset: this.currentPreset,
 		resolvedPersona: toPromptCharacter(this.persona),
@@ -59,14 +60,14 @@ class PromptTokensStore {
 			chat: chatLorebookClaim(this.chat), muted: chatMutedLorebookClaim(this.chat)
 		}),
 		lorebookSettings: lorebookSettingsStore.settings,
-		controls: this.currentPreset.controls ?? [],
-		customFields: presetControlsStore.valuesFor(this.currentPreset.id),
+		controls: this.currentPreset!.controls ?? [],
+		customFields: presetControlsStore.valuesFor(this.currentPreset!.id),
 		chatMessages: this.pricedPath,
 		recall: { text: memoryStore.recall || null, archivedIds: memoryStore.archivedMessageIds, scenes: memoryStore.scenes },
 		model: this.target.model, postProcessing: this.target.postProcessing,
 		contextBudget: this.target.contextBudget,
 		regexRules: regexRulesStore.effectiveFor(this.currentPreset), steering: this.steering
-	}) : null);
+	})) : null);
 	private ratio = $derived(tokenCalibration.ratioFor(this.target.model));
 	model = $derived(this.target.model);
 	preset = $derived(Math.round((this.assembly?.breakdown.preset ?? 0) * this.ratio));
@@ -74,7 +75,8 @@ class PromptTokensStore {
 	memory = $derived(Math.round((this.assembly?.breakdown.memory ?? 0) * this.ratio));
 	chatTokens = $derived(Math.round((this.assembly?.breakdown.chat ?? 0) * this.ratio));
 	total = $derived(Math.round((this.assembly?.breakdown.total ?? 0) * this.ratio));
-	input = $derived(this.chat && this.draft?.chatId === this.chat.id ? countTokens(this.draft.text) : 0);
+	input = $derived(this.chat && this.draft?.chatId === this.chat.id ? tokenEstimate(() => countTokens(this.draft!.text)) : 0);
+	loading = $derived(!!this.chat && !!this.currentPreset && !this.assembly);
 	trimmedMessages = $derived(this.assembly?.trimmedMessages ?? 0);
 	overBudget = $derived(this.assembly?.overBudget ?? false);
 	warning = $derived(this.overBudget

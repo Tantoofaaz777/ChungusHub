@@ -24,6 +24,9 @@ JetBrains Mono
 Literata
     Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata)
 
+Libre Baskerville
+    Copyright 2012 The Libre Baskerville Project Authors (https://github.com/impallari/Libre-Baskerville) with Reserved Font Name Libre Baskerville.
+
 Lora
     Copyright 2011 The Lora Project Authors (https://github.com/cyrealtype/Lora-Cyrillic), with Reserved Font Name "Lora".
 
@@ -35,6 +38,9 @@ Newsreader
 
 Nunito Sans
     Copyright 2016 The Nunito Sans Project Authors (https://github.com/Fonthausen/NunitoSans)
+
+Poppins
+    Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)
 
 Source Sans 3
     Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved.

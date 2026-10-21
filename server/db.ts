@@ -81,18 +81,6 @@ function snippetAround(content: string, at: number, radius = 90): string {
 }
 
 /**
- * Words in a message, for the stats aggregate: runs separated by whitespace, and nothing
- * cleverer. Roleplay prose is asterisks, quotes and two languages at once, so any rule that
- * tried to strip punctuation or split on letters would answer differently per language while
- * claiming to be the same figure. This one is the count a person gets by eye, it is the same
- * rule in every language, and it is the only word rule in the app.
- */
-function countWords(content: string): number {
-	const trimmed = content.trim();
-	return trimmed ? trimmed.split(/\s+/).length : 0;
-}
-
-/**
  * Read a JSON column that the server only carries, never interprets. A cell that will not
  * parse reads as absent instead of throwing: these columns hold records ABOUT a row rather
  * than the row itself, and one corrupt cell must never cost the reader everything the query
@@ -106,14 +94,6 @@ function parseJsonColumn(value: unknown): unknown {
 		return null;
 	}
 }
-
-/**
- * The activity series' bucket width. Fifteen minutes because every real-world UTC offset is
- * a multiple of it, so a client folding these buckets into ITS local days never has to split
- * one. Widen this and readers on a half-hour offset get their late-night messages filed
- * under the wrong day.
- */
-const QUARTER_HOUR_MS = 15 * 60 * 1000;
 
 /**
  * The greetings a chat opens on, in seed order: First Message, then every alternate.
@@ -699,14 +679,6 @@ class ServerDatabase {
 	 *  row that was not there. */
 	private execute(sql: string, params: unknown[] = []): number {
 		return this.db.query(sql).run(...(params as never[])).changes;
-	}
-
-	/** Row-at-a-time read, for the one caller that has to touch every message body in the
-	 *  database (`getUserStats`). `select` would materialise the whole table first, which
-	 *  on a large library means holding every message in memory at once to produce a
-	 *  handful of numbers. Reach for it only when the pass is genuinely whole-table. */
-	private selectIter<T>(sql: string, params: unknown[] = []): IterableIterator<T> {
-		return this.db.query(sql).iterate(...(params as never[])) as IterableIterator<T>;
 	}
 
 	/** Run several writes atomically: any throw rolls back everything. Nests via
@@ -1665,225 +1637,6 @@ class ServerDatabase {
 		return { enabled: !!state?.enabled, episodes };
 	}
 
-	// ===== USER STATS =====
-	//
-	// One whole-library aggregate for the stats screen. It lives here for the same reason
-	// the block above does: it reads every message body in the database and must turn them
-	// into numbers on this side, never ship them. See src/lib/types/stats.ts for what each
-	// figure means and which of them are measured over a subset.
-
-	/**
-	 * Everything the stats screen renders, in one call.
-	 *
-	 * ONE streamed pass over `messages` does the bulk of it, because a second pass would be
-	 * a second read of every message body. The pass folds each row into the effort totals,
-	 * the story totals (when it sits on its chat's open branch), the activity buckets, the
-	 * per-character tallies and the record holders at the same time.
-	 *
-	 * **Nothing here estimates.** A turn with no token count is skipped by the token totals
-	 * rather than priced from its text, and every measured total ships the number of turns
-	 * it covers, so a screen cannot present a corner of the library as the whole of it.
-	 */
-	getUserStats(): unknown {
-		// The branch each chat is open at, resolved once. Everything "story" is this set,
-		// and everything off it is a turn that was written and then left behind.
-		const onPath = new Set<string>();
-		const pathPerChat = new Map<string, number>();
-		for (const r of this.activePathRows()) {
-			onPath.add(r.id);
-			pathPerChat.set(r.chat_id, (pathPerChat.get(r.chat_id) ?? 0) + 1);
-		}
-
-		// Which character each chat belongs to, so the pass can tally the cast without
-		// joining every message row against the chats table.
-		const characterOfChat = new Map<string, string>();
-		for (const r of this.select<{ id: string; character_id: string | null }[]>(
-			'SELECT id, character_id FROM chats WHERE character_id IS NOT NULL'
-		)) {
-			if (r.character_id) characterOfChat.set(r.id, r.character_id);
-		}
-
-		const blankVolume = () => ({
-			messages: 0,
-			userMessages: 0,
-			assistantMessages: 0,
-			words: 0,
-			userWords: 0,
-			assistantWords: 0
-		});
-		const effort = blankVolume();
-		const story = blankVolume();
-		const shape = { abandoned: 0, longestStory: 0 };
-		const measured = {
-			promptTokens: 0,
-			promptTokenTurns: 0,
-			completionTokens: 0,
-			completionTokenTurns: 0,
-			generationMs: 0,
-			generationTurns: 0,
-			firstTokenMs: 0,
-			firstTokenTurns: 0,
-			reasoningMs: 0,
-			reasoningTurns: 0,
-			assistantTurns: 0
-		};
-
-		const buckets = new Map<number, number>();
-		const cast = new Map<string, { chatIds: Set<string>; messages: number; words: number; firstAt: number; lastAt: number }>();
-		let longestReply: { chatId: string; words: number } | null = null;
-		let longestUserTurn: { chatId: string; words: number } | null = null;
-		let firstMessageAt: number | null = null;
-		let lastMessageAt: number | null = null;
-
-		for (const row of this.selectIter<{
-			id: string;
-			chat_id: string;
-			role: string;
-			content: string;
-			created_at: number;
-			tokens_prompt: number | null;
-			tokens_completion: number | null;
-			generation_ms: number | null;
-			first_token_ms: number | null;
-			reasoning_ms: number | null;
-		}>(
-			`SELECT id, chat_id, role, content, created_at,
-			        tokens_prompt, tokens_completion, generation_ms, first_token_ms, reasoning_ms
-			 FROM messages`
-		)) {
-			const words = countWords(row.content);
-			const isUser = row.role === 'user';
-			const isAssistant = row.role === 'assistant';
-
-			effort.messages += 1;
-			effort.words += words;
-			if (isUser) {
-				effort.userMessages += 1;
-				effort.userWords += words;
-			} else if (isAssistant) {
-				effort.assistantMessages += 1;
-				effort.assistantWords += words;
-			}
-
-			if (onPath.has(row.id)) {
-				story.messages += 1;
-				story.words += words;
-				if (isUser) {
-					story.userMessages += 1;
-					story.userWords += words;
-				} else if (isAssistant) {
-					story.assistantMessages += 1;
-					story.assistantWords += words;
-				}
-			} else {
-				shape.abandoned += 1;
-			}
-
-			// System turns are deliberately in the activity series: they are still a moment
-			// the library was being worked in, which is the only thing a heatmap claims.
-			const bucket = Math.floor(row.created_at / QUARTER_HOUR_MS) * QUARTER_HOUR_MS;
-			buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
-			if (firstMessageAt === null || row.created_at < firstMessageAt) firstMessageAt = row.created_at;
-			if (lastMessageAt === null || row.created_at > lastMessageAt) lastMessageAt = row.created_at;
-
-			const characterId = characterOfChat.get(row.chat_id);
-			if (characterId) {
-				let entry = cast.get(characterId);
-				if (!entry) {
-					entry = { chatIds: new Set(), messages: 0, words: 0, firstAt: row.created_at, lastAt: row.created_at };
-					cast.set(characterId, entry);
-				}
-				entry.chatIds.add(row.chat_id);
-				entry.messages += 1;
-				entry.words += words;
-				if (row.created_at < entry.firstAt) entry.firstAt = row.created_at;
-				if (row.created_at > entry.lastAt) entry.lastAt = row.created_at;
-			}
-
-			if (isAssistant) {
-				measured.assistantTurns += 1;
-				if (!longestReply || words > longestReply.words) longestReply = { chatId: row.chat_id, words };
-				if (row.tokens_prompt !== null) {
-					measured.promptTokens += row.tokens_prompt;
-					measured.promptTokenTurns += 1;
-				}
-				if (row.tokens_completion !== null) {
-					measured.completionTokens += row.tokens_completion;
-					measured.completionTokenTurns += 1;
-				}
-				if (row.generation_ms !== null) {
-					measured.generationMs += row.generation_ms;
-					measured.generationTurns += 1;
-				}
-				if (row.first_token_ms !== null) {
-					measured.firstTokenMs += row.first_token_ms;
-					measured.firstTokenTurns += 1;
-				}
-				if (row.reasoning_ms !== null) {
-					measured.reasoningMs += row.reasoning_ms;
-					measured.reasoningTurns += 1;
-				}
-			} else if (isUser && (!longestUserTurn || words > longestUserTurn.words)) {
-				longestUserTurn = { chatId: row.chat_id, words };
-			}
-		}
-
-		let longestChat: { chatId: string; messages: number } | null = null;
-		for (const [chatId, messages] of pathPerChat) {
-			if (messages > shape.longestStory) shape.longestStory = messages;
-			if (!longestChat || messages > longestChat.messages) longestChat = { chatId, messages };
-		}
-
-		const counts = this.select<{ type: string; n: number }[]>(
-			'SELECT type, COUNT(*) AS n FROM character_library GROUP BY type'
-		);
-		const shelf = (type: string) => counts.find((c) => c.type === type)?.n ?? 0;
-		const scalar = (sql: string) => this.select<{ n: number }[]>(sql)[0]?.n ?? 0;
-
-		// Lorebook entries live inside the row's JSON payload, so counting them means
-		// parsing each book. There are tens of books at most, never thousands of messages.
-		let lorebookEntries = 0;
-		for (const r of this.select<{ data_json: string }[]>('SELECT data_json FROM lorebooks')) {
-			try {
-				const entries = (JSON.parse(r.data_json) as { entries?: unknown[] }).entries;
-				if (Array.isArray(entries)) lorebookEntries += entries.length;
-			} catch {
-				// A book whose payload will not parse is already broken everywhere else in the
-				// app; it must not take the whole stats screen down with it.
-			}
-		}
-
-		return {
-			library: {
-				chats: scalar('SELECT COUNT(*) AS n FROM chats'),
-				characters: shelf('character'),
-				personas: shelf('persona'),
-				lorebooks: scalar('SELECT COUNT(*) AS n FROM lorebooks'),
-				lorebookEntries,
-				memoryEpisodes: scalar('SELECT (SELECT COUNT(*) FROM memory_scenes) + (SELECT COUNT(*) FROM memory_episodes WHERE chat_id NOT IN (SELECT chat_id FROM memory_scene_migrations)) AS n')
-			},
-			effort,
-			story,
-			// Oldest first, so the client can walk it straight into a calendar.
-			activity: [...buckets.entries()].sort((a, b) => a[0] - b[0]),
-			cast: [...cast.entries()]
-				.map(([characterId, e]) => ({
-					characterId,
-					chats: e.chatIds.size,
-					messages: e.messages,
-					words: e.words,
-					firstAt: e.firstAt,
-					lastAt: e.lastAt
-				}))
-				// Ties break on who you have known longest, so the order is stable between
-				// runs instead of following whatever the map happened to hold.
-				.sort((a, b) => b.messages - a.messages || a.firstAt - b.firstAt),
-			shape,
-			records: { longestReply, longestUserTurn, longestChat, firstMessageAt, lastMessageAt },
-			measured
-		};
-	}
-
 	getMessage(id: string): unknown {
 		const rows = this.select<Record<string, unknown>[]>('SELECT * FROM messages WHERE id = ?', [id]);
 		return rows[0] ? this.mapMessage(rows[0]) : null;
@@ -2208,6 +1961,11 @@ class ServerDatabase {
 	}
 
 	// ===== SETTINGS =====
+
+	getAllSettings(): Record<string, string> {
+		const rows = this.select<{ key: string; value: string }[]>('SELECT key, value FROM settings');
+		return Object.fromEntries(rows.map(({ key, value }) => [key, value]));
+	}
 
 	getSetting(key: string): string | null {
 		const rows = this.select<{ value: string }[]>('SELECT value FROM settings WHERE key = ?', [key]);
@@ -3380,8 +3138,7 @@ const READ_METHODS = [
 	'getAllChats', 'getChat', 'getMessagesByChat', 'getMessagesDelta', 'getMessageCounts', 'getLastPersonaByChat',
 	'getLastUserMessageTimes',
 	'getChatListStats', 'getChatContentGroups', 'searchChatMessages', 'getChatMemoryFootprint',
-	'getUserStats',
-	'getMessage', 'getNextSiblingIndex', 'getSetting', 'getChatDraft', 'getInputHistory', 'getConnectionCredentials',
+	'getMessage', 'getNextSiblingIndex', 'getSetting', 'getAllSettings', 'getChatDraft', 'getInputHistory', 'getConnectionCredentials',
 	'getAllLibraryEntries', 'getLibraryEntry',
 	'getAllCharacterVersions', 'getCharacterVersion',
 	'getAllLorebooks', 'getLorebook',

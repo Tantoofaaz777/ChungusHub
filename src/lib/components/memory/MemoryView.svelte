@@ -23,6 +23,7 @@
 		memorySliderMax
 	} from '$lib/memory/config';
 	import { countTokens } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { rangeReset } from '$lib/actions/rangeReset';
 	import type { MemoryConfig } from '$lib/memory/types';
 
@@ -96,7 +97,7 @@
 	// What the model is actually handed. The single most useful thing this panel can show:
 	// everything else here is a proxy for it.
 	let recallText = $derived(memoryStore.recall);
-	let recallTokens = $derived(recallText ? countTokens(recallText) : 0);
+	let recallTokens = $derived(recallText ? tokenEstimate(() => countTokens(recallText)) : 0);
 	let showRecall = $state(false);
 
 	function ctx(): ChatCtx | null {
@@ -417,7 +418,7 @@
 						class="memory-cost"
 						title="What the memory block adds to every prompt on this branch. It is never trimmed to fit the context size, so live turns are dropped before it is."
 					>
-						<strong>{recallTokens.toLocaleString()}</strong> tokens / turn
+						<strong>{recallTokens?.toLocaleString() ?? '…'}</strong> tokens / turn
 					</span>
 				</div>
 			</section>

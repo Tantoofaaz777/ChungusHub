@@ -29,6 +29,7 @@
 	import { describeMemoryImpact } from '$lib/memory/impact-copy';
 	import { canSpliceMessage, collectSubtree, subtreeBlastRadius } from '$lib/utils/message-tree';
 	import { countTokens } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
 	import { liveGenerationTime } from '$lib/utils/live-generation-time.svelte';
 	import { imageService } from '$lib/services/imageService';
@@ -427,7 +428,7 @@
 			toastStore.failed('continue the reply', error);
 		});
 	}
-	const messageTokens = $derived(countTokens(message.content, message.model ?? undefined));
+	const messageTokens = $derived(tokenEstimate(() => countTokens(message.content, message.model ?? undefined)));
 	// Assistant turns carry the provider's real completion token count, so show that rather
 	// than a local estimate. User turns have no per-message actual (the API only reports
 	// whole-prompt tokens), so they stay estimated.
@@ -438,7 +439,7 @@
 	const tokenLabel = $derived(
 		actualTokens !== null
 			? `${actualTokens.toLocaleString()} tok`
-			: `~${messageTokens} tok`
+			: messageTokens === null ? '… tok' : `~${messageTokens} tok`
 	);
 	// Continue flow: the live tail joins the stored content through the preview rule (the
 	// final write's seam rule, plus a hold on tails that are still pure restatement, so a
@@ -581,7 +582,7 @@
 									provider={showModelName && !streamReplacement ? message.provider : null}
 									edited={!streamReplacement && !!(message.editedAt || message.minorEditedAt)}
 									streaming={streamReplacement}
-									tokens={showTokenCount ? streamReplacement ? `~${replacementTokens.value} tok` : tokenLabel : null}
+								tokens={showTokenCount ? streamReplacement ? replacementTokens.value === null ? '… tok' : `~${replacementTokens.value} tok` : tokenLabel : null}
 									ordinal={metaReadouts ? avatarOrdinal : null}
 									durationMs={metaReadouts ? generationDuration : null}
 									archived={archived && !streamReplacement}

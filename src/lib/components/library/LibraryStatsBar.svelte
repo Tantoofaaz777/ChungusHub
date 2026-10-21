@@ -23,6 +23,7 @@
 	import { llmService } from '$lib/services/llm/provider';
 	import { db } from '$lib/services/database';
 	import { countTokens } from '$lib/tokenizer/count';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { chatPersonaClaim, personaEntryFor } from '$lib/utils/chat-setup';
 	import { extractMacroNames, resolveMacroValues, type MacroContext } from '$lib/macros';
 	import {
@@ -103,14 +104,14 @@
 
 	// Summed per field rather than over one joined string: the join's own separators are not
 	// part of anything the entry sends.
-	let cardTokens = $derived(
+	let cardTokens = $derived(tokenEstimate(() =>
 		PERMANENT_TRAITS[entry.type].reduce(
 			(n, t) => n + countTokens(entry.data.traits[t.key] ?? '', model),
 			0
 		)
-	);
+	));
 
-	let promptTokens = $derived.by(() => {
+	let promptTokens = $derived(tokenEstimate(() => {
 		const preset = presetService.getActiveEffectivePreset();
 		if (!preset) return 0;
 		// How many ENABLED items place each of this entry's macros. Counted, not deduped: a
@@ -140,10 +141,10 @@
 		let total = 0;
 		for (const [name, count] of uses) total += countTokens(values[name] ?? '', model) * count;
 		return total;
-	});
+	}));
 
-	function num(value: number): string {
-		return value.toLocaleString();
+	function num(value: number | null): string {
+		return value?.toLocaleString() ?? '…';
 	}
 </script>
 

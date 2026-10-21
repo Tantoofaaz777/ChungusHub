@@ -6,8 +6,8 @@
  * Hand-kept couplings:
  *  - Previews read singleton stores/services; the root re-renders on every
  *    page return (keyed), so they refresh without being reactive.
- *  - A page added here needs its arm in `SettingsPageView.svelte`, or its row
- *    opens an empty panel.
+ *  - Every page has a dynamic loader in `components/settings/page-loaders.ts`;
+ *    that registry is checked against SettingsPage by TypeScript.
  */
 import { llmService } from '$lib/services/llm/provider';
 import { connectionStore } from '$lib/stores/connections.svelte';

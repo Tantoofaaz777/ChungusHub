@@ -5,8 +5,9 @@
  * and runs a WebSocket for live cross-device sync and LLM token streaming.
  */
 import { existsSync, statSync } from 'node:fs';
+import { serveStaticAsset } from './static';
 import { hostname } from 'node:os';
-import { join, normalize } from 'node:path';
+import { join } from 'node:path';
 import type { ServerWebSocket } from 'bun';
 import { ALLOWED_HOSTNAMES, CLIENT_DIR, CONFIG_ISSUES, CONFIG_NOTICES, CONFIG_OVERRIDES, CONFIG_PATH, DATA_DIR, DEFAULT_BACKGROUNDS_DIR, HOST, IS_COMPILED, OPEN_BROWSER, PORT, SECURITY_PATH, ensureConfigFile, ensureDirs, type ImageCategory } from './config';
 import { claimDataDir, type RunningInstance } from './instance-lock';
@@ -318,49 +319,6 @@ function htmlHeaders(host: string | null, extra?: Record<string, string>): Recor
 }
 
 // ===== Static serving =====
-
-const MIME: Record<string, string> = {
-	'.html': 'text/html',
-	'.js': 'text/javascript',
-	'.css': 'text/css',
-	'.json': 'application/json',
-	'.png': 'image/png',
-	'.jpg': 'image/jpeg',
-	'.jpeg': 'image/jpeg',
-	'.jfif': 'image/jpeg',
-	'.webp': 'image/webp',
-	'.svg': 'image/svg+xml',
-	'.ico': 'image/x-icon',
-	'.webmanifest': 'application/manifest+json',
-	'.woff2': 'font/woff2',
-	// The bundled typefaces' licence notice, which Settings → About links. Named here or the
-	// fallback below hands it over as a download instead of a page, and it carries a charset
-	// because a copyright line is exactly where a non-ASCII character shows up.
-	'.txt': 'text/plain; charset=utf-8'
-};
-
-function contentType(path: string): string {
-	const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
-	return MIME[ext] ?? 'application/octet-stream';
-}
-
-function serveStatic(pathname: string, host: string | null): Response {
-	const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
-	let filePath = join(CLIENT_DIR, rel);
-
-	if (existsSync(filePath) && statSync(filePath).isFile()) {
-		const type = contentType(filePath);
-		return new Response(Bun.file(filePath), {
-			headers: type === 'text/html' ? htmlHeaders(host) : { 'content-type': type }
-		});
-	}
-	// SPA fallback: adapter-static emits index.html for client-side routing.
-	filePath = join(CLIENT_DIR, 'index.html');
-	if (existsSync(filePath)) {
-		return new Response(Bun.file(filePath), { headers: htmlHeaders(host) });
-	}
-	return new Response('Client not built. Run: bun run build', { status: 500 });
-}
 
 /**
  * The file a `/files/…` request names, spelled the way this app stores a path: `/`-separated
@@ -1717,7 +1675,7 @@ function serve(hostname: string) {
 			}
 
 			// Static PWA.
-			return serveStatic(path, host);
+			return serveStaticAsset(CLIENT_DIR, path, req, htmlHeaders(host));
 		},
 
 		websocket: {

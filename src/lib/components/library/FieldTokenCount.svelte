@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { llmService } from '$lib/services/llm/provider';
 	import { countTokens } from '$lib/tokenizer/count';
+	import { withTokenizers } from '$lib/tokenizer/loader';
+	import { toastStore } from '$lib/stores/toast.svelte';
 
 	let { value, label, entityId }: { value: string; label: string; entityId: string } = $props();
 	let model = $derived(llmService.getPrimaryModel());
 	let count = $state<number | null>(null);
+	let counting = $state(false);
+	let revision = 0;
 	let previous: { value: string; model: string; entityId: string } | undefined;
 
 	// Edits only forget the result. Tokenization runs exclusively on a button press.
@@ -15,16 +19,27 @@
 		// retain its result when a different field is edited.
 		if (!previous || previous.value !== value || previous.model !== model || previous.entityId !== entityId) {
 			count = null;
+			revision++; counting = false;
 		}
 		previous = current;
 	});
+	async function measure() {
+		const ticket = ++revision, text = value, target = model;
+		counting = true;
+		try {
+			const next = await withTokenizers(() => countTokens(text, target));
+			if (ticket === revision) count = next;
+		} catch (error) { if (ticket === revision) toastStore.failed('count tokens', error); }
+		finally { if (ticket === revision) counting = false; }
+	}
 </script>
 
 <button
 	type="button"
 	class="field-token-count"
 	class:has-count={count !== null}
-	onclick={() => (count = countTokens(value, model))}
+	onclick={measure}
+	disabled={counting}
 	aria-label={count === null
 		? `Count tokens in ${label}`
 		: `${label}: ${count.toLocaleString()} tokens. Count again`}
@@ -32,7 +47,7 @@
 	title={`Count tokens in ${label}`}
 >
 	<span aria-hidden="true">#</span>
-	{count === null ? 'Count tokens' : `${count.toLocaleString()} tokens`}
+	{counting ? 'Counting…' : count === null ? 'Count tokens' : `${count.toLocaleString()} tokens`}
 </button>
 
 <style>

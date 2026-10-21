@@ -241,7 +241,7 @@
 	 *  badge, the depth a regex rule is scoped by and the memory boundary all count from the
 	 *  start of the branch, and a window that shifted them would renumber the story. */
 	let windowStart = $derived(anchorIndex >= 0 ? Math.min(anchorIndex, baseStart) : baseStart);
-	let showJumpToFirst = $derived(!openingSceneStream && messages.length > 0 && (windowStart > 0 || awayFromTop));
+	let showJumpToFirst = $derived(awayFromBottom && !openingSceneStream && messages.length > 0 && (windowStart > 0 || awayFromTop));
 	let shown = $derived(windowStart > 0 ? messages.slice(windowStart) : messages);
 	let nextChunk = $derived(Math.min(pageSize, windowStart));
 	// The count is the point of the marker: it is the only thing on screen saying how much

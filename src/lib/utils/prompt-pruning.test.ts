@@ -1,3 +1,7 @@
+import { beforeAll } from 'bun:test';
+import { prepareTokenizer } from '$lib/tokenizer/encodings';
+beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
+
 /**
  * Tests for tag-block pruning: conditional framing without syntax. Run with `bun test`.
  *

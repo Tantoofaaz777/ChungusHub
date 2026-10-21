@@ -35,6 +35,7 @@
 	import { llmService } from '$lib/services/llm/provider';
 	import { buildComposerTransformPrompt, runComposerTransform } from '$lib/services/composerTransformService';
 	import { countMessages, tokenCalibration } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { diffWords } from '$lib/utils/text-diff';
 	import type { ImpersonatePerspective, Message } from '$lib/types/chat';
 	import { storyRoleName } from '$lib/types/library';
@@ -97,11 +98,11 @@
 	/** What the next press will cost, counted off the EXACT messages a run would send
 	 *  (the service's own builder), so the number can never drift from the request, then
 	 *  scaled by that model's learned calibration like every other meter in the app. */
-	let estimatedTokens = $derived.by(() => {
+	let estimatedTokens = $derived(tokenEstimate(() => {
 		if (phase !== 'setup') return 0;
 		const messages = buildComposerTransformPrompt({ kind, draft: original, chatMessages, perspective });
 		return Math.round(countMessages(messages, engineModel) * tokenCalibration.ratioFor(engineModel));
-	});
+	}));
 
 	let segments = $derived(phase === 'ready' && kind === 'spellcheck' ? diffWords(original, proposed) : []);
 	let unchanged = $derived(phase === 'ready' && proposed === original);
@@ -123,7 +124,7 @@
 	// One muted line in the head, saying whatever the phase makes worth saying: the price
 	// before a call, the size of the change after one.
 	let headNote = $derived.by(() => {
-		if (phase === 'setup') return estimatedTokens > 0 ? `~${estimatedTokens.toLocaleString()} tokens` : '';
+		if (phase === 'setup') return estimatedTokens === null ? 'Counting tokens…' : estimatedTokens > 0 ? `~${estimatedTokens.toLocaleString()} tokens` : '';
 		if (phase !== 'ready' || kind !== 'spellcheck') return '';
 		if (unchanged) return 'nothing to change';
 		return `${fixCount} ${fixCount === 1 ? 'fix' : 'fixes'}`;

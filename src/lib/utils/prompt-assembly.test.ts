@@ -1,3 +1,7 @@
+import { beforeAll } from 'bun:test';
+import { prepareTokenizer } from '$lib/tokenizer/encodings';
+beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
+
 import { captureScene, type MemoryScene } from '../../../shared/memory-scenes';
 /**
  * Smoke tests for the pure prompt assembler. Run with `bun test`.

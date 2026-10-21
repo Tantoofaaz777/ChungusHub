@@ -1,3 +1,7 @@
+import { beforeAll } from 'bun:test';
+import { prepareTokenizer } from '$lib/tokenizer/encodings';
+beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
+
 import { describe, expect, test } from 'bun:test';
 import { countTokens } from '$lib/tokenizer/count';
 import type { CharacterTraits } from '$lib/types/library';

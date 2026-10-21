@@ -141,48 +141,50 @@
 			const serverConfig = await getServerConfig();
 			bootDataEpoch = serverConfig.dataEpoch;
 			setDataAhead(serverConfig.dataAhead);
-			await themeStore.initialize();
-			// Synced UI preferences (formerly per-device localStorage). Loaded before the
-			// workspace paints so the toolbars open with the user's saved view. All
-			// ride the settings sync spine.
-			await advancedSettingsStore.initialize();
-			// Which request gates hold their prompt for review. Before the workspace paints,
-			// like every other switch a surface reads the moment it is used.
-			await promptHoldStore.initialize();
-			// After the settings it reads: the guard derives its rung from them, and its
-			// outage rule has to be armed before any surface can ask it anything.
-			deleteGuard.initialize();
-			await generalSettingsStore.initialize();
-			// Settings only, not the snapshot listing: the Backups root row shows the
-			// schedule, and the listing is fetched when its page opens.
-			await backupStore.initialize();
-			await regexRulesStore.initialize();
-			// After general settings: the reload respects the configured history cap.
-			await inputHistoryStore.initialize();
-			await backgroundStore.initialize();
-			await featurePromptsStore.initialize();
-			await threadsConfigStore.initialize();
-			await libraryViewPrefs.initialize();
-			await personasViewPrefs.initialize();
-			await lorebookViewPrefs.initialize();
-			await lorebookEntryPrefs.initialize();
-			await presetService.initialize();
-			// Named connections + surface bindings ride the settings spine; load them
-			// before llmService so every surface can resolve who serves it.
-			await connectionStore.initialize();
-			await llmService.initialize();
-			await tokenCalibration.init();
-			// The library + global persona/preset-control values back generation, so
-			// load them before anything resolves the active chat's context.
-			await characterLibraryStore.load();
-			await lorebookStore.load();
-			await lorebookSettingsStore.initialize();
-			// Steering notes are prompt context like the lorebooks above: the composer's
-			// readout and the chat meter both resolve them the moment a chat opens, so
-			// they load before chatStore does.
-			await steeringStore.load();
-			await personaStore.initialize();
-			await presetControlsStore.initialize();
+			await db.withSettingsSnapshot(async () => {
+				await themeStore.initialize();
+				// Synced UI preferences (formerly per-device localStorage). Loaded before the
+				// workspace paints so the toolbars open with the user's saved view. All
+				// ride the settings sync spine.
+				await advancedSettingsStore.initialize();
+				// Which request gates hold their prompt for review. Before the workspace paints,
+				// like every other switch a surface reads the moment it is used.
+				await promptHoldStore.initialize();
+				// After the settings it reads: the guard derives its rung from them, and its
+				// outage rule has to be armed before any surface can ask it anything.
+				deleteGuard.initialize();
+				await generalSettingsStore.initialize();
+				// Settings only, not the snapshot listing: the Backups root row shows the
+				// schedule, and the listing is fetched when its page opens.
+				await backupStore.initialize();
+				await regexRulesStore.initialize();
+				// After general settings: the reload respects the configured history cap.
+				await inputHistoryStore.initialize();
+				await backgroundStore.initialize();
+				await featurePromptsStore.initialize();
+				await threadsConfigStore.initialize();
+				await libraryViewPrefs.initialize();
+				await personasViewPrefs.initialize();
+				await lorebookViewPrefs.initialize();
+				await lorebookEntryPrefs.initialize();
+				await presetService.initialize();
+				// Named connections + surface bindings ride the settings spine; load them
+				// before llmService so every surface can resolve who serves it.
+				await connectionStore.initialize();
+				await llmService.initialize();
+				await tokenCalibration.init();
+				// The library + global persona/preset-control values back generation, so
+				// load them before anything resolves the active chat's context.
+				await characterLibraryStore.load();
+				await lorebookStore.load();
+				await lorebookSettingsStore.initialize();
+				// Steering notes are prompt context like the lorebooks above: the composer's
+				// readout and the chat meter both resolve them the moment a chat opens, so
+				// they load before chatStore does.
+				await steeringStore.load();
+				await personaStore.initialize();
+				await presetControlsStore.initialize();
+			});
 
 			// Boot the global chat list, restoring the last viewed chat (or
 			// creating a fresh blank one when none exist yet).

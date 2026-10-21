@@ -6,7 +6,8 @@ const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		adapter: adapter({
-			fallback: 'index.html'
+			fallback: 'index.html',
+			precompress: true
 		}),
 		// Contracts the client and the Bun server must agree on, in one dependency-free
 		// place both can import (shared/). The server reaches them by relative path,

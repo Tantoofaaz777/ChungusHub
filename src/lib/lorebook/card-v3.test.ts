@@ -1,3 +1,7 @@
+import { beforeAll } from 'bun:test';
+import { prepareTokenizer } from '$lib/tokenizer/encodings';
+beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
+
 import { describe, expect, test } from 'bun:test';
 import { parseLorebook, toCharacterBook, toNativeWorldInfo } from './sillytavern';
 import { resolveLorebooks } from './engine';

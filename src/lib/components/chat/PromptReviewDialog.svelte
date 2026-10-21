@@ -32,6 +32,8 @@
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { llmService } from '$lib/services/llm/provider';
 	import { countTokens, tokenCalibration } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
+	import { requireTokenizer } from '$lib/tokenizer/encodings';
 	import { parsePromptJson, promptToJson, sameMessage, samePrompt } from '$lib/utils/prompt-review';
 	import type { LLMMessage } from '$lib/types/llm';
 
@@ -55,6 +57,7 @@
 	/** Which request the copy above was taken from, and whether it has been measured once. */
 	let loadedId = '';
 	let measured = false;
+	let measuring = $state(false);
 
 	// Before the DOM, not after it: seeding in an ordinary effect would paint one frame of an
 	// empty review over the request that just arrived.
@@ -78,13 +81,21 @@
 	// one thing that could make this panel feel slow. The first pass runs immediately, so the
 	// head opens with real numbers rather than zeros.
 	$effect(() => {
+		if (!pending) { measuring = false; return; }
 		const list = contents;
 		const target = model;
+		measuring = true;
+		const next = tokenEstimate(() => {
+			if (list.some(Boolean)) requireTokenizer(target);
+			return true;
+		});
+		if (next === null) { sizes = []; measured = false; return; }
 		const timer = setTimeout(
 			() => {
 				const ratio = tokenCalibration.ratioFor(target);
 				sizes = list.map((text) => Math.round(countTokens(text, target) * ratio));
 				measured = true;
+				measuring = false;
 			},
 			measured ? 200 : 0
 		);
@@ -236,7 +247,7 @@
 				<p class="meta">
 					{#if model}<span>{model}</span>{/if}
 					<span>{messages.length} message{messages.length === 1 ? '' : 's'}</span>
-					<span>~{total.toLocaleString()} tokens</span>
+					<span>{measuring ? '…' : `~${total.toLocaleString()}`} tokens</span>
 				</p>
 
 				<p class="note">{note}</p>
@@ -248,7 +259,7 @@
 						<PromptReviewCard
 							{message}
 							index={i}
-							tokens={sizes[i] ?? 0}
+							tokens={measuring ? null : sizes[i] ?? 0}
 							collapsed={collapsed[i] ?? true}
 							edited={messageEdited(i)}
 							onToggle={() => (collapsed[i] = !collapsed[i])}

@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type Plugin } from 'vite';
 import { normalizeIp } from './server/access';
 import { ALLOWLIST_ENV, ALLOWLIST_PATH, OPEN_BROWSER, PORT, SECURITY_PATH } from './server/config';
+import { bootAssetManifest } from './scripts/boot-assets';
 
 // Read from the server's own config, so the proxy cannot drift off the port it serves.
 const BACKEND = `http://localhost:${PORT}`;
@@ -189,6 +190,7 @@ export default defineConfig({
 	plugins: [
 		tailwindcss(),
 		sveltekit(),
+		bootAssetManifest(),
 		allowlistGate()
 	],
 	clearScreen: false,

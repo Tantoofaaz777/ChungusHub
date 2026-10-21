@@ -16,6 +16,7 @@
 import type { Message } from '$lib/types/chat';
 import type { LLMCompletionResult, LLMMessage } from '$lib/types/llm';
 import { llmService } from '$lib/services/llm/provider';
+import { withTokenizers } from '$lib/tokenizer/loader';
 import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 import { personaEntryFor, presetForClaim, toPromptCharacter } from '$lib/utils/chat-setup';
@@ -413,7 +414,7 @@ class MemoryStore {
 	}
 
 	private async deps(ctx: ChatCtx): Promise<EngineDeps> {
-		const macroCtx = this.macroContext(ctx);
+		const macroCtx = await withTokenizers(() => this.macroContext(ctx));
 		return {
 			db: memoryDb,
 			llm,

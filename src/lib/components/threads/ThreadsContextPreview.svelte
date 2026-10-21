@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { threadsPrompt, assembleThreadsPrompt } from '$shared/threads/model';
-	import { countTokens, tokenCalibration } from '$lib/tokenizer';
+	import { countTokens, tokenCalibration, withTokenizers } from '$lib/tokenizer';
+	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { panelActivity } from '$lib/components/ui/panelActivity';
 
 	let { count, input, model }: { count: number; input: Parameters<typeof threadsPrompt>[0] | null; model: string } = $props();
@@ -19,7 +20,7 @@
 			recentTokens = cached.recent; fullTokens = cached.full; previousTitles = cached.titles; calculating = false;
 			return;
 		}
-		const recent = snapshot ? countTokens(snapshot.messages.map(message => message.content).join('\n\n'), assignedModel || undefined) : null;
+		const recent = snapshot ? tokenEstimate(() => countTokens(snapshot.messages.map(message => message.content).join('\n\n'), assignedModel || undefined)) : null;
 		recentTokens = recent;
 		let current = true;
 		fullTokens = null; previousTitles = null; calculating = false;
@@ -27,9 +28,12 @@
 		calculating = true;
 		// Selection can change quickly; count only the most recent snapshot after the burst.
 		const timer = setTimeout(() => {
-			void assembleThreadsPrompt({ ...snapshot, countTokens: text => countTokens(text, assignedModel) }).then(result => {
+			void withTokenizers(async () => {
+				const result = await assembleThreadsPrompt({ ...snapshot, countTokens: text => countTokens(text, assignedModel) });
+				return { ...result, tokens: Math.round(countTokens(result.prompt, assignedModel) * ratio) };
+			}).then(result => {
 				if (current) {
-					fullTokens = Math.round(countTokens(result.prompt, assignedModel) * ratio); previousTitles = result.previousTitles;
+					fullTokens = result.tokens; previousTitles = result.previousTitles;
 					cached = { key, recent: recent ?? 0, full: fullTokens, titles: result.previousTitles };
 				}
 			}).catch(() => { if (current) { fullTokens = null; previousTitles = null; } }).finally(() => { if (current) calculating = false; });

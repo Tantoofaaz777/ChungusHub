@@ -16,8 +16,8 @@
 		<h2 id="prompt-tokens-title">Prompt Tokens</h2>
 		{#if chatStore.activeChat}
 			<div class="totals">
-				<span>Total context <strong>~{tokens.total.toLocaleString()}</strong></span>
-				<span>+ your message <strong>{tokens.input.toLocaleString()}</strong></span>
+				<span>Total context <strong>{tokens.loading ? '…' : `~${tokens.total.toLocaleString()}`}</strong></span>
+				<span>+ your message <strong>{tokens.input?.toLocaleString() ?? '…'}</strong></span>
 			</div>
 		{/if}
 	</div>
@@ -32,7 +32,7 @@
 				<div class="bucket" title={bucket.title}>
 					<span class="dot" style:background={bucket.color}></span>
 					<span>{bucket.label}</span>
-					<strong>{bucket.value.toLocaleString()}</strong>
+					<strong>{tokens.loading ? '…' : bucket.value.toLocaleString()}</strong>
 				</div>
 			{/each}
 		</div>

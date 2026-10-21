@@ -248,6 +248,12 @@ export const bodyFonts: FontOption[] = [
 		bundledFont: 'lora'
 	},
 	{
+		id: 'libre-baskerville',
+		label: 'Libre Baskerville (serif)',
+		stack: "'Libre Baskerville', Georgia, serif",
+		bundledFont: 'libre-baskerville'
+	},
+	{
 		id: 'source-serif',
 		label: 'Source Serif (serif)',
 		stack: "'Source Serif 4', Georgia, serif",
@@ -263,6 +269,12 @@ export const bodyFonts: FontOption[] = [
 		id: 'manrope',
 		label: 'Manrope (sans)',
 		stack: "'Manrope', 'Segoe UI', system-ui, sans-serif"
+	},
+	{
+		id: 'poppins',
+		label: 'Poppins (sans)',
+		stack: "'Poppins', 'Segoe UI', system-ui, sans-serif",
+		bundledFont: 'poppins'
 	},
 	{
 		id: 'inter',
@@ -282,6 +294,18 @@ export const uiFonts: FontOption[] = [
 		id: 'manrope',
 		label: 'Manrope',
 		stack: "'Manrope', 'Segoe UI', system-ui, sans-serif"
+	},
+	{
+		id: 'poppins',
+		label: 'Poppins',
+		stack: "'Poppins', 'Segoe UI', system-ui, sans-serif",
+		bundledFont: 'poppins'
+	},
+	{
+		id: 'libre-baskerville',
+		label: 'Libre Baskerville',
+		stack: "'Libre Baskerville', Georgia, serif",
+		bundledFont: 'libre-baskerville'
 	},
 	{
 		id: 'inter',
