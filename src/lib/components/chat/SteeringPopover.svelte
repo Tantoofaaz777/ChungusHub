@@ -113,7 +113,7 @@
 		{#if scoped.length}
 			<div class="stack">
 				{#each scoped as note (note.id)}
-					<div class="row" class:row--on={note.enabled} class:row--off={!note.enabled} use:toggleRow>
+					<div class="row" class:row--off={!note.enabled} use:toggleRow>
 						<Toggle
 							checked={note.enabled}
 							size="sm"
@@ -192,12 +192,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.25rem 0.3rem;
-		border: 1px solid transparent;
 		border-radius: var(--radius-sm);
-	}
-
-	.row--on {
-		border-color: var(--color-accent);
 	}
 
 	.row:hover {

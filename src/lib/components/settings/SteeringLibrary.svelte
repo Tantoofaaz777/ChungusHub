@@ -47,12 +47,6 @@
 		dragging = false;
 		void persistOrder(event.detail.items);
 	}
-	function move(index: number, direction: -1 | 1) {
-		const next = [...list], destination = index + direction;
-		if (busy || destination < 0 || destination >= next.length) return;
-		[next[index], next[destination]] = [next[destination], next[index]];
-		void persistOrder(next);
-	}
 	async function create() {
 		busy = true;
 		try {
@@ -81,8 +75,8 @@
 	</div>
 	{#if list.length}
 		<div class="library-list" use:dragHandleZone={{ items: list, type: 'steering-library', flipDurationMs: 160, dropTargetStyle: {}, delayTouchStart: 180, dragDisabled: busy }} onconsider={consider} onfinalize={finalize}>
-			{#each list as note, index (note.id)}
-				<div class="library-note" class:is-on={note.enabled} class:is-expanded={expandedId === note.id}>
+			{#each list as note (note.id)}
+				<div class="library-note" class:is-expanded={expandedId === note.id}>
 					<div class="library-row">
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<span class="library-grip" use:dragHandle aria-label="Drag to reorder {noteLabel(note)}" title="Drag to reorder"><Icon name="menu" class="w-4 h-4" /></span>
@@ -91,11 +85,7 @@
 							<span class="item-name">{noteLabel(note)}</span>
 							<span class="item-scope">{bindingLabel(note)}{note.mode === 'once' ? ' · Next reply' : ''}</span>
 						</button>
-						<div class="item-actions">
-							<button type="button" class="item-action" aria-label="Move {noteLabel(note)} up" title="Move up" disabled={busy || dragging || index === 0} onclick={() => move(index, -1)}><Icon name="chevronUp" class="w-3.5 h-3.5" /></button>
-							<button type="button" class="item-action" aria-label="Move {noteLabel(note)} down" title="Move down" disabled={busy || dragging || index === list.length - 1} onclick={() => move(index, 1)}><Icon name="chevronDown" class="w-3.5 h-3.5" /></button>
-							<button type="button" class="item-action item-delete" aria-label="Delete {noteLabel(note)}" title="Delete steering" disabled={busy} onclick={() => remove(note)}><Icon name="trash" class="w-3.5 h-3.5" /></button>
-						</div>
+						<button type="button" class="item-action item-delete" aria-label="Delete {noteLabel(note)}" title="Delete steering" disabled={busy} onclick={() => remove(note)}><Icon name="trash" class="w-3.5 h-3.5" /></button>
 					</div>
 					{#if expandedId === note.id}
 						<div class="library-editor" bind:this={editorElement}>
@@ -115,8 +105,7 @@
 	.library-head { justify-content: space-between; gap: .5rem; }
 	.library-add { display:inline-flex; align-items:center; gap:.3rem; font-size:.74rem; color:var(--color-accent); cursor:pointer; }
 	.library-list { padding:.65rem; display:flex; flex-direction:column; gap:.35rem; }
-	.library-note { min-width:0; border:1px solid transparent; border-radius:var(--radius-md); }
-	.library-note.is-on { border-color:var(--color-accent); }
+	.library-note { min-width:0; border-radius:var(--radius-md); }
 	.library-note.is-expanded { background:var(--color-bg-secondary); }
 	.library-row { display:flex; align-items:center; gap:.4rem; padding:.45rem .25rem; }
 	.library-grip { display:flex; color:var(--color-text-muted); cursor:grab; touch-action:none; }
@@ -124,8 +113,7 @@
 	.item-main.is-off { opacity:.5; }
 	.item-name { font-size:.8rem; font-weight:600; color:var(--color-text-primary); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 	.item-scope { font-size:.65rem; color:var(--color-text-muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-	.item-actions { display:flex; flex-shrink:0; gap:.1rem; }
-	.item-action { display:inline-flex; align-items:center; justify-content:center; width:1.65rem; height:1.9rem; border-radius:var(--radius-sm); color:var(--color-text-muted); cursor:pointer; }
+	.item-action { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; width:1.65rem; height:1.9rem; border-radius:var(--radius-sm); color:var(--color-text-muted); cursor:pointer; }
 	.item-action:hover:not(:disabled) { color:var(--color-text-primary); background:var(--color-bg-tertiary); }
 	.item-delete:hover:not(:disabled) { color:var(--color-error); }
 	button:disabled { opacity:.35; cursor:default; }
