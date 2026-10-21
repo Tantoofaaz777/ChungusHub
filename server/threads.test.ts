@@ -1,13 +1,14 @@
 import { beforeAll, afterAll, describe, test, expect } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { removeDatabaseFixture } from './test-fixtures';
 import { emptyAo3Information } from '../shared/threads/ao3';
 import type { ThreadsFeed, ThreadsMessage } from '../shared/threads/types';
 
 let dir:string, db: typeof import('./db').serverDb;
 beforeAll(async()=>{dir=mkdtempSync(join(tmpdir(),'chungus-threads-'));process.env.CHUNGUS_DATA_DIR=dir;db=(await import('./db')).serverDb;db.closeForTests();});
-afterAll(()=>{db.closeForTests();rmSync(dir,{recursive:true,force:true});});
+afterAll(()=>{db.closeForTests();removeDatabaseFixture(dir, 'chungus-threads-');});
 const feed: ThreadsFeed = {title:'Library discussion',post:{username:'bookworm',body:'That door opening!',score:12},comments:[{username:'reader',body:'Who is there?',score:4,replies:[{username:'theorist',body:'Someone unexpected.',score:2,replies:[]}]}]};
 function fixture() {
 	const chatId=crypto.randomUUID();

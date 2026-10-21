@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
+import { removeDatabaseFixture } from './test-fixtures';
 
 let dataDir: string;
 let serverDb: (typeof import('./db'))['serverDb'];
@@ -19,11 +20,7 @@ afterAll(() => {
 	serverDb?.closeForTests();
 	if (previousDataDir === undefined) delete process.env.CHUNGUS_DATA_DIR;
 	else process.env.CHUNGUS_DATA_DIR = previousDataDir;
-	const absolute = resolve(dataDir);
-	if (!absolute.startsWith(resolve(tmpdir()) + sep) || !basename(absolute).startsWith('chungus-settings-snapshot-')) {
-		throw new Error('Unsafe test data path');
-	}
-	rmSync(absolute, { recursive: true, force: true });
+	removeDatabaseFixture(dataDir, 'chungus-settings-snapshot-');
 });
 
 test('bulk settings RPC returns raw rows losslessly and does not include connection credentials', () => {

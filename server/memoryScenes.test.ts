@@ -1,7 +1,8 @@
 import { beforeAll, afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { removeDatabaseFixture } from './test-fixtures';
 import { captureScene, resolveScenes, scenePath, sceneHistory, prepareCompaction, type CompactionLevel, type MemoryScene, type SceneMessage } from '../shared/memory-scenes';
 let dir: string;
 let db: typeof import('./db').serverDb;
@@ -11,7 +12,7 @@ beforeAll(async () => {
  db = (await import('./db')).serverDb;
  db.closeForTests();
 });
-afterAll(() => { db.closeForTests(); rmSync(dir,{recursive:true,force:true}); });
+afterAll(() => { db.closeForTests(); removeDatabaseFixture(dir, 'chungus-scenes-'); });
 function fixture() {
  const chatId = crypto.randomUUID();
  db.insertChat({id:chatId,title:'Scene test',createdAt:1,updatedAt:1,rootMessageId:null,activeLeafId:null});

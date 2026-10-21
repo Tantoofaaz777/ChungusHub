@@ -1,7 +1,8 @@
 import { beforeAll, afterAll, describe, test, expect } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
+import { removeDatabaseFixture } from './test-fixtures';
 import { Database } from 'bun:sqlite';
 import { captureScene, resolveScenes, scenePath, type SceneMessage } from '../shared/memory-scenes';
 
@@ -19,9 +20,7 @@ afterAll(() => {
 	db?.closeForTests();
 	if (previousDataDir === undefined) delete process.env.CHUNGUS_DATA_DIR;
 	else process.env.CHUNGUS_DATA_DIR = previousDataDir;
-	const absolute = resolve(dir);
-	if (!absolute.startsWith(resolve(tmpdir()) + sep) || !basename(absolute).startsWith('chungus-branch-chat-')) throw new Error('Unsafe scratch path');
-	rmSync(absolute, { recursive: true, force: true });
+	removeDatabaseFixture(dir, 'chungus-branch-chat-');
 });
 
 function fixture() {
