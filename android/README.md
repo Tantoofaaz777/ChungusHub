@@ -32,6 +32,11 @@ Na versão 0.1.1, o contêiner nativo consome os insets depois de aplicar a prot
 barras e do teclado. Isso evita que a WebView repita o espaçamento pelas áreas seguras CSS.
 As barras de status e navegação do Android continuam visíveis.
 
+Na versão 0.1.2, a exportação de personagens abre o seletor de destino antes de buscar
+o retrato e gerar o PNG/JSON/CHARX ou ZIP. Cancelar o seletor não gera o arquivo. Depois
+de escolher o destino, a preparação e a gravação continuam com o botão Export ocupado.
+Esse fluxo exige também atualizar a interface na VPS; versões anteriores continuam compatíveis.
+
 ## Abrir no Android Studio
 
 Abra esta pasta `android/` como projeto. O Gradle usa JDK 21 (critério declarado em

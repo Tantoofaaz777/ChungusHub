@@ -1,7 +1,13 @@
 /** Optional Android shell. The same server build runs normally in desktop browsers. */
 declare global {
 	interface Window {
-		ChungusAndroidClient?: { version: number; settings(): Promise<unknown>; back(): boolean };
+		ChungusAndroidClient?: {
+			version: number;
+			settings(): Promise<unknown>;
+			back(): boolean;
+			/** Available since APK 0.1.2: choose the destination before building the file. */
+			save?(filename: string, mime: string, build: () => Promise<Blob>): Promise<void>;
+		};
 		__chungusAndroidBack?: () => boolean;
 	}
 }

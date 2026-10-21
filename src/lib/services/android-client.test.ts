@@ -2,16 +2,22 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { isAndroidClient, installAndroidBack } from './android-client';
+import { exportEntryAsSillyTavern } from './sillyTavernExport';
+import { importSillyTavernCard } from './sillyTavernImport';
+import type { LibraryEntry } from '$lib/types/library';
+import { saveGeneratedDownload } from './libraryExport';
 
 const script = readFileSync(new URL('../../../android/app/src/main/assets/client.js', import.meta.url), 'utf8');
-function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean } = {}) {
+function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean; holdPicker?: boolean } = {}) {
 	let browserClicks = 0, objectId = 0;
+	let pickerReply: (() => void) | undefined;
 	const messages: any[] = [], saved: Buffer[] = [], chunks: Buffer[] = [], revoked: string[] = [];
 	const events = new Map<string, (event: any) => void>();
 	class Anchor {
 		constructor(public href: string, public download = 'export.bin') {}
 		hasAttribute(name: string) { return name === 'download'; }
 		closest() { return this; }
+		remove() {}
 		click() { browserClicks++; }
 	}
 	class BrowserURL extends URL {
@@ -22,7 +28,7 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 	window.top = options.frame ? {} : window;
 	window.ChungusNative = { postMessage(text: string) {
 		const message = JSON.parse(text); messages.push(message);
-		queueMicrotask(() => {
+		const respond = () => {
 			let response: any = { id: message.id, ok: true };
 			if (message.type === 'export.begin') response = options.cancel ? { ...response, ok: false, error: 'cancelled' } : { ...response, transfer: 'file' };
 			if (message.type === 'export.chunk') {
@@ -34,7 +40,9 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 			}
 			if (message.type === 'export.end') saved.push(Buffer.concat(chunks));
 			window.ChungusNative.onmessage({ data: JSON.stringify(response) });
-		});
+		};
+		if (message.type === 'export.begin' && options.holdPicker) pickerReply = respond;
+		else queueMicrotask(respond);
 	} };
 	let fetches = 0;
 	const bytes = Uint8Array.from({ length: 160000 }, (_, i) => i % 256);
@@ -44,6 +52,7 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 		fetch: async (_url: string, init: RequestInit) => { fetches++; expect(init.credentials).toBe('same-origin'); return new Response(bytes); }
 	});
 	return { window, messages, saved, bytes, revoked, Anchor, BrowserURL, events,
+		chooseDestination() { if (!pickerReply) throw new Error('Picker has not opened'); pickerReply(); pickerReply = undefined; },
 		get browserClicks() { return browserClicks; }, get fetches() { return fetches; } };
 }
 async function until(condition: () => boolean) {
@@ -89,4 +98,83 @@ test('external sources and subframes do not get access to native exports', async
 	await h.window.ChungusAndroidClient.download('https://evil.test/export', 'test.zip');
 	expect(h.fetches).toBe(0); expect(h.messages.map(message => message.type)).toEqual(['notice']);
 	expect(harness({ frame: true }).window.ChungusAndroidClient).toBeUndefined();
+});
+
+test('character PNG opens the picker before fetching art, prepares it once, and reimports losslessly', async () => {
+	const h = harness({ holdPicker: true });
+	const previousWindow = globalThis.window, previousFetch = globalThis.fetch;
+	globalThis.window = h.window;
+	const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5xkAAAAASUVORK5CYII=', 'base64');
+	let portraitFetches = 0;
+	globalThis.fetch = (async () => { portraitFetches++; return new Response(png, { headers: { 'content-type': 'image/png' } }); }) as typeof fetch;
+	const entry: LibraryEntry = { id: 'export-test', type: 'character', identity: { name: 'Test character', imageUrl: 'images/characters/test.png' },
+		data: { traits: { description: 'A fictional test character.' }, alternateGreetings: ['Another greeting.'] },
+		isFavorite: false, createdAt: 1, updatedAt: 2 };
+	try {
+		const saving = exportEntryAsSillyTavern(entry, [], 'all', { format: 'png', schema: 'v3' });
+		expect(h.messages).toHaveLength(1);
+		expect(h.messages[0]).toMatchObject({ type: 'export.begin', filename: 'Test character.png', mime: 'image/png', size: -1 });
+		expect(portraitFetches).toBe(0);
+		expect(h.saved).toHaveLength(0);
+		h.chooseDestination();
+		await saving;
+		expect(portraitFetches).toBe(1);
+		expect(h.saved).toHaveLength(1);
+		expect(h.messages.at(-1).type).toBe('export.end');
+		const imported = await importSillyTavernCard(new File([h.saved[0]], 'character.png', { type: 'image/png' }));
+		expect(imported.character.name).toBe(entry.identity.name);
+		expect(imported.character.traits.description).toBe(entry.data.traits.description);
+		expect(imported.character.alternateGreetings).toEqual(entry.data.alternateGreetings);
+		expect(Buffer.from(await imported.imageFile!.arrayBuffer())).toEqual(png);
+	} finally {
+		globalThis.fetch = previousFetch;
+		if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
+	}
+});
+
+test('cancelling a generated export never runs its producer', async () => {
+	const h = harness({ cancel: true });
+	let builds = 0;
+	await h.window.ChungusAndroidClient.save('character.png', 'image/png', async () => { builds++; return new Blob([h.bytes]); });
+		expect(builds).toBe(0);
+		expect(h.messages.map(message => message.type)).toEqual(['export.begin']);
+		expect(h.saved).toHaveLength(0);
+});
+
+test('generation failure aborts the chosen file and reaches the export UI', async () => {
+	const h = harness();
+	await expect(h.window.ChungusAndroidClient.save('character.png', 'image/png', async () => { throw new Error('Image fetch failed'); })).rejects.toThrow('Image fetch failed');
+		expect(h.messages.map(message => message.type)).toEqual(['export.begin', 'export.abort']);
+		expect(h.saved).toHaveLength(0);
+});
+
+test('a generated file still uses bounded binary chunks and aborts failed writes', async () => {
+	const h = harness(), blob = new Blob([h.bytes]);
+	await h.window.ChungusAndroidClient.save('large.png', 'image/png', async () => blob);
+		expect(h.saved[0]).toEqual(Buffer.from(h.bytes));
+	const failed = harness({ failChunk: true });
+	await expect(failed.window.ChungusAndroidClient.save('large.png', 'image/png', async () => blob)).rejects.toThrow('Disk full');
+		expect(failed.messages.map(message => message.type)).toEqual(['export.begin', 'export.chunk', 'export.abort']);
+		expect(failed.saved).toHaveLength(0);
+});
+
+test('older Android clients retain the anchor-download fallback', async () => {
+	const h = harness(), previousWindow = globalThis.window, previousDocument = globalThis.document, previousURL = globalThis.URL;
+	const { save: _save, ...oldClient } = h.window.ChungusAndroidClient;
+	h.window.ChungusAndroidClient = oldClient;
+	globalThis.window = h.window;
+	globalThis.URL = h.BrowserURL;
+	globalThis.document = { createElement: () => new h.Anchor(''), body: { appendChild() {} } } as any;
+	try {
+		let builds = 0;
+		await saveGeneratedDownload('legacy.png', 'image/png', async () => { builds++; return new Blob([h.bytes], { type: 'image/png' }); });
+		await until(() => h.saved.length === 1);
+		expect(builds).toBe(1);
+		expect(h.messages[0]).toMatchObject({ type: 'export.begin', filename: 'legacy.png', size: h.bytes.length });
+		expect(h.saved[0]).toEqual(Buffer.from(h.bytes));
+	} finally {
+		globalThis.URL = previousURL;
+		if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
+		if (previousDocument === undefined) delete (globalThis as any).document; else globalThis.document = previousDocument;
+	}
 });

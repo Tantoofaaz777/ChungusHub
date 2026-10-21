@@ -19,7 +19,7 @@ import {
 	makePlaceholderPng,
 	reencodeToPng,
 	sanitizeFilename,
-	triggerDownload
+	saveGeneratedDownload
 } from '$lib/services/libraryExport';
 import type { ExportedLibraryEntry } from '$lib/services/libraryExport';
 import { buildTextChunk, encodeBase64Utf8, insertTextChunk } from '$lib/services/pngText';
@@ -223,11 +223,15 @@ async function buildSillyTavernCardFile(
 	format: ExportFormat,
 	opts?: ExportOptions
 ): Promise<CardFile> {
+	// A V3 PNG may need this both as its visible portrait and as a portable icon asset.
+	// Cache only within this export, so fetching/re-encoding happens once without stale art.
+	let basePng: Promise<Uint8Array> | undefined;
+	const portrait = () => basePng ??= buildBasePng(entry);
 	const schema = format === 'charx' ? 'v3' : opts?.schema ?? 'v2';
 	const card = schema === 'v3'
 		? buildCharacterCardV3(entry, versions, selection, opts?.lorebooks)
 		: buildSillyTavernCard(entry, versions, selection, opts?.lorebooks);
-	if (card.spec === 'chara_card_v3') await includeNativeAssets(card, entry, resolveSurfaceData(entry, versions, selection).cardMetadata);
+	if (card.spec === 'chara_card_v3') await includeNativeAssets(card, entry, resolveSurfaceData(entry, versions, selection).cardMetadata, portrait);
 	if (format === 'charx' && card.spec === 'chara_card_v3') {
 		return { data: new Uint8Array(await buildCharx(card).arrayBuffer()), mime: 'application/zip', ext: 'charx' };
 	}
@@ -238,15 +242,14 @@ async function buildSillyTavernCardFile(
 			ext: 'json'
 		};
 	}
-	const basePng = await buildBasePng(entry);
-	return { data: embedCardInPng(basePng, card), mime: 'image/png', ext: 'png' };
+	return { data: embedCardInPng(await portrait(), card), mime: 'image/png', ext: 'png' };
 }
 
-async function includeNativeAssets(card: CharacterCardV3, entry: LibraryEntry, metadata: LibraryEntryData['cardMetadata']): Promise<void> {
+async function includeNativeAssets(card: CharacterCardV3, entry: LibraryEntry, metadata: LibraryEntryData['cardMetadata'], portrait: () => Promise<Uint8Array>): Promise<void> {
 	const assets = card.data.assets ?? [{ type: 'icon', uri: 'ccdefault:', name: 'main', ext: 'png' }];
 	const main = assets.find((asset) => asset.type === 'icon' && asset.name === 'main');
 	if (!main || main.uri === 'ccdefault:' || (metadata?.portraitPath && metadata.portraitPath !== entry.identity.imageUrl)) {
-		const png = await buildBasePng(entry);
+		const png = await portrait();
 		const icon = { type: 'icon', name: 'main', ext: 'png', uri: bytesDataUrl(stripCardChunks(png), 'image/png') };
 		if (main) Object.assign(main, icon); else assets.unshift(icon);
 	}
@@ -280,8 +283,11 @@ export async function exportEntryAsSillyTavern(
 	selection: VersionSelection,
 	opts: ExportOptions
 ): Promise<void> {
-	const { data, mime, ext } = await buildSillyTavernCardFile(entry, versions, selection, opts.format, opts);
-	triggerDownload(`${exportBaseName(entry)}.${ext}`, new Blob([data as BlobPart], { type: mime }));
+	const mime = opts.format === 'json' ? 'application/json' : opts.format === 'charx' ? 'application/zip' : 'image/png';
+	await saveGeneratedDownload(`${exportBaseName(entry)}.${opts.format}`, mime, async () => {
+		const file = await buildSillyTavernCardFile(entry, versions, selection, opts.format, opts);
+		return new Blob([file.data as BlobPart], { type: file.mime });
+	});
 }
 
 /** Export several cards in a ZIP, including every character version. */
@@ -289,12 +295,14 @@ export async function exportEntriesAsSillyTavernZip(
 	targets: ExportTarget[],
 	opts: ExportOptions
 ): Promise<void> {
-	const files: ZipEntry[] = [];
-	const usedBases = new Set<string>();
-	for (const { entry, versions } of targets) {
-		files.push(...(await buildCharacterFiles(entry, versions, 'all', opts, usedBases)));
-	}
-	triggerDownload('characters.zip', createZip(files));
+	await saveGeneratedDownload('characters.zip', 'application/zip', async () => {
+		const files: ZipEntry[] = [];
+		const usedBases = new Set<string>();
+		for (const { entry, versions } of targets) {
+			files.push(...(await buildCharacterFiles(entry, versions, 'all', opts, usedBases)));
+		}
+		return createZip(files);
+	});
 }
 
 /** One card per character in a bulk archive; V3 assets travel inside the card. */

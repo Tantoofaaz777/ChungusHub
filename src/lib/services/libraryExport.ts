@@ -13,6 +13,7 @@
 
 import type { LibraryEntry } from '$lib/types/library';
 import { imageService } from '$lib/services/imageService';
+import { isAndroidClient } from '$lib/services/android-client';
 
 /** A character version as it travels in an export: content + name, ids kept only to
  *  mark which one was active (importers mint fresh ids). */
@@ -146,4 +147,14 @@ export function triggerDownload(filename: string, blob: Blob): void {
 	anchor.click();
 	anchor.remove();
 	URL.revokeObjectURL(url);
+}
+
+/** Android chooses the destination first; browsers and older APKs build then download. */
+export async function saveGeneratedDownload(filename: string, mime: string, build: () => Promise<Blob>): Promise<void> {
+	const client = isAndroidClient() ? window.ChungusAndroidClient : undefined;
+	if (client?.save) {
+		await client.save(filename, mime, build);
+		return;
+	}
+	triggerDownload(filename, await build());
 }

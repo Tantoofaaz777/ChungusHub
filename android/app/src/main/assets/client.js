@@ -22,6 +22,38 @@
   URL.createObjectURL = blob => { const url = create(blob); if (blob instanceof Blob) blobs.set(url, blob); return url; };
   URL.revokeObjectURL = url => { blobs.delete(url); revoke(url); };
 
+  async function writeStream(transfer, reader) {
+    let offset = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (let i = 0; i < value.length; i += 49152) {
+        const chunk = value.subarray(i, i + 49152);
+        const data = btoa(String.fromCharCode(...chunk));
+        await request('export.chunk', { transfer, offset, data });
+        offset += chunk.length;
+      }
+    }
+    await request('export.end', { transfer });
+  }
+
+  // The destination must be chosen before portrait fetches, PNG encoding or ZIP work.
+  // Old server builds keep using download(); new ones can defer their file producer here.
+  async function save(filename, mime, build) {
+    let transfer, reader;
+    try {
+      const started = await request('export.begin', { filename, mime, size: -1 });
+      transfer = started.transfer;
+      const blob = await build();
+      if (!(blob instanceof Blob)) throw Error('The export did not produce a file');
+      reader = blob.stream().getReader();
+      await writeStream(transfer, reader);
+    } catch (error) {
+      if (transfer) await request('export.abort', { transfer }).catch(() => {});
+      if (error.message !== 'cancelled') throw error;
+    } finally { if (reader) await reader.cancel().catch(() => {}); }
+  }
+
   async function download(url, filename) {
     let transfer, reader;
     try {
@@ -37,18 +69,7 @@
       const mime = blob?.type || response.headers.get('content-type')?.split(';')[0] || 'application/octet-stream';
       const started = await request('export.begin', { filename: filename || 'chungus-export', mime, size: blob?.size ?? -1 });
       transfer = started.transfer;
-      let offset = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (let i = 0; i < value.length; i += 49152) {
-          const chunk = value.subarray(i, i + 49152);
-          const data = btoa(String.fromCharCode(...chunk));
-          await request('export.chunk', { transfer, offset, data });
-          offset += chunk.length;
-        }
-      }
-      await request('export.end', { transfer });
+      await writeStream(transfer, reader);
     } catch (error) {
       if (transfer) await request('export.abort', { transfer }).catch(() => {});
       if (error.message !== 'cancelled') await request('notice', { message: 'Could not save the file. Please try exporting it again.' }).catch(() => {});
@@ -69,6 +90,7 @@
     version: 1,
     settings: () => request('settings'),
     download,
+    save,
     back: () => {
       if (typeof window.__chungusAndroidBack === 'function') return window.__chungusAndroidBack();
       // Older server builds still get modal dismissal; leave the native task safely otherwise.

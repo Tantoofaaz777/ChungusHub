@@ -22,6 +22,13 @@ The APK and frontend can update separately, but the full back integration needs 
 frontend deployed on the server. The shell includes a limited modal fallback for older builds.
 No wake lock or background service is introduced: server generation already outlives a socket.
 
+Since APK 0.1.2, the optional `save(filename, mime, producer)` adapter opens the destination
+picker before invoking the web file producer. Character export uses `saveGeneratedDownload`
+for a single PNG/JSON/CHARX or a bulk ZIP. Cancelling the picker does not fetch or encode art;
+producer failures abort and delete the selected partial document, then reach the existing
+export dialog error handler. Older APKs and normal browsers keep the anchor-download path.
+The per-export portrait promise is reused for the PNG canvas and V3 native icon asset.
+
 The native root applies system-bar, display-cutout and IME padding and returns consumed
 insets. Descendant WebViews must not apply the same insets a second time through their
 viewport/CSS safe-area values. System bars stay visible; native UI strings are English.
