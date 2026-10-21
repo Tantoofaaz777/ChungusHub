@@ -791,7 +791,6 @@
 			<TransformPanel
 				kind={transformKind}
 				original={transformOriginal}
-				chatId={chatStore.activeChatId}
 				chatMessages={activePath}
 				onClose={() => (transformKind = null)}
 				onApprove={applyTransform}
@@ -933,8 +932,7 @@
 							placement="center"
 							bare
 						>
-							<!-- The engine entries wear their engine's own registry icon
-							     (feather / checkCircle / mask) and the two Insert rows wear the
+							<!-- Spellcheck wears its registry icon (checkCircle), and the two Insert rows wear the
 							     role glyphs MessageAvatar draws, so a row reads the same here as it
 							     does in the transcript. -->
 							<div class="composer-dialog-menu py-1">
@@ -997,40 +995,22 @@
 									<Icon name="sparkles" class="w-4 h-4" />
 									Insert LLM message
 								</button>
-								{#if featurePromptsStore.spellcheckEnabled || featurePromptsStore.impersonateEnabled}
+								{#if featurePromptsStore.spellcheckEnabled}
 									<div class="composer-menu-sep"></div>
-									{#if featurePromptsStore.spellcheckEnabled}
-										<button
-											type="button"
-											class="composer-menu-item"
-											disabled={isStreaming || transformOpen || !content.trim()}
-											title={transformOpen
-												? 'Finish the one already open first'
-												: content.trim()
-													? 'Fix spelling and grammar, then review the changes before they apply'
-													: 'Type a draft first'}
-											onclick={() => startTransform('spellcheck')}
-										>
-											<Icon name="checkCircle" class="w-4 h-4" />
-											Spellcheck draft
-										</button>
-									{/if}
-									{#if featurePromptsStore.impersonateEnabled}
-										<button
-											type="button"
-											class="composer-menu-item"
-											disabled={isStreaming || transformOpen || !content.trim()}
-											title={transformOpen
-												? 'Finish the one already open first'
-												: content.trim()
-													? 'Expand the draft into a full in-character message, then review it'
-													: 'Type a draft first'}
-											onclick={() => startTransform('impersonate')}
-										>
-											<Icon name="mask" class="w-4 h-4" />
-											Impersonate draft
-										</button>
-									{/if}
+									<button
+										type="button"
+										class="composer-menu-item"
+										disabled={isStreaming || transformOpen || !content.trim()}
+										title={transformOpen
+											? 'Finish the one already open first'
+											: content.trim()
+												? 'Fix spelling and grammar, then review the changes before they apply'
+												: 'Type a draft first'}
+										onclick={() => startTransform('spellcheck')}
+									>
+										<Icon name="checkCircle" class="w-4 h-4" />
+										Spellcheck draft
+									</button>
 								{/if}
 								<div class="composer-menu-sep"></div>
 								<button
@@ -1098,6 +1078,24 @@
 								<SteeringPopover bind:this={steeringPopover} />
 							</Dialog>
 						</div>
+					{/if}
+
+					{#if featurePromptsStore.impersonateEnabled && chatStore.activeChatId}
+						<button
+							type="button"
+							class="composer-icon-btn"
+							class:composer-icon-btn--active={transformKind === 'impersonate'}
+							disabled={isStreaming || transformOpen || !content.trim()}
+							aria-label="Impersonate"
+							title={transformOpen
+								? 'Finish the one already open first'
+								: content.trim()
+									? 'Impersonate: expand the draft into a full in-character message'
+									: 'Impersonate: type a draft first'}
+							onclick={() => startTransform('impersonate')}
+						>
+							<Icon name="mask" class="w-4 h-4" />
+						</button>
 					{/if}
 
 					<div class="composer-feature-divider" aria-hidden="true"></div>

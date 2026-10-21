@@ -1,6 +1,6 @@
 /**
- * Tests for the chat feature-state normalizer (the steering reuse history +
- * impersonate). Run with `bun test`. Pure logic only (no store, no Svelte runtime)
+ * Tests for the chat feature-state normalizer. Run with `bun test`.
+ * Pure logic only (no store, no Svelte runtime)
  * since both the chatStore reactive path and the (db-sourced) generation path call this
  * same function and must agree on what a corrupt or missing value degrades to.
  * The steering notes themselves live in their own table; see steering.test.ts.
@@ -87,7 +87,6 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 		expect(normalizeChatFeatureState(raw)).toEqual({
 			authorsNote: { text: '' },
 			steeringHistory: ['earlier note'],
-			impersonatePerspective: 'third',
 			scene: null,
 			connection: null,
 			persona: null,
@@ -101,7 +100,6 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 		const value = {
 			authorsNote: { text: '' },
 			steeringHistory: ['x'],
-			impersonatePerspective: 'second' as const,
 			scene: null,
 			connection: null,
 			persona: null,
@@ -124,7 +122,6 @@ describe('normalizeChatFeatureState: the JSON column value', () => {
 		expect(result).toEqual({
 			authorsNote: { text: '' },
 			steeringHistory: ['earlier note'],
-			impersonatePerspective: 'third',
 			scene: null,
 			connection: null,
 			persona: null,
@@ -161,7 +158,6 @@ describe('normalizeChatFeatureState: scene', () => {
 		// drops on the way out is a chat that quietly loses half its scene.
 		const state = normalizeChatFeatureState({
 			steeringHistory: ['a note'],
-			impersonatePerspective: 'second',
 			scene: {
 				enabled: true,
 				background: { path: 'images/backgrounds/dusk.png', dim: 0.5, blur: 6 }
@@ -370,15 +366,14 @@ describe('normalizeChatFeatureState: steeringHistory', () => {
 	});
 });
 
-describe('normalizeChatFeatureState: impersonatePerspective', () => {
-	test('passes through a valid perspective', () => {
-		expect(normalizeChatFeatureState({ impersonatePerspective: 'second' }).impersonatePerspective).toBe('second');
-	});
-
-	test('an invalid perspective whitelists down to first', () => {
-		expect(normalizeChatFeatureState({ impersonatePerspective: 'omniscient' }).impersonatePerspective).toBe(
-			'first'
-		);
+describe('normalizeChatFeatureState: retired impersonation settings', () => {
+	test('ignores legacy perspectives while retaining the supported chat state', () => {
+		for (const impersonatePerspective of ['first', 'second', 'third', 'omniscient', null]) {
+			const state = normalizeChatFeatureState({ impersonatePerspective, authorsNote: { text: 'Keep this note.' } });
+			expect('impersonatePerspective' in state).toBe(false);
+			expect(state.authorsNote.text).toBe('Keep this note.');
+			expect(normalizeChatFeatureState(JSON.stringify(state))).toEqual(state);
+		}
 	});
 });
 

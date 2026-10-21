@@ -19,7 +19,7 @@
 	 * utils/chat-search.ts for why nothing here touches the message markup, and app.css
 	 * ("Find in chat") for the two ::highlight() rules.
 	 */
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { chatSearch } from '$lib/stores/chatSearch.svelte';
 	import { chatCursor } from '$lib/stores/chatCursor.svelte';
@@ -282,25 +282,31 @@
 		};
 	});
 
-	// The hit the reader is on is also where the KEYBOARD is in the story. MARKED and never
-	// taken: this runs while they are still typing in the field above, and a mark that moved
-	// focus would empty that box on the first match. Closing the bar is what hands the keyboard
-	// over (`close` below), and that is what makes find-and-edit one gesture instead of a
-	// search followed by a hunt: type, Escape, E.
+	// A search hit is a temporary mark, never a focus request. Track the mark this bar owns
+	// so every way of closing it clears the ring without opening the mobile keyboard.
+	let markedMessageId: string | null = null;
+	function clearSearchMark(): void {
+		untrack(() => {
+			if (markedMessageId && chatCursor.id === markedMessageId) chatCursor.clear();
+			markedMessageId = null;
+		});
+	}
+	onDestroy(clearSearchMark);
 	$effect(() => {
 		const active = current >= 0 ? matches[current] : undefined;
-		if (!active) return;
+		if (!active) { clearSearchMark(); return; }
 		const start = active.startContainer;
 		const from = start.nodeType === Node.TEXT_NODE ? start.parentElement : (start as Element);
 		const host = from?.closest<HTMLElement>('[id^="msg-"]');
-		if (host) chatCursor.mark(host.id.slice('msg-'.length));
+		if (host) {
+			markedMessageId = host.id.slice('msg-'.length);
+			chatCursor.mark(markedMessageId);
+		} else clearSearchMark();
 	});
 
-	/** Closing hands the keyboard to the turn the search left the reader on, so the transcript's
-	 *  own keys act on what was found rather than on wherever the story happens to end. */
+	/** Keep the reading position; unmount cleanup releases the temporary search mark. */
 	function close(): void {
 		chatSearch.close();
-		chatCursor.take();
 	}
 
 	// Every open request focuses the field and selects what's in it, so re-triggering the

@@ -17,7 +17,7 @@
  */
 
 import type { LLMMessage } from '$lib/types/llm';
-import type { Message, ImpersonatePerspective } from '$lib/types/chat';
+import type { Message } from '$lib/types/chat';
 import { llmService } from '$lib/services/llm/provider';
 import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 import { promptHoldStore } from '$lib/stores/promptHold.svelte';
@@ -30,30 +30,28 @@ export interface ComposerTransformParams {
 	kind: 'spellcheck' | 'impersonate';
 	draft: string;
 	chatMessages: Message[];
-	/** Impersonate only; defaults to 'first' when omitted. */
-	perspective?: ImpersonatePerspective;
 	signal?: AbortSignal;
 }
 
 /** Exported so the panel's cost estimate is counted off the exact messages a real run
  *  would send, and the two can never drift. */
 export function buildComposerTransformPrompt(params: ComposerTransformParams): LLMMessage[] {
-	const { kind, draft, chatMessages, perspective = 'first' } = params;
+	const { kind, draft, chatMessages } = params;
 
 	const template = featurePromptsStore.promptFor(kind);
 	// Global engine macros first ({{char}}/{{user}}/etc. from live story state), the flow's
-	// own draft/perspective values on top, the same two-phase idiom the opening scene uses
-	// for {{idea}}. Neither key is registered in macros.ts; they're ad-hoc flow values.
-	// Impersonate is a story generation of its own, so lore entries limited to it fire here
-	// and nowhere else. Spellcheck reads the same context under the plain send's terms.
+	// own draft value on top, the same two-phase idiom the opening scene uses
+	// for {{idea}}. This is an ad-hoc flow value, not a registered engine macro.
+	// Impersonate reads only history and live identities: the roleplay preset and its
+	// controls/lorebooks must not influence this engine's independent prompt.
+	// Spellcheck keeps its existing macro context under the plain send's terms.
 	const ctx = buildLiveMacroContext({
 		chatMessages,
-		lorebookTrigger: kind === 'impersonate' ? 'impersonate' : undefined
+		historyOnly: kind === 'impersonate'
 	});
 	const filled = substitute(template, {
 		...resolveMacroValues(template, ctx),
-		draft,
-		perspective
+		draft
 	});
 
 	// The shape (Impersonate's role-swapped history + final-user-turn template, and the

@@ -40,6 +40,8 @@ export interface LiveMacroContextOptions {
 	/** Which generation this context serves, for entries that fire on only some kinds.
 	 *  Absent = a plain send. */
 	lorebookTrigger?: LorebookTrigger;
+	/** Impersonation uses history and live identities only, independently of the RP preset. */
+	historyOnly?: boolean;
 }
 
 export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): MacroContext {
@@ -55,6 +57,15 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 		: null;
 	const character = toPromptCharacter(characterEntry, characterData);
 	const chatMessages = sceneHistory(opts.chatMessages ?? chatStore.currentChatState?.activePath ?? [], memoryStore.scenes);
+	const persona = chatPersonaEntry(chatStore.activeChat);
+	const historyContext: MacroContext = {
+		resolvedPersona: toPromptCharacter(persona),
+		resolvedCharacters: character ? [character] : [],
+		chatMessages
+	};
+	// No preset, control values, author notes, lorebook scan or primary-connection budget
+	// is consulted for this path. The engine sends its own template after these turns.
+	if (opts.historyOnly) return historyContext;
 	const preset = chatPreset(chatStore.activeChat);
 	// Same budget derivation as buildMacroContext (share of the prompt budget, counted with
 	// the active model's encoding), so these surfaces inject the same block the prompt does.
@@ -67,13 +78,10 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 					count: (text: string) => countTokens(text, promptTarget.model)
 				}
 			: undefined;
-	const persona = chatPersonaEntry(chatStore.activeChat);
 	const base: MacroContext = {
+		...historyContext,
 		authorsNote: chatAuthorsNote(chatStore.activeChat),
 		cardLorePositions: cardLorePositions(preset?.items ?? []),
-		resolvedPersona: toPromptCharacter(persona),
-		resolvedCharacters: character ? [character] : [],
-		chatMessages,
 		controls: preset?.controls ?? [],
 		customFields: presetControlsStore.valuesFor(preset?.id ?? null),
 		memory: opts.memory ?? ''

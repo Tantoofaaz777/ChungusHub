@@ -5,8 +5,7 @@ import {
 	pushSteeringHistoryEntry,
 	withLorebookClaim,
 	withLorebookMute,
-	type ChatFeatureState,
-	type ImpersonatePerspective
+	type ChatFeatureState
 } from '$lib/types/chat';
 import { db } from '$lib/services/database';
 import { llmStatus, stopGeneration } from '$lib/services/transport';
@@ -1018,9 +1017,6 @@ class ChatStore {
 		});
 	}
 
-	async setImpersonatePerspective(chatId: string, perspective: ImpersonatePerspective): Promise<void> {
-		return this.updateChatFeatureState(chatId, { impersonatePerspective: perspective });
-	}
 }
 
 export const chatStore = new ChatStore();

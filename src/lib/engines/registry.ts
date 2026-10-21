@@ -166,7 +166,7 @@ export const ENGINES: EngineDef[] = [
 			{
 				key: 'impersonate',
 				label: 'Expansion prompt',
-				hint: 'Sent as the final user turn after the chat history, which arrives with its roles swapped so the model already sits in your seat. {{draft}} is the composer text, {{perspective}} is first, second or third person.'
+				hint: 'Uses only chat history and this prompt, independently of the roleplay preset. {{draft}} is the composer text. Define the narrative person and writing style directly in this prompt.'
 			}
 		],
 		enabled: {

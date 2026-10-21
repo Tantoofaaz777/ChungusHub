@@ -283,6 +283,11 @@ export const bodyFonts: FontOption[] = [
 		bundledFont: 'inter'
 	},
 	{
+		id: 'jetbrains-mono',
+		label: 'JetBrains Mono (mono)',
+		stack: "'JetBrains Mono', ui-monospace, monospace"
+	},
+	{
 		id: 'system',
 		label: 'System default',
 		stack: "system-ui, 'Segoe UI', sans-serif"

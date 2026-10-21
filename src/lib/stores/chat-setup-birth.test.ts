@@ -617,7 +617,7 @@ describe('one blob, every feature', () => {
 
 		await chatStore.updateChatFeatureState(chatId, { connection: OWN_CONNECTION });
 		await chatStore.pushSteeringHistory(chatId, ['Colder.', 'Slower.']);
-		await chatStore.setImpersonatePerspective(chatId, 'second');
+		await chatStore.updateChatFeatureState(chatId, { authorsNote: { text: 'Keep the scene grounded.' } });
 		await chatStore.updateChatFeatureState(chatId, { persona: otherPersonaId });
 		await chatStore.updateChatFeatureState(chatId, {
 			scene: { enabled: true, background: { type: 'none' } } as never
@@ -627,14 +627,14 @@ describe('one blob, every feature', () => {
 		expect(held.connection).toBe(OWN_CONNECTION);
 		expect(held.persona).toBe(otherPersonaId);
 		expect(held.preset).toBe(OWN_PRESET);
-		expect(held.impersonatePerspective).toBe('second');
+		expect(held.authorsNote.text).toBe('Keep the scene grounded.');
 		expect(held.steeringHistory).toEqual(['Slower.', 'Colder.']);
 		expect(held.scene?.enabled).toBe(true);
 	});
 
 	test('a blob written before a chat could claim anything reads as following the app', async () => {
 		// The whole reason none of this needed a migration: a missing key is "no claim", and a
-		// later write must carry the old keys forward rather than replacing the blob.
+		// later write must carry supported old keys forward rather than replacing the blob.
 		const chatId = await chatStore.createChat({ characterId: await character() });
 		const old = JSON.stringify({ steeringHistory: ['Older note.'], impersonatePerspective: 'third', scene: null });
 		stored(chatId).featureState = old;
@@ -649,7 +649,7 @@ describe('one blob, every feature', () => {
 
 		const held = claims(chatId);
 		expect(held.preset).toBe(OWN_PRESET);
-		expect(held.impersonatePerspective).toBe('third');
+		expect('impersonatePerspective' in held).toBe(false);
 		expect(held.steeringHistory).toEqual(['Older note.']);
 	});
 });

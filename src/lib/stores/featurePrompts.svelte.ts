@@ -46,7 +46,7 @@ const DEFAULT_SPELLCHECK_PROMPT = `Correct the spelling, grammar, punctuation, a
 // Sent as the FINAL user turn, after the chat history with its roles swapped (the service
 // seats the model on the user's side structurally; see composerTransformService). Task and
 // draft close the prompt so neither decays with chat length.
-const DEFAULT_IMPERSONATE_PROMPT = `((OOC: You are playing {{user}} in this roleplay, and it is {{user}}'s turn. Expand the draft below into {{user}}'s next message, in {{perspective}} person: keep the draft's intent, match the voice of {{user}}'s earlier messages, and never write {{char}}'s dialogue, actions, or thoughts. Reply with only the message text.
+const DEFAULT_IMPERSONATE_PROMPT = `((OOC: You are playing {{user}} in this roleplay, and it is {{user}}'s turn. Expand the draft below into {{user}}'s next message: keep the draft's intent, match the voice and narrative person of {{user}}'s earlier messages, and never write {{char}}'s dialogue, actions, or thoughts. Reply with only the message text.
 
 Draft: {{draft}}))`;
 

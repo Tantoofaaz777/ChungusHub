@@ -77,9 +77,6 @@ export interface ChatSettings {
 	maxTokens?: number;
 }
 
-/** Grammatical person the Impersonate feature writes the user's turn in. */
-export type ImpersonatePerspective = 'first' | 'second' | 'third';
-
 /**
  * A chat's own background, kept separately from the app-wide background.
  *
@@ -91,7 +88,7 @@ export interface ChatScene {
 	background: BackgroundConfig;
 }
 
-/** Per-chat state for the composer's steering + impersonate features and this chat's own
+/** Per-chat state for the composer features and this chat's own
  *  scene. Persisted on Chat.featureState as an opaque JSON string. Always read through
  *  normalizeChatFeatureState, never constructed by hand except via
  *  DEFAULT_CHAT_FEATURE_STATE.
@@ -106,7 +103,6 @@ export interface ChatFeatureState {
 	/** The last 10 consumed one-shot steering texts, most-recent first, for quick reuse
 	 *  from the composer's popover. */
 	steeringHistory: string[];
-	impersonatePerspective: ImpersonatePerspective;
 	/** Null while this chat has never been given a scene of its own. */
 	scene: ChatScene | null;
 	/** The connection this story sends on, claimed from the composer's setup chip. A plain
@@ -145,7 +141,6 @@ function defaultChatFeatureState(): ChatFeatureState {
 	return {
 		authorsNote: { text: '' },
 		steeringHistory: [],
-		impersonatePerspective: 'first',
 		scene: null,
 		connection: null,
 		persona: null,
@@ -174,10 +169,6 @@ export function chatAuthorsNote(chat: Pick<Chat, 'featureState'> | null | undefi
 function normalizeSteeringHistory(raw: unknown): string[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0).slice(0, 10);
-}
-
-function normalizeImpersonatePerspective(raw: unknown): ImpersonatePerspective {
-	return raw === 'first' || raw === 'second' || raw === 'third' ? raw : 'first';
 }
 
 /** A claimed id, or null for "follow the app". Absent in every blob written before a chat
@@ -227,7 +218,6 @@ export function normalizeChatFeatureState(raw: unknown): ChatFeatureState {
 	return {
 		authorsNote: normalizeAuthorsNote(obj.authorsNote),
 		steeringHistory: normalizeSteeringHistory(obj.steeringHistory),
-		impersonatePerspective: normalizeImpersonatePerspective(obj.impersonatePerspective),
 		scene: normalizeChatScene(obj.scene),
 		connection: normalizeClaimedId(obj.connection),
 		persona: normalizeClaimedId(obj.persona),

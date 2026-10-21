@@ -61,6 +61,11 @@ class ChatCursorStore {
 		if (this.id) this.takeNonce++;
 	}
 
+	/** Drop a temporary mark without focusing the composer or moving the transcript. */
+	clear(): void {
+		this.#id = null;
+	}
+
 	/**
 	 * Move by turns.
 	 *
@@ -108,7 +113,7 @@ class ChatCursorStore {
 
 	/** Hand the keyboard back to the composer. */
 	toComposer(): void {
-		this.#id = null;
+		this.clear();
 		this.composerNonce++;
 	}
 }

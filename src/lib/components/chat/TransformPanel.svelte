@@ -6,9 +6,8 @@
 	 * context for judging what the model proposes.
 	 *
 	 * NOTHING here spends a token without a press. Impersonate opens in `setup` having
-	 * called nothing, and picking a perspective only records the choice. The button beside
-	 * it is the single thing that calls a model, and it carries the estimate of what that
-	 * call will cost, counted off the exact messages the run will send. Spellcheck has
+	 * called nothing. Its button calls the model and shows the estimated cost, counted
+	 * off the exact messages the run will send. Spellcheck has
 	 * nothing to choose, so its menu row was the press and it opens mid-run; stopping it
 	 * lands in the same `setup`, which is why that phase exists for both kinds.
 	 *
@@ -26,9 +25,6 @@
 	import { onMount } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
 	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
 	import { engineById } from '$lib/engines/registry';
 	import { failureText } from '$lib/stores/toast.svelte';
@@ -37,14 +33,12 @@
 	import { countMessages, tokenCalibration } from '$lib/tokenizer';
 	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { diffWords } from '$lib/utils/text-diff';
-	import type { ImpersonatePerspective, Message } from '$lib/types/chat';
-	import { storyRoleName } from '$lib/types/library';
+	import type { Message } from '$lib/types/chat';
 
 	interface Props {
 		kind: 'spellcheck' | 'impersonate';
 		/** The composer draft as it was when the transform was triggered. */
 		original: string;
-		chatId: string;
 		/** The visible story path, for Impersonate's context. */
 		chatMessages: Message[];
 		/** Close, leaving the composer untouched. */
@@ -53,7 +47,7 @@
 		onApprove: (proposed: string) => void;
 	}
 
-	let { kind, original, chatId, chatMessages, onClose, onApprove }: Props = $props();
+	let { kind, original, chatMessages, onClose, onApprove }: Props = $props();
 
 	/** `setup` is the phase that exists so a call is never made before the user has said
 	 *  what they want. Spellcheck opens past it and falls back into it after a stop. */
@@ -62,34 +56,11 @@
 	let phase = $state<Phase>('setup');
 	let proposed = $state('');
 	let errorMessage = $state('');
-	// Impersonate's per-chat voice; seeded from the chat on mount (the panel mounts fresh
-	// per open), then locally owned: picking persists the choice and nothing else.
-	let perspective = $state<ImpersonatePerspective>('first');
-	/** The perspective the result on screen was written in. The gap between this and the
-	 *  pills' current pick is what lights the rewrite button. */
-	let ranPerspective = $state<ImpersonatePerspective>('first');
 	let abortController: AbortController | null = null;
 
 	// Name and glyph off the registry, not spelled again here: the menu row that opened
 	// this strip wears the same ones (architecture/engines.md).
 	let engine = $derived(engineById(kind));
-
-	// Written as the reader would meet it: the same sentence in each person, with the
-	// active persona's own name in the third, so the pick needs no explaining.
-	let speaker = $derived(
-		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity).trim() : ''
-	);
-	let perspectiveOptions = $derived([
-		{ value: 'first', label: 'First person', title: 'Written as "I reach for the letter"' },
-		{ value: 'second', label: 'Second person', title: 'Written as "You reach for the letter"' },
-		{
-			value: 'third',
-			label: 'Third person',
-			title: speaker
-				? `Written as "${speaker} reaches for the letter"`
-				: 'Written as "they reach for the letter"'
-		}
-	]);
 
 	// The model the engine's own connection resolves to: the encoding the estimate counts
 	// under, and the name its tooltip says the price is for.
@@ -100,7 +71,7 @@
 	 *  scaled by that model's learned calibration like every other meter in the app. */
 	let estimatedTokens = $derived(tokenEstimate(() => {
 		if (phase !== 'setup') return 0;
-		const messages = buildComposerTransformPrompt({ kind, draft: original, chatMessages, perspective });
+		const messages = buildComposerTransformPrompt({ kind, draft: original, chatMessages });
 		return Math.round(countMessages(messages, engineModel) * tokenCalibration.ratioFor(engineModel));
 	}));
 
@@ -140,25 +111,18 @@
 				: 'Ghostwriting your message…'
 	);
 
-	let staleResult = $derived(kind === 'impersonate' && perspective !== ranPerspective);
-	let rewriteTitle = $derived.by(() => {
-		if (kind === 'spellcheck') return 'Check the draft again';
-		const picked = perspectiveOptions.find((o) => o.value === perspective)?.label ?? 'first person';
-		return staleResult ? `Write it again in ${picked.toLowerCase()}` : 'Write another take';
-	});
+	let rewriteTitle = $derived(kind === 'spellcheck' ? 'Check the draft again' : 'Write another take');
 
 	async function run(): Promise<void> {
 		abortController?.abort();
 		abortController = new AbortController();
 		const signal = abortController.signal;
-		const asked = perspective;
 		phase = 'running';
 		try {
 			const result = await runComposerTransform({
 				kind,
 				draft: original,
 				chatMessages,
-				perspective: kind === 'impersonate' ? asked : undefined,
 				signal
 			});
 			if (signal.aborted) return; // superseded by a re-run or the panel closing
@@ -169,7 +133,6 @@
 				return;
 			}
 			proposed = result;
-			ranPerspective = asked;
 			phase = 'ready';
 		} catch (error) {
 			if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) return;
@@ -179,8 +142,6 @@
 	}
 
 	onMount(() => {
-		perspective = chatStore.featureState(chatId).impersonatePerspective;
-		ranPerspective = perspective;
 		// Spellcheck's own menu row was the press; there is nothing here to decide first.
 		// Unless its prompt is held: the review would then arrive over a strip the reader
 		// never saw, and cancelling it would land them on a button that had not existed yet.
@@ -200,12 +161,6 @@
 		window.addEventListener('keydown', onKey);
 		return () => window.removeEventListener('keydown', onKey);
 	});
-
-	/** Picking a perspective persists it and calls nothing. The button spends, never a pill. */
-	function pickPerspective(value: string): void {
-		perspective = value as ImpersonatePerspective;
-		void chatStore.setImpersonatePerspective(chatId, perspective);
-	}
 
 	/** Stop drops the request and lands in `setup`, where the same press starts another:
 	 *  a stopped call must not leave the strip with nothing to act on. */
@@ -270,18 +225,6 @@
 	{/if}
 
 	<div class="foot">
-		{#if kind === 'impersonate'}
-			<div class="opts" class:opts--inert={phase === 'running'} inert={phase === 'running'}>
-				<span class="opts-label font-ui">Perspective</span>
-				<PillRow
-					options={perspectiveOptions}
-					current={perspective}
-					onpick={pickPerspective}
-					label="Perspective"
-				/>
-			</div>
-		{/if}
-
 		<div class="acts">
 			{#if phase === 'running'}
 				<Button variant="secondary" size="sm" onclick={stop}>Stop</Button>
@@ -297,7 +240,6 @@
 				<button
 					type="button"
 					class="rewrite"
-					class:rewrite--stale={staleResult}
 					aria-label={rewriteTitle}
 					title={rewriteTitle}
 					onclick={() => void run()}
@@ -439,31 +381,12 @@
 		border-radius: 3px;
 	}
 
-	/* Choices left, actions right, and both wrap as a unit on a narrow screen. */
+	/* Actions wrap together on narrow screens. */
 	.foot {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		flex-wrap: wrap;
-	}
-
-	.opts {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		min-width: 0;
-		flex-wrap: wrap;
-	}
-
-	/* Dimmed while a call is out: the pick can't change what is already being written,
-	   and re-picking mid-run would only read as a way to spend twice. */
-	.opts--inert {
-		opacity: 0.45;
-	}
-
-	.opts-label {
-		font-size: 0.7rem;
-		color: var(--color-text-muted);
 	}
 
 	.acts {
@@ -492,13 +415,6 @@
 	.rewrite:hover {
 		background: color-mix(in srgb, var(--color-bg-tertiary) 86%, transparent);
 		color: var(--color-text-primary);
-	}
-
-	/* The result on screen is in a different person from the one now picked: the only
-	   button that fixes that says so, rather than the strip quietly re-running itself. */
-	.rewrite--stale {
-		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-		color: var(--color-accent);
 	}
 
 	@media (pointer: coarse) {
