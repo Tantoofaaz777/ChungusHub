@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
     private var chooserCallback: ValueCallback<Array<Uri>>? = null
     private var imeVisible = false
     private var backPending = false
+    private var activityResumed = false
     private val preferences by lazy { getSharedPreferences("server", MODE_PRIVATE) }
 
     private val chooseFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -183,6 +184,7 @@ class MainActivity : ComponentActivity() {
             override fun onPageFinished(view: WebView, url: String) {
                 progress.visibility = View.GONE
                 CookieManager.getInstance().flush()
+                updatePageLifecycle(view)
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) showSetup("Could not connect. Check the address, your connection, and whether the server is running.")
@@ -290,8 +292,23 @@ class MainActivity : ComponentActivity() {
         if (uri.scheme !in setOf("https", "http", "mailto", "tel")) return
         try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) { toast("No app is available to open this link.") }
     }
-    override fun onPause() { browser?.onPause(); CookieManager.getInstance().flush(); super.onPause() }
-    override fun onResume() { super.onResume(); browser?.onResume() }
+    private fun updatePageLifecycle(view: WebView? = browser) {
+        if (view == null || browser !== view || server?.trusts(view.url.orEmpty()) != true) return
+        view.evaluateJavascript("window.ChungusAndroidClient?.setForeground?.($activityResumed)", null)
+    }
+    override fun onPause() {
+        activityResumed = false
+        updatePageLifecycle()
+        browser?.onPause()
+        CookieManager.getInstance().flush()
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        activityResumed = true
+        browser?.onResume()
+        updatePageLifecycle()
+    }
     override fun onDestroy() {
         chooserCallback?.onReceiveValue(null); chooserCallback = null
         exports.close()

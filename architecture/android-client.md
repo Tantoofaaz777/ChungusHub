@@ -22,6 +22,15 @@ The APK and frontend can update separately, but the full back integration needs 
 frontend deployed on the server. The shell includes a limited modal fallback for older builds.
 No wake lock or background service is introduced: server generation already outlives a socket.
 
+Since APK 0.1.3, Activity pause/resume (and page-finish initialization) updates the adapter's
+`foreground` getter through `setForeground`. Changes emit `chungus-android-lifecycle` to the
+page, independently of WebView's visibility-event timing. The transport combines this with
+document visibility and pageshow: liveness/retry timers stop in the background, with no
+intentional socket close or generation cancellation. Returning sends an immediate fresh
+probe on an open socket or reconnects a closed socket. Old queued callbacks and timeouts
+delayed by a frozen renderer cannot carry stale silence strikes into the resumed page.
+Older APKs and normal browsers use document visibility. Android can still suspend networking.
+
 Since APK 0.1.2, the optional `save(filename, mime, producer)` adapter opens the destination
 picker before invoking the web file producer. Character export uses `saveGeneratedDownload`
 for a single PNG/JSON/CHARX or a bulk ZIP. Cancelling the picker does not fetch or encode art;

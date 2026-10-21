@@ -539,6 +539,7 @@ function wsUrl(): string {
 
 export function connectWs(): Promise<void> {
 	if (typeof window === 'undefined') return Promise.resolve();
+	watchVisibility();
 	if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
 		return wsReady ?? Promise.resolve();
 	}
@@ -661,16 +662,18 @@ function parkLlmCancel(id: string, pending: PendingLlm): void {
 }
 
 function scheduleReconnect(): void {
-	if (reconnectTimer) return;
+	if (reconnectTimer || !pageIsForeground()) return;
 	reconnectTimer = setTimeout(() => {
 		reconnectTimer = null;
-		connectWs().catch(() => {
-			// One failed retry is the threshold the reachability contract above is written
-			// against: anything that heals inside the 2s wait never gets here.
-			setReachable(false);
-			scheduleReconnect();
-		});
+		if (pageIsForeground()) retryConnection();
 	}, 2000);
+}
+
+function retryConnection(): void {
+	void connectWs().catch(() => {
+		setReachable(false);
+		scheduleReconnect();
+	});
 }
 
 // ===== Liveness =====
@@ -697,9 +700,9 @@ function scheduleReconnect(): void {
 // not just the pong, so a socket delivering tokens is never torn down for a reply queued
 // behind them, and the probe only ever fires against a genuinely quiet socket. And **silence
 // has to happen twice**, the second time with double the window, before the socket is
-// declared dead. That second round is worth its couple of seconds: tearing a socket down
-// rejects every in-flight request, so a single hiccup during a long wait for a model's first
-// token would otherwise kill the reply it was waiting for.
+// declared dead. That second round is worth its couple of seconds: a needless reconnect
+// forces active generations to reattach, so one hiccup while waiting for a model's first
+// token should not interrupt the reply.
 
 /** Smoothed round trip and its mean deviation, both in ms; `haveSample` gates them. */
 let srtt = 0;
@@ -747,22 +750,31 @@ function probeInterval(): number {
 
 let probeTimer: ReturnType<typeof setTimeout> | null = null;
 let answerTimer: ReturnType<typeof setTimeout> | null = null;
-let probeSentAt = 0;
+let probeSentAt: number | null = null;
 let lastInboundAt = 0;
 let strikes = 0;
 let watchingVisibility = false;
+/** Invalidates callbacks already queued before a pause or socket replacement. */
+let heartbeatEpoch = 0;
+
+function pageIsForeground(): boolean {
+	return (typeof document === 'undefined' || document.visibilityState !== 'hidden') &&
+		(typeof window === 'undefined' || window.ChungusAndroidClient?.foreground !== false);
+}
 
 function startHeartbeat(): void {
 	stopHeartbeat();
 	strikes = 0;
+	haveSample = false;
 	// Nothing measured yet, so the first probe goes out almost immediately: it costs one frame
 	// and it is what replaces the pessimistic ceiling with this link's real round trip.
 	lastInboundAt = 0;
-	watchVisibility();
-	scheduleProbe(300);
+	if (pageIsForeground()) scheduleProbe(300);
 }
 
 function stopHeartbeat(): void {
+	heartbeatEpoch++;
+	probeSentAt = null;
 	if (probeTimer) {
 		clearTimeout(probeTimer);
 		probeTimer = null;
@@ -775,13 +787,25 @@ function stopHeartbeat(): void {
 
 function scheduleProbe(delay: number): void {
 	if (probeTimer) clearTimeout(probeTimer);
-	probeTimer = setTimeout(runProbe, delay);
+	const epoch = heartbeatEpoch;
+	const timer = setTimeout(() => { if (epoch === heartbeatEpoch && probeTimer === timer) runProbe(); }, delay);
+	probeTimer = timer;
 }
 
 function sendProbe(socket: WebSocket): void {
 	probeSentAt = performance.now();
 	socket.send(JSON.stringify({ t: 'ping' }));
-	answerTimer = setTimeout(onSilence, answerWindow() * (strikes + 1));
+	const wait = answerWindow() * (strikes + 1);
+	const deadline = performance.now() + wait;
+	const epoch = heartbeatEpoch;
+	const timer = setTimeout(() => {
+		if (epoch !== heartbeatEpoch || answerTimer !== timer) return;
+		// A frozen renderer may run its overdue timeout before its visibility event or pong.
+		// Recheck with a fresh window rather than counting that frozen time as network silence.
+		if (performance.now() - deadline >= ANSWER_FLOOR_MS) refreshPageActivity();
+		else onSilence();
+	}, wait);
+	answerTimer = timer;
 }
 
 /** The one recurring timer. It fires on the schedule but only ASKS when the socket has
@@ -790,7 +814,7 @@ function sendProbe(socket: WebSocket): void {
 function runProbe(): void {
 	probeTimer = null;
 	const socket = ws;
-	if (!socket || socket.readyState !== WebSocket.OPEN) return;
+	if (!socket || socket.readyState !== WebSocket.OPEN || !pageIsForeground()) return;
 
 	const wait = probeInterval();
 	// Never two outstanding: the probe already waiting on an answer owns the strike count,
@@ -815,7 +839,7 @@ function runProbe(): void {
 function onSilence(): void {
 	answerTimer = null;
 	const socket = ws;
-	if (!socket || socket.readyState !== WebSocket.OPEN) return;
+	if (!socket || socket.readyState !== WebSocket.OPEN || !pageIsForeground()) return;
 
 	strikes += 1;
 	if (strikes < STRIKES) {
@@ -833,22 +857,37 @@ function onSilence(): void {
  * A backgrounded tab has its timers throttled and then fires them in a burst on wake, which
  * can expire an answer window whose reply was frozen in the same queue. Coming back is
  * therefore treated as knowing nothing: strikes cleared, the estimate discarded so the next
- * window is the ceiling, and one probe sent shortly after to re-seed it.
+ * window is the ceiling, and one immediate probe to re-seed it. A closed socket reconnects
+ * immediately. Backgrounding stops only liveness/retry timers, never the socket or streams.
  */
 function watchVisibility(): void {
 	if (watchingVisibility || typeof document === 'undefined') return;
 	watchingVisibility = true;
-	document.addEventListener('visibilitychange', () => {
-		if (document.visibilityState !== 'visible' || !ws) return;
-		if (answerTimer) {
-			clearTimeout(answerTimer);
-			answerTimer = null;
-		}
-		strikes = 0;
-		haveSample = false;
-		lastInboundAt = 0;
-		scheduleProbe(200);
-	});
+	document.addEventListener('visibilitychange', refreshPageActivity);
+	window.addEventListener('pageshow', refreshPageActivity);
+	// Native lifecycle is explicit even when WebView delays its page visibility event.
+	window.addEventListener('chungus-android-lifecycle', refreshPageActivity);
+}
+
+function refreshPageActivity(): void {
+	stopHeartbeat();
+	strikes = 0;
+	haveSample = false;
+	lastInboundAt = 0;
+	// A suspended renderer may observe CLOSED before receiving the old onclose callback.
+	// Retire it through the usual path so pending generations are marked for reattachment.
+	if (ws && ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING) handleSocketDown(ws);
+	if (reconnectTimer) {
+		clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+	}
+	if (!pageIsForeground()) return;
+	if (ws?.readyState === WebSocket.OPEN) {
+		sendProbe(ws);
+		scheduleProbe(probeInterval());
+	} else if (ws?.readyState !== WebSocket.CONNECTING) {
+		retryConnection();
+	}
 }
 
 function handleWsMessage(raw: unknown): void {
@@ -875,7 +914,8 @@ function handleWsMessage(raw: unknown): void {
 		case 'pong':
 			// The one message whose timing means something: it answers a probe we sent, so it
 			// is the only round trip this layer can actually measure.
-			recordRoundTrip(performance.now() - probeSentAt);
+			if (probeSentAt !== null && pageIsForeground()) recordRoundTrip(performance.now() - probeSentAt);
+			probeSentAt = null;
 			break;
 		case 'llm-token': {
 			const pending = pendingLlm.get(String(msg.id));

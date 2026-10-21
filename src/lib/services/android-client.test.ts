@@ -47,7 +47,7 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 	let fetches = 0;
 	const bytes = Uint8Array.from({ length: 160000 }, (_, i) => i % 256);
 	runInNewContext(script, { window, location: { href: 'https://chungus.test/', origin: 'https://chungus.test' }, URL: BrowserURL,
-		Blob, HTMLAnchorElement: Anchor, Element: Anchor, Event: class {}, KeyboardEvent: class {}, btoa,
+		Blob, HTMLAnchorElement: Anchor, Element: Anchor, Event: class { constructor(public type: string) {} }, KeyboardEvent: class {}, btoa,
 		document: { addEventListener: (type: string, fn: (event: any) => void) => events.set(type, fn) },
 		fetch: async (_url: string, init: RequestInit) => { fetches++; expect(init.credentials).toBe('same-origin'); return new Response(bytes); }
 	});
@@ -63,6 +63,20 @@ async function until(condition: () => boolean) {
 test('browser builds do not install Android navigation hooks', () => {
 	expect(isAndroidClient()).toBe(false);
 	expect(() => installAndroidBack(() => true)()).not.toThrow();
+});
+
+test('native lifecycle exposes current foreground state and signals only changes', () => {
+	const h = harness(), changes: boolean[] = [];
+	h.window.dispatchEvent = (event: Event) => {
+		if (event.type === 'chungus-android-lifecycle') changes.push(h.window.ChungusAndroidClient.foreground);
+	};
+	expect(h.window.ChungusAndroidClient.foreground).toBe(true);
+	h.window.ChungusAndroidClient.setForeground(false);
+	h.window.ChungusAndroidClient.setForeground(false);
+	h.window.ChungusAndroidClient.setForeground(true);
+	expect(changes).toEqual([false, true]);
+	expect(h.window.ChungusAndroidClient.foreground).toBe(true);
+	expect(h.messages).toHaveLength(0);
 });
 test('Android exports preserve binary data despite immediate object URL revocation', async () => {
 	const h = harness(), blob = new Blob([h.bytes], { type: 'image/png' });

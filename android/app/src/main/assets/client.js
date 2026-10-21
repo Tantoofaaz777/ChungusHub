@@ -2,6 +2,7 @@
   'use strict';
   if (window.top !== window || !window.ChungusNative || window.ChungusAndroidClient) return;
   let nextId = 0;
+  let foreground = document.visibilityState !== 'hidden';
   const pending = new Map(), blobs = new Map();
   const native = window.ChungusNative;
   native.onmessage = event => {
@@ -88,6 +89,13 @@
   }, true);
   window.ChungusAndroidClient = Object.freeze({
     version: 1,
+    get foreground() { return foreground; },
+    setForeground: active => {
+      active = Boolean(active);
+      if (foreground === active) return;
+      foreground = active;
+      window.dispatchEvent(new Event('chungus-android-lifecycle'));
+    },
     settings: () => request('settings'),
     download,
     save,

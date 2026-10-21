@@ -37,6 +37,12 @@ o retrato e gerar o PNG/JSON/CHARX ou ZIP. Cancelar o seletor não gera o arquiv
 de escolher o destino, a preparação e a gravação continuam com o botão Export ocupado.
 Esse fluxo exige também atualizar a interface na VPS; versões anteriores continuam compatíveis.
 
+Na versão 0.1.3, o Android informa à interface quando o app sai e volta ao primeiro plano.
+A interface pausa o heartbeat e as tentativas automáticas de reconectar enquanto estiver
+oculta; ao voltar, verifica o socket existente ou reconecta imediatamente se ele fechou.
+Gerações continuam na VPS e são retomadas sem enviar uma segunda solicitação. Essa melhoria
+também exige atualizar a interface na VPS. O Android ainda pode suspender a rede em segundo plano.
+
 ## Abrir no Android Studio
 
 Abra esta pasta `android/` como projeto. O Gradle usa JDK 21 (critério declarado em
