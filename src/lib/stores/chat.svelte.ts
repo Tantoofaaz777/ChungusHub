@@ -761,8 +761,27 @@ class ChatStore {
 			title: this.copyTitle(source.title),
 			includeMemory: options.includeMemory
 		});
+		await this.registerCopiedChat(chatId, newChatId);
+		return newChatId;
+	}
+
+	/** Copy the selected history into an independent chat and continue there. */
+	async branchChat(chatId: string, messageId: string, content: string): Promise<string> {
+		const source = this.chats.find(c => c.id === chatId);
+		if (!source) throw new Error(`branchChat: no chat with id ${chatId}`);
+		const newChatId = await db.branchChat({ chatId, messageId, content, title: this.copyTitle(source.title, 'branch') });
+		await this.registerCopiedChat(chatId, newChatId);
+		await this.selectChat(newChatId);
+		if (this.currentChatState?.chat.id === newChatId) {
+			const personaId = [...this.currentChatState.activePath].reverse().find(m => m.role === 'user')?.personaId ?? null;
+			chatCastStore.setPersonaForChat(newChatId, personaId);
+		}
+		return newChatId;
+	}
+
+	private async registerCopiedChat(chatId: string, newChatId: string): Promise<void> {
 		const chat = await db.getChat(newChatId);
-		if (!chat) throw new Error(`duplicateChat: server made ${newChatId} but it can't be read back`);
+		if (!chat) throw new Error(`Copied chat ${newChatId} cannot be read back`);
 
 		// A sync landing between the copy and this prepend would already have pulled the
 		// new row in; adding it again puts two rows with one id into every keyed list.
@@ -772,17 +791,16 @@ class ChatStore {
 		// built from a db sweep at load, so seed it here or the new row shows no face until
 		// the next reload.
 		chatCastStore.setPersonaForChat(chat.id, chatCastStore.personaForChat(chatId)?.libraryEntryId ?? null);
-		return newChatId;
 	}
 
-	/** "<title> (copy)", counting up when that name is taken: duplicating twice must
+	/** "<title> (copy)" or "<title> (branch)", counting up when that name is taken: copying twice must
 	 *  not leave two rows nothing can tell apart. Re-copying a copy re-uses the base
 	 *  name instead of stacking "(copy) (copy)". */
-	private copyTitle(title: string): string {
-		const base = title.replace(/\s*\(copy(?: \d+)?\)$/, '');
+	private copyTitle(title: string, kind: 'copy' | 'branch' = 'copy'): string {
+		const base = title.replace(new RegExp(`\\s*\\(${kind}(?: \\d+)?\\)$`), '');
 		const taken = new Set(this.chats.map((c) => c.title));
-		let candidate = `${base} (copy)`;
-		for (let n = 2; taken.has(candidate); n++) candidate = `${base} (copy ${n})`;
+		let candidate = `${base} (${kind})`;
+		for (let n = 2; taken.has(candidate); n++) candidate = `${base} (${kind} ${n})`;
 		return candidate;
 	}
 

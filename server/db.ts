@@ -801,12 +801,40 @@ class ServerDatabase {
 	 * the caller asks the user first, see getChatMemoryFootprint.
 	 */
 	duplicateChat(options: { chatId: string; title: string; includeMemory: boolean }): string {
+		return this.copyChat(options);
+	}
+
+	/** A separate conversation containing only the selected turn and its ancestors. */
+	branchChat(options: { chatId: string; messageId: string; title: string; content: string }): string {
+		return this.copyChat({ ...options, includeMemory: true, branch: options });
+	}
+
+	private copyChat(options: {
+		chatId: string; title: string; includeMemory: boolean;
+		branch?: { messageId: string; content: string };
+	}): string {
 		const { chatId, title, includeMemory } = options;
+		const { branch } = options;
 		return this.inTransaction(() => {
 			const source = this.select<Record<string, unknown>[]>('SELECT * FROM chats WHERE id = ?', [chatId])[0];
 			if (!source) throw new Error(`duplicateChat: no chat with id ${chatId}`);
 
-			const rows = this.select<Record<string, unknown>[]>('SELECT * FROM messages WHERE chat_id = ?', [chatId]);
+			let rows = this.select<Record<string, unknown>[]>('SELECT * FROM messages WHERE chat_id = ?', [chatId]);
+			if (branch) {
+				if (typeof branch.content !== 'string' || !branch.content.trim()) throw new Error('branchChat: message content is empty');
+				const byId = new Map(rows.map(row => [row.id as string, row]));
+				const path: Record<string, unknown>[] = [];
+				const seen = new Set<string>();
+				for (let id: string | null = branch.messageId; id !== null; ) {
+					const row = byId.get(id);
+					if (!row || seen.has(id)) throw new Error('branchChat: source message or its history is unavailable');
+					seen.add(id);
+					path.push(row);
+					id = row.parent_id as string | null;
+				}
+				if (!path.length) throw new Error('branchChat: no source message');
+				rows = path.reverse();
+			}
 			const idMap = new Map<string, string>();
 			for (const row of rows) idMap.set(row.id as string, randomUUID());
 			const remap = (id: unknown): string | null => (typeof id === 'string' ? (idMap.get(id) ?? null) : null);
@@ -827,9 +855,9 @@ class ServerDatabase {
 					source.character_id ?? null,
 					source.character_version_id ?? null,
 					source.feature_state ?? null,
-					// The copy holds the same rows, so it holds the same claim: a duplicate of a
-					// chat nobody has written in is one too, and follows the card just like it.
-					source.seeded_greetings ?? null
+					// A full duplicate keeps the greeting claim. An explicit branch owns its
+					// copied opening, including a one-turn branch, rather than following card edits.
+					branch ? null : source.seeded_greetings ?? null
 				]
 			);
 
@@ -846,6 +874,8 @@ class ServerDatabase {
 			let copied = 0;
 			while (queue.length) {
 				const row = queue.shift()!;
+				const content = branch && branch.messageId === row.id ? branch.content : row.content;
+				const edited = content !== row.content;
 				copied += 1;
 				// No rev stamp: the copy is a fresh chat id no device holds a rev for, so its
 				// rows rest at 0 and the first open reads them full like any other chat.
@@ -859,13 +889,13 @@ class ServerDatabase {
 						newChatId,
 						remap(row.parent_id),
 						row.role,
-						row.content,
+						content,
 						row.persona_id ?? null,
 						row.branch_label ?? null,
 						row.thinking ?? null,
 						row.attachments_json ?? null,
 						row.created_at,
-						row.edited_at ?? null,
+						edited ? now : row.edited_at ?? null,
 						row.minor_edited_at ?? null,
 						row.sprite_label ?? null,
 						row.model ?? null,
@@ -892,7 +922,9 @@ class ServerDatabase {
 
 			this.execute(
 				'UPDATE chats SET root_message_id = ?, active_leaf_id = ?, canon_leaf_id = ? WHERE id = ?',
-				[remap(source.root_message_id), remap(source.active_leaf_id), remap(source.canon_leaf_id), newChatId]
+				branch
+					? [remap(rows[0].id), remap(branch.messageId), remap(branch.messageId), newChatId]
+					: [remap(source.root_message_id), remap(source.active_leaf_id), remap(source.canon_leaf_id), newChatId]
 			);
 
 			// Chat-scoped steering notes are part of what makes the copy the same story:
@@ -910,8 +942,12 @@ class ServerDatabase {
 				);
 			}
 
-			if (includeMemory) this.copyChatMemory(chatId, newChatId, idMap);
-			this.copyChatThreads(chatId, newChatId, idMap);
+			if (includeMemory) this.copyChatMemory(chatId, newChatId, idMap, !!branch);
+			const threadMessageIds = new Map(idMap);
+			// Threads have no review state: do not inherit reactions to the ending the
+			// reader just rewrote. Memory retains its fingerprint-based review instead.
+			if (branch && rows.at(-1)?.content !== branch.content) threadMessageIds.delete(branch.messageId);
+			this.copyChatThreads(chatId, newChatId, threadMessageIds);
 			return newChatId;
 		});
 	}
@@ -927,10 +963,12 @@ class ServerDatabase {
 	/** Carry a chat's memory across to a duplicate. Every message reference is remapped
 	 *  through the same map the message copy used, and episode cross-references through
 	 *  their own fresh-id map: memory still pointing at the original's rows would resolve
-	 *  its coverage against a tree it no longer belongs to. Runs inside duplicateChat's
+	 *  its coverage against a tree it no longer belongs to. Runs inside the chat copy's
 	 *  transaction. */
-	private copyChatMemory(fromChatId: string, toChatId: string, messageIds: Map<string, string>): void {
-		const sourceScenes = this.getMemoryScenes(fromChatId);
+	private copyChatMemory(fromChatId: string, toChatId: string, messageIds: Map<string, string>, onlyComplete = false): void {
+		const sourceScenes = this.getMemoryScenes(fromChatId).filter(scene =>
+			!onlyComplete || (scene.source.length > 0 && scene.source.every(entry => messageIds.has(entry.id)))
+		);
 		const sceneIds = new Map(sourceScenes.map(scene => [scene.id, randomUUID()]));
 		const oldScenes = new Map(sourceScenes.map(scene => [scene.id, scene]));
 		for (const scene of sourceScenes) {
@@ -3085,6 +3123,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	// which is exactly what a new chat needs on another device. A copied chat is never
 	// the open chat anywhere, so its memory loads on first open like any other chat's.
 	duplicateChat: 'chats',
+	branchChat: 'chats',
 	insertMessage: 'messages',
 	updateMessageContent: 'messages',
 	setMessageExcludedFromPrompt: 'messages',

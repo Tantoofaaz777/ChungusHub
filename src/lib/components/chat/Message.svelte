@@ -168,7 +168,7 @@
 		// Ask before closing: a busy store rejects the edit, and closing first would
 		// throw away the draft the user just wrote.
 		if (messageStore.warnIfBusy()) return;
-		// Branching writes a NEW sibling and leaves this turn untouched, so its summary
+		// Branching writes a new chat and leaves this turn untouched, so its summary
 		// stands: only a rewrite in place outdates one, and only that asks.
 		if (action === 'save_only' && (editImpact.dropped > 0 || editImpact.droppedStored > 0)) {
 			pendingEdit = newContent;

@@ -267,7 +267,7 @@ class MessageStore {
 		if (!state) throw new Error('No active chat');
 
 		// Resolve against the whole tree so legacy off-path ids remain valid. `save_only`
-		// leaves the active leaf alone; `create_branch` moves it onto the new fork.
+		// leaves the active leaf alone; `create_branch` copies the history into a new chat.
 		const message = state.allMessages.find((m) => m.id === messageId);
 		if (!message) throw new Error('Message not found');
 
@@ -276,7 +276,7 @@ class MessageStore {
 		// the episode), but the toast has to be truthful in the same tick, so the rewrite is
 		// handed over explicitly. Gated on the per-chat flag alone (not the app-wide engine
 		// switch), so stored memory never goes stale during an off period. create_branch is
-		// exempt: the clone is a new id, and the original's summary stays valid for it. So is a
+		// exempt: the original chat and its summaries stay untouched. So is a
 		// MINOR edit: the user has asserted the turn still says the same thing, so the write
 		// leaves `edited_at` alone and nothing here may drop the summary either. It is their
 		// assertion, not ours: a typo and a retcon are the same two strings to us.
@@ -292,23 +292,8 @@ class MessageStore {
 					break;
 
 				case 'create_branch': {
-					const nextSiblingIndex = await db.getNextSiblingIndex(state.chat.id, message.parentId);
-					const newMessage = await this.createMessage({
-						chatId: state.chat.id,
-						parentId: message.parentId,
-						role: message.role,
-						content: newContent,
-						personaId: message.personaId,
-						attachments: message.attachments,
-						siblingIndex: nextSiblingIndex
-					});
-
-					// The fork becomes the branch being read, and nothing is generated: the user
-					// asked for a fork, not for a turn. On a user branch that leaves the new turn
-					// as the leaf, so Generate is right there when they want it: deliberate
-					// breathing room instead of a call they never asked to spend.
-					await db.updateChatActiveLeaf(state.chat.id, newMessage.id, { touchUpdatedAt: true });
-					break;
+					await chatStore.branchChat(state.chat.id, messageId, newContent);
+					return;
 				}
 			}
 

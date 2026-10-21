@@ -22,8 +22,7 @@
 		 *  pair the hand reaches for after reading a reply: again, or more. */
 		onContinue?: () => void;
 		showContinue?: boolean;
-		/** Fork this turn into a new branch, any role: a user turn forks into a different thing
-		 *  said, a reply into a hand-written alternate you can swipe between. */
+		/** Copy the history through this turn into a separate chat. */
 		onBranch?: () => void;
 		showBranch?: boolean;
 		disabled?: boolean;
@@ -138,7 +137,7 @@
 			onclick={onBranch}
 			{disabled}
 			aria-label="Branch this turn"
-			title="Branch: fork this turn into a new take you can rewrite"
+			title="Branch: create a new chat with the history up to this message"
 		>
 			<Icon name="branch" class="w-3.5 h-3.5" strokeWidth={1.75} />
 			<span class="action-label">Branch</span>

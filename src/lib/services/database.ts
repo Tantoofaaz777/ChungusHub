@@ -69,6 +69,9 @@ class DatabaseService {
 	duplicateChat(options: { chatId: string; title: string; includeMemory: boolean }): Promise<string> {
 		return this.call('duplicateChat', options);
 	}
+	branchChat(options: { chatId: string; messageId: string; title: string; content: string }): Promise<string> {
+		return this.call('branchChat', options);
+	}
 	/** Per-chat row data for the chats panel: one server-side pass, no message bodies. */
 	getChatListStats(): Promise<Record<string, ChatListStats>> { return this.call('getChatListStats'); }
 	/** chatId → a key shared by every chat with a byte-identical message tree. Only

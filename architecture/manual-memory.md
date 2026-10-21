@@ -79,7 +79,7 @@ resolver validates Chapters, then Arcs, then Volumes. Changes/deletions to messa
 summaries invalidate dependent parents recursively without deleting saved text. Remaining valid
 summaries and raw turns fill the history. The save transaction verifies levels, contiguous ranges,
 child revisions, overlaps and optimistic revisions; changing a saved item's level is refused.
-Chat duplication remaps both message references and the complete child graph. Stale dependencies
+Chat duplication remaps both message references and the complete child graph. Branching into a new chat carries only summaries whose entire message range lies inside the copied prefix, preserving hierarchy references and omitting partial or later summaries. Stale dependencies
 remain stale even though copied summary revisions restart at one. Database snapshots include the
 new columns through the existing schema and migration path.
 

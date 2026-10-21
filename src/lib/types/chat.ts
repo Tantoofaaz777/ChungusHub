@@ -404,7 +404,7 @@ export interface ChatStream {
 
 /** Action to take after editing a message */
 /** The two things an edit can mean, chosen before the editor opens (Edit vs Branch): rewrite
- *  the turn in place, or leave it alone and write the text as a new sibling. There is no
+ *  the turn in place, or copy its history into a separate chat ending at that turn. There is no
  *  third "rewrite and delete everything below" action any more: a branch reaches the same
  *  outcome without destroying the timeline it forks from. */
 export type EditAction = 'save_only' | 'create_branch';

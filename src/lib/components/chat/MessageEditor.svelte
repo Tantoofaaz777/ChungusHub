@@ -6,11 +6,11 @@
 		initialContent: string;
 		role: 'user' | 'assistant' | 'system';
 		/** Which of the two edits this is. 'save_only' rewrites the turn in place; 'create_branch'
-		 *  leaves it alone and writes the text as a new sibling. Chosen by the caller BEFORE the
+		 *  copies its history into a new chat ending at this turn. Chosen by the caller BEFORE the
 		 *  editor opens (Edit vs Branch), never asked for afterwards: asking at save time makes
 		 *  you decide what you meant while still holding the prose in your head, and hides a
 		 *  subtree delete behind a Save button. Cancel in branch mode costs nothing, because
-		 *  the sibling is only written on save. */
+		 *  the new chat is only created on save. */
 		mode?: EditAction;
 		/** The caller has taken this draft and is asking the user to confirm it (the memory
 		 *  confirmation in Message.svelte). The text stays on screen and readable (that is the
@@ -61,7 +61,7 @@
 	function handleSaveClick() {
 		if (content.trim() === '') return;
 		// An in-place save of untouched text is a no-op, so it just closes. A branch of
-		// untouched text is NOT: a verbatim alternate is a legitimate fork to write into later.
+		// untouched text is NOT: a verbatim copy is a legitimate chat to continue later.
 		if (!isBranch && content === initialContent) {
 			onCancel();
 			return;
@@ -84,7 +84,7 @@
 <div class="space-y-3">
 	{#if isBranch}
 		<p class="text-xs font-ui text-text-muted">
-			Writing a new branch from this {role === 'user' ? 'turn' : 'reply'}. The original stays where it is.
+			Create a new chat with the history up to this {role === 'user' ? 'turn' : 'reply'}. The original chat stays unchanged.
 		</p>
 	{/if}
 
