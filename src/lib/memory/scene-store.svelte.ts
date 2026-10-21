@@ -8,6 +8,7 @@ import { expandSelfRefs } from '$lib/macros';
 import { EMPTY_IMPACT } from './branching';
 import { markSceneBoundary } from './scene-selection';
 import { parseChapterResponse } from './chapter-response';
+import { generationSourcePrompt, previousGenerationSummaries } from './generation-context';
 import { retainLocalChanges } from '$lib/utils/retain-local-changes';
 import type { ChatCtx } from './store.svelte';
 import type { Message } from '$lib/types/chat';
@@ -205,6 +206,8 @@ export class SceneMemoryStore {
 				transcript = draft.children.map(c => this.scenes.find(s => s.id === c.id)!).map(s => `[${memoryLabel(sceneLevel(s))}: ${chapterTitle(s.title)}]\n${s.content}`).join('\n\n');
 			}
 			const promptKey = draft.level === 'chapter' ? 'memoryScene' : draft.level === 'arc' ? 'memoryArc' : 'memoryVolume';
+			const previous = previousGenerationSummaries(this.scenes, this.path, this.ctx?.allMessages ?? this.path,
+				draft.chatId, draft.source, featurePromptsStore.memoryPreviousSummaries);
 			const target = { engine: 'memory' } as const;
 			this.generation = { id: crypto.randomUUID(), model: llmService.modelFor(target), reasoning: '', response: '' };
 			const receive = (text: string, thinking: boolean) => {
@@ -214,7 +217,7 @@ export class SceneMemoryStore {
 			const result = await llmService.complete(target, { source: 'memory', signal: controller.signal,
 				onToken: text => receive(text, false), onThinkingToken: text => receive(text, true),
 				messages: [{ role: 'system', content: featurePromptsStore.promptFor(promptKey) },
-					{ role: 'user', content: `Create a ${draft.level} summarizing these ${draft.level === 'chapter' ? 'messages' : draft.level === 'arc' ? 'chapters' : 'arcs'}:\n\n${transcript}` }] });
+					{ role: 'user', content: generationSourcePrompt(draft.level, transcript, previous) }] });
 			if (controller.signal.aborted || this.abort !== controller || this.draft !== draft) return;
 			const chapter = parseChapterResponse(result.content, memoryLabel(draft.level));
 			if (chapter.title !== undefined) draft.title = chapter.title;

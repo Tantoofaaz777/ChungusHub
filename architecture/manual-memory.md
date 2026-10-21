@@ -20,6 +20,21 @@ written in the review dialog. The model receives selected visible text with reso
 names. Images are not sent to the summarizer in this first flow; the summary replaces those turns'
 images too, so relevant visual facts should be added during review.
 
+Settings → Engines → Chat Memory → Generation context controls the number of previous
+summaries included when generating any level (default 6; 0 disables). The newest N valid,
+active summaries whose full source ranges end before the selected range are sent oldest
+to newest, using transcript positions rather than creation dates or titles. Chapters,
+arcs and volumes share this limit; active parents replace covered children so references
+are not duplicated. Other chats/branches, summaries needing review, overlapping ranges,
+the summary being regenerated and later memories are excluded. Regeneration uses the
+same source boundary. This setting syncs app-wide and takes effect on the next generation.
+
+The editable instructions remain the first `system` message. The second, `user` message
+contains the request, a delimited previous-context block (when nonempty), then the selected
+messages/child summaries in a separate source block. Reference instructions explicitly
+ask the model to use previous summaries only for continuity and summarize only the new
+source. Reference text does not become part of the saved source range or its token total.
+
 The default memory prompt requests a JSON object with two non-empty strings, `title` and `content`.
 Generation reads both into the review draft; only those fields are consumed, and nothing is saved
 until Save chapter. JSON fences and a leading explanation are tolerated through the shared JSON
@@ -64,8 +79,12 @@ Deletion of a chat cascades to its scenes and migration marker. Backups include 
 The Memory panel groups saved items under **Chapters**, leaving room for future compaction levels.
 Each chapter preview starts collapsed and expands through its native disclosure header (tap/click or
 keyboard). Its token count measures saved text with the chat model's encoding, recalculating only
-when that text or model changes. The prompt also includes a small chapter/title wrapper, so this text
-count is not the entire Memory prompt bucket. Existing storage/API names remain compatible.
+when that text or model changes. The roleplay prompt wraps active summaries as `[1st summary]`,
+`[2nd summary]`, etc., followed by `[End of summary]`, without their saved titles or level names.
+Numbering follows transcript order across chapters, arcs and volumes, counting only active summaries.
+Titles remain saved and visible in Memory; summary generation keeps its own reference/source framing.
+The wrapper counts toward the Memory prompt bucket in addition to the saved text.
+Existing storage/API names remain compatible.
 Old generated titles `Scene N–M` display as `Chapter N–M`; custom titles and stored rows are preserved.
 
 Only the last message on the active path can show response swipes, and only when it is an assistant

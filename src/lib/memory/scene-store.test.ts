@@ -17,7 +17,7 @@ afterAll(() => {
 });
 
 let reads: { chatId: string; resolve: (scenes: MemoryScene[]) => void; reject: (error: Error) => void }[] = [];
-let calls: { signal: AbortSignal; onToken: (text: string) => void; onThinkingToken: (text: string) => void;
+let calls: { signal: AbortSignal; messages: { role: string; content: string }[]; onToken: (text: string) => void; onThinkingToken: (text: string) => void;
 	resolve: (result: { content: string; thinking?: string }) => void; reject: (error: Error) => void }[] = [];
 mock.module('$lib/services/llm/provider', () => ({ ...realLlm, llmService: {
 	modelFor: () => 'memory-test-model',
@@ -105,6 +105,48 @@ async function open() {
 	const opening = store.loadForChat('a');
 	reads.shift()!.resolve([chapter()]); await opening;
 }
+
+describe('generation request context', () => {
+	test.each(['chapter', 'arc', 'volume'] as const)('%s keeps instructions in system and earlier summaries in user', async level => {
+		const messages = Array.from({ length: 16 }, (_, i) => ({
+			id: `m${i}`, parentId: i ? `m${i - 1}` : null, role: 'assistant', content: `Message ${i}`, chatId: 'a'
+		})) as Message[];
+		const chapters = messages.map((message, i) => ({ ...chapter(), id: `c${i}`, title: `Chapter ${i}`, content: `Chapter summary ${i}`, source: captureScene([message]) }));
+		const arcs = Array.from({ length: 8 }, (_, i) => ({ ...chapter(), id: `a${i}`, level: 'arc' as const,
+			title: `Arc ${i}`, content: `Arc summary ${i}`, source: chapters.slice(i * 2, i * 2 + 2).flatMap(c => c.source),
+			children: chapters.slice(i * 2, i * 2 + 2).map(c => ({ id: c.id, revision: c.revision })) }));
+		const volumes = Array.from({ length: 3 }, (_, i) => ({ ...chapter(), id: `v${i}`, level: 'volume' as const,
+			title: `Volume ${i}`, content: `Volume summary ${i}`, source: arcs.slice(i * 2, i * 2 + 2).flatMap(c => c.source),
+			children: arcs.slice(i * 2, i * 2 + 2).map(c => ({ id: c.id, revision: c.revision })) }));
+		const scenes = level === 'chapter' ? [...chapters.slice(0, 12), ...arcs.slice(0, 6), ...volumes]
+			: level === 'arc' ? [...chapters, ...arcs.slice(0, 6), ...volumes] : [...chapters, ...arcs, ...volumes];
+		const opening = store.loadForChat('a'); reads.shift()!.resolve(scenes.reverse()); await opening;
+		await store.syncForPath({ chatId: 'a', allMessages: messages, leafId: 'm15', characterId: null,
+			characterVersionId: null, personaId: null, presetId: null, lorebookIds: [], mutedLorebookIds: [] });
+		Object.defineProperty(store, 'path', { configurable: true, get: () => messages });
+		const children = level === 'chapter' ? [] : (level === 'arc' ? chapters.slice(12, 14) : arcs.slice(6, 8)).map(c => ({ id: c.id, revision: c.revision }));
+		store.draft = { chatId: 'a', level, children, source: captureScene(messages.slice(12, level === 'volume' ? 16 : level === 'arc' ? 14 : 13)),
+			title: 'New memory', content: '', phase: 'ready', error: '' };
+		featurePromptsStore.state = { ...featurePromptsStore.state, memoryPreviousSummaries: 2 };
+		const work = store.generateDraft(), call = calls[0];
+		const key = level === 'chapter' ? 'memoryScene' : level === 'arc' ? 'memoryArc' : 'memoryVolume';
+		expect(call.messages.map(message => message.role)).toEqual(['system', 'user']);
+		expect(call.messages[0].content).toBe(featurePromptsStore.promptFor(key));
+		const user = call.messages[1].content;
+		expect(user).not.toContain('Volume summary 0');
+		expect(user.indexOf('Volume summary 1')).toBeGreaterThan(0);
+		expect(user.indexOf('Volume summary 2')).toBeGreaterThan(user.indexOf('Volume summary 1'));
+		expect(user.indexOf('=== SOURCE TO SUMMARIZE ===')).toBeGreaterThan(user.indexOf('Volume summary 2'));
+		expect(user).toContain(level === 'chapter' ? 'Message 12' : level === 'arc' ? 'Chapter summary 12' : 'Arc summary 6');
+		call.resolve({ content: 'New summary' }); await work;
+		// Disabling context affects the next generation and never changes its sources.
+		featurePromptsStore.state = { ...featurePromptsStore.state, memoryPreviousSummaries: 0 };
+		const again = store.generateDraft();
+		expect(calls[1].messages[1].content).not.toContain('PREVIOUS SCENE CONTEXT');
+		expect(calls[1].messages[1].content).not.toContain('Volume summary');
+		calls[1].resolve({ content: 'Another summary' }); await again;
+	});
+});
 
 describe('memory refresh lifecycle', () => {
 	test('first load waits for data, while refreshes retain loaded chapters and local work', async () => {

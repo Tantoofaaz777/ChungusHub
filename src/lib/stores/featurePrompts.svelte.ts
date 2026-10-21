@@ -13,6 +13,7 @@ import { DEFAULT_THREADS_INSTRUCTIONS } from '$shared/threads/model';
 import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
 import { DEFAULT_EXTRACT_TEMPLATE, DEFAULT_PROMOTE_TEMPLATE } from '$lib/memory/prompts';
 import { sanitizeMemoryDefaults } from '$lib/memory/config';
+import { DEFAULT_PREVIOUS_SUMMARIES, normalizePreviousSummaries } from '$lib/memory/generation-context';
 import type { MemoryConfig } from '$lib/memory/types';
 import { clampSteeringDepth, STEERING_ROLES, type SteeringDefaults, type SteeringRole } from '$lib/types/steering';
 
@@ -70,6 +71,8 @@ interface FeaturePromptsState {
 	/** App-wide engine switches. */
 	threadsEnabled: boolean;
 	memoryEnabled: boolean;
+	/** App-wide count of earlier active summaries supplied as generation context; 0 disables. */
+	memoryPreviousSummaries: number;
 	openingSceneEnabled: boolean;
 	steeringEnabled: boolean;
 	spellcheckEnabled: boolean;
@@ -97,6 +100,7 @@ function normalize(raw: Partial<FeaturePromptsState> | null): FeaturePromptsStat
 		overrides: Object.fromEntries(Object.entries(raw?.overrides ?? {}).filter(([key]) => Object.hasOwn(FEATURE_PROMPT_DEFAULTS, key))),
 		threadsEnabled: raw?.threadsEnabled ?? true,
 		memoryEnabled: raw?.memoryEnabled ?? true,
+		memoryPreviousSummaries: normalizePreviousSummaries(raw?.memoryPreviousSummaries),
 		openingSceneEnabled: raw?.openingSceneEnabled ?? true,
 		steeringEnabled: raw?.steeringEnabled ?? true,
 		spellcheckEnabled: raw?.spellcheckEnabled ?? true,
@@ -115,6 +119,7 @@ class FeaturePromptsStore {
 		overrides: {},
 		threadsEnabled: true,
 		memoryEnabled: true,
+		memoryPreviousSummaries: DEFAULT_PREVIOUS_SUMMARIES,
 		openingSceneEnabled: true,
 		steeringEnabled: true,
 		spellcheckEnabled: true,
@@ -171,6 +176,15 @@ class FeaturePromptsStore {
 
 	get memoryEnabled(): boolean {
 		return this.state.memoryEnabled;
+	}
+
+	get memoryPreviousSummaries(): number {
+		return normalizePreviousSummaries(this.state.memoryPreviousSummaries);
+	}
+
+	setMemoryPreviousSummaries(value: number): void {
+		this.state = { ...this.state, memoryPreviousSummaries: normalizePreviousSummaries(value) };
+		this.persist();
 	}
 
 	get openingSceneEnabled(): boolean {

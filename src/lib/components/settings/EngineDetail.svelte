@@ -7,8 +7,8 @@
 	 * identity (icon, name, its description on an InfoTip, switch), Model (the
 	 * read-only truth about which connection this engine is routed to, with a
 	 * link to the Connections page where routing lives), and Prompts (the
-	 * registry-declared templates, edited inline). Steering adds one card of its
-	 * own: the placement its notes inherit; see the comment on that card.
+	 * registry-declared templates, edited inline). Extra cards configure Steering's
+	 * inherited placement and Memory/Threads generation context.
 	 *
 	 * Prompt edits auto-save on a short debounce and flush on unmount, the same
 	 * live-write contract as every other settings surface; there is no Save
@@ -200,6 +200,21 @@
 					{/if}
 				</div>
 				<p class="placement-note">Story context keeps the newest whole messages; fandom continuity keeps whole threads. The selected scene is never trimmed. Set a limit to 0 to omit that context.</p>
+			</div>
+		</section>
+	{/if}
+
+	{#if engine.id === 'memory'}
+		<section class="card">
+			<div class="card-head"><span class="card-title">Generation context</span></div>
+			<div class="card-body">
+				<label class="threads-limit" for="memory-previous-summaries">
+					Previous summaries
+					<input id="memory-previous-summaries" class="input-base" type="number" min="0" step="1"
+						value={featurePromptsStore.memoryPreviousSummaries}
+						oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) featurePromptsStore.setMemoryPreviousSummaries(e.currentTarget.valueAsNumber); }} />
+				</label>
+				<p class="placement-note">Include up to this many earlier summaries when generating chapters, arcs or volumes, oldest to newest. Compacted memories use their highest active summary. Default: 6. Set to 0 to omit previous summaries.</p>
 			</div>
 		</section>
 	{/if}

@@ -1350,7 +1350,7 @@ describe('manual scene summaries', () => {
  test('inserts a saved scene chronologically without requiring the memory macro', () => {
   const assembled = assemblePrompt(input(preset([item('{{chatHistory}}')]), { chatMessages:CHAT,
    recall:{text:'LEGACY RECALL MUST NOT DUPLICATE',archivedIds:new Set(CHAT.map((m) => m.id)),scenes:[summary]}, postProcessing:{mode:'none'} }));
-  expect(assembled.messages.map((m) => m.content)).toEqual([CHAT[0].content,`[Chapter: Castle scene]\nThe castle was explored.\n[End of chapter]`,CHAT[3].content,CHAT[4].content]);
+  expect(assembled.messages.map((m) => m.content)).toEqual([CHAT[0].content,`[1st summary]\nThe castle was explored.\n[End of summary]`,CHAT[3].content,CHAT[4].content]);
   expect(assembled.breakdown.memory).toBeGreaterThan(0);
   expect(assembled.breakdown.total).toBe(assembled.breakdown.preset+assembled.breakdown.context+assembled.breakdown.memory+assembled.breakdown.chat);
  });

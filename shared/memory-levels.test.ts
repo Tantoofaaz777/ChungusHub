@@ -22,7 +22,7 @@ describe('chapter → arc → volume replacement', () => {
 			expect(resolved.filter(r => r.status === 'covered')).toHaveLength(6);
 			const history = sceneHistory(path, rows);
 			expect(history).toHaveLength(1);
-			expect(history[0].content).toBe('[Volume: v]\nvolume text v\n[End of volume]');
+			expect(history[0].content).toBe('[1st summary]\nvolume text v\n[End of summary]');
 		}
 		expect(path[0].content).toBe('Original 0');
 	});
@@ -31,6 +31,7 @@ describe('chapter → arc → volume replacement', () => {
 		const { path, scenes } = hierarchy();
 		expect(sceneHistory(path, scenes.filter(s => s.id !== 'v')).map(m => m.id)).toEqual(['scene:a0', 'scene:a1']);
 		expect(sceneHistory(path, scenes.filter(s => s.id !== 'a0')).map(m => m.id)).toEqual(['scene:c0', 'scene:c1', 'scene:a1']);
+		expect(sceneHistory(path, scenes.filter(s => s.id !== 'a0')).map(m => m.content.split('\n')[0])).toEqual(['[1st summary]', '[2nd summary]', '[3rd summary]']);
 	});
 
 	test('a revised chapter invalidates both ancestors while leaving other arcs in use', () => {

@@ -151,16 +151,23 @@ export function prepareCompaction(level: CompactionLevel, selectedIds: string[],
 	return { source: ordered.flatMap(r => r.scene.source.map(s => ({ ...s }))), children: ordered.map(r => ({ id: r.scene.id, revision: r.scene.revision })) };
 }
 
+/** Ordinals identify summaries in the roleplay prompt without exposing their saved titles. */
+function summaryLabel(number: number): string {
+	const lastTwo = number % 100;
+	const suffix = lastTwo >= 11 && lastTwo <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][number % 10] ?? 'th');
+	return `${number}${suffix} summary`;
+}
+
 /** Replace ranges at their original positions. Original rows and parent links stay untouched. */
 export function sceneHistory<T extends SceneMessage>(path: T[], scenes: MemoryScene[]): (T & { memorySceneId?: string })[] {
 	const starts = new Map(resolveScenes(scenes, path).filter((item) => item.status === 'active').map((item) => [item.start, item]));
 	const history: (T & { memorySceneId?: string })[] = [];
+	let summaryNumber = 0;
 	for (let i = 0; i < path.length; i++) {
 		const item = starts.get(i);
 		if (item) {
-			const label = memoryLabel(sceneLevel(item.scene));
 			history.push({ ...path[i], id: `scene:${item.scene.id}`, role: 'system',
-				content: `[${label}: ${chapterTitle(item.scene.title)}]\n${item.scene.content}\n[End of ${label.toLowerCase()}]`,
+				content: `[${summaryLabel(++summaryNumber)}]\n${item.scene.content}\n[End of summary]`,
 				attachments: null, lorebook: null, thinking: null, excludedFromPrompt: false, memorySceneId: item.scene.id });
 			i = item.end;
 		} else if (!path[i].excludedFromPrompt) history.push(path[i]);

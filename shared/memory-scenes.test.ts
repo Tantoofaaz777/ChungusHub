@@ -68,6 +68,22 @@ test('chapter names preserve custom titles and old stored data while presenting 
  expect(chapterTitle('Scene 2-3')).toBe('Chapter 2-3');
  expect(chapterTitle('The final scene')).toBe('The final scene');
  expect(chapterTitle('Scene 2–3: a custom title')).toBe('Scene 2–3: a custom title');
- expect(sceneHistory(path,[old])[1].content).toBe('[Chapter: Chapter 2–3]\nThey found a letter in the library.\n[End of chapter]');
+ expect(sceneHistory(path,[old])[1].content).toBe('[1st summary]\nThey found a letter in the library.\n[End of summary]');
  expect(old.title).toBe('Scene 2–3');
+});
+
+test('roleplay summaries use chronological ordinals without titles, including English ordinal exceptions', () => {
+ const messages: SceneMessage[] = Array.from({ length: 31 }, (_, i) => ({
+  id: `m${i}`, parentId: i ? `m${i - 1}` : null, role: 'assistant', content: `Message ${i}`
+ }));
+ const scenes = messages.map((message, i) => scene([message], { id: `s${i}`, title: `Private title ${i}`, content: `Summary body ${i}` }));
+ const history = sceneHistory(messages, [...scenes].reverse());
+ for (const [index, label] of [[0,'1st'],[1,'2nd'],[2,'3rd'],[3,'4th'],[10,'11th'],[11,'12th'],[12,'13th'],[20,'21st'],[21,'22nd'],[22,'23rd'],[30,'31st']] as const) {
+  expect(history[index].content).toBe(`[${label} summary]\nSummary body ${index}\n[End of summary]`);
+ }
+ expect(history.every(message => message.role === 'system' && !message.content.includes('Private title'))).toBe(true);
+ expect(scenes[0].title).toBe('Private title 0');
+ // Memories needing review do not consume a number in the active context.
+ const reviewed = scenes.map((saved, i) => i === 0 ? { ...saved, reviewReason: 'Review required' } : saved);
+ expect(sceneHistory(messages, reviewed)[1].content).toStartWith('[1st summary]');
 });
