@@ -28,6 +28,8 @@ class ChatCursorStore {
 	 *  `MessageList` consumes it, because the turn may still sit behind the transcript window:
 	 *  the landing waits for the row to exist instead of firing on the press. */
 	takeNonce = $state(0);
+	/** Bookmarks open at the message heading; keyboard steps use the nearest edge. */
+	scrollBlock = $state<ScrollLogicalPosition>('nearest');
 
 	/** Bumped whenever the composer should take the keyboard back. */
 	composerNonce = $state(0);
@@ -51,7 +53,8 @@ class ChatCursorStore {
 	}
 
 	/** Put the cursor on a turn and take the keyboard there. */
-	goTo(id: string): void {
+	goTo(id: string, scrollBlock: ScrollLogicalPosition = 'nearest'): void {
+		this.scrollBlock = scrollBlock;
 		this.mark(id);
 		this.takeNonce++;
 	}

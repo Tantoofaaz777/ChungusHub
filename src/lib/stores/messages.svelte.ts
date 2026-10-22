@@ -254,6 +254,15 @@ class MessageStore {
 		}
 	}
 
+
+	/** Bookmarking is harmless during generation and does not change model context. */
+	async setBookmarked(messageId: string, bookmarked: boolean): Promise<void> {
+		const chatId = chatStore.activeChatId;
+		if (!chatId) return;
+		try { await chatStore.setMessageBookmarked(chatId, messageId, bookmarked); }
+		catch (error) { toastStore.failed('change message bookmark', error); }
+	}
+
 	async editMessage(
 		messageId: string,
 		newContent: string,

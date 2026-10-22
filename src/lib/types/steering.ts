@@ -18,8 +18,8 @@ export type SteeringScope = 'global' | 'character' | 'version' | 'chat';
 /** The prompt role a note is injected as. */
 export type SteeringRole = 'system' | 'user' | 'assistant';
 
-/** 'once' is consumed by the next successful primary generation (the note deletes
- *  itself and its text lands in the chat's reuse history); 'pinned' keeps injecting
+/** 'once' is disabled by the next successful primary generation (the saved note stays
+ *  available and its text lands in the chat's reuse history); 'pinned' keeps injecting
  *  until the note is disabled or deleted. */
 export type SteeringMode = 'once' | 'pinned';
 

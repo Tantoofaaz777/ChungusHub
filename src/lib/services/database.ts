@@ -105,6 +105,9 @@ class DatabaseService {
 	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null): Promise<MessagesDelta> {
 		return this.call('setMessageExcludedFromPrompt', messageId, excluded, sinceRev);
 	}
+	setMessageBookmarked(messageId: string, bookmarked: boolean, sinceRev: number | null = null): Promise<MessagesDelta> {
+		return this.call('setMessageBookmarked', messageId, bookmarked, sinceRev);
+	}
 	updateMessageContent(messageId: string, content: string, opts?: { minor?: boolean }): Promise<void> {
 		return this.call('updateMessageContent', messageId, content, opts);
 	}
@@ -215,6 +218,7 @@ class DatabaseService {
 	insertSteeringNote(note: SteeringNote): Promise<void> { return this.call('insertSteeringNote', note); }
 	updateSteeringNote(note: SteeringNote): Promise<void> { return this.call('updateSteeringNote', note); }
 	deleteSteeringNote(id: string): Promise<void> { return this.call('deleteSteeringNote', id); }
+	consumeSteeringNotes(ids: string[]): Promise<string[]> { return this.call('consumeSteeringNotes', ids); }
 	reorderSteeringNotes(ids: string[]): Promise<string[]> { return this.call('reorderSteeringNotes', ids); }
 
 	// ===== SESSION MEMORY =====

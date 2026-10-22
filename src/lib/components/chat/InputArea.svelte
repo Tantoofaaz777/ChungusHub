@@ -6,6 +6,7 @@
 	import ChatSetupChip from './ChatSetupChip.svelte';
 	import ChatPersonaDialog from './ChatPersonaDialog.svelte';
 	import AuthorsNotesDialog from './AuthorsNotesDialog.svelte';
+	import ChatBookmarksDialog from './ChatBookmarksDialog.svelte';
 	import { chatAuthorsNote } from '$lib/types/chat';
 	import TransformPanel from './TransformPanel.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
@@ -102,6 +103,7 @@
 
 	let menuOpen = $state(false);
 	let personaDialogOpen = $state(false);
+	let bookmarksOpen = $state(false);
 
 	// The persona currently bound to this chat's user turns (from any user message,
 	// since they're uniform once set). Feeds the picker's active mark; null reads as "You".
@@ -193,6 +195,7 @@
 		// them: its gates were resolved against the chat that just left the screen.
 		steeringOpen = false;
 		authorsNotesOpen = false;
+		bookmarksOpen = false;
 		transformKind = null;
 		commandArmed = false;
 		if (!chatId) return;
@@ -1106,6 +1109,14 @@
 						</button>
 					{/if}
 
+					{#if chatStore.activeChatId}
+						<button type="button" class="composer-icon-btn" class:composer-icon-btn--active={bookmarksOpen}
+							onclick={() => bookmarksOpen = true} aria-label="Bookmarks" title="Bookmarks"
+							aria-haspopup="dialog" aria-expanded={bookmarksOpen}>
+							<Icon name="star" class="w-4 h-4" />
+						</button>
+					{/if}
+
 					<div class="composer-feature-divider" aria-hidden="true"></div>
 
 					<ChatSetupChip />
@@ -1115,6 +1126,12 @@
 		</div>
 	</div>
 </div>
+
+{#if chatStore.activeChatId}
+	{#key chatStore.activeChatId}
+		<ChatBookmarksDialog chatId={chatStore.activeChatId} open={bookmarksOpen} onClose={() => bookmarksOpen = false} />
+	{/key}
+{/if}
 
 {#if authorsNotesOpen && chatStore.activeChatId}
 	{#key chatStore.activeChatId}

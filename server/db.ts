@@ -541,6 +541,11 @@ const MIGRATIONS: Migration[] = [
 		version: 50,
 		name: 'threads_chat_prompt',
 		sql: `ALTER TABLE threads_notes ADD COLUMN prompt_id TEXT;`
+	},
+	{
+		version: 51,
+		name: 'message_bookmarks',
+		sql: `ALTER TABLE messages ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0;`
 	}
 ];
 
@@ -719,6 +724,7 @@ class ServerDatabase {
 			role: row.role,
 			content: row.content,
 			excludedFromPrompt: row.excluded_from_prompt === 1,
+			isBookmarked: row.is_bookmarked === 1,
 			personaId: row.persona_id ?? null,
 			branchLabel: row.branch_label ? JSON.parse(row.branch_label as string) : null,
 			thinking: row.thinking ?? null,
@@ -883,8 +889,8 @@ class ServerDatabase {
 				this.execute(
 					`INSERT INTO messages
 					 (id, chat_id, parent_id, role, content, persona_id, branch_label, thinking, attachments_json, created_at, edited_at, minor_edited_at, sprite_label,
-					  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, excluded_from_prompt)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, excluded_from_prompt, is_bookmarked)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						idMap.get(row.id as string),
 						newChatId,
@@ -909,7 +915,8 @@ class ServerDatabase {
 						row.reasoning_ms ?? null,
 						row.lore_json ?? null,
 						row.sibling_index,
-						row.excluded_from_prompt ?? 0
+						row.excluded_from_prompt ?? 0,
+						row.is_bookmarked ?? 0
 					]
 				);
 				queue.push(...(children.get(row.id as string) ?? []));
@@ -1221,31 +1228,8 @@ class ServerDatabase {
 				this.repairChatPointers(commit.chatId, new Set(doomed), commit.parentId);
 			}
 
-			// The ids actually deleted, not a count: the caller records their texts in the chat's
-			// reuse list, and a note this loop declined to spend is still armed. Listing it as
-			// spent would show it in Recent while it is about to inject again.
-			const spentSteeringIds: string[] = [];
-			for (const id of commit.spendSteeringIds) {
-				const row = this.select<{ data_json: string }[]>('SELECT data_json FROM steering_notes WHERE id = ?', [
-					id
-				])[0];
-				if (!row) continue;
-				// The mode rides `data_json` rather than a column of its own, so the guard has to
-				// read it, and it is a guard rather than a formality: a note edited to permanent
-				// while the model was writing must not be deleted out from under its author. An
-				// unparseable row keeps the note and says so; the reply is worth more than the
-				// tidiness of spending it.
-				let mode: unknown;
-				try {
-					mode = (JSON.parse(row.data_json) as { mode?: unknown }).mode;
-				} catch {
-					console.error(`[steering] note ${id} will not parse, so it was left armed instead of spent.`);
-					continue;
-				}
-				if (mode !== 'once') continue;
-				this.execute('DELETE FROM steering_notes WHERE id = ?', [id]);
-				spentSteeringIds.push(id);
-			}
+			// Disable only the one-shot guidance this prompt used, in the reply transaction.
+			const spentSteeringIds = this.consumeSteeringNotes(commit.spendSteeringIds);
 
 			return { messageId, spentSteeringIds };
 		});
@@ -1694,8 +1678,8 @@ class ServerDatabase {
 			this.execute(
 				`INSERT INTO messages
 				 (id, chat_id, parent_id, role, content, persona_id, branch_label, thinking, attachments_json, created_at, edited_at, minor_edited_at, sprite_label,
-				  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, rev, excluded_from_prompt)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, rev, excluded_from_prompt, is_bookmarked)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					message.id,
 					message.chatId,
@@ -1723,7 +1707,8 @@ class ServerDatabase {
 					message.lorebook ? JSON.stringify(message.lorebook) : null,
 					message.siblingIndex ?? 0,
 					rev,
-					message.excludedFromPrompt === true ? 1 : 0
+					message.excludedFromPrompt === true ? 1 : 0,
+					message.isBookmarked === true ? 1 : 0
 				]
 			);
 		});
@@ -1738,6 +1723,21 @@ class ServerDatabase {
 			this.execute('UPDATE messages SET excluded_from_prompt = ?, rev = ? WHERE id = ?', [
 				excluded ? 1 : 0, rev, messageId
 			]);
+			return this.getMessagesDelta(message.chat_id, sinceRev);
+		});
+	}
+
+
+	/** Personal navigation metadata: does not edit the text, memory stamps or chat activity. */
+	setMessageBookmarked(messageId: string, bookmarked: boolean, sinceRev: number | null = null): unknown {
+		if (typeof bookmarked !== 'boolean') throw new Error('Expected a boolean bookmark flag.');
+		return this.inTransaction(() => {
+			const message = this.select<{ chat_id: string; is_bookmarked: number }[]>('SELECT chat_id, is_bookmarked FROM messages WHERE id = ?', [messageId])[0];
+			if (!message) throw new Error('The message no longer exists.');
+			if ((message.is_bookmarked === 1) !== bookmarked) {
+				const rev = this.bumpMessagesRev(message.chat_id);
+				this.execute('UPDATE messages SET is_bookmarked = ?, rev = ? WHERE id = ?', [bookmarked ? 1 : 0, rev, messageId]);
+			}
 			return this.getMessagesDelta(message.chat_id, sinceRev);
 		});
 	}
@@ -2659,6 +2659,30 @@ class ServerDatabase {
 		this.execute('DELETE FROM steering_notes WHERE id = ?', [id]);
 	}
 
+	/** Consume once-only guidance without removing its saved content or library position.
+	 *  Shared by generated-turn commits and client-persisted continuations. */
+	consumeSteeringNotes(ids: string[]): string[] {
+		if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid steering ids');
+		return this.inTransaction(() => {
+			const spent: string[] = [];
+			for (const id of new Set(ids)) {
+				const row = this.select<{ data_json: string }[]>('SELECT data_json FROM steering_notes WHERE id = ?', [id])[0];
+				if (!row) continue;
+				let note: { mode?: unknown; enabled?: unknown };
+				try { note = JSON.parse(row.data_json); }
+				catch {
+					console.error(`[steering] note ${id} will not parse, so it was left armed instead of spent.`);
+					continue;
+				}
+				// A note changed to Every reply, disabled or deleted during generation stays as-is.
+				if (note?.mode !== 'once' || note.enabled !== true) continue;
+				this.execute("UPDATE steering_notes SET data_json = json_set(data_json, '$.enabled', json('false')), updated_at = ? WHERE id = ?", [Date.now(), id]);
+				spent.push(id);
+			}
+			return spent;
+		});
+	}
+
 	reorderSteeringNotes(ids: string[]): string[] {
 		if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid steering order');
 		return this.inTransaction(() => {
@@ -3152,6 +3176,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	insertMessage: 'messages',
 	updateMessageContent: 'messages',
 	setMessageExcludedFromPrompt: 'messages',
+	setMessageBookmarked: 'messages',
 	applyMessageContinuation: 'messages',
 	updateMessagePersona: 'messages',
 	setChatUserPersona: 'messages',
@@ -3181,6 +3206,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	insertSteeringNote: 'steering',
 	updateSteeringNote: 'steering',
 	deleteSteeringNote: 'steering',
+	consumeSteeringNotes: 'steering',
 	reorderSteeringNotes: 'steering',
 	memSetState: 'memory',
 	memApplyBatch: 'memory',

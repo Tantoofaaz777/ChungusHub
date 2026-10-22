@@ -71,7 +71,7 @@ function addMessage(chatId: string, parentId: string | null, role: string, sibli
 	return id;
 }
 
-function addSteeringNote(chatId: string, mode: 'once' | 'pinned'): string {
+function addSteeringNote(chatId: string, mode: 'once' | 'pinned', overrides: Record<string, unknown> = {}): string {
 	const id = crypto.randomUUID();
 	serverDb.insertSteeringNote({
 		id,
@@ -84,7 +84,8 @@ function addSteeringNote(chatId: string, mode: 'once' | 'pinned'): string {
 		depth: null,
 		role: null,
 		createdAt: (clock += 1000),
-		updatedAt: clock
+		updatedAt: clock,
+		...overrides
 	});
 	return id;
 }
@@ -181,17 +182,56 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		expect(serverDb.getChat(empty).activeLeafId).toBe(second.messageId);
 	});
 
-	test('the one-shot notes that rode the turn are spent in the same transaction', () => {
-		const chatId = makeChat();
-		const once = addSteeringNote(chatId, 'once');
 
-		const landed = serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once] }));
-
-		expect(landed.spentSteeringIds).toEqual([once]);
-		expect(serverDb.getAllSteeringNotes().some((n: { id: string }) => n.id === once)).toBe(false);
+	test('Next reply disables global and chat steering without losing its saved fields', () => {
+		for (const scope of ['global', 'chat']) {
+			const chatId = makeChat();
+			const once = addSteeringNote(chatId, 'once', { scope, scopeId: scope === 'global' ? null : chatId, title: 'Saved direction', sortOrder: 4, role: 'user', depth: 2 });
+			const initial = serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once);
+			// An edit made while generation was running must survive consumption.
+			serverDb.updateSteeringNote({ ...initial, title: 'Latest name', text: 'Latest guidance' });
+			const saved = serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once);
+			const landed = serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once] }));
+			expect(landed.spentSteeringIds).toEqual([once]);
+			expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once))
+				.toEqual({ ...saved, enabled: false, updatedAt: expect.any(Number) });
+		}
 	});
 
-	test('a note made permanent while the model was writing is not deleted out from under its author', () => {
+	test('a consumed steering remains disabled until re-enabled and can be used again', () => {
+		const chatId = makeChat(), once = addSteeringNote(chatId, 'once');
+		serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once] }));
+		expect(serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once] })).spentSteeringIds).toEqual([]);
+		serverDb.closeForTests();
+		const saved = serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once);
+		expect(saved).toMatchObject({ mode: 'once', enabled: false });
+		serverDb.updateSteeringNote({ ...saved, enabled: true });
+		expect(serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once] })).spentSteeringIds).toEqual([once]);
+		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once)).toMatchObject({ enabled: false });
+	});
+
+	test('continuation consumption RPC disables only the active once ids the prompt used', async () => {
+		const chatId = makeChat();
+		const once = addSteeringNote(chatId, 'once'), off = addSteeringNote(chatId, 'once', { enabled: false });
+		const pinned = addSteeringNote(chatId, 'pinned'), fresh = addSteeringNote(chatId, 'once'), removed = addSteeringNote(chatId, 'once');
+		serverDb.deleteSteeringNote(removed);
+		const before = serverDb.getAllSteeringNotes();
+		const { callDbMethod } = await import('./db');
+		expect(callDbMethod('consumeSteeringNotes', [[once, once, off, pinned, removed, 'missing']])).toEqual([once]);
+		const after = serverDb.getAllSteeringNotes();
+		for (const id of [off, pinned, fresh]) expect(after.find((n: { id: string }) => n.id === id)).toEqual(before.find((n: { id: string }) => n.id === id));
+		expect(after.find((n: { id: string }) => n.id === once)).toMatchObject({ enabled: false, mode: 'once', text: 'keep it terse' });
+		expect(after.some((n: { id: string }) => n.id === removed)).toBe(false);
+	});
+
+	test('a failed turn commit leaves its once guidance enabled', () => {
+		const chatId = makeChat(), once = addSteeringNote(chatId, 'once');
+		expect(() => serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once, null] }))).toThrow('Invalid steering ids');
+		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(0);
+		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once)).toMatchObject({ enabled: true });
+	});
+
+	test('a note made permanent while the model was writing stays enabled', () => {
 		const chatId = makeChat();
 		const note = addSteeringNote(chatId, 'once');
 		const stored = serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === note);
@@ -202,7 +242,7 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		// Not merely "nothing was spent": the id is absent, which is what stops the caller
 		// listing it under Recent as though it had been consumed.
 		expect(landed.spentSteeringIds).toEqual([]);
-		expect(serverDb.getAllSteeringNotes().some((n: { id: string }) => n.id === note)).toBe(true);
+		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === note)).toMatchObject({ enabled: true, mode: 'pinned' });
 	});
 });
 

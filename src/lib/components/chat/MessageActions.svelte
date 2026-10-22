@@ -7,6 +7,9 @@
 		onDelete: () => void;
 		onCopy: () => Promise<void>;
 		onTogglePrompt?: () => void;
+		onToggleBookmark?: () => void;
+		bookmarked?: boolean;
+		bookmarkBusy?: boolean;
 		onMemoryStart?: () => void;
 		onMemoryEnd?: () => void;
 		memoryStart?: boolean;
@@ -33,6 +36,9 @@
 		onDelete,
 		onCopy,
 		onTogglePrompt,
+		onToggleBookmark,
+		bookmarked = false,
+		bookmarkBusy = false,
 		onMemoryStart,
 		onMemoryEnd,
 		memoryStart = false,
@@ -88,6 +94,16 @@
 		<Icon name={justCopied ? 'check' : 'copy'} class="w-3.5 h-3.5" strokeWidth={1.75} />
 		<span class="action-label">{justCopied ? 'Copied' : 'Copy'}</span>
 	</button>
+
+	{#if onToggleBookmark}
+		<button type="button" class="action-btn" class:action-btn-active={bookmarked}
+			onclick={onToggleBookmark} disabled={bookmarkBusy} aria-pressed={bookmarked}
+			aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark message'}
+			title={bookmarked ? 'Remove bookmark' : 'Bookmark message'}>
+			<Icon name="star" class="w-3.5 h-3.5 {bookmarked ? 'fill-current' : ''}" strokeWidth={1.75} />
+			<span class="action-label">Bookmark</span>
+		</button>
+	{/if}
 
 	{#if showRegenerate && onRegenerate}
 		<button

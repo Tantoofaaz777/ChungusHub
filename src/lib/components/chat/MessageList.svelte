@@ -447,7 +447,7 @@
 		// turns has to land, and stepping through a stretch of story would otherwise queue one
 		// animation per press. Deliberately NOT armed with `programmaticScroll`, exactly like
 		// the arrival mark: landing mid-history SHOULD release the bottom pin.
-		row.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+		row.scrollIntoView({ block: chatCursor.scrollBlock, behavior: 'instant' });
 		row.focus({ preventScroll: true });
 	});
 

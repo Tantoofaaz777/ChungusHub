@@ -592,9 +592,14 @@ describe('transcript refresh order (architecture/chat-sessions.md #4)', () => {
 		expect(publish).toContain('allMessages: messages');
 		expect(publish.indexOf('this.overtaken(')).toBeGreaterThan(-1);
 		expect(publish.indexOf('this.overtaken(')).toBeLessThan(publish.indexOf('this.currentChatState = {'));
-		for (const method of ['loadChatState', 'setMessageExcludedFromPrompt']) {
-			const caller = block(source, new RegExp(`\\tasync ${method}\\([\\s\\S]*?\\n\\t\\}`), method);
+		for (const method of ['loadChatState', 'changeMessageMetadata']) {
+			const caller = block(source, new RegExp(`\\t(?:private )?async ${method}\\([\\s\\S]*?\\n\\t\\}`), method);
 			expect(caller).toContain('this.publishTranscript(');
+		}
+		for (const method of ['setMessageExcludedFromPrompt', 'setMessageBookmarked']) {
+			const caller = block(source, new RegExp(`\\tasync ${method}\\([\\s\\S]*?\\n\\t\\}`), method);
+			expect(caller).toContain('this.changeMessageMetadata(');
+			expect(caller).toContain(`db.${method}(`);
 		}
 	});
 });

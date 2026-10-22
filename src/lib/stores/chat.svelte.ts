@@ -455,15 +455,23 @@ class ChatStore {
 		return { chat, messages, rev };
 	}
 
-	/** The mutation returns its canonical delta, so a simple visibility change needs
+	/** The mutation returns its canonical delta, so a simple metadata change needs
 	 * one round trip. Never apply it over a newer refresh or a different navigation. */
 	async setMessageExcludedFromPrompt(chatId: string, messageId: string, excluded: boolean): Promise<void> {
+		await this.changeMessageMetadata(chatId, rev => db.setMessageExcludedFromPrompt(messageId, excluded, rev));
+	}
+
+	async setMessageBookmarked(chatId: string, messageId: string, bookmarked: boolean): Promise<void> {
+		await this.changeMessageMetadata(chatId, rev => db.setMessageBookmarked(messageId, bookmarked, rev));
+	}
+
+	private async changeMessageMetadata(chatId: string, mutate: (rev: number | null) => Promise<MessagesDelta>): Promise<void> {
 		const base = this.currentChatState?.chat.id === chatId ? this.currentChatState : null;
 		const messages = base?.allMessages ?? [];
 		const rev = base?.messagesRev ?? null;
 		const leaf = base?.chat.activeLeafId;
 		const ticket = ++this.loadTicket;
-		const delta = await db.setMessageExcludedFromPrompt(messageId, excluded, rev);
+		const delta = await mutate(rev);
 		if (this.activeChatId !== chatId) return;
 		if (!base || this.currentChatState !== base || base.messagesRev !== rev ||
 			base.allMessages !== messages || base.chat.activeLeafId !== leaf || ticket !== this.loadTicket) {

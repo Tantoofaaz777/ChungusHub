@@ -165,14 +165,15 @@ class SteeringStore {
 	 *
 	 * By id, and never by re-resolving the scope, because the generation that is spending
 	 * them finished some time ago: a note added while it ran never rode its prompt, and one
-	 * edited to permanent meanwhile is no longer the reader's to throw away. Both are left
-	 * standing, which is why an id absent from the answer is not an error. Called ONLY after
+	 * edited to permanent meanwhile must stay enabled for future replies. Neither is disabled,
+	 * which is why an id absent from the answer is not an error. Called ONLY after
 	 * a persisted success: an abort or an error must leave a one-shot armed for the retry.
 	 */
 	async consumeById(ids: string[]): Promise<Set<string>> {
-		const spent = this.notes.filter((n) => ids.includes(n.id) && n.mode === 'once');
-		await Promise.all(spent.map((n) => this.remove(n.id)));
-		return new Set(spent.map((n) => n.id));
+		await this.flush();
+		const spent = new Set(await db.consumeSteeringNotes(ids));
+		this._notes = this._notes.map(note => spent.has(note.id) ? { ...note, enabled: false, updatedAt: Date.now() } : note);
+		return spent;
 	}
 }
 

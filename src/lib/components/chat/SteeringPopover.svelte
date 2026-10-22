@@ -4,7 +4,7 @@
 	 * steering. The footer opens the Steering library in Settings; saved rows only toggle.
 	 *
 	 * Its quick box is the cheap half of exactly one axis: guidance that rides one request
-	 * and deletes itself. Everything configurable about a note (lifetime, scope, placement,
+	 * and switches off. Everything configurable about a note (lifetime, scope, placement,
 	 * a name) belongs to the editor, which is one click away, so the box carries no controls
 	 * of its own at all.
 	 *
@@ -29,9 +29,8 @@
 	let history = $derived(chat ? chatStore.featureState(chat.id).steeringHistory : []);
 
 	// The quick box: guidance for THIS reply and nothing more. Deliberately one-shot with no
-	// lifetime picker and no commit button: anything that outlives one request is what the
-	// editor below is for, and duplicating it here with a mode pill only made the cheap
-	// action look like the expensive one. Write, it fires, it's gone.
+	// lifetime picker and no commit button: repeated injection is configured in the library.
+	// Write, it fires once, and it stays saved with its switch off.
 	let quickText = $state('');
 	let recentOpen = $state(false);
 

@@ -295,6 +295,8 @@ export interface Message {
 	content: string;
 	/** Kept in the transcript, excluded from model history and memory extraction. */
 	excludedFromPrompt?: boolean;
+	/** A saved navigation point in this chat, independent of prompt inclusion. */
+	isBookmarked?: boolean;
 	/** The persona this message was sent with, captured at send time. Locks attribution
 	 *  so changing the global active persona never re-labels past messages. User messages
 	 *  only; null for assistant/system and for messages created before this was tracked. */

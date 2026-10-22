@@ -95,6 +95,13 @@
 	// until Save, so cancelling a branch costs nothing. Cloning the row up front instead
 	// leaves a verbatim duplicate sibling behind every time you back out.
 	let isEditing = $state(false);
+	let bookmarkBusy = $state(false);
+	async function toggleBookmark() {
+		if (bookmarkBusy) return;
+		bookmarkBusy = true;
+		try { await messageStore.setBookmarked(message.id, !message.isBookmarked); }
+		finally { bookmarkBusy = false; }
+	}
 	let editorMode = $state<EditAction>('save_only');
 	let showDeleteMenu = $state(false);
 	/** The delete the user has been asked to confirm, or null while the menu offers choices. */
@@ -685,6 +692,9 @@
 									onEdit={handleEditClick}
 									onDelete={handleDeleteClick}
 									onCopy={handleCopy}
+									onToggleBookmark={toggleBookmark}
+									bookmarked={!!message.isBookmarked}
+									{bookmarkBusy}
 									onMemoryStart={() => memoryStore.setBoundary('start', message.id)}
 									onMemoryEnd={() => memoryStore.setBoundary('end', message.id)}
 									memoryStart={memoryStore.selection?.chatId === message.chatId && memoryStore.selection.startId === message.id}

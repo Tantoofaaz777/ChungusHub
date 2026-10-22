@@ -254,7 +254,7 @@
 				aria-checked={note.mode === 'once'}
 				class="pill"
 				class:pill--active={note.mode === 'once'}
-				title="Rides the next reply, then removes itself"
+				title="Rides the next reply, then switches off"
 				onclick={() => steeringStore.update(note.id, { mode: 'once' })}
 			>
 				Next reply
