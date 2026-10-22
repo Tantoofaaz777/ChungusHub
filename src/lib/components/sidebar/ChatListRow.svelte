@@ -3,7 +3,7 @@
 	 * One row of the chats panel. Presentation only: every mutation is a callback the
 	 * panel owns, so this file never touches a store.
 	 *
-	 * The message count follows the active path, matching the transcript and preview.
+	 * The message count follows the active path, matching the transcript.
 	 * Swipes and alternate greetings aren't additional turns in that conversation.
 	 */
 	import { untrack } from 'svelte';

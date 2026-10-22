@@ -50,14 +50,17 @@ describe('expanded editor search', () => {
 		const segments = markEditorMatches(tokenizeEditorSyntax(text), findEditorMatches(text, 'o {{char}} <tag>w', options));
 		expect(segments.map((s) => s.text).join('')).toBe(text);
 		expect(segments.filter((s) => s.match === 0).map((s) => [s.kind, s.text])).toEqual([
-			['plain', 'o '], ['macro', '{{char}}'], ['plain', ' '], ['tag', '<tag>'], ['plain', 'w']
+			['plain', 'o '], ['bracket', '{{'], ['macro', 'char'], ['bracket', '}}'], ['plain', ' '], ['tag', '<tag>'], ['plain', 'w']
 		]);
 	});
 
 	test('adjacent matches remain distinct without adding or dropping text', () => {
 		const text = '{{char}}{{char}}';
 		expect(markEditorMatches(tokenizeEditorSyntax(text), findEditorMatches(text, '{{char}}', options)))
-			.toEqual([{ kind: 'macro', text: '{{char}}', match: 0 }, { kind: 'macro', text: '{{char}}', match: 1 }]);
+			.toEqual([
+				{ kind: 'bracket', text: '{{', match: 0 }, { kind: 'macro', text: 'char', match: 0 }, { kind: 'bracket', text: '}}', match: 0 },
+				{ kind: 'bracket', text: '{{', match: 1 }, { kind: 'macro', text: 'char', match: 1 }, { kind: 'bracket', text: '}}', match: 1 }
+			]);
 		expect(markEditorMatches(tokenizeEditorSyntax(text), []).map((s) => s.text).join('')).toBe(text);
 		expect(markEditorMatches([], [])).toEqual([]);
 	});

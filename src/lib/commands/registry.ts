@@ -194,7 +194,8 @@ export const COMMANDS: CommandDef[] = [
 				text,
 				scope: ctx.chatId ? 'chat' : 'global',
 				scopeId: ctx.chatId,
-				mode: 'once'
+				mode: 'once',
+				transient: true
 			});
 			toastStore.success('Steering the next reply');
 		}

@@ -49,7 +49,6 @@
 		imageDetailVisible,
 		cachingControl
 	} from '$lib/config/sampling';
-	import { rangeReset } from '$lib/actions/rangeReset';
 	import { toggleRow } from '$lib/actions/toggleRow';
 	import { parseCustomBody } from '$shared/custom-body';
 
@@ -125,8 +124,8 @@
 	const declared = $derived(conn?.samplingParams ?? []);
 	const samplingPolicy = $derived(resolveParamPolicy(meta?.paramPolicy ?? 'base-only', declared));
 
-	// The slider list mirrors exactly what this connection sends ("visible === sent").
-	const visibleSliders = $derived(SAMPLING_SLIDERS.filter((p) => sliderVisible(p, modelInfo, samplingPolicy)));
+	// The numeric fields mirror exactly what this connection sends ("visible === sent").
+	const visibleSampling = $derived(SAMPLING_SLIDERS.filter((p) => sliderVisible(p, modelInfo, samplingPolicy)));
 
 	// A BYO endpoint's reasoning dialect is unknowable from here, so that provider's
 	// profile says 'declared' and the connection names it. Every other provider's real
@@ -173,37 +172,6 @@
 
 	const effortPills = $derived(reasoningEffortOptions.map((l) => ({ value: l as string, label: EFFORT_LABELS[l] })));
 	const effortCurrent = $derived(reasoningEffortOptions.includes(gen.reasoningEffort) ? gen.reasoningEffort : 'auto');
-
-	// Both token sliders ride a fixed ladder that splits every octave into 16 rungs, so
-	// the step tracks the magnitude (1,024 around 16k, 65,536 around 1M) and every rung
-	// lands on a round number. The ladder is the dragging instrument only: the field
-	// below it accepts exact figures without depending on a rung, and the range
-	// ends at a sanity cap rather than at whatever the selected model happens to report.
-	// Storage stays raw tokens: an off-ladder saved value keeps displaying exactly.
-	const RUNGS_PER_OCTAVE = 16;
-
-	function tokenLadder(min: number, max: number): number[] {
-		const rungs: number[] = [];
-		for (let base = min; base < max; base *= 2) {
-			const step = base / RUNGS_PER_OCTAVE;
-			for (let v = base; v < base * 2 && v < max; v += step) rungs.push(v);
-		}
-		rungs.push(max);
-		return rungs;
-	}
-
-	function nearestRungIndex(rungs: number[], value: number): number {
-		let best = 0;
-		for (let i = 1; i < rungs.length; i++) {
-			if (Math.abs(rungs[i] - value) < Math.abs(rungs[best] - value)) best = i;
-		}
-		return best;
-	}
-
-	const CONTEXT_LADDER = tokenLadder(1024, MAX_CONTEXT_SIZE);
-	const RESPONSE_LADDER = tokenLadder(256, MAX_RESPONSE_TOKENS);
-	const responseIdx = $derived(nearestRungIndex(RESPONSE_LADDER, gen.maxTokens));
-	const responseDefaultIdx = nearestRungIndex(RESPONSE_LADDER, DEFAULT_GENERATION_SETTINGS.maxTokens);
 
 	const emptyHint = $derived(
 		connectionError
@@ -403,8 +371,6 @@
 	// ===== Context warnings =====
 	const contextBudgetDead = $derived(conn ? computePromptBudget(conn.contextSize, gen.maxTokens) === 0 : false);
 	const ctxOverModelWindow = $derived(!!modelInfo?.contextLength && (conn?.contextSize ?? 0) > modelInfo.contextLength);
-	const ctxIdx = $derived(nearestRungIndex(CONTEXT_LADDER, conn?.contextSize ?? DEFAULT_CONTEXT_SIZE));
-	const ctxDefaultIdx = nearestRungIndex(CONTEXT_LADDER, DEFAULT_CONTEXT_SIZE);
 </script>
 
 {#snippet specTag(label: string, tip: string, variant: string)}
@@ -627,7 +593,7 @@
 						{#if conn.contextSize !== DEFAULT_CONTEXT_SIZE}
 							<button
 								type="button"
-								class="ctx-reset"
+								class="field-action"
 								title="Reset to {DEFAULT_CONTEXT_SIZE.toLocaleString()} (default)"
 								onclick={() => commitContextSize(DEFAULT_CONTEXT_SIZE)}
 							>
@@ -636,18 +602,7 @@
 						{/if}
 					</div>
 				</div>
-				<input
-					id="context-size"
-					type="range"
-					class="slider"
-					min="0"
-					max={CONTEXT_LADDER.length - 1}
-					step="1"
-					value={ctxIdx}
-					oninput={(e) => commitContextSize(CONTEXT_LADDER[parseInt(e.currentTarget.value)])}
-					use:rangeReset={{ defaultValue: ctxDefaultIdx, apply: (i) => commitContextSize(CONTEXT_LADDER[i]) }}
-				/>
-				<SliderValueInput value={conn.contextSize} min={1} max={MAX_CONTEXT_SIZE}
+				<SliderValueInput id="context-size" value={conn.contextSize} min={1} max={MAX_CONTEXT_SIZE}
 					groupedInteger label="Context window in tokens" onchange={commitContextSize} />
 				{#if modelInfo?.contextLength && !ctxOverModelWindow}
 					<span class="slider-note">Model max: {modelInfo.contextLength.toLocaleString()} tokens.</span>
@@ -680,19 +635,13 @@
 				<div class="slider-block">
 					<div class="slider-top">
 						<label for="max-tokens" class="slider-label">Max tokens</label>
+						{#if gen.maxTokens !== DEFAULT_GENERATION_SETTINGS.maxTokens}
+							<button type="button" class="field-action"
+								title="Reset to {DEFAULT_GENERATION_SETTINGS.maxTokens.toLocaleString()} (default)"
+								onclick={() => updateGen('maxTokens', DEFAULT_GENERATION_SETTINGS.maxTokens)}>reset</button>
+						{/if}
 					</div>
-					<input
-						id="max-tokens"
-						type="range"
-						class="slider"
-						min="0"
-						max={RESPONSE_LADDER.length - 1}
-						step="1"
-						value={responseIdx}
-						oninput={(e) => updateGen('maxTokens', RESPONSE_LADDER[parseInt(e.currentTarget.value)])}
-						use:rangeReset={{ defaultValue: responseDefaultIdx, apply: (i) => updateGen('maxTokens', RESPONSE_LADDER[i]) }}
-					/>
-					<SliderValueInput value={gen.maxTokens} min={1} max={MAX_RESPONSE_TOKENS}
+					<SliderValueInput id="max-tokens" value={gen.maxTokens} min={1} max={MAX_RESPONSE_TOKENS}
 						groupedInteger label="Max response tokens" onchange={(value) => updateGen('maxTokens', value)} />
 					{#if maxTokensCeiling && maxTokensCeiling < gen.maxTokens}
 						<span class="slider-note warn">This model caps output at {maxTokensCeiling.toLocaleString()} tokens.</span>
@@ -824,19 +773,19 @@
 			<div class="card-head">
 				<span class="card-title">Sampling Parameters</span>
 				<InfoTip
-					text="The sampling values sent with every generation on this connection, and only what it actually sends appears here. Drag a slider or type in the field below it. Press Enter or leave the field to apply. Double-click a slider to reset it."
+					text="The sampling values sent with every generation on this connection, and only what it actually sends appears here. Type a value, then press Enter or leave the field to apply. Use reset to restore its default."
 				/>
 			</div>
 
 			<div class="card-body">
 				{#if declaresParams}
 					<!-- BYO endpoints: nothing on our side can know what the endpoint takes,
-					     so its owner declares it and the sliders below follow that exactly. -->
+					     so its owner declares it and the fields below follow that exactly. -->
 					<div class="declare">
 						<div class="declare-head">
 							<span class="section-label">Accepted by this endpoint</span>
 							<InfoTip
-								text="There is no way to ask your server what it accepts, so turn on what it takes. Those become the sliders below, and temperature is always sent."
+								text="There is no way to ask your server what it accepts, so turn on what it takes. Those become the fields below, and temperature is always sent."
 							/>
 							<div class="declare-actions">
 								<button type="button" class="micro-btn" onclick={() => declareAll(true)}>all</button>
@@ -864,26 +813,20 @@
 					</div>
 				{/if}
 
-				{#each visibleSliders as p (p.key)}
+				{#each visibleSampling as p (p.key)}
 					<div class="slider-block">
 						<div class="slider-top">
 							<div class="slider-label-wrap">
 								<label for={`gen-${p.key}`} class="slider-label">{p.label}</label>
 								<InfoTip text={p.info} />
 							</div>
+							{#if gen[p.key] !== DEFAULT_GENERATION_SETTINGS[p.key]}
+								<button type="button" class="field-action" aria-label={`Reset ${p.label}`}
+									title={`Reset to ${DEFAULT_GENERATION_SETTINGS[p.key]} (default)`}
+									onclick={() => updateGen(p.key, DEFAULT_GENERATION_SETTINGS[p.key])}>reset</button>
+							{/if}
 						</div>
-						<input
-							id={`gen-${p.key}`}
-							type="range"
-							class="slider"
-							value={gen[p.key]}
-							min={p.min}
-							max={p.max}
-							step={p.step}
-							oninput={(e) => updateGen(p.key, p.int ? parseInt(e.currentTarget.value) : parseFloat(e.currentTarget.value))}
-							use:rangeReset={{ defaultValue: DEFAULT_GENERATION_SETTINGS[p.key], apply: (v) => updateGen(p.key, v) }}
-						/>
-						<SliderValueInput value={gen[p.key]} min={p.min} max={p.max} step={p.step}
+						<SliderValueInput id={`gen-${p.key}`} value={gen[p.key]} min={p.min} max={p.max} step={p.step}
 							label={`${p.label} value`} onchange={(value) => updateGen(p.key, value)} />
 						{#if p.key === 'temperature' && modelInfo?.defaultTemperature != null}
 							<span class="slider-note">This model suggests {modelInfo.defaultTemperature.toFixed(2)}.</span>
@@ -899,7 +842,7 @@
 								<InfoTip text="A fixed seed makes the same prompt reproduce the same output. Blank = random each run." />
 							</div>
 							{#if gen.seed != null}
-								<button type="button" class="link-btn" onclick={() => updateGen('seed', null)}>clear</button>
+								<button type="button" class="field-action" onclick={() => updateGen('seed', null)}>clear</button>
 							{/if}
 						</div>
 						<input
@@ -921,7 +864,7 @@
 					<div class="slider-top">
 						<label for="custom-body-{id}" class="slider-label">Custom body</label>
 						{#if customBodyText.trim()}
-							<button type="button" class="link-btn" onclick={clearCustomBody}>clear</button>
+							<button type="button" class="field-action" onclick={clearCustomBody}>clear</button>
 						{/if}
 					</div>
 					<textarea
@@ -1055,9 +998,9 @@
 		gap: 0.45rem;
 	}
 
-	/* Quiet reset beside the context readout: micro type, muted, dotted until hovered.
-	   It sits next to the number it resets and must never out-shout it. */
-	.ctx-reset {
+	/* Reset and clear use one quiet, explicit type scale. Inheriting body-sized link
+	   text here makes these small field actions larger than their own labels. */
+	.field-action {
 		border: none;
 		background: none;
 		padding: 0;
@@ -1069,7 +1012,7 @@
 		text-underline-offset: 0.2em;
 	}
 
-	.ctx-reset:hover {
+	.field-action:hover {
 		color: var(--color-text-secondary);
 		text-decoration-style: solid;
 	}
@@ -1135,11 +1078,11 @@
 		color: var(--color-text-primary);
 	}
 
-	/* Declared endpoint params (BYO connections only), seamed off above the sliders
+	/* Declared endpoint params (BYO connections only), seamed off above the fields
 	   it governs. The chips carry the WIRE names in mono: that is the vocabulary the
 	   user is cross-checking against their own endpoint's docs, and it keeps them
 	   reading as API fields rather than as a second set of controls competing with
-	   the human-labeled sliders below. */
+	   the human-labeled fields below. */
 	.declare {
 		display: flex;
 		flex-direction: column;

@@ -4,7 +4,7 @@
 	 * steering. The footer opens the Steering library in Settings; saved rows only toggle.
 	 *
 	 * Its quick box is the cheap half of exactly one axis: guidance that rides one request
-	 * and switches off. Everything configurable about a note (lifetime, scope, placement,
+	 * and is discarded after use. Everything configurable about a saved note (lifetime, scope, placement,
 	 * a name) belongs to the editor, which is one click away, so the box carries no controls
 	 * of its own at all.
 	 *
@@ -17,6 +17,7 @@
 	import { toggleRow } from '$lib/actions/toggleRow';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { steeringStore } from '$lib/stores/steering.svelte';
+	import { toastStore } from '$lib/stores/toast.svelte';
 	import { bindingLabel } from '$lib/utils/steering-labels';
 	import { noteLabel, steeringTargetForChat, type SteeringScope } from '$lib/types/steering';
 
@@ -24,13 +25,15 @@
 
 	let chat = $derived(chatStore.activeChat);
 	let target = $derived(steeringTargetForChat(chat));
-	// The list shows every note bound here, on or off.
-	let scoped = $derived(steeringStore.scopedFor(target));
+	let applicable = $derived(steeringStore.scopedFor(target));
+	// Quick guidance belongs to its queue, never to the reusable saved stack.
+	let scoped = $derived(applicable.filter(note => note.transient !== true));
+	let queued = $derived(applicable.filter(note => note.transient === true));
 	let history = $derived(chat ? chatStore.featureState(chat.id).steeringHistory : []);
 
 	// The quick box: guidance for THIS reply and nothing more. Deliberately one-shot with no
 	// lifetime picker and no commit button: repeated injection is configured in the library.
-	// Write, it fires once, and it stays saved with its switch off.
+	// Write, it fires once, and its text stays only in Recent.
 	let quickText = $state('');
 	let recentOpen = $state(false);
 
@@ -55,7 +58,7 @@
 		if (!text) return;
 		// Always one-shot, always the inherited placement: this box exists to steer the next
 		// request, so the two knobs it could offer both belong to the editor instead.
-		await steeringStore.create({ text, ...freshScope(), mode: 'once' });
+		await steeringStore.create({ text, ...freshScope(), mode: 'once', transient: true });
 		quickText = '';
 	}
 
@@ -73,6 +76,10 @@
 		event.preventDefault();
 		void addQuick();
 	}
+	async function removeQueued(id: string) {
+		try { await steeringStore.remove(id); }
+		catch (error) { toastStore.failed('remove queued steering', error); }
+	}
 
 </script>
 
@@ -87,6 +94,20 @@
 			onkeydown={handleQuickKeydown}
 			placeholder="Rides the next request, then it's gone…"
 		></textarea>
+		{#if queued.length}
+			<div class="queued">
+				<span class="field-label font-ui">Queued for the next reply</span>
+				<div class="queued-list panel-scroll" aria-live="polite">
+					{#each queued as note (note.id)}
+						<div class="queued-row">
+							<span class="queued-text" title={note.text}>{note.text}</span>
+							<button type="button" class="queued-remove" title="Remove queued steering"
+								aria-label="Remove queued steering" onclick={() => removeQueued(note.id)}><Icon name="x" class="w-3.5 h-3.5" /></button>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Recent and saved steering share a scroller; the quick field stays at the top. -->
@@ -128,7 +149,7 @@
 					</div>
 				{/each}
 			</div>
-		{:else}
+		{:else if queued.length === 0}
 			<p class="empty">No saved steering here yet. Type above to steer the next reply.</p>
 		{/if}
 	</div>
@@ -142,6 +163,12 @@
 </div>
 
 <style>
+	.queued { display:flex; flex-direction:column; gap:.3rem; margin-top:.5rem; }
+	.queued-list { max-height:6rem; overflow-y:auto; overscroll-behavior:contain; }
+	.queued-row { display:flex; align-items:center; gap:.4rem; padding:.2rem 0; }
+	.queued-text { flex:1; min-width:0; font-size:.75rem; color:var(--color-text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+	.queued-remove { display:flex; align-items:center; justify-content:center; flex-shrink:0; width:1.8rem; height:1.8rem; border-radius:var(--radius-sm); color:var(--color-text-muted); cursor:pointer; }
+	.queued-remove:hover { color:var(--color-text-primary); background:var(--color-bg-tertiary); }
 	.steering-popover {
 		width: 100%;
 		/* The dialog supplies the outer ceiling; this keeps a long note stack compact and

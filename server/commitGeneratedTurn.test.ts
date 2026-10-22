@@ -210,18 +210,36 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once)).toMatchObject({ enabled: false });
 	});
 
+	test('quick guidance is kept out of library ordering and discarded while saved Next reply only switches off', () => {
+		const chatId = makeChat(), savedId = addSteeringNote(chatId, 'once');
+		const quickId = addSteeringNote(chatId, 'once', { transient: true, text: 'Quick guidance' });
+		// A stale editor without the new flag cannot accidentally turn quick text into a saved item.
+		const stale = { ...serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === quickId) };
+		delete stale.transient;
+		serverDb.updateSteeringNote({ ...stale, text: 'Latest quick guidance' });
+		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === quickId)).toMatchObject({ transient: true });
+		expect(serverDb.reorderSteeringNotes([quickId, savedId])).not.toContain(quickId);
+		serverDb.closeForTests();
+		const landed = serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [quickId, savedId] }));
+		expect(landed.spentSteeringIds).toEqual([quickId, savedId]);
+		expect(serverDb.getAllSteeringNotes().some((n: { id: string }) => n.id === quickId)).toBe(false);
+		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === savedId)).toMatchObject({ enabled: false, mode: 'once' });
+	});
+
 	test('continuation consumption RPC disables only the active once ids the prompt used', async () => {
 		const chatId = makeChat();
 		const once = addSteeringNote(chatId, 'once'), off = addSteeringNote(chatId, 'once', { enabled: false });
+		const quick = addSteeringNote(chatId, 'once', { transient: true });
 		const pinned = addSteeringNote(chatId, 'pinned'), fresh = addSteeringNote(chatId, 'once'), removed = addSteeringNote(chatId, 'once');
 		serverDb.deleteSteeringNote(removed);
 		const before = serverDb.getAllSteeringNotes();
 		const { callDbMethod } = await import('./db');
-		expect(callDbMethod('consumeSteeringNotes', [[once, once, off, pinned, removed, 'missing']])).toEqual([once]);
+		expect(callDbMethod('consumeSteeringNotes', [[once, once, quick, off, pinned, removed, 'missing']])).toEqual([once, quick]);
 		const after = serverDb.getAllSteeringNotes();
 		for (const id of [off, pinned, fresh]) expect(after.find((n: { id: string }) => n.id === id)).toEqual(before.find((n: { id: string }) => n.id === id));
 		expect(after.find((n: { id: string }) => n.id === once)).toMatchObject({ enabled: false, mode: 'once', text: 'keep it terse' });
 		expect(after.some((n: { id: string }) => n.id === removed)).toBe(false);
+		expect(after.some((n: { id: string }) => n.id === quick)).toBe(false);
 	});
 
 	test('a failed turn commit leaves its once guidance enabled', () => {
@@ -229,6 +247,14 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		expect(() => serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once, null] }))).toThrow('Invalid steering ids');
 		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(0);
 		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once)).toMatchObject({ enabled: true });
+	});
+
+	test('quick guidance survives a failed generation commit for retry', () => {
+		const chatId = makeChat(), quick = addSteeringNote(chatId, 'once', { transient: true });
+		const parentId = addMessage(chatId, null, 'user');
+		serverDb.deleteMessageAndDescendants(parentId);
+		expect(() => serverDb.commitGeneratedTurn(commit({ chatId, parentId, spendSteeringIds: [quick] }))).toThrow(/nowhere to hang/);
+		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === quick)).toMatchObject({ enabled: true, transient: true });
 	});
 
 	test('a note made permanent while the model was writing stays enabled', () => {

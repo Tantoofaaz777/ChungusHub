@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { IMAGES_ROOT, resolveDbPath } from './config';
 import { deleteImage } from './files';
 import type { SyncScope } from '../shared/sync';
-import { sortSteeringNotes, type SteeringNote } from '../src/lib/types/steering';
+import { librarySteeringNotes, type SteeringNote } from '../src/lib/types/steering';
 import { captureScene, resolveScenes, scenePath, sceneLevel, MEMORY_LEVELS, type MemoryScene, type SaveMemoryScene, type SceneMessage } from '../shared/memory-scenes';
 
 /** Short stable digest, the chat-tree fingerprint's building block. Truncated SHA-1:
@@ -2615,7 +2615,8 @@ class ServerDatabase {
 			mode: note.mode,
 			depth: note.depth,
 			role: note.role,
-			sortOrder: note.sortOrder
+			sortOrder: note.sortOrder,
+			transient: note.transient === true ? true : undefined
 		});
 	}
 
@@ -2641,15 +2642,16 @@ class ServerDatabase {
 	}
 
 	updateSteeringNote(note: Record<string, unknown>): void {
-		// Only the reorder mutation changes position: a stale toggle/editor must not undo it.
+		// Position and quick/saved origin are preserved: stale editors must not rewrite them.
 		const current = this.select<{ data_json: string }[]>('SELECT data_json FROM steering_notes WHERE id = ?', [note.id])[0];
-		const sortOrder = current ? (JSON.parse(current.data_json) as Record<string, unknown>).sortOrder : undefined;
+		const saved = current ? JSON.parse(current.data_json) as Record<string, unknown> : {};
+		const { sortOrder, transient } = saved;
 		// Scope is rewritten too: re-binding a note to another character or chat is an
 		// ordinary edit, not a delete-and-recreate.
 		this.execute('UPDATE steering_notes SET scope = ?, scope_id = ?, data_json = ?, updated_at = ? WHERE id = ?', [
 			note.scope,
 			note.scopeId ?? null,
-			this.steeringNotePayload({ ...note, sortOrder }),
+			this.steeringNotePayload({ ...note, sortOrder, transient }),
 			Date.now(),
 			note.id
 		]);
@@ -2659,7 +2661,7 @@ class ServerDatabase {
 		this.execute('DELETE FROM steering_notes WHERE id = ?', [id]);
 	}
 
-	/** Consume once-only guidance without removing its saved content or library position.
+	/** Quick guidance is discarded; reusable Next reply guidance is disabled and kept.
 	 *  Shared by generated-turn commits and client-persisted continuations. */
 	consumeSteeringNotes(ids: string[]): string[] {
 		if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid steering ids');
@@ -2668,7 +2670,7 @@ class ServerDatabase {
 			for (const id of new Set(ids)) {
 				const row = this.select<{ data_json: string }[]>('SELECT data_json FROM steering_notes WHERE id = ?', [id])[0];
 				if (!row) continue;
-				let note: { mode?: unknown; enabled?: unknown };
+				let note: { mode?: unknown; enabled?: unknown; transient?: unknown };
 				try { note = JSON.parse(row.data_json); }
 				catch {
 					console.error(`[steering] note ${id} will not parse, so it was left armed instead of spent.`);
@@ -2676,7 +2678,8 @@ class ServerDatabase {
 				}
 				// A note changed to Every reply, disabled or deleted during generation stays as-is.
 				if (note?.mode !== 'once' || note.enabled !== true) continue;
-				this.execute("UPDATE steering_notes SET data_json = json_set(data_json, '$.enabled', json('false')), updated_at = ? WHERE id = ?", [Date.now(), id]);
+				if (note.transient === true) this.execute('DELETE FROM steering_notes WHERE id = ?', [id]);
+				else this.execute("UPDATE steering_notes SET data_json = json_set(data_json, '$.enabled', json('false')), updated_at = ? WHERE id = ?", [Date.now(), id]);
 				spent.push(id);
 			}
 			return spent;
@@ -2686,7 +2689,7 @@ class ServerDatabase {
 	reorderSteeringNotes(ids: string[]): string[] {
 		if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) throw new Error('Invalid steering order');
 		return this.inTransaction(() => {
-			const current = sortSteeringNotes(this.getAllSteeringNotes() as SteeringNote[]);
+			const current = librarySteeringNotes(this.getAllSteeringNotes() as SteeringNote[]);
 			const remaining = new Set(current.map(note => note.id));
 			const ordered: string[] = [];
 			for (const id of ids) if (remaining.delete(id)) ordered.push(id);

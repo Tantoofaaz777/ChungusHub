@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { parseSliderValue } from '$lib/utils/slider-value';
 
-	let { value, min, max, step = 1, groupedInteger = false, label, onchange }: {
+	let { id, value, min, max, step = 1, groupedInteger = false, label, onchange }: {
+		id?: string;
 		value: number;
 		min: number;
 		max: number;
@@ -23,6 +24,7 @@
 </script>
 
 <input
+	{id}
 	type="text"
 	inputmode={step < 1 ? 'decimal' : 'numeric'}
 	class="slider-number input-base"

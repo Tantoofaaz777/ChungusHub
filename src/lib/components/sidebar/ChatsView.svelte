@@ -6,23 +6,9 @@
 	 * makes another one directly; scoped to everything it shows EVERY chat with per-row
 	 * faces and the button hands off to the New chat flow.
 	 *
-	 * Four things here are deliberate and easy to undo by accident:
-	 *
-	 *  - `scopedCharacterId` is the only thing that decides what the list holds. The
-	 *    switch writes the scope, that one derived reads it, and the list, the row faces
-	 *    and the New chat button all read the derived, so the panel cannot end up
-	 *    showing one thing while its button does another.
-	 *  - Rows and previews count the active path, matching the transcript. The whole
-	 *    tree's `total` is retained for deletion, which also removes alternate turns.
-	 *  - The preview starts empty, fills with the row the pointer touches, and HOLDS it.
-	 *    Nothing but the list changing under it empties it again: the trip from a row to
-	 *    the pane crosses the list's padding, its scrollbar and the section labels, so a
-	 *    pane that clears on any of those is blank by the time the pointer lands in it,
-	 *    and its action bar (the only copy of the row actions a mouse can reach) is
-	 *    unusable.
-	 *  - Rows are not in the tab order. The list is arrow-driven with a roving selection
-	 *    (aria-activedescendant), and every row action also lives in the preview's action
-	 *    bar, which IS tabbable, so nothing is reachable by mouse alone.
+	 * The list fills the panel at every width. Counts follow the active path, matching
+	 * the transcript; the whole tree's total is retained for deletion. Rows use a
+	 * roving keyboard selection, and their menus remain reachable with Shift+F10.
 	 */
 	import ChatBrowserControls from './ChatBrowserControls.svelte';
 	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '$lib/utils/chat-browser';
@@ -31,7 +17,6 @@
 	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
 	import ChatAvatars from './ChatAvatars.svelte';
 	import ChatListRow from './ChatListRow.svelte';
-	import ChatPreviewPane from './ChatPreviewPane.svelte';
 	import DuplicateChatDialog from './DuplicateChatDialog.svelte';
 	import { duplicateAsksAboutMemory } from '$lib/types/chat';
 	import type { Chat, ChatListStats, ChatMemoryFootprint } from '$lib/types/chat';
@@ -58,19 +43,6 @@
 
 	let chats = $derived(chatStore.sortedChats);
 	let activeChatId = $derived(chatStore.activeChatId);
-
-	let isMobile = $derived(viewport.isMobile);
-
-	// Whether the preview pane fits, decided by the PANEL's own width, not the
-	// viewport's. The panel renders two ways (a fixed-width desktop modal and a
-	// full-width mobile overlay), so a viewport media query describes neither: on a
-	// 700px window the modal is 700px wide and `viewport.isMobile` is still false. Hiding
-	// the pane with CSS `display: none` leaves it mounted, invisible, fetching a whole
-	// chat on every row hover and holding the only tabbable copy of the row actions.
-	// The two columns need 17rem + 20rem to breathe.
-	const TWO_PANE_MIN = 640;
-	let bodyWidth = $state(0);
-	let singleColumn = $derived(bodyWidth > 0 ? bodyWidth < TWO_PANE_MIN : isMobile);
 
 	// ===== Scope =====
 	//
@@ -122,7 +94,6 @@
 	// leaves. Any hover flips this back off.
 	let keyboardActive = $state(false);
 
-	let hoveredChatId = $state<string | null>(null);
 	let renamingChatId = $state<string | null>(null);
 	let menu = $state<{ chatId: string; left: number; top: number; anchorTop: number } | null>(null);
 	let litTwinGroup = $state<string | null>(null);
@@ -253,11 +224,6 @@
 	let indexById = $derived(new Map(visibleChats.map((chat, index) => [chat.id, index])));
 
 	let isEmpty = $derived(visibleChats.length === 0);
-	let hoveredChat = $derived(hoveredChatId ? (chats.find((c) => c.id === hoveredChatId) ?? null) : null);
-	let hoveredCharacter = $derived(hoveredChat ? (chatCastStore.charactersForChat(hoveredChat.id)[0] ?? null) : null);
-	// Preview speakers mirror the main chat: every user line is the chat's persona,
-	// every assistant line is the chat's bound character.
-	let hoveredPersona = $derived(hoveredChat ? chatCastStore.personaForChat(hoveredChat.id) : null);
 
 	/** The face a row wears. In the global scope that's the bound character; inside one
 	 *  character's list every row would wear the same face, so it shows the persona the
@@ -276,8 +242,7 @@
 		const raw = messageHits[chat.id]?.snippet;
 		if (!raw) return '';
 		const charName = chatCastStore.charactersForChat(chat.id)[0]?.name?.trim() || 'Story';
-		// The CHAT's persona, falling back to a neutral "You": the same pair the preview
-		// pane resolves with, so one chat can't read two different names in one panel.
+		// Resolve against this chat's persona, falling back to a neutral "You".
 		const persona = chatCastStore.personaForChat(chat.id);
 		const userName = persona?.name?.trim() || 'You';
 		return displaySelfRefs(
@@ -295,33 +260,19 @@
 		sortKey;
 		sortDir;
 		filterMode;
-		// A scope flip replaces the whole list, so it empties the held preview like any
-		// other filter. Reading the resolved id rather than the switch also covers the
-		// character disappearing from the library under an open panel.
+		// Read the resolved id so a character disappearing also resets the list.
 		scopedCharacterId;
 		searchInMessages;
 		renderLimit = CHAT_BATCH_SIZE;
 		if (listEl) listEl.scrollTop = 0;
 		selectedIndex = 0;
-		// The rows these two point at may not exist in the new list at all: a held
-		// preview would go on showing a chat the query just filtered out.
 		litTwinGroup = null;
-		hoveredChatId = null;
 	});
 
-	// Keep the selection in range. The preview follows the selection while the keyboard
-	// is driving; with the mouse, hover sets it and it stays on that row. An emptied
-	// list has no row to hold, so the pane goes back to idle.
+	// Keep the roving keyboard selection within the filtered list.
 	$effect(() => {
-		if (visibleChats.length === 0) {
-			hoveredChatId = null;
-			return;
-		}
-		const normalized = Math.min(Math.max(selectedIndex, 0), visibleChats.length - 1);
+		const normalized = Math.min(Math.max(selectedIndex, 0), Math.max(0, visibleChats.length - 1));
 		if (normalized !== selectedIndex) selectedIndex = normalized;
-		if (!keyboardActive) return;
-		const selected = visibleChats[normalized];
-		if (selected && hoveredChatId !== selected.id) hoveredChatId = selected.id;
 	});
 
 	// Land focused on the search box so the user can type immediately, but never on a
@@ -334,9 +285,7 @@
 
 	/** The twin highlight is lit by a chip's mouseenter and put out by its mouseleave,
 	 *  which never fires if that row unmounts under the pointer (a delete, a sync),
-	 *  leaving the survivors glowing. Leaving the body puts it out either way. The
-	 *  preview is deliberately NOT dropped here: this is the edge the pointer crosses
-	 *  on its way to the pane's own buttons. */
+	 *  leaving the survivors glowing. Leaving the body puts it out either way. */
 	function clearTwinHighlight() {
 		litTwinGroup = null;
 	}
@@ -595,15 +544,13 @@
 		renderLimit = Math.max(renderLimit, Math.min(visibleChats.length, Math.ceil((next + 1) / CHAT_BATCH_SIZE) * CHAT_BATCH_SIZE));
 		keyboardActive = true;
 		selectedIndex = next;
-		hoveredChatId = visibleChats[next]?.id ?? null;
 		scrollToSelected();
 	}
 
 	/** Whether the list keys belong to the list right now. They are bound on the window,
 	 *  so without this a press meant for whatever has focus is stolen: Enter on the
-	 *  preview's Delete button would open the selected chat instead of pressing Delete,
-	 *  and the panel's own "every action is reachable by keyboard" promise would be a
-	 *  lie. Focus normally sits in the search field (the combobox half of this pair);
+	 *  row menu's Delete button would open the selected chat instead of pressing Delete.
+	 *  Focus normally sits in the search field (the combobox half of this pair);
 	 *  anything else interactive owns its own keys. Escape is deliberately NOT gated:
 	 *  it closes layers, and every layer wants it. */
 	function listKeysActive(): boolean {
@@ -737,6 +684,7 @@
 		{/if}
 
 		<ChatBrowserControls
+			mobileActions iconSort mobileSearchRow
 			bind:searchQuery bind:searchInMessages bind:sortKey bind:sortDir bind:sortMenuOpen
 			bind:filterMode bind:searchInputEl
 			{twinsInScope} {selecting} {toggleSelecting} {selectedCount} {allVisibleSelected} {searchingMessages}
@@ -752,8 +700,6 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="chats-body"
-		class:chats-body-single={singleColumn}
-		bind:clientWidth={bodyWidth}
 		onmouseleave={clearTwinHighlight}
 	>
 		<div class="chats-list-pane">
@@ -827,7 +773,6 @@
 									onHover={() => {
 										keyboardActive = false;
 										selectedIndex = index;
-										hoveredChatId = chat.id;
 									}}
 									onMenu={(anchor) => openRowMenu(chat.id, anchor)}
 									onRenameCommit={(title) => commitRename(chat.id, title)}
@@ -846,35 +791,7 @@
 				</div>
 			{/if}
 		</div>
-
-		{#if !singleColumn}
-			<div class="chats-preview-pane">
-				<ChatPreviewPane
-					chat={hoveredChat}
-					stats={hoveredChat ? (stats[hoveredChat.id] ?? null) : null}
-					character={hoveredCharacter}
-					persona={hoveredPersona}
-					onOpen={() => hoveredChat && selectChat(hoveredChat.id)}
-					onRename={() => hoveredChat && startRename(hoveredChat.id)}
-					onDuplicate={() => hoveredChat && handleDuplicate(hoveredChat.id)}
-					onToggleFavorite={() => hoveredChat && toggleFavorite(hoveredChat.id)}
-					onDelete={() => hoveredChat && deleteChat(hoveredChat.id)}
-				/>
-			</div>
-		{/if}
 	</div>
-
-	<!-- Keyboard hints are for keyboards: on a phone the row is dead weight that only
-	     adds a horizontal scrollbar. -->
-	{#if !isMobile}
-		<footer class="chats-footer">
-			<span><kbd>Up/Down</kbd> navigate</span>
-			<span><kbd>Enter</kbd> open</span>
-			<span><kbd>Home/End</kbd> jump</span>
-			<span><kbd>Menu</kbd> actions</span>
-			<span><kbd>Esc</kbd> close</span>
-		</footer>
-	{/if}
 </div>
 
 {#if menu}
@@ -1083,21 +1000,10 @@
 	.chats-body {
 		flex: 1;
 		display: grid;
-		grid-template-columns: minmax(17rem, 0.95fr) minmax(20rem, 1.2fr);
+		grid-template-columns: minmax(0, 1fr);
 		min-height: 0;
 	}
-
-	/* Mobile: the preview pane isn't rendered at all, so the list takes the row. */
-	.chats-body-single {
-		grid-template-columns: 1fr;
-	}
-
-	.chats-body-single .chats-list-pane {
-		border-right: 0;
-	}
-
 	.chats-list-pane {
-		border-right: 1px solid var(--color-border-subtle);
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
@@ -1111,14 +1017,6 @@
 
 	.chats-more { display:flex; align-items:center; justify-content:center; gap:.5rem; flex-shrink:0; padding:.4rem .5rem; color:var(--color-text-muted); font-size:.72rem; border-top:1px solid var(--color-border-subtle); }
 	.chats-more .chats-empty-action { margin-top:0; }
-
-	.chats-preview-pane {
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-		background: color-mix(in srgb, var(--color-bg-secondary) 30%, transparent);
-	}
-
 	.chats-section-label {
 		display: flex;
 		align-items: center;
@@ -1132,7 +1030,6 @@
 		letter-spacing: 0.06em;
 		color: var(--color-text-muted);
 	}
-
 	.chats-section-label:first-child {
 		margin-top: 0.15rem;
 	}
@@ -1241,41 +1138,13 @@
 		margin: 0.25rem 0.3rem;
 		background: var(--color-border-subtle);
 	}
-
-	/* ===== Footer ===== */
-	.chats-footer {
-		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		padding: 0.55rem 0.8rem;
-		border-top: 1px solid var(--color-border-subtle);
-		background: color-mix(in srgb, var(--color-bg-secondary) 48%, transparent);
-		overflow-x: auto;
-		font-family: var(--font-ui);
-		font-size: 0.7rem;
-		color: var(--color-text-muted);
-		white-space: nowrap;
-	}
-
-	.chats-footer kbd {
-		font-family: inherit;
-		padding: 0.1rem 0.35rem;
-		margin-right: 0.25rem;
-		background: var(--color-bg-tertiary);
-		border-radius: var(--radius-sm);
-		font-size: 10px;
-	}
-
 	.chats-scroll::-webkit-scrollbar {
 		width: 6px;
 	}
-
 	.chats-scroll::-webkit-scrollbar-thumb {
 		background: var(--color-border);
 		border-radius: 9999px;
 	}
-
 	.chats-scroll::-webkit-scrollbar-thumb:hover {
 		background: var(--color-text-muted);
 	}

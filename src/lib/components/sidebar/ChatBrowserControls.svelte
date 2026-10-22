@@ -26,6 +26,7 @@
 		showSearch = true,
 		mobileActions = false,
 		iconSort = false,
+		mobileSearchRow = false,
 		listboxId,
 		activeDescendant,
 		leading,
@@ -52,6 +53,8 @@
 		showSearch?: boolean;
 		mobileActions?: boolean;
 		iconSort?: boolean;
+		/** Keep search on its own line and all action buttons below it on phones. */
+		mobileSearchRow?: boolean;
 		listboxId?: string;
 		activeDescendant?: string;
 		leading?: Snippet;
@@ -106,7 +109,7 @@
 	}
 </script>
 
-<div class="chats-controls" class:compact>
+<div class="chats-controls" class:compact class:mobile-search-row={mobileSearchRow}>
 	{#if leading}{@render leading()}{/if}
 	{#if showSearch}
 	<div class="chats-search input-base">
@@ -164,8 +167,8 @@
 	</div>
 	{/if}
 
-	<!-- Filters ride the controls row as icon toggles rather than a row of their
-	     own: a second header line for two switches is a lot of panel to spend. -->
+	<!-- Icon toggles remain directly accessible; the caller may give the search its
+	     own line on phones so the complete action row fits below it. -->
 	<button
 		type="button"
 		class="chats-toggle"
@@ -630,6 +633,11 @@
 	.compact .chats-search { flex-basis: 6rem; }
 	.chats-more { display: none; position: relative; }
 	.mobile-sort-directions { display: none; border-top: 1px solid var(--color-border-subtle); margin-top: 0.3rem; padding-top: 0.3rem; }
+	@media (max-width: 700px) {
+		.mobile-search-row .chats-search { flex: 1 0 100%; }
+		/* Keep the menu's right edge inside the panel even when only a few icons precede it. */
+		.mobile-search-row .chats-sort { margin-left: auto; }
+	}
 	@media (max-width: 560px) {
 		.compact .chats-search { flex-basis: calc(100% - 7rem); }
 		.mobile-secondary { display: none; }

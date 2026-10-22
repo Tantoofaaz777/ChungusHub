@@ -18,8 +18,9 @@ export type SteeringScope = 'global' | 'character' | 'version' | 'chat';
 /** The prompt role a note is injected as. */
 export type SteeringRole = 'system' | 'user' | 'assistant';
 
-/** 'once' is disabled by the next successful primary generation (the saved note stays
- *  available and its text lands in the chat's reuse history); 'pinned' keeps injecting
+/** Saved 'once' guidance is disabled by the next successful primary generation;
+ *  transient quick guidance is removed instead. Consumed text reaches Recent.
+ *  'pinned' keeps injecting
  *  until the note is disabled or deleted. */
 export type SteeringMode = 'once' | 'pinned';
 
@@ -43,6 +44,8 @@ export interface SteeringNote {
 	updatedAt: number;
 	/** Saved library position; absent on legacy notes until the first explicit reorder. */
 	sortOrder?: number;
+	/** Quick composer/command guidance: queued once, then removed instead of saved. */
+	transient?: boolean;
 }
 
 /** The app-wide placement every note inherits until it overrides one of these. */
@@ -111,6 +114,7 @@ export function createSteeringNote(fields: {
 	depth?: number | null;
 	role?: SteeringRole | null;
 	sortOrder?: number;
+	transient?: boolean;
 }): SteeringNote {
 	const now = Date.now();
 	return {
@@ -125,7 +129,8 @@ export function createSteeringNote(fields: {
 		role: fields.role ?? null,
 		createdAt: now,
 		updatedAt: now,
-		...(fields.sortOrder === undefined ? {} : { sortOrder: fields.sortOrder })
+		...(fields.sortOrder === undefined ? {} : { sortOrder: fields.sortOrder }),
+		...(fields.transient ? { transient: true } : {})
 	};
 }
 
@@ -160,6 +165,11 @@ export function sortSteeringNotes(notes: SteeringNote[]): SteeringNote[] {
 		(a, b) => (position(a) !== position(b) ? position(a) - position(b) : 0)
 			|| SCOPE_RANK[a.scope] - SCOPE_RANK[b.scope] || a.createdAt - b.createdAt
 	);
+}
+
+/** Only reusable guidance belongs in the library; pending quick text still injects. */
+export function librarySteeringNotes(notes: SteeringNote[]): SteeringNote[] {
+	return sortSteeringNotes(notes.filter(note => note.transient !== true));
 }
 
 /** Every note that will actually inject into this target's next prompt, in injection

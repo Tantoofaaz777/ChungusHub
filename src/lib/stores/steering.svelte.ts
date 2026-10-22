@@ -16,7 +16,7 @@ import {
 	createSteeringNote,
 	resolveSteeringForPrompt,
 	scopedSteeringNotes,
-	sortSteeringNotes,
+	librarySteeringNotes,
 	type ResolvedSteeringNote,
 	type SteeringMode,
 	type SteeringNote,
@@ -38,7 +38,7 @@ class SteeringStore {
 		return this._notes;
 	}
 
-	get orderedNotes(): SteeringNote[] { return sortSteeringNotes(this._notes); }
+	get orderedNotes(): SteeringNote[] { return librarySteeringNotes(this._notes); }
 
 	get initialized(): boolean {
 		return this._initialized;
@@ -100,9 +100,10 @@ class SteeringStore {
 		mode?: SteeringMode;
 		depth?: number | null;
 		role?: SteeringRole | null;
+		transient?: boolean;
 	}): Promise<SteeringNote> {
-		const lastPosition = this._notes.reduce((max, note) => Number.isSafeInteger(note.sortOrder) ? Math.max(max, note.sortOrder!) : max, -1);
-		const note = createSteeringNote({ ...fields, ...(lastPosition < 0 ? {} : { sortOrder: lastPosition + 1 }) });
+		const lastPosition = this.orderedNotes.reduce((max, note) => Number.isSafeInteger(note.sortOrder) ? Math.max(max, note.sortOrder!) : max, -1);
+		const note = createSteeringNote({ ...fields, ...(fields.transient || lastPosition < 0 ? {} : { sortOrder: lastPosition + 1 }) });
 		this._notes = [...this._notes, note];
 		await db.insertSteeringNote(note);
 		return note;
@@ -172,7 +173,8 @@ class SteeringStore {
 	async consumeById(ids: string[]): Promise<Set<string>> {
 		await this.flush();
 		const spent = new Set(await db.consumeSteeringNotes(ids));
-		this._notes = this._notes.map(note => spent.has(note.id) ? { ...note, enabled: false, updatedAt: Date.now() } : note);
+		this._notes = this._notes.flatMap(note => !spent.has(note.id) ? [note]
+			: note.transient === true ? [] : [{ ...note, enabled: false, updatedAt: Date.now() }]);
 		return spent;
 	}
 }

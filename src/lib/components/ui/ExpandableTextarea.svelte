@@ -406,21 +406,45 @@
 	}
 
 	.expanded-body {
-		--editor-syntax-tag: #e06c75;
-		--editor-syntax-code: #56b6c2;
-		--editor-syntax-macro: #d19a66;
+		--editor-syntax-tag: #82aaff;
+		--editor-syntax-code: #c3e88d;
+		--editor-syntax-macro: var(--color-accent);
+		--editor-syntax-bracket: #c792ea;
+		--editor-syntax-heading: #f78c6c;
 
 		position: relative;
 		flex: 1;
-		display: flex;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr);
 		min-height: 0;
 	}
 
 	.expanded-mirror,
 	.expanded-textarea {
-		/* The visible mirror and native caret must use the same global authoring font. */
+		/* Both layers occupy one grid cell: identical rounding, wrapping and glyph metrics.
+		   Splitting text into colored spans must never move the native textarea's caret. */
+		grid-area: 1 / 1;
+		box-sizing: border-box;
+		min-width: 0;
 		font-family: var(--font-mono) !important;
+		font-size: inherit;
+		font-weight: 400;
+		font-style: normal;
+		font-kerning: none;
 		font-variant-ligatures: none !important;
+		font-variant-numeric: normal;
+		font-feature-settings: "liga" 0, "calt" 0;
+		font-synthesis: none;
+		letter-spacing: 0;
+		word-spacing: 0;
+		text-indent: 0;
+		text-transform: none;
+		text-rendering: auto;
+		-webkit-text-size-adjust: 100%;
+		text-size-adjust: 100%;
+		border: 0;
+		overflow-anchor: none;
 		width: 100%;
 		height: 100%;
 		min-height: 0;
@@ -436,10 +460,8 @@
 	}
 
 	.expanded-mirror {
-		position: absolute;
-		inset: 0;
 		overflow-x: hidden;
-		overflow-y: scroll;
+		overflow-y: auto;
 		color: var(--color-text-primary);
 		pointer-events: none;
 		user-select: none;
@@ -449,7 +471,8 @@
 	.expanded-textarea {
 		position: relative;
 		z-index: 1;
-		flex: 1;
+		overflow-x: hidden;
+		overflow-y: auto;
 		border: 0;
 		border-radius: 0;
 		outline: 0;
@@ -477,6 +500,12 @@
 	.syntax-macro {
 		color: var(--editor-syntax-macro) !important;
 	}
+
+	.syntax-bracket { color: var(--editor-syntax-bracket) !important; }
+	.syntax-heading { color: var(--editor-syntax-heading) !important; }
+	.syntax-link { color: var(--editor-syntax-tag) !important; }
+	.syntax-separator { color: color-mix(in srgb, var(--color-text-muted) 60%, transparent) !important; }
+	.syntax-delimiter { color: color-mix(in srgb, var(--color-text-muted) 55%, transparent) !important; }
 
 	/* app.css raises touch form controls to 16px so iOS does not zoom the viewport on focus.
 	   The visible text here belongs to the mirror rather than the textarea, so both layers

@@ -11,6 +11,7 @@ import {
 	activeSteeringNotes,
 	clampSteeringDepth,
 	createSteeringNote,
+	librarySteeringNotes,
 	noteApplies,
 	noteLabel,
 	resolvePlacement,
@@ -45,7 +46,8 @@ function note(over: Partial<SteeringNote> = {}): SteeringNote {
 		role: over.role ?? null,
 		createdAt: over.createdAt ?? 1000,
 		updatedAt: over.updatedAt ?? 1000,
-		...(over.sortOrder === undefined ? {} : { sortOrder: over.sortOrder })
+		...(over.sortOrder === undefined ? {} : { sortOrder: over.sortOrder }),
+		...(over.transient ? { transient: true } : {})
 	};
 }
 
@@ -90,6 +92,16 @@ describe('noteApplies: the scope ladder', () => {
 });
 
 describe('sortSteeringNotes: injection order', () => {
+	test('quick guidance stays in the prompt and scoped queue but never enters the library', () => {
+		const saved = note({ mode: 'once', sortOrder: 0 });
+		const quick = createSteeringNote({ text: 'Temporary direction', scope: 'chat', scopeId: TARGET.chatId, mode: 'once', transient: true });
+		const notes = [quick, saved];
+		expect(quick.transient).toBe(true);
+		expect(librarySteeringNotes(notes).map(note => note.id)).toEqual([saved.id]);
+		expect(activeSteeringNotes(notes, TARGET).map(note => note.id)).toEqual([saved.id, quick.id]);
+		expect(scopedSteeringNotes(notes, TARGET).some(note => note.id === quick.id)).toBe(true);
+		expect(resolveSteeringForPrompt(notes, TARGET, DEFAULTS).map(note => note.text)).toContain('Temporary direction');
+	});
 	test('explicit library positions apply to the composer and prompt while preserving unranked additions', () => {
 		const notes = [
 			note({ text: 'global', sortOrder: 1 }),
