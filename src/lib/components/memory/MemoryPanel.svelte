@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -8,6 +9,7 @@
 	import MemoryChapter from './MemoryChapter.svelte';
 	import { memoryStore } from '$lib/memory/scene-store.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { resolvePromptTarget } from '$lib/utils/chat-setup';
 	import { MEMORY_LEVELS, sceneLevel, memoryLabel, type MemoryScene, type MemoryLevel } from '../../../../shared/memory-scenes';
@@ -34,6 +36,11 @@
 	}
 	let removing = $state<MemoryScene | null>(null);
 	let model = $derived(resolvePromptTarget(chatStore.activeChat).model);
+	function settings() {
+		uiStore.gotoSettingsPage('engines');
+		uiStore.settingsEngineId = 'memory';
+		uiStore.openSettings();
+	}
 	async function retryLoad() {
 		const id = chatStore.activeChatId;
 		if (!id || memoryStore.activeChatId !== id) return;
@@ -52,7 +59,7 @@
 </script>
 <div class="memory-panel">
 	<header class="overlay-header overlay-header--stacked">
-		<h2 class="overlay-title">Memory</h2>
+		<div class="heading"><h2 class="overlay-title">Memory</h2><button type="button" class="icon-btn" title="Chat memory settings" aria-label="Chat memory settings" onclick={settings}><Icon name="settings" class="w-4 h-4" /></button></div>
 		<div class="overlay-crumb"><span class="overlay-subject">{chatStore.activeChat?.title ?? 'No chat open'}</span></div>
 	</header>
 	<div class="memory-body panel-scroll" bind:this={body}>
@@ -94,6 +101,11 @@
 <ConfirmDialog open={removing !== null} title={`Remove ${removing ? sceneLevel(removing) : 'memory'}?`} message="The summary will be removed. Its source memories or messages will return to the prompt. Any higher summaries that depend on it will need review." confirmLabel="Remove memory" variant="danger" destructive onConfirm={remove} onCancel={() => removing = null} />
 <style>
 	.memory-panel { font-family:var(--font-ui); display:flex; flex-direction:column; height:100%; min-height:0; }
+	.heading { display:grid; grid-template-columns:2rem minmax(0,1fr) 2rem; align-items:center; width:100%; }
+	.heading h2 { grid-column:2; text-align:center; }
+	.heading > button { grid-column:3; justify-self:end; }
+	.icon-btn { display:inline-flex; align-items:center; justify-content:center; width:2rem; height:2rem; border-radius:var(--radius-md); color:var(--color-text-secondary); flex-shrink:0; }
+	.icon-btn:hover { background:var(--color-bg-tertiary); color:var(--color-text-primary); }
 	.memory-body { flex:1; min-height:0; padding:1rem; }
 	section + section { margin-top:1.5rem; }
 	.memory-section-header { display:flex; align-items:center; justify-content:space-between; gap:.7rem; margin-bottom:.8rem; }
