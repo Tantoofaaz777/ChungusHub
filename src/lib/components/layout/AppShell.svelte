@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Workspace from '$lib/components/layout/Workspace.svelte';
 	import TitleBar from '$lib/components/layout/TitleBar.svelte';
+	import { viewport } from '$lib/stores/viewport.svelte';
+	import { desktopLayoutStore } from '$lib/stores/desktop-layout.svelte';
 	import WelcomeDialog, { openWelcomeDialog } from '$lib/components/layout/WelcomeDialog.svelte';
 	import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
 	import DataAheadBar, { setDataAhead } from '$lib/components/layout/DataAheadBar.svelte';
@@ -253,9 +255,10 @@
 
 </script>
 
-<div class="app-shell surface-shell">
+<div class="app-shell surface-shell" class:desktop-shell={viewport.desktopLayout} class:desktop-right={viewport.desktopLayout && desktopLayoutStore.side === 'right'}>
 	<TitleBar />
 	<ToastContainer />
+	<div class="app-body">
 
 	{#if phase === 'error'}
 		<div class="app-state-wrap">
@@ -331,6 +334,7 @@
 		     card is still on screen. -->
 		<WelcomeDialog />
 	{/if}
+	</div>
 </div>
 
 <style>
@@ -341,6 +345,9 @@
 		overflow: hidden;
 		position: relative;
 	}
+	.app-body { flex:1; min-height:0; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+	.desktop-shell { flex-direction:row; }
+	.desktop-right { flex-direction:row-reverse; }
 
 	.app-state-wrap {
 		flex: 1;

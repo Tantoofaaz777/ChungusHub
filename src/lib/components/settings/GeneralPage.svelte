@@ -204,7 +204,7 @@
 		<!-- Split view only exists at dock widths (≥76rem): below that Settings is
 		     a single centered overlay and the toggle would be inert, so don't pretend
 		     it works (the panel is a plain drill-down there). -->
-		{#if viewport.canDockSettings}
+		{#if viewport.canDockSettings && !viewport.desktopLayout}
 			<section class="card" data-setting="split-view">
 				<div class="card-head">
 					<span class="card-title">Settings Panel</span>

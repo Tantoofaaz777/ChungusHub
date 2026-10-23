@@ -18,7 +18,7 @@
 	let libraryLocked = $derived(uiStore.libraryLocked);
 	// Pinning only matters for a side dock; below the dock width both panels are
 	// centered overlays, so the pin is hidden and does nothing on mobile/narrow.
-	let canDock = $derived(viewport.canDockSettings);
+	let canDock = $derived(viewport.canDockSettings && !viewport.desktopLayout);
 
 	const flush = () => lorebookStore.flush();
 
@@ -68,9 +68,7 @@
 	}
 </script>
 
-<header class="title-bar">
-	<div class="title-bar-inner">
-		<div class="nav-group nav-group-start">
+{#snippet settingsButton()}
 			<div class="overlay-split" class:is-open={settingsOpen}>
 				<button
 					type="button"
@@ -95,6 +93,9 @@
 					</button>
 				{/if}
 			</div>
+{/snippet}
+
+{#snippet homeButton()}
 			<button
 				type="button"
 				class="overlay-btn"
@@ -105,9 +106,9 @@
 			>
 				<Icon name="home" class="w-3.5 h-3.5" />
 			</button>
-		</div>
+{/snippet}
 
-		<div class="nav-cluster">
+{#snippet toolButtons()}
 			{#each nav as item (item.overlay)}
 				<button
 					type="button"
@@ -124,9 +125,9 @@
 					{/if}
 				</button>
 			{/each}
-		</div>
+{/snippet}
 
-		<div class="nav-group nav-group-end">
+{#snippet debugButton()}
 			<button
 				type="button"
 				class="overlay-btn"
@@ -140,6 +141,9 @@
 				<Icon name="wrench" class="w-3.5 h-3.5" />
 				{#if promptTokensStore.warning}<span class="prompt-warning"><Icon name="warning" class="w-2.5 h-2.5" /></span>{/if}
 			</button>
+{/snippet}
+
+{#snippet libraryButton()}
 			<div class="overlay-split" class:is-open={libraryOpen}>
 				{#if canDock}
 					<button
@@ -164,7 +168,31 @@
 					<Icon name="bookOpen" class="w-3.5 h-3.5" />
 				</button>
 			</div>
-		</div>
+{/snippet}
+
+<header class="title-bar">
+	<div class="title-bar-inner">
+		{#if viewport.desktopLayout}
+			<div class="nav-group nav-group-tools">
+				{@render toolButtons()}
+				{@render debugButton()}
+				{@render libraryButton()}
+			</div>
+			<div class="nav-group nav-group-bottom">
+				{@render homeButton()}
+				{@render settingsButton()}
+			</div>
+		{:else}
+			<div class="nav-group nav-group-start">
+				{@render settingsButton()}
+				{@render homeButton()}
+			</div>
+			<div class="nav-cluster">{@render toolButtons()}</div>
+			<div class="nav-group nav-group-end">
+				{@render debugButton()}
+				{@render libraryButton()}
+			</div>
+		{/if}
 	</div>
 </header>
 
@@ -337,5 +365,20 @@
 		outline: none;
 		background: color-mix(in srgb, var(--color-accent) 26%, transparent);
 	}
+
+	:global(.desktop-shell) .title-bar {
+		width:3.75rem; height:100%; padding-top:0; border-bottom:0;
+		border-right:1px solid var(--color-border-subtle); overflow-y:auto; scrollbar-width:none;
+	}
+	:global(.desktop-right) .title-bar { border-right:0; border-left:1px solid var(--color-border-subtle); }
+	:global(.desktop-shell) .title-bar-inner {
+		flex-direction:column; max-width:none; margin:0; padding:0.65rem 0.45rem; gap:1rem; min-height:25rem;
+	}
+	:global(.desktop-shell) .nav-group,
+	:global(.desktop-shell) .nav-cluster { flex-direction:column; gap:0.45rem; }
+	:global(.desktop-shell) .overlay-btn,
+	:global(.desktop-shell) .overlay-split { width:2.65rem; height:2.65rem; justify-content:center; padding:0; }
+	:global(.desktop-shell) .overlay-split-main { width:100%; justify-content:center; padding:0; }
+	:global(.desktop-shell) .title-bar :global(svg[class~="w-3.5"]) { width:1.125rem; height:1.125rem; }
 
 </style>

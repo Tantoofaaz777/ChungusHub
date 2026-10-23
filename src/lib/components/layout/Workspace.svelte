@@ -1,5 +1,8 @@
 <script lang="ts">
 	import ChatContainer from '$lib/components/chat/ChatContainer.svelte';
+	import PanelDivider from './PanelDivider.svelte';
+	import { desktopLayoutStore } from '$lib/stores/desktop-layout.svelte';
+	import { clampPanelWidth, DEFAULT_PANEL_WIDTH } from './desktop-layout';
 	import AndroidSharedImport from '$lib/components/library/AndroidSharedImport.svelte';
 	import RetainedView from '$lib/components/ui/RetainedView.svelte';
 	import LazyPanel from '$lib/components/ui/LazyPanel.svelte';
@@ -32,7 +35,14 @@
 	let activeOverlay = $derived(uiStore.activeOverlay);
 	let welcomeOpen = $derived(uiStore.welcomeOpen);
 	let settingsOpen = $derived(uiStore.settingsOpen);
-	let canDock = $derived(viewport.canDockSettings);
+	let desktop = $derived(viewport.desktopLayout);
+	let canDock = $derived(viewport.canDockSettings || desktop);
+	let workspaceWidth = $state(0);
+	let panelWidth = $state(DEFAULT_PANEL_WIDTH);
+	let resizing = $state(false);
+	const desktopPanelOpen = $derived(desktop && (settingsOpen || uiStore.libraryOpen || activeOverlay !== null || uiStore.debugPanelOpen));
+	$effect(() => { const enabled = desktop; untrack(() => uiStore.setSinglePanel(enabled)); });
+	$effect(() => { if (!resizing) panelWidth = clampPanelWidth(desktopLayoutStore.panelWidth, workspaceWidth); });
 
 	// Background image: the workspace's bottom-most layer. The chat and every panel
 	// paint over it; dim darkens it so text stays readable
@@ -134,7 +144,7 @@
 	// and the selected page opens wide and centered, the Library entry editor's
 	// pattern. Below dock widths the preference is inert (Settings is a single
 	// centered overlay there, drill-down as always).
-	let settingsSplit = $derived(canDock && generalSettingsStore.settingsSplitView);
+	let settingsSplit = $derived(canDock && !desktop && generalSettingsStore.settingsSplitView);
 	let settingsContentOpen = $derived(settingsOpen && settingsSplit && uiStore.settingsPage !== 'root');
 
 	// Merged Library: mirrors Settings but docks into the right margin instead.
@@ -147,11 +157,12 @@
 	// The open lorebook takes the same slot, off the Lorebooks shelf. uiStore keeps the two
 	// ids mutually exclusive, so only one of them is ever standing.
 	let lorebookEditorOpen = $derived(libraryOpen && uiStore.lorebookEditorId != null);
+	let libraryBrowseOpen = $derived(libraryOpen && (!desktop || (!libraryEditorOpen && !lorebookEditorOpen)));
 
 	// Chats: a centered modal popup over a dimmed workspace on desktop, so the
 	// chat stays visible behind it. On phones it falls back to the full chat-area
 	// overlay like every other panel.
-	let chatsPopup = $derived(activeOverlay === 'chats' && !viewport.isMobile);
+	let chatsPopup = $derived(activeOverlay === 'chats' && !viewport.isMobile && !desktop);
 
 	// Capture is optional; the inspector and its live token breakdown are always accessible.
 	$effect(() => {
@@ -165,13 +176,13 @@
 	// don't cover the chat, so they don't count. The welcome landing covers the chat
 	// the same way, and any chat-area overlay covers (but never closes) the welcome.
 	let coveringOverlay = $derived(
-		(activeOverlay !== null && !chatsPopup) ||
+		!desktop && ((activeOverlay !== null && !chatsPopup) ||
 			settingsOverlay ||
 			settingsContentOpen ||
 			libraryOverlay ||
 			libraryEditorOpen ||
 			lorebookEditorOpen ||
-			uiStore.debugPanelOpen
+			uiStore.debugPanelOpen)
 	);
 	let chatCovered = $derived(welcomeOpen || coveringOverlay);
 
@@ -182,6 +193,8 @@
 	// title-bar toggles (which live outside the workspace), are left alone. Pinned
 	// (locked) side docks ignore the click-away entirely.
 	function handleBackgroundMouseDown(event: MouseEvent) {
+		// A dock stays usable beside the chat until explicitly closed or replaced.
+		if (desktop) return;
 		const target = event.target as HTMLElement | null;
 		if (!target || !workspaceEl || !workspaceEl.contains(target)) return;
 		// Clicks on a panel are left alone, except the welcome landing, which is the
@@ -195,8 +208,8 @@
 		// A margin/chat click dismisses whatever panel is open over the workspace. The
 		// welcome landing is never touched here: only opening a chat retires it.
 		if (activeOverlay) uiStore.closeOverlay(() => lorebookStore.flush());
-		if (settingsOpen && !uiStore.settingsLocked) uiStore.closeSettings();
-		if (libraryOpen && !uiStore.libraryLocked) uiStore.closeLibrary();
+		if (settingsOpen && !uiStore.settingsPinned) uiStore.closeSettings();
+		if (libraryOpen && !uiStore.libraryPinned) uiStore.closeLibrary();
 		if (uiStore.debugPanelOpen) uiStore.closeDebugPanel();
 	}
 
@@ -228,8 +241,8 @@
 				if (e.defaultPrevented) return;
 				if (uiStore.debugPanelOpen) uiStore.closeDebugPanel();
 				else if (uiStore.activeOverlay) uiStore.closeOverlay(flush);
-				else if (uiStore.settingsOpen && !uiStore.settingsLocked) uiStore.closeSettings();
-				else if (uiStore.libraryOpen && !uiStore.libraryLocked) uiStore.closeLibrary();
+				else if (uiStore.settingsOpen && !uiStore.settingsPinned) uiStore.closeSettings();
+				else if (uiStore.libraryOpen && !uiStore.libraryPinned) uiStore.closeLibrary();
 				// Bottom of the ladder, and the reason there is no shortcut of its own for the
 				// composer: with nothing left to close, Escape is the way back to the box you
 				// type in, from a turn the keyboard was parked on or from anywhere else.
@@ -242,8 +255,8 @@
 	// The native shell hides the IME first; this path must never focus the composer again.
 	onMount(() => installAndroidBack(() => {
 		const layer = document.querySelector('.dialog-portal:not([inert])') || uiStore.debugPanelOpen ||
-			uiStore.activeOverlay || (uiStore.settingsOpen && !uiStore.settingsLocked) ||
-			(uiStore.libraryOpen && !uiStore.libraryLocked);
+			uiStore.activeOverlay || (uiStore.settingsOpen && !uiStore.settingsPinned) ||
+			(uiStore.libraryOpen && !uiStore.libraryPinned);
 		const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
 		Object.defineProperty(event, 'chungusAndroidBack', { value: true });
 		window.dispatchEvent(event);
@@ -261,8 +274,8 @@
 		open: async id => {
 			try { await chatStore.selectChat(id); } catch { return; } // selectChat owns its error toast.
 			uiStore.closeOverlay();
-			if (!uiStore.settingsLocked) uiStore.closeSettings();
-			if (!uiStore.libraryLocked) uiStore.closeLibrary();
+			if (!uiStore.settingsPinned) uiStore.closeSettings();
+			if (!uiStore.libraryPinned) uiStore.closeLibrary();
 			uiStore.closeDebugPanel();
 		},
 		missing: () => toastStore.error('This chat no longer exists on this server'),
@@ -276,8 +289,13 @@
 <div class="workspace-shell">
 	<main
 		class="workspace-main"
-		class:dock-left-open={settingsDocked}
-		class:dock-right-open={libraryDocked}
+		class:desktop-workspace={desktop}
+		class:desktop-panel-open={desktopPanelOpen}
+		class:workspace-resizing={resizing}
+		class:dock-left-open={desktop ? desktopPanelOpen && desktopLayoutStore.side === 'left' : settingsDocked}
+		class:dock-right-open={desktop ? desktopPanelOpen && desktopLayoutStore.side === 'right' : libraryDocked}
+		style:--desktop-panel-width="{panelWidth}px"
+		bind:clientWidth={workspaceWidth}
 		bind:this={workspaceEl}
 	>
 		<!-- Workspace background image: bottom of the stack. Two pictures while one is arriving: the
@@ -320,6 +338,7 @@
 			</div>
 		{/if}
 
+		<div id="workspace-panels" class:desktop-panel-host={desktop}>
 		<!-- Chat-area overlay (Library / Lorebook / etc). Covers the chat column at its
 		     exact size, no backdrop: the side margins (and the docked side panels)
 		     stay untouched. -->
@@ -376,8 +395,9 @@
 			</div>
 		</div>
 
-		<aside class:library-dock={canDock} class:chat-overlay={!canDock} class:chat-overlay-front={!canDock} hidden data-retained-panel use:retainedPanel={libraryOpen} inert={!libraryOpen} aria-hidden={!libraryOpen}>
+		<aside class:library-dock={canDock} class:chat-overlay={!canDock} class:chat-overlay-front={!canDock} hidden data-retained-panel use:retainedPanel={libraryBrowseOpen} inert={!libraryBrowseOpen} aria-hidden={!libraryBrowseOpen}>
 			<div class:chat-overlay-panel={!canDock} class:dock-body={canDock} data-panel>
+				<!-- The shelf still owns the unsaved-entry navigation guard while its editor replaces it. -->
 				<RetainedView present active={libraryOpen}><LazyPanel load={panels.library} label="library" /></RetainedView>
 			</div>
 		</aside>
@@ -410,6 +430,8 @@
 				</div>
 			</div>
 		{/if}
+		</div>
+		{#if desktopPanelOpen}<PanelDivider {workspaceWidth} bind:width={panelWidth} bind:resizing />{/if}
 	</main>
 </div>
 
@@ -719,4 +741,31 @@
 		border-left: 1px solid var(--color-border-subtle);
 		overflow: hidden;
 	}
+
+	/* All desktop tools share a single dock, next to the navigation rail. */
+	#workspace-panels:not(.desktop-panel-host) { display:contents; }
+	.desktop-panel-host { position:absolute; top:0; bottom:0; left:0; width:var(--desktop-panel-width); z-index:25; pointer-events:none; }
+	.desktop-panel-host > .chat-overlay,
+	.desktop-panel-host > .settings-dock,
+	.desktop-panel-host > .library-dock {
+		inset:0; width:100%; padding:0;
+	}
+	.desktop-panel-host .chat-overlay-panel { max-width:none; border:0; }
+	.desktop-panel-host > .settings-dock,
+	.desktop-panel-host > .library-dock { border:0; pointer-events:auto; }
+	.desktop-workspace { --desktop-reserved:0px; }
+	.desktop-panel-open { --desktop-reserved:var(--desktop-panel-width); }
+	/* Spend empty margins first; only move or narrow the reading column once the dock reaches it. */
+	.desktop-workspace .chat-host,
+	.desktop-workspace .welcome-layer {
+		position:absolute; top:0; bottom:0; right:0;
+		left:min(var(--desktop-reserved), max(0px, calc(2 * var(--desktop-reserved) - 100% + var(--chat-col-max))));
+	}
+	:global(.desktop-right) .desktop-panel-host { left:auto; right:0; }
+	:global(.desktop-right) .desktop-workspace .chat-host,
+	:global(.desktop-right) .desktop-workspace .welcome-layer {
+		left:0; right:min(var(--desktop-reserved), max(0px, calc(2 * var(--desktop-reserved) - 100% + var(--chat-col-max))));
+	}
+	.workspace-resizing { cursor:col-resize; user-select:none; }
+	.workspace-resizing :global(*) { cursor:col-resize !important; user-select:none !important; }
 </style>

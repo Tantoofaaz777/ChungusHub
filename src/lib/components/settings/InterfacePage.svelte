@@ -27,6 +27,8 @@
 	import PaletteEditor from '$lib/components/settings/PaletteEditor.svelte';
 	import BackgroundPickerModal from '$lib/components/settings/BackgroundPickerModal.svelte';
 	import { themeStore } from '$lib/stores/theme.svelte';
+	import { viewport } from '$lib/stores/viewport.svelte';
+	import { desktopLayoutStore } from '$lib/stores/desktop-layout.svelte';
 	import { backgroundStore } from '$lib/stores/background.svelte';
 	import { chatSceneStore } from '$lib/stores/chatScene.svelte';
 	import { DEFAULT_BACKGROUND } from '$lib/types/background';
@@ -179,6 +181,22 @@
 <svelte:window onpointerdown={handleWindowPointerDown} onkeydowncapture={handleWindowKeydown} />
 
 <div class="iface">
+	{#if viewport.desktopLayout}
+		<section class="card" data-setting="desktop-layout">
+			<div class="card-head">
+				<span class="card-title">Desktop layout</span>
+				<InfoTip text="Panels open beside the sidebar. Drag the divider to resize; double-click it to reset. Layout preferences are saved on this device." />
+			</div>
+			<div class="card-body">
+				<div class="slider-block">
+					<label for="sidebar-side" class="slider-label">Sidebar position</label>
+					<Select id="sidebar-side" value={desktopLayoutStore.side} onchange={(event) => desktopLayoutStore.setSide(event.currentTarget.value === 'right' ? 'right' : 'left')}>
+						<option value="left">Left</option><option value="right">Right</option>
+					</Select>
+				</div>
+			</div>
+		</section>
+	{/if}
 	<section class="card" data-setting="palette">
 		<div class="card-head">
 			<span class="card-title">Palette</span>

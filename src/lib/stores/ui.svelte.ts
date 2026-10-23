@@ -63,6 +63,20 @@ class UiStore {
 	settingsLocked = $state(false);
 	libraryOpen = $state(false);
 	libraryLocked = $state(false);
+	private singlePanel = $state(false);
+	get settingsPinned() { return !this.singlePanel && this.settingsLocked; }
+	get libraryPinned() { return !this.singlePanel && this.libraryLocked; }
+
+	/** A desktop rail owns one dock. Preserve legacy pin preferences on other layouts. */
+	setSinglePanel(enabled: boolean) {
+		if (enabled === this.singlePanel) return;
+		this.singlePanel = enabled;
+		if (!enabled) return;
+		// Keep the Library first: its editor may own unsaved changes and a navigation guard.
+		if (this.libraryOpen) {
+			this.settingsOpen = false; this.activeOverlay = null; this.debugPanelOpen = false;
+		} else if (this.settingsOpen) { this.activeOverlay = null; this.debugPanelOpen = false; }
+	}
 	// Which shelf of the merged Library is showing. Persisted across opens so the
 	// panel reopens on the tab you left it on; deep links override it.
 	libraryTab = $state<LibraryTab>('characters');
@@ -122,8 +136,8 @@ class UiStore {
 	// Opening any panel drops the others, except a pinned (locked) side dock. The debug
 	// panel has no lock, so it always closes when something else opens.
 	private dropUnlockedSidePanels() {
-		if (this.settingsOpen && !this.settingsLocked) this.closeSettings();
-		if (this.libraryOpen && !this.libraryLocked) this.closeLibrary();
+		if (this.settingsOpen && !this.settingsPinned) this.closeSettings();
+		if (this.libraryOpen && !this.libraryPinned) this.closeLibrary();
 		this.debugPanelOpen = false;
 	}
 
@@ -174,7 +188,7 @@ class UiStore {
 		if (this.navBlocked()) return;
 		if (this.activeOverlay) flushFn?.();
 		this.activeOverlay = null;
-		if (this.settingsOpen && !this.settingsLocked) this.closeSettings();
+		if (this.settingsOpen && !this.settingsPinned) this.closeSettings();
 		this.debugPanelOpen = false;
 		this.libraryOpen = true;
 	}
@@ -299,7 +313,7 @@ class UiStore {
 		// One panel at a time: drop the chat-area overlay and the unlocked Library dock.
 		if (this.activeOverlay) flushFn?.();
 		this.activeOverlay = null;
-		if (this.libraryOpen && !this.libraryLocked) this.closeLibrary();
+		if (this.libraryOpen && !this.libraryPinned) this.closeLibrary();
 		this.debugPanelOpen = false;
 		this.settingsOpen = true;
 	}
@@ -325,8 +339,8 @@ class UiStore {
 		// the unlocked side docks.
 		if (this.activeOverlay) flushFn?.();
 		this.activeOverlay = null;
-		if (this.settingsOpen && !this.settingsLocked) this.closeSettings();
-		if (this.libraryOpen && !this.libraryLocked) this.closeLibrary();
+		if (this.settingsOpen && !this.settingsPinned) this.closeSettings();
+		if (this.libraryOpen && !this.libraryPinned) this.closeLibrary();
 		this.debugPanelOpen = true;
 	}
 

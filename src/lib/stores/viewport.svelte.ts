@@ -1,5 +1,8 @@
 /**
- * Reactive viewport flags. `canDockSettings` is true only when the window is
+ * Reactive viewport flags. Fine-pointer desktops use a single adjustable dock
+ * from 64rem onward. The older layout described below remains for touch-first
+ * devices; `canDockSettings` includes either desktop or legacy docking.
+ * Legacy docking is true only when the window is
  * wide enough to host the Settings panel in the margin beside the centered chat
  * column without eating into the transcript. Below that, Settings falls back to
  * the centered overlay.
@@ -26,18 +29,25 @@ const MOBILE_QUERY = '(max-width: 640px)';
 // Everything keyboard-only keys off this (Enter-to-send in both composers, the
 // shortcuts row in Settings), so it lives here rather than as a const per file.
 const TOUCH_QUERY = '(pointer: coarse)';
+// Phones and touch-first tablets keep their current top bar, including in landscape.
+const DESKTOP_QUERY = '(min-width: 64rem) and (hover: hover) and (pointer: fine)';
 
 class Viewport {
-	canDockSettings = $state(false);
+	private legacyDock = $state(false);
+	get canDockSettings() { return this.desktopLayout || this.legacyDock; }
 	isMobile = $state(false);
 	isTouch = $state(false);
+	desktopLayout = $state(false);
 
 	constructor() {
 		if (typeof window === 'undefined') return;
+		const desktop = window.matchMedia(DESKTOP_QUERY);
+		this.desktopLayout = desktop.matches;
+		desktop.addEventListener('change', (e) => { this.desktopLayout = e.matches; });
 		const dock = window.matchMedia(DOCK_QUERY);
-		this.canDockSettings = dock.matches;
+		this.legacyDock = dock.matches;
 		dock.addEventListener('change', (e) => {
-			this.canDockSettings = e.matches;
+			this.legacyDock = e.matches;
 		});
 		const mobile = window.matchMedia(MOBILE_QUERY);
 		this.isMobile = mobile.matches;

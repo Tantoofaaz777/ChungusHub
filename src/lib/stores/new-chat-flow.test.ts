@@ -17,6 +17,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 const { uiStore } = await import('./ui.svelte');
 
 function resetUi() {
+	uiStore.setSinglePanel(false);
 	uiStore.activeOverlay = null;
 	uiStore.welcomeOpen = false;
 	uiStore.settingsOpen = false;
@@ -40,6 +41,7 @@ function blockNavigation() {
 beforeEach(resetUi);
 
 afterEach(() => {
+	uiStore.setSinglePanel(false);
 	if (registeredBlocker) {
 		uiStore.clearNavBlocker(registeredBlocker);
 		registeredBlocker = null;
@@ -182,5 +184,38 @@ describe('cancel edges', () => {
 		expect(uiStore.settingsOpen).toBe(true);
 		expect(uiStore.libraryOpen).toBe(true);
 		expect(uiStore.newChatStep).toBe('character');
+	});
+
+	test('the desktop rail replaces even a legacy pinned panel with the next panel', () => {
+		uiStore.setSinglePanel(true);
+		uiStore.libraryLocked = true; uiStore.settingsLocked = true;
+		uiStore.startNewChat();
+		uiStore.openSettings();
+		expect(uiStore.libraryOpen).toBe(false);
+		expect(uiStore.newChatStep).toBeNull();
+		expect(uiStore.settingsOpen).toBe(true);
+		uiStore.openOverlay('memory');
+		expect(uiStore.settingsOpen).toBe(false);
+		expect(uiStore.activeOverlay).toBe('memory');
+		uiStore.openDebugPanel();
+		expect(uiStore.activeOverlay).toBeNull();
+		expect(uiStore.debugPanelOpen).toBe(true);
+		uiStore.openLibrary();
+		expect(uiStore.debugPanelOpen).toBe(false);
+		expect(uiStore.libraryOpen).toBe(true);
+	});
+
+	test('switching to the desktop layout retains the Library and its unsaved editor', () => {
+		uiStore.libraryLocked = true;
+		uiStore.openLibrary(); uiStore.libraryEditorId = 'unsaved-card';
+		uiStore.openSettings();
+		uiStore.setSinglePanel(true);
+		expect(uiStore.libraryOpen).toBe(true);
+		expect(uiStore.libraryEditorId).toBe('unsaved-card');
+		expect(uiStore.settingsOpen).toBe(false);
+		blockNavigation();
+		uiStore.openOverlay('threads');
+		expect(uiStore.activeOverlay).toBeNull();
+		expect(uiStore.libraryOpen).toBe(true);
 	});
 });
