@@ -583,6 +583,24 @@ describe('scene-memory publication', () => {
 
 
 describe('display-only streaming snapshots', () => {
+	test('Home leaves a running generation attached to its chat and hides its tokens', async () => {
+		chatStore.startStream(CHAT.id);
+		const running = chatStore.stream;
+		try {
+			await chatStore.goHome();
+			expect(chatStore.activeChatId).toBeNull();
+			expect(chatStore.currentChatState).toBeNull();
+			expect(uiStore.welcomeOpen).toBe(true);
+			expect(chatStore.stream).toBe(running);
+			chatStore.appendStreamingContent('Background response');
+			chatStore.appendStreamingThinking('Background thought');
+			await new Promise(resolve => setTimeout(resolve, 70));
+			expect(chatStore.stream?.content).toBe('Background response');
+			expect(chatStore.stream?.thinking).toBe('Background thought');
+			expect(chatStore.visibleStreamPreview).toBeNull();
+		} finally { chatStore.endStream(); }
+	});
+
 	test('reasoning timing belongs to the stream and resets for a new generation', async () => {
 		chatStore.startStream(CHAT.id);
 		try {

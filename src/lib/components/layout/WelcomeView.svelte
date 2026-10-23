@@ -12,19 +12,19 @@
 	import { chatCastStore } from '$lib/stores/chatCast.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
 
 	let chats = $derived(chatStore.sortedChats);
 	// Only chats that have actually been written in are worth resuming: a fresh
-	// blank chat (rootMessageId === null) isn't. Newest first, three until expanded.
+	// blank chat (rootMessageId === null) isn't. Newest first, six until expanded.
 	let resumable = $derived(chats.filter((c) => c.rootMessageId !== null));
+	const INITIAL_CHAT_COUNT = 6;
 	let expanded = $state(false);
-	let visibleCount = $state(3);
+	let visibleCount = $state(INITIAL_CHAT_COUNT);
 	const CHAT_BATCH_SIZE = 50;
 	let browseLimit = $state(CHAT_BATCH_SIZE);
 	let welcomeEl = $state<HTMLDivElement | null>(null);
 	let searchQuery = $state('');
-	let query = $derived(viewport.isMobile ? '' : searchQuery.trim());
+	let query = $derived(searchQuery.trim());
 	let sortKey = $state<SortKey>('activity');
 	let sortDir = $state<SortDir>('desc');
 	let filterMode = $state<FilterMode>('all');
@@ -51,7 +51,7 @@
 	let filteredChats = $derived(filterAndSortChats(browsing ? chats : resumable, {
 		query, filter: filterMode, sort: sortKey, direction: sortDir, stats, twins: twinCounts
 	}));
-	let recent = $derived(filteredChats.slice(0, browsing ? browseLimit : expanded ? visibleCount : 3));
+	let recent = $derived(filteredChats.slice(0, browsing ? browseLimit : expanded ? visibleCount : INITIAL_CHAT_COUNT));
 	// All selects the full filtered set, matching the count in the selection control.
 	let selectableChats = $derived(browsing ? filteredChats : recent);
 	let hasMoreChats = $derived((browsing || expanded) && recent.length < filteredChats.length);
@@ -108,7 +108,7 @@
 			return;
 		}
 		// Always reveal at least two more so the button never no-ops when cramped.
-		visibleCount = Math.min(CHAT_BATCH_SIZE, 3 + Math.max(2, Math.floor((spareHeight - RESERVE_PX) / ROW_PX)));
+		visibleCount = Math.min(CHAT_BATCH_SIZE, INITIAL_CHAT_COUNT + Math.max(2, Math.floor((spareHeight - RESERVE_PX) / ROW_PX)));
 		expanded = true;
 	}
 
@@ -122,18 +122,6 @@
 	// then a fresh chat is created for the picked pair (uiStore.startNewChat).
 	function newChat() {
 		uiStore.startNewChat(() => lorebookStore.flush());
-	}
-
-	// A toggle, not an open: the docked Library leaves this landing visible and
-	// clickable, so a second press on the button has to put it away again. The tab is
-	// only forced on the way in: closing must not rewrite which half reopens.
-	function toggleLibrary() {
-		if (uiStore.libraryOpen) {
-			uiStore.closeLibrary();
-			return;
-		}
-		uiStore.setLibraryTab('characters', () => lorebookStore.flush());
-		uiStore.openLibrary(() => lorebookStore.flush());
 	}
 
 </script>
@@ -156,7 +144,7 @@
 			<div class="actions">
 				<ChatBrowserControls
 					bind:searchQuery bind:sortKey bind:sortDir bind:filterMode
-					allowMessageSearch={false} showSearch={!viewport.isMobile} mobileActions iconSort compact
+					allowMessageSearch={false} mobileActions iconSort mobileSearchRow compact
 					{twinsInScope} {selecting} {toggleSelecting} {selectedCount} {allVisibleSelected}
 					visibleCount={selectableChats.length} {selectAllVisible}
 					clearSelection={() => (selectedIds = new Set())}
@@ -165,9 +153,6 @@
 					{#snippet leading()}
 						<button type="button" class="action action-primary" aria-label="New chat" title="New chat" onclick={newChat}>
 							<Icon name="plus" class="w-4 h-4" />
-						</button>
-						<button type="button" class="action action-ghost" aria-label="Library" title="Library" onclick={toggleLibrary}>
-							<Icon name="bookOpen" class="w-4 h-4" />
 						</button>
 					{/snippet}
 				</ChatBrowserControls>
@@ -213,7 +198,7 @@
 						<button type="button" class="recent-expand" onclick={loadMoreChats}>Load more chats · {recent.length.toLocaleString()} / {filteredChats.length.toLocaleString()}</button>
 					{/if}
 
-					{#if !browsing && filteredChats.length > 3}
+					{#if !browsing && filteredChats.length > INITIAL_CHAT_COUNT}
 						<button type="button" class="recent-expand" onclick={toggleExpand}>
 							<Icon name={expanded ? 'chevronUp' : 'chevronDown'} class="w-3.5 h-3.5" />
 							<span>{expanded ? 'Show less' : 'Show more'}</span>
@@ -403,18 +388,6 @@
 		filter: brightness(1.08);
 	}
 
-	.action-ghost {
-		border: 1px solid var(--color-border-subtle);
-		background: color-mix(in srgb, var(--color-bg-tertiary) 55%, transparent);
-		color: var(--color-text-secondary);
-	}
-
-	.action-ghost:hover {
-		color: var(--color-text-primary);
-		border-color: var(--color-border);
-		background: color-mix(in srgb, var(--color-bg-tertiary) 85%, transparent);
-	}
-
 	.action:focus-visible {
 		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
@@ -541,7 +514,7 @@
 		transform: translateX(3px);
 	}
 
-	/* Reads as the ghost quick actions above: a resting pill, not a hover-only one. */
+	/* Reads as the quiet action controls above: a resting pill, not a hover-only one. */
 	.recent-expand {
 		display: flex;
 		width: fit-content;

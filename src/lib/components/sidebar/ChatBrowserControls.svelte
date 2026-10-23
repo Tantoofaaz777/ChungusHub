@@ -634,7 +634,7 @@
 	.chats-more { display: none; position: relative; }
 	.mobile-sort-directions { display: none; border-top: 1px solid var(--color-border-subtle); margin-top: 0.3rem; padding-top: 0.3rem; }
 	@media (max-width: 700px) {
-		.mobile-search-row .chats-search { flex: 1 0 100%; }
+		.chats-controls.mobile-search-row .chats-search { flex: 1 0 100%; order: -1; }
 		/* Keep the menu's right edge inside the panel even when only a few icons precede it. */
 		.mobile-search-row .chats-sort { margin-left: auto; }
 	}

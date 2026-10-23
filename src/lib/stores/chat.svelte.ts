@@ -272,11 +272,9 @@ class ChatStore {
 		}
 	}
 
-	/** Close the open chat and land on the welcome screen, the same zero state as
-	 *  boot: no active chat, no loaded chat state, memory cleared (the memory panel then shows its no-chat state). Callers must check
-	 *  `messageStore.warnIfBusy()` first: this store can't import messageStore
-	 *  (import cycle), and nulling `currentChatState` mid-generation would orphan
-	 *  the stream that writes into it. */
+	/** Close the visible chat and land on Home. A running stream belongs to its original
+	 *  chat independently of this view and is deliberately left intact. Callers use
+	 *  messageStore.warnIfNavigationBusy() to protect unfinished prompt preparation/review. */
 	async goHome(): Promise<void> {
 		++this.selectionTicket;
 		this.openingChatId = null;

@@ -119,11 +119,12 @@
 
 	// Back to the welcome landing. This is a real exit, not just raising the layer: the
 	// chat closes to the boot zero state (memory shows no chat).
-	// Refused mid-generation: the stream writes into the state this tears down.
-	function handleGoHome() {
+	// A dispatched generation keeps its own chat and stream while the view is closed.
+	async function handleGoHome() {
 		menuOpen = false;
-		if (messageStore.warnIfBusy()) return;
-		void chatStore.goHome();
+		if (uiStore.guardBlocksNav() || messageStore.warnIfNavigationBusy()) return;
+		try { await chatStore.goHome(); }
+		catch (error) { toastStore.failed('go home', error); }
 	}
 
 	// The Chats browser. With a chat open it lists this character's chats and can
@@ -134,10 +135,9 @@
 	}
 
 	// Another chat with this story's character, greeting and all: the Chats panel's own
-	// New chat button without the trip through the panel. Refused mid-generation for the
-	// same reason Home is: createChat opens the chat it makes, which swaps out the state
-	// the stream writes into. The row is disabled without a resolvable character, so the
-	// throw is unreachable and stays loud rather than minting a characterless chat.
+	// New chat button without the trip through the panel. Creating and seeding a chat
+	// still requires the mutation guard; Home only changes the view. The row is disabled
+	// without a resolvable character, so the throw is unreachable and stays loud rather than minting a characterless chat.
 	function handleNewChat() {
 		menuOpen = false;
 		if (messageStore.warnIfBusy()) return;

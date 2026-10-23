@@ -30,7 +30,7 @@
 	}
 
 	async function handleGoHome() {
-		if (uiStore.guardBlocksNav() || messageStore.warnIfBusy()) return;
+		if (uiStore.guardBlocksNav() || messageStore.warnIfNavigationBusy()) return;
 		try {
 			await flush();
 			await chatStore.goHome();

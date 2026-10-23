@@ -54,6 +54,8 @@ class MessageStore {
 	}
 	abortController = $state<AbortController | null>(null);
 	private isProcessing = $state(false);
+	/** The request has captured its prompt/placement and can finish away from this view. */
+	private generationDispatched = $state(false);
 	get busy(): boolean { return this.isProcessing || this.isStreaming; }
 
 	/** A generation is in flight ANYWHERE, not merely in the chat on screen: walking into
@@ -83,6 +85,13 @@ class MessageStore {
 			return true;
 		}
 		return false;
+	}
+
+	/** Home changes only the view. Keep preparation/review and mutation guards, but let
+	 *  an already dispatched request finish in its captured chat. */
+	warnIfNavigationBusy(): boolean {
+		if (!promptHoldStore.holding && (this.generationDispatched || (!this.isProcessing && this.isStreaming))) return false;
+		return this.warnIfBusy();
 	}
 
 	/**
@@ -181,6 +190,7 @@ class MessageStore {
 			// mid-reply would otherwise have nowhere to put the answer it paid for. The leaf
 			// is named as it stands now, so a commit that lands after the reader walked to
 			// another branch leaves them where they are (architecture/chat-sessions.md).
+			this.generationDispatched = true;
 			const result = await llmService.complete(callTarget, {
 				messages,
 				source: 'chat',
@@ -235,6 +245,7 @@ class MessageStore {
 			await this.refreshAfterFailure(chatId);
 			throw error;
 		} finally {
+			this.generationDispatched = false;
 			chatStore.endStream();
 			this.abortController = null;
 		}
@@ -704,6 +715,7 @@ class MessageStore {
 			// The LLM call alone, no db awaits. Continue is the one story path that still
 			// persists its own turn, so this clock is still its own to keep.
 			const startedAt = performance.now();
+			this.generationDispatched = true;
 			const result = await llmService.complete(callTarget, {
 				messages,
 				source: 'continue',
@@ -784,6 +796,7 @@ class MessageStore {
 				toastStore.failed('continue the reply', error);
 			}
 		} finally {
+			this.generationDispatched = false;
 			chatStore.endStream();
 			this.abortController = null;
 			this.isProcessing = false;
@@ -880,6 +893,7 @@ class MessageStore {
 			// rather than read here and used a paragraph later. No user turn is saved: the
 			// direction was context, not something the reader said in the story.
 			if (action === 'branch' && openingLeaf && !await this.canSwipeFresh(state.chat.id, openingLeaf.id)) return;
+			this.generationDispatched = true;
 			const result = await llmService.complete(callTarget, {
 				messages,
 				source: 'opening-scene',
@@ -931,6 +945,7 @@ class MessageStore {
 				toastStore.failed('generate the opening scene', error);
 			}
 		} finally {
+			this.generationDispatched = false;
 			chatStore.endStream();
 			this.abortController = null;
 			this.isProcessing = false;
