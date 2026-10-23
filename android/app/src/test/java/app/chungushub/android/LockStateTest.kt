@@ -4,6 +4,61 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LockStateTest {
+    @Test fun coldLaunchShowsTheFormOnlyWhenTheActivityResumes() {
+        val state = LockState()
+        assertTrue(state.locked)
+        assertFalse(state.showUnlock)
+        state.foreground(0)
+        assertTrue(state.showUnlock)
+        state.pause()
+        assertTrue(state.locked)
+        assertFalse(state.showUnlock)
+    }
+
+    @Test fun homeExitDoesNotFlashTheUnlockFormAndShortReturnStaysUnlocked() {
+        val state = LockState()
+        state.foreground(0); state.unlock()
+        state.pause()
+        assertFalse(state.showUnlock)
+        state.background(100)
+        assertFalse(state.showUnlock)
+        state.foreground(1_000)
+        assertFalse(state.locked)
+        assertFalse(state.showUnlock)
+    }
+
+    @Test fun shortcutConfirmationWithoutStoppingDoesNotStartTheTimeoutEvenWithImmediateLock() {
+        val state = LockState(0)
+        state.foreground(0); state.unlock()
+        state.pause() // Android's translucent pin-shortcut confirmation covers the activity.
+        assertFalse(state.showUnlock)
+        state.foreground(300_000)
+        assertFalse(state.locked)
+        assertFalse(state.showUnlock)
+    }
+
+    @Test fun goingHomeFromASystemDialogStillArmsTheLock() {
+        val state = LockState(0)
+        state.foreground(0); state.unlock(); state.pause()
+        state.background(100) // Home fully hides both the dialog and Chungus.
+        assertFalse(state.showUnlock)
+        state.foreground(101)
+        assertTrue(state.locked)
+        assertTrue(state.showUnlock)
+    }
+
+    @Test fun expiredScreenOffPeriodShowsTheFormOnReturnOnly() {
+        val state = LockState(30_000)
+        state.foreground(0); state.unlock(); state.pause(); state.background(1_000)
+        assertFalse(state.showUnlock)
+        state.foreground(31_000)
+        assertTrue(state.showUnlock)
+        state.pause()
+        assertFalse(state.showUnlock)
+        state.foreground(31_001)
+        assertTrue(state.showUnlock)
+    }
+
     @Test fun freshProcessAlwaysStartsLocked() {
         assertTrue(LockState(900_000).locked)
         val state = LockState(); state.unlock()

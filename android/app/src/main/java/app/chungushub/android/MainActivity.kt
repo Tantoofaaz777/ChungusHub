@@ -460,6 +460,10 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().flush()
         super.onPause()
     }
+    override fun onStop() {
+        appLock.stop()
+        super.onStop()
+    }
     override fun onResume() {
         super.onResume()
         activityResumed = true

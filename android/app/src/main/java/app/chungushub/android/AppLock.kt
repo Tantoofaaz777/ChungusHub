@@ -41,7 +41,7 @@ class AppLock(
     private val policy = LockState()
     private var address: ServerAddress? = null
     private var vault: CredentialVault? = null
-    private var foreground = false
+    private val foreground get() = policy.resumed
     private var closed = false
     private var generation = 0
     private var busy = false
@@ -175,9 +175,10 @@ class AppLock(
 
     private fun render() {
         val protected = enabled || configuration != Configuration.NONE
-        val cover = protected && (!foreground || (locked && !setupVisible))
+        val cover = protected && policy.showUnlock && !setupVisible
         gate.visibility = if (cover) View.VISIBLE else View.GONE
-        // Cover the task preview before leaving. Foreground screenshots remain available after unlock.
+        // Protect task previews without changing the visible page during the exit animation
+        // or underneath a system dialog. Show the form only after returning to a locked app.
         if (protected && (!foreground || locked)) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         heading.text = when (configuration) {
@@ -322,12 +323,13 @@ class AppLock(
         if (configuration != Configuration.NONE) {
             configuration = Configuration.NONE; setupVisible = true; policy.unlock()
         }
-        foreground = false; policy.background(SystemClock.elapsedRealtime())
+        policy.pause()
         generation++; biometricPrompt?.cancelAuthentication(); biometricPrompt = null
         busy = false; password.text.clear(); render()
     }
+    fun stop() { policy.background(SystemClock.elapsedRealtime()) }
     fun resume() {
-        foreground = true; policy.foreground(SystemClock.elapsedRealtime())
+        policy.foreground(SystemClock.elapsedRealtime())
         if (locked) setupVisible = false
         render(); releaseDeferred()
     }

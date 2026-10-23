@@ -84,11 +84,18 @@ Cada desbloqueio, por senha ou biometria, faz um novo login real no servidor. Um
 alterada ou chave invalidada pede a senha novamente; ausência ou cancelamento de
 biometria mantém a alternativa de senha do servidor, sem usar o PIN do celular.
 
-O app cobre a página ao sair e protege a prévia nas telas recentes. Uma escolha de
+O app protege a prévia nas telas recentes. Uma escolha de
 arquivo que retornar depois do prazo espera o desbloqueio antes de continuar.
 O chat permanece carregado para preservar posição, rascunho e geração em andamento.
 Este bloqueio é nativo e não exige atualizar a interface da VPS. Ele vem desligado
 para instalações existentes; ative-o neste aparelho depois de instalar o APK novo.
+
+Na versão 0.1.6, perder o foco não mostra o formulário de desbloqueio durante a
+animação de minimizar ou atrás da confirmação de adicionar um atalho. O prazo de
+bloqueio começa em `onStop`, quando o app fica totalmente oculto. Uma confirmação
+translúcida do Android, sem saída real do app, não inicia esse prazo. A janela
+continua protegida contra captura da prévia em segundo plano; o formulário só
+aparece ao retornar com o bloqueio ativo. Esta correção exige apenas o APK novo.
 
 ### Atalhos de chats
 
