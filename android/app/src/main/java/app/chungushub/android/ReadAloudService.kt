@@ -44,6 +44,9 @@ class ReadAloudService : Service() {
     private lateinit var preparingLock: PowerManager.WakeLock
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var boundEngine = ""
+    private var defaultVoice: android.speech.tts.Voice? = null
+    private var options = SpeechOptions()
     private var initialization = 0
     private var closed = false
     private var origin = ""
@@ -127,7 +130,15 @@ class ReadAloudService : Service() {
             wantsPlay = true
             error = null
             session.isActive = true
+            options = SpeechPreferences.load(this)
+            // A changed Android default engine must not keep using the old connection.
+            if (tts != null && boundEngine.isNotEmpty() && boundEngine != tts?.defaultEngine) {
+                initialization++
+                main.removeCallbacks(initTimeout)
+                tts?.shutdown(); tts = null; ttsReady = false
+            }
             if (tts == null) initializeSpeech()
+            else if (ttsReady) configureSpeech()
             play()
         } catch (e: Exception) { fail(e.message ?: "Could not start reading.") }
         return START_NOT_STICKY
@@ -143,6 +154,8 @@ class ReadAloudService : Service() {
             releasePreparationLock()
             if (status != TextToSpeech.SUCCESS) { fail("No speech engine is available. Check Android text-to-speech settings."); return@post }
             val engine = tts ?: return@post
+            boundEngine = engine.defaultEngine.orEmpty()
+            defaultVoice = engine.voice
             engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) { main.post { synthesized(utteranceId) } }
@@ -151,8 +164,20 @@ class ReadAloudService : Service() {
                 override fun onError(utteranceId: String?, errorCode: Int) { main.post { synthesisFailed(utteranceId) } }
             })
             ttsReady = true
+            try { configureSpeech() } catch (e: Exception) { fail(e.message ?: "Could not configure the voice."); return@post }
             if (wantsPlay) ensureAudio()
         } }
+    }
+
+    private fun configureSpeech() {
+        val engine = tts ?: return
+        val voice = if (options.voice.isNotBlank()) {
+            check(options.engine == boundEngine) { "The Android speech engine changed. Choose a voice again in Settings → TTS." }
+            engine.voices.orEmpty().find { it.name == options.voice && !it.features.orEmpty().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+                ?: error("The selected voice is no longer available. Choose another in Settings → TTS.")
+        } else defaultVoice
+        if (voice != null) check(engine.setVoice(voice) == TextToSpeech.SUCCESS) { "The speech engine could not use this voice. Choose another in Settings → TTS." }
+        check(engine.setSpeechRate(options.rate) == TextToSpeech.SUCCESS) { "The speech engine could not apply the reading speed." }
     }
 
     private fun play() {

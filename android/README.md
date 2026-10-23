@@ -45,6 +45,20 @@ receber uma interrupção de áudio e desconectar os fones. Verificar também o 
 biometria ao voltar, sem interromper uma leitura já iniciada. Não há reprodução automática
 após encerrar o serviço/processo.
 
+### Voz e velocidade (0.1.9)
+
+Em **Settings → TTS**, escolha uma voz do motor padrão de TTS do Android e a velocidade
+de leitura entre **0.5× e 2×**, com padrão **1×**. O filtro de idioma só reduz a lista de
+vozes; não muda a seleção sozinho. As vozes indicam **Online** ou **Offline** conforme
+o próprio motor. **Android default** volta à voz padrão. Não há ajuste de pitch.
+
+As escolhas são salvas automaticamente apenas neste Android e valem na próxima leitura
+iniciada com **Read aloud**, preservando a reprodução atual. O slider usa a mesma proteção
+global de toque do restante do app: rolar verticalmente não ajusta a velocidade.
+**Refresh voices** atualiza a lista após instalar vozes ou trocar o motor padrão nas
+configurações do Android. Uma voz removida precisa ser substituída ou voltar ao padrão.
+Esta página exige atualizar a interface na VPS e instalar o APK 0.1.9 ou posterior.
+
 **Voltar:** primeiro fecha o teclado. Depois, fecha o diálogo/editor/painel mais interno,
 volta à home e, por último, deixa o app em segundo plano. A integração completa depende
 de publicar também os arquivos do frontend desta mudança na VPS. Com um frontend antigo,
@@ -187,3 +201,19 @@ Arquivos gerados por `Blob` preservam o conteúdo original, incluindo metadados 
 
 Não foi usado código do Aventuras ou do SillyTavern-Android. A estrutura segue as APIs
 oficiais de WebView, AndroidX Activity, AndroidX WebKit e Storage Access Framework.
+
+
+### Processamento do texto para leitura (0.1.9)
+
+Em **Settings > TTS > Text processing**, adicione regras para remover palavras, frases ou padrões regex apenas da fala. A mensagem original não é alterada. As regras são locais ao aparelho, não são enviadas ao servidor e valem para todos os chats desse Android.
+
+- As regras são aplicadas de cima para baixo, cada uma recebe o resultado da anterior. Arraste pela alça para reordenar, inclusive por toque; a área de texto continua disponível para rolagem.
+- **Text** remove todas as ocorrências literais, inclusive dentro de outras palavras. **Match case** diferencia maiúsculas e minúsculas.
+- **Regex** usa sintaxe JavaScript, sem delimitadores `/`, com correspondência global. Por exemplo, `\[[^\]]*\]` remove trechos entre colchetes, inclusive com quebras de linha.
+- Use os switches para desativar regras sem apagá-las. Há limite de 30 regras e 1.000 caracteres por padrão.
+- **Save rules** valida e salva a lista inteira, incluindo a ordem. Edições ainda não salvas não mudam a fala.
+- **Preview draft rules** permite conferir o texto final usando texto simples e as regras atuais, antes de salvar. A prévia não inicia áudio.
+- A execução fica em um worker descartável, com limite de tempo. Se uma regex for inválida ou demorar demais, a leitura não começa; nenhum texto sem filtragem é enviado como fallback.
+- O processamento ocorre depois da conversão do conteúdo exibido em texto simples e antes da divisão em frases. Avançar/voltar usa apenas as frases restantes. A leitura atual não é alterada por novas regras.
+
+Atualize a interface na VPS e instale o APK 0.1.9 para disponibilizar todos esses controles.

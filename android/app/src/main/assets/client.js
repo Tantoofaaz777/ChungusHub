@@ -178,6 +178,23 @@
       await request('speech.start', { text, title: String(title).slice(0, 180) }, 10000);
     },
     readingState: async () => (await request('speech.state', {}, 5000)).state,
+    readingRules: async () => (await request('speech.rules', {}, 5000)).rules,
+    saveReadingRules: async rules => {
+      if (!Array.isArray(rules) || rules.length > 30 || rules.some(rule => !rule || typeof rule.id !== 'string' ||
+          !rule.id.trim() || rule.id.length > 80 || typeof rule.pattern !== 'string' || !rule.pattern.trim() || rule.pattern.length > 1000 ||
+          typeof rule.regex !== 'boolean' || typeof rule.caseSensitive !== 'boolean' || typeof rule.enabled !== 'boolean') ||
+          new Set(rules.map(rule => rule.id)).size !== rules.length) throw Error('Invalid speech rules.');
+      const clean = rules.map(({ id, pattern, regex, caseSensitive, enabled }) => ({ id, pattern, regex, caseSensitive, enabled }));
+      if (JSON.stringify({ rules: clean }).length > 99000) throw Error('Speech rules are too large to save.');
+      await request('speech.rules.save', { rules: clean }, 5000);
+    },
+    readingSettings: async () => (await request('speech.settings', {}, 25000)).settings,
+    saveReadingSettings: async settings => {
+      if (!settings || typeof settings.engine !== 'string' || typeof settings.voice !== 'string' ||
+          settings.engine.length > 512 || settings.voice.length > 512 ||
+          !Number.isFinite(settings.rate) || settings.rate < 0.5 || settings.rate > 2) throw Error('Invalid voice or reading speed.');
+      return (await request('speech.settings.save', { engine: settings.engine, voice: settings.voice, rate: settings.rate }, 5000)).settings;
+    },
     notifyReading: () => window.dispatchEvent(new Event('chungus-android-reading')),
     readingCommand: async command => {
       if (!['play', 'pause', 'previous', 'next', 'stop'].includes(command)) throw Error('Unknown reading command.');

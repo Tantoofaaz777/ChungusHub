@@ -7,6 +7,7 @@ export const settingsPages = {
 	chat: lazyModule(() => import('./ChatPage.svelte')),
 	general: lazyModule(() => import('./GeneralPage.svelte')),
 	engines: lazyModule(() => import('./EnginesPage.svelte')),
+	tts: lazyModule(() => import('./TtsPage.svelte')),
 	security: lazyModule(() => import('./SecurityPage.svelte')),
 	backups: lazyModule(() => import('./BackupsPage.svelte')),
 	'prompt-builder': lazyModule(() => import('$lib/components/promptBuilder/PromptBuilderView.svelte')),

@@ -42,29 +42,21 @@
 
 {#if reader.available && reader.state.phase !== 'idle'}
 	<div class="read-aloud-bar" role="region" aria-label="Read aloud player">
-		<span class="reader-icon" aria-hidden="true"><Icon name="volume" class="w-4 h-4" /></span>
-		<div class="reading-info">
-			<span class="reading-title">{reader.state.title || 'Read aloud'}</span>
-			<span class="reading-status">{reader.state.error || (reader.state.phase === 'preparing' ? 'Preparing speech…' : `${reader.state.phase === 'paused' ? 'Paused · ' : ''}Sentence ${reader.state.sentence ?? 1} of ${reader.state.total ?? '…'}`)}</span>
-		</div>
 		<div class="reading-controls" role="group" aria-label="Reading controls">
 			<button type="button" disabled={reader.busy || reader.state.phase === 'error'} onclick={() => command('previous')} title="Previous sentence" aria-label="Previous sentence"><Icon name="skipBack" class="w-4 h-4" /></button>
 			<button type="button" disabled={reader.busy || reader.state.phase === 'error'} onclick={() => command(active ? 'pause' : 'play')} title={active ? 'Pause' : 'Play'} aria-label={active ? 'Pause reading' : 'Resume reading'}><Icon name={active ? 'pause' : 'play'} class="w-4 h-4" /></button>
 			<button type="button" disabled={reader.busy || reader.state.phase === 'error' || (!!reader.state.total && reader.state.sentence === reader.state.total)} onclick={() => command('next')} title="Next sentence" aria-label="Next sentence"><Icon name="skipForward" class="w-4 h-4" /></button>
 			<button type="button" disabled={reader.busy} onclick={() => command('stop')} title="Stop reading" aria-label="Stop reading"><Icon name="close" class="w-4 h-4" /></button>
 		</div>
+		{#if reader.state.error}<p class="reading-error" role="alert">{reader.state.error}</p>{/if}
 	</div>
 {/if}
 
 <style>
-	.read-aloud-bar { flex-shrink:0; display:flex; align-items:center; gap:.65rem; padding:.35rem .75rem; border-bottom:1px solid var(--color-border); background:var(--color-bg-secondary); font-family:var(--font-ui); }
-	.reader-icon { display:flex; flex-shrink:0; color:var(--color-accent); }
-	.reading-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:.1rem; }
-	.reading-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.75rem; color:var(--color-text-primary); }
-	.reading-status { font-size:.65rem; color:var(--color-text-muted); overflow-wrap:anywhere; }
-	.reading-controls { display:flex; align-items:center; flex-shrink:0; }
+	.read-aloud-bar { flex-shrink:0; display:flex; flex-direction:column; align-items:center; padding:.35rem .75rem; border-bottom:1px solid var(--color-border); background:var(--color-bg-secondary); font-family:var(--font-ui); }
+	.reading-controls { display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+	.reading-error { margin:.25rem 0 0; font-size:.7rem; color:var(--color-text-muted); text-align:center; overflow-wrap:anywhere; }
 	button { display:flex; align-items:center; justify-content:center; width:2.5rem; height:2.5rem; border-radius:var(--radius-md); color:var(--color-accent); }
 	button:hover { background:var(--color-bg-tertiary); }
 	button:disabled { opacity:.35; }
-	@media(max-width:400px) { .read-aloud-bar { gap:.4rem; padding-inline:.5rem; } .reader-icon { display:none; } }
 </style>

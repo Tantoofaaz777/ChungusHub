@@ -1,5 +1,7 @@
 import { canReadAloud, type AndroidReadingState, type ReadingCommand } from '$lib/services/android-client';
 
+import { processSpeechText } from '$lib/services/speech-rules';
+
 /** Device-local playback state, never synced to the server or another device. */
 class ReadAloudStore {
 	available = $state(false);
@@ -20,7 +22,15 @@ class ReadAloudStore {
 		this.busy = true;
 		this.revision++;
 		try {
-			await window.ChungusAndroidClient!.readAloud!(text, title);
+			const client = window.ChungusAndroidClient!;
+			if (client.readingRules) {
+				const rules = await client.readingRules();
+				const processed = await processSpeechText(text, rules);
+				if (Object.keys(processed.errors).length) throw new Error('Fix invalid text processing rules in Settings > TTS.');
+				text = processed.text;
+				if (!text.trim()) throw new Error('Nothing remains to read after applying your text processing rules.');
+			}
+			await client.readAloud!(text, title);
 			// Service startup is asynchronous; the next native snapshot confirms playback.
 			this.state = { phase: 'preparing', title };
 		} finally { this.busy = false; }

@@ -15,6 +15,7 @@ import { ENGINES } from '$lib/engines/registry';
 import { backupStore } from '$lib/stores/backups.svelte';
 import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
 import { APP_VERSION } from '$lib/version';
+import { isAndroidClient } from '$lib/services/android-client';
 
 export type SettingsPage =
 	// Connection
@@ -25,6 +26,7 @@ export type SettingsPage =
 	// App
 	| 'general'
 	| 'engines'
+	| 'tts'
 	| 'security'
 	| 'backups'
 	// Advanced
@@ -49,7 +51,8 @@ export type SettingsRowIcon =
 	| 'flask'
 	| 'archive'
 	| 'info'
-	| 'sliders';
+	| 'sliders'
+	| 'volume';
 
 export interface SettingsRow {
 	page: SettingsPage;
@@ -101,6 +104,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
 		rows: [
 			{ page: 'general', label: 'General', icon: 'settings' },
 			{ page: 'engines', label: 'Engines', icon: 'bolt', preview: enginesSummary },
+			{ page: 'tts', label: 'TTS', icon: 'volume', shown: isAndroidClient },
 			{ page: 'security', label: 'Security', icon: 'shield' },
 			{ page: 'backups', label: 'Backups', icon: 'archive', preview: backupsSummary },
 		]

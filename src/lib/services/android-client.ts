@@ -1,3 +1,5 @@
+import type { SpeechRule } from '../utils/speech-rules';
+
 /** A staged character file, held privately by Android until import or cancellation. */
 export interface AndroidSharedFile { id: string; name: string; mime: string; size: number }
 export interface AndroidChatShortcut { id: string; chatId: string }
@@ -9,6 +11,15 @@ export interface AndroidReadingState {
 	error?: string | null;
 }
 export type ReadingCommand = 'play' | 'pause' | 'previous' | 'next' | 'stop';
+
+export interface AndroidSpeechChoice { engine: string; voice: string; rate: number }
+export interface AndroidSpeechVoice { id: string; language: string; languageLabel: string; network: boolean }
+export interface AndroidSpeechSettings extends AndroidSpeechChoice {
+	engineLabel: string;
+	defaultVoice: string;
+	selectionAvailable: boolean;
+	voices: AndroidSpeechVoice[];
+}
 
 /** Optional Android shell. The same server build runs normally in desktop browsers. */
 declare global {
@@ -30,6 +41,11 @@ declare global {
 			readAloud?(text: string, title: string): Promise<void>;
 			readingState?(): Promise<AndroidReadingState>;
 			readingCommand?(command: ReadingCommand): Promise<AndroidReadingState>;
+			/** Available since APK 0.1.9. Settings are stored only on this Android device. */
+			readingRules?(): Promise<SpeechRule[]>;
+			saveReadingRules?(rules: SpeechRule[]): Promise<void>;
+			readingSettings?(): Promise<AndroidSpeechSettings>;
+			saveReadingSettings?(settings: AndroidSpeechChoice): Promise<AndroidSpeechChoice>;
 			shareFile?(filename: string, mime: string, build: () => Promise<Blob>): Promise<void>;
 			incomingFiles?(): Promise<AndroidSharedFile[]>;
 			readIncomingFile?(file: AndroidSharedFile): Promise<File>;
@@ -59,6 +75,9 @@ export function canShareNativeText(): boolean { return isAndroidClient() && !!wi
 export function canReadAloud(): boolean {
 	const client = typeof window !== 'undefined' ? window.ChungusAndroidClient : undefined;
 	return isAndroidClient() && !!client?.readAloud && !!client.readingState && !!client.readingCommand;
+}
+export function canConfigureReadAloud(): boolean {
+	return isAndroidClient() && !!window.ChungusAndroidClient?.readingSettings && !!window.ChungusAndroidClient?.saveReadingSettings;
 }
 export function canPinChatShortcut(): boolean { return isAndroidClient() && !!window.ChungusAndroidClient?.pinChatShortcut; }
 export async function pinChatShortcut(chatId: string, title: string): Promise<void> {

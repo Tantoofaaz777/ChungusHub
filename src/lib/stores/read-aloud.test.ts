@@ -47,3 +47,21 @@ test('overlapping transport taps send one command and failures release the contr
 	await expect(reader.command('play')).rejects.toThrow('Disconnected');
 	expect(reader.busy).toBe(false);
 });
+
+
+test('native rule-load failures stop playback instead of reading unfiltered text', async () => {
+ let starts = 0;
+ client({ readingRules: async () => { throw new Error('Could not load rules'); }, readAloud: async () => { starts++; } });
+ await expect(reader.start('Private words.', 'Chat')).rejects.toThrow('Could not load rules');
+ expect(starts).toBe(0); expect(reader.busy).toBe(false);
+});
+
+test('the player sends only filtered text, preserving the title, and refuses empty output', async () => {
+ const spoken: string[] = [];
+ client({ readingRules: async () => [{ id: 'one', pattern: 'OOC', regex: false, caseSensitive: false, enabled: true }],
+  readAloud: async (text, title) => { spoken.push(text); expect(title).toBe('Chat'); } });
+ await reader.start('OOC Hello', 'Chat');
+ expect(spoken).toEqual(['Hello']);
+ await expect(reader.start('OOC', 'Chat')).rejects.toThrow('Nothing remains');
+ expect(spoken).toEqual(['Hello']); expect(reader.busy).toBe(false);
+});

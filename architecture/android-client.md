@@ -42,7 +42,7 @@ stays below its existing 100,000-character limit. No speech state or audio is st
 
 `ReadAloudService` is a non-exported foreground `mediaPlayback` service with a platform
 `MediaSession`, media notification and explicit immutable transport PendingIntents targeting
-a non-exported receiver. It uses the device's default TTS engine/voice to synthesize bounded
+a non-exported receiver. It uses the device's default TTS engine and selected voice/rate to synthesize bounded
 sentences to private temporary WAV files. `MediaPlayer` plays them, preserving the exact audio
 position on pause. Previous/next navigate sentences (very long sentences use bounded fragments).
 Only the current sentence and one ahead are retained; stopped or replaced sessions discard
@@ -64,6 +64,18 @@ Samsung decides Now Bar presentation, which must be checked on a real supported 
 No specific Samsung layout or availability is assumed. The default engine may use network
 synthesis according to the selected Android voice; this is not a cloud TTS request by Chungus.
 
+APK 0.1.9 adds Settings → TTS on Android only. `SpeechSettings` enumerates available voices
+using a temporary TTS client, closes that connection, and validates saves against its catalog.
+Voices marked not installed are excluded. Native private preferences bind an explicit voice
+name to its engine, with a bounded 0.5–2.0 speech rate; pitch is not exposed or modified.
+Each new reading captures the options once and configures synthesis before generating any
+audio, so queued audio never mixes voices/rates and an active reading is not interrupted.
+Changing the Android default engine or losing a selected voice prompts reselection rather
+than silently switching language. Device-default voice is available as an explicit reset.
+The frontend coalesces slider writes, serializes native saves, preserves newer gestures over
+late replies, and exposes save failures for retry. The range is a normal input covered by
+the global `protectTouchRanges` policy, including scrolling/cancel restoration.
+
 Since APK 0.1.2, the optional `save(filename, mime, producer)` adapter opens the destination
 picker before invoking the web file producer. Character export uses `saveGeneratedDownload`
 for a single PNG/JSON/CHARX or a bulk ZIP. Cancelling the picker does not fetch or encode art;
@@ -80,3 +92,12 @@ size. Bun tests execute the actual injected script against blob/HTTP downloads, 
 IO failure and frame boundaries. A browser integration check exercises the real Svelte dialogs,
 settings drill-down and Home with the injected adapter. Android lint and APK assembly run with
 Gradle. Native keyboard/SAF behavior still needs a real device or emulator to verify end to end.
+
+
+### Device-local speech text processing
+
+APK 0.1.9 adds `speech.rules` and `speech.rules.save` behind the existing exact-origin, main-frame, unlocked bridge guard. Rules live in private `read-aloud` SharedPreferences, separately from voice and rate, with bounded, unique IDs and a maximum of 30 patterns of 1,000 characters each. Native code validates the schema and preserves list order; it never executes user regex on the Android main thread.
+
+The web reader fetches the saved list at each new playback request, after rendered story content has become plain text and before native sentence splitting. The same disposable module worker executes draft previews and playback filtering. Each enabled rule removes all literal or JavaScript regex matches, optionally case-sensitive, from the preceding output. The worker validates disabled patterns as well. A 1.5-second execution watchdog terminates pathological regex after the worker is ready; loading the worker asset has a separate 15-second deadline. Errors and empty results prevent playback instead of falling back to unfiltered text; existing playback is not replaced until preprocessing succeeds. Original chat content and server settings remain unchanged.
+
+Settings use explicit Save rules for atomic list/order persistence. Draft previews never synthesize audio. Drag ordering reuses the steering library's `svelte-dnd-action` handle-only pattern with a touch delay and keyboard support. The preview accepts plain text because playback's rendered-HTML-to-text conversion already precedes the rule stage.

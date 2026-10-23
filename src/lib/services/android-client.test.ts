@@ -41,6 +41,9 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 			let response: any = { id: message.id, ok: true };
 			if (message.type === 'shortcut.pending') response.target = { id: 'launch-1', chatId: 'chat-1' };
 			if (message.type === 'speech.state' || message.type === 'speech.command') response.state = { phase: 'paused', sentence: 2, total: 5 };
+			if (message.type === 'speech.rules') response.rules = [];
+			if (message.type === 'speech.settings') response.settings = { engine: 'google', voice: '', rate: 1, voices: [] };
+			if (message.type === 'speech.settings.save') response.settings = { engine: message.engine, voice: message.voice, rate: message.rate };
 			if (message.type === 'share.text.begin') { shareBuffer = ''; response.transfer = 'text-share'; }
 			if (message.type === 'share.text.chunk') {
 				expect(message.offset).toBe(shareBuffer.length);
@@ -141,6 +144,17 @@ test('invalid and excessively escaped speech never reaches the Android bridge', 
 	for (const text of ['', ' \n', 'x'.repeat(80001), '\\'.repeat(60000)]) await expect(client.readAloud(text, 'Chat')).rejects.toThrow();
 	await expect(client.readingCommand('delete')).rejects.toThrow('Unknown reading command');
 	expect(h.messages).toHaveLength(0);
+});
+
+test('voice settings bridge preserves exact voice IDs and rejects invalid speeds and identifiers', async () => {
+	const h = harness(), client = h.window.ChungusAndroidClient;
+	expect(await client.readingSettings()).toMatchObject({ engine: 'google', rate: 1 });
+	expect(await client.saveReadingSettings({ engine: 'google', voice: 'en-us-x-iom-local', rate: 1.35 })).toEqual({ engine: 'google', voice: 'en-us-x-iom-local', rate: 1.35 });
+	expect(h.messages.at(-1)).toMatchObject({ type: 'speech.settings.save', engine: 'google', voice: 'en-us-x-iom-local', rate: 1.35 });
+	const count = h.messages.length;
+	for (const rate of [NaN, Infinity, 0.49, 2.01, '1']) await expect(client.saveReadingSettings({ engine: 'google', voice: '', rate })).rejects.toThrow();
+	await expect(client.saveReadingSettings({ engine: 'google', voice: 'x'.repeat(513), rate: 1 })).rejects.toThrow();
+	expect(h.messages).toHaveLength(count);
 });
 
 test('native shortcuts send chat metadata and acknowledge the exact launch request', async () => {
@@ -420,4 +434,18 @@ test('older Android clients retain the anchor-download fallback', async () => {
 		if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
 		if (previousDocument === undefined) delete (globalThis as any).document; else globalThis.document = previousDocument;
 	}
+});
+
+
+test('speech rules preserve order and regex source, reject malformed payloads before native writes', async () => {
+ const h = harness();
+ expect(await h.window.ChungusAndroidClient.readingRules()).toEqual([]);
+ const rules = [{ id: 'b', pattern: String.raw`\[[^\]]*\]`, regex: true, caseSensitive: false, enabled: true },
+  { id: 'a', pattern: 'OOC', regex: false, caseSensitive: true, enabled: false }];
+ await h.window.ChungusAndroidClient.saveReadingRules(rules);
+ expect(h.messages.at(-1)).toMatchObject({ type: 'speech.rules.save', rules });
+ const count = h.messages.length;
+ for (const invalid of [[...rules, rules[0]], [{ ...rules[0], pattern: '' }], [{ ...rules[0], regex: 'true' }], Array(31).fill(rules[0])])
+  await expect(h.window.ChungusAndroidClient.saveReadingRules(invalid)).rejects.toThrow('Invalid speech rules');
+ expect(h.messages).toHaveLength(count);
 });

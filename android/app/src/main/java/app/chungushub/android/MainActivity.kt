@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     private var backPending = false
     private var activityResumed = false
     private var stopReadingObserver: (() -> Unit)? = null
+    private val speechSettings by lazy { SpeechSettings(applicationContext) }
     private val clipboard = ClipboardTransfer { text ->
         check(activityResumed && hasWindowFocus()) { "Return to Chungus and try copying again." }
         val manager = getSystemService(ClipboardManager::class.java)
@@ -369,6 +370,21 @@ class MainActivity : AppCompatActivity() {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) runCatching { proxy.postMessage(result.toString()) }
         }
         when (val type = message.optString("type")) {
+            "speech.rules", "speech.rules.save" -> {
+                try {
+                    if (type == "speech.rules.save") SpeechRules.save(this, message.getJSONArray("rules"))
+                    sharingReply(JSONObject().put("rules", SpeechRules.load(this)))
+                } catch (error: Exception) { reply(false, error.message ?: "Could not update speech rules.", null) }
+            }
+            "speech.settings", "speech.settings.save" -> {
+                try {
+                    if (type == "speech.settings") {
+                        check(activityResumed) { "Return to Chungus and try again." }
+                        speechSettings.load(sharingReply)
+                    }
+                    else sharingReply(JSONObject().put("settings", speechSettings.save(message)))
+                } catch (error: Exception) { reply(false, error.message ?: "Could not update speech settings.", null) }
+            }
             "speech.start", "speech.command", "speech.state" -> {
                 try {
                     val selected = server ?: error("Connect to your server first.")
@@ -501,6 +517,7 @@ class MainActivity : AppCompatActivity() {
         if (::appLock.isInitialized) appLock.windowFocusChanged(hasFocus)
     }
     override fun onDestroy() {
+        speechSettings.close()
         stopReadingObserver?.invoke(); stopReadingObserver = null
         appLock.close()
         clipboard.cancel()
