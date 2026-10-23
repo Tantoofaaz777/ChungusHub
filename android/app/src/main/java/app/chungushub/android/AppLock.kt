@@ -55,6 +55,9 @@ class AppLock(
         setBackgroundColor(Color.rgb(16, 22, 25)); isFillViewport = true
         visibility = View.GONE
     }
+    private val automaticBiometrics = Runnable {
+        if (policy.takeBiometricAttempt(canAutomaticallyUnlock(), activity.hasWindowFocus())) biometricLogin()
+    }
     private val content = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_VERTICAL
         setPadding(dp(28), dp(28), dp(28), dp(28))
@@ -133,7 +136,8 @@ class AppLock(
         discardDeferred(); busy = false; password.text.clear(); configuration = Configuration.NONE
         setupVisible = false; address = server; vault = CredentialVault(activity, server.origin)
         policy.delayMillis = vault!!.preferences.getLong("delay", 60_000).takeIf { it in LockState.delays } ?: 60_000
-        if (enabled) policy.lock() else policy.unlock()
+        policy.unlock() // A different server starts a new unlock attempt, with its own credential.
+        if (enabled) policy.lock()
         feedback.text = ""; remember.isChecked = false
         render()
     }
@@ -199,7 +203,22 @@ class AppLock(
         cancel.isEnabled = !busy
         serverButton.visibility = if (configuration == Configuration.NONE) View.VISIBLE else View.GONE
         serverButton.isEnabled = !busy
-        updateSettings(); accessChanged()
+        updateSettings(); accessChanged(); scheduleAutomaticBiometrics()
+    }
+
+    private fun canAutomaticallyUnlock() = !closed && foreground && enabled && policy.showUnlock &&
+        configuration == Configuration.NONE && !setupVisible && !busy && gate.isShown &&
+        !activity.isFinishing && !activity.isDestroyed && !activity.supportFragmentManager.isStateSaved &&
+        vaultHasCredential() && canUseBiometrics()
+
+    private fun scheduleAutomaticBiometrics() {
+        gate.removeCallbacks(automaticBiometrics)
+        // Wait for resume and window focus, then post past the lifecycle callback before showing a dialog.
+        if (activity.hasWindowFocus() && canAutomaticallyUnlock()) gate.post(automaticBiometrics)
+    }
+
+    fun windowFocusChanged(hasFocus: Boolean) {
+        if (hasFocus) scheduleAutomaticBiometrics() else gate.removeCallbacks(automaticBiometrics)
     }
 
     private fun vaultHasCredential() = vault?.hasCredential() == true
@@ -207,6 +226,7 @@ class AppLock(
 
     private fun passwordLogin() {
         if (!foreground || busy || !locked) return
+        policy.suppressAutomaticBiometrics()
         val value = password.text.toString()
         if (value.isEmpty()) { feedback.text = "Enter your server password."; return }
         password.text.clear()
@@ -243,7 +263,9 @@ class AppLock(
     }
 
     private fun biometricLogin() {
-        if (!foreground || busy || !locked || !canUseBiometrics()) return
+        if (closed || !foreground || busy || !locked || setupVisible ||
+            configuration != Configuration.NONE || !vaultHasCredential() || !canUseBiometrics()) return
+        policy.suppressAutomaticBiometrics()
         val saved = vault ?: return
         val cipher = try { saved.decryption() } catch (_: Exception) {
             runCatching { saved.clear() }
@@ -334,6 +356,7 @@ class AppLock(
         render(); releaseDeferred()
     }
     fun close() {
+        gate.removeCallbacks(automaticBiometrics)
         closed = true; generation++; biometricPrompt?.cancelAuthentication(); biometricPrompt = null
         discardDeferred(); worker.shutdownNow()
     }

@@ -9,9 +9,18 @@ class LockState(var delayMillis: Long = 60_000) {
     /** Losing focus to a system dialog must not show a sign-in form behind it. */
     val showUnlock: Boolean get() = resumed && locked
     private var leftAt: Long? = null
+    private var biometricAttempted = false
 
-    fun unlock() { locked = false; leftAt = null }
+    fun unlock() { locked = false; leftAt = null; biometricAttempted = false }
     fun lock() { locked = true }
+    /** One automatic attempt per lock, never on focus restoration after Cancel or an error. */
+    fun takeBiometricAttempt(eligible: Boolean, windowFocused: Boolean): Boolean {
+        if (!showUnlock || !eligible || !windowFocused || biometricAttempted) return false
+        biometricAttempted = true
+        return true
+    }
+    /** A manual login takes precedence over an automatic attempt queued for the next frame. */
+    fun suppressAutomaticBiometrics() { biometricAttempted = true }
     fun pause() { resumed = false }
     /** Called onStop, when the activity is fully hidden, rather than merely paused. */
     fun background(now: Long) { pause(); if (leftAt == null) leftAt = now }

@@ -472,6 +472,10 @@ class MainActivity : AppCompatActivity() {
         updatePageLifecycle()
         notifyChatShortcut()
     }
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (::appLock.isInitialized) appLock.windowFocusChanged(hasFocus)
+    }
     override fun onDestroy() {
         appLock.close()
         clipboard.cancel()

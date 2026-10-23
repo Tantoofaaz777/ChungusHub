@@ -4,6 +4,80 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LockStateTest {
+    @Test fun automaticBiometricsWaitsForResumeAndWindowFocus() {
+        val state = LockState()
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.foreground(0)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = false))
+        assertTrue(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+    }
+
+    @Test fun unavailableBiometricsOrBusyLoginDoesNotConsumeAnAutomaticAttempt() {
+        val state = LockState()
+        state.foreground(0)
+        assertFalse(state.takeBiometricAttempt(eligible = false, windowFocused = true))
+        assertTrue(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+    }
+
+    @Test fun cancelledOrFailedBiometricsDoesNotReopenAfterFocusOrLifecycleChanges() {
+        val state = LockState(0)
+        state.foreground(0)
+        assertTrue(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        // Cancel or a server login failure keeps the same lock and its password fallback.
+        assertTrue(state.showUnlock)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = false))
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.pause(); state.foreground(1)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.background(2); state.foreground(3)
+        assertTrue(state.showUnlock)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+    }
+
+    @Test fun manualPasswordOrBiometricRetrySuppressesAQueuedAutomaticPrompt() {
+        val state = LockState()
+        state.foreground(0)
+        state.suppressAutomaticBiometrics()
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        assertTrue(state.showUnlock)
+    }
+
+    @Test fun successfulUnlockRearmsBiometricsForTheNextExpiredLockOnly() {
+        val state = LockState(30_000)
+        state.foreground(0)
+        assertTrue(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.unlock()
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.background(100)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.foreground(30_099)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.background(31_000); state.foreground(61_000)
+        assertTrue(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+    }
+
+    @Test fun sessionExpiryCanPromptInTheForegroundButRepeatedLockDoesNotRearmIt() {
+        val state = LockState()
+        state.foreground(0); state.unlock(); state.lock()
+        assertTrue(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.lock()
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+    }
+
+    @Test fun shortcutConfirmationDoesNotTriggerBiometricsOrRearmACancelledPrompt() {
+        val state = LockState(0)
+        state.foreground(0); state.unlock()
+        state.pause()
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.foreground(100)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.background(200); state.foreground(201)
+        assertTrue(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+        state.pause(); state.foreground(202)
+        assertFalse(state.takeBiometricAttempt(eligible = true, windowFocused = true))
+    }
+
     @Test fun coldLaunchShowsTheFormOnlyWhenTheActivityResumes() {
         val state = LockState()
         assertTrue(state.locked)

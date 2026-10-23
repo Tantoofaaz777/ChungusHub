@@ -97,6 +97,14 @@ translúcida do Android, sem saída real do app, não inicia esse prazo. A janel
 continua protegida contra captura da prévia em segundo plano; o formulário só
 aparece ao retornar com o bloqueio ativo. Esta correção exige apenas o APK novo.
 
+Na versão 0.1.7, a biometria abre automaticamente ao chegar à tela de desbloqueio,
+se estiver ativada e disponível. O app espera estar em primeiro plano e com foco;
+não abre o prompt ao minimizar ou durante diálogos do Android. Cancelar ou receber
+um erro mantém a senha disponível, sem repetir a tentativa automática nesse mesmo
+bloqueio. O botão **Unlock with biometrics** permite tentar novamente. Depois de
+um desbloqueio bem-sucedido, um novo bloqueio volta a oferecer a biometria automaticamente.
+Esta melhoria exige apenas instalar o APK novo, sem atualizar a VPS.
+
 ### Atalhos de chats
 
 No app Android, **Chat actions → Add to home screen** pede ao launcher para fixar
