@@ -22,6 +22,8 @@
 	import { renderedHtml } from '$lib/actions/renderedHtml';
 	import { editOnDoublePress } from '$lib/actions/editOnDoublePress';
 	import { copyText } from '$lib/utils/clipboard';
+	import { readAloudText } from '$lib/utils/read-aloud-text';
+	import { readAloudStore } from '$lib/stores/read-aloud.svelte';
 	import { canShareNativeText, shareNativeText } from '$lib/services/android-client';
 	import { previewContinuation } from '$lib/utils/continuation';
 	import { displaySelfRefs } from '$lib/macros';
@@ -696,6 +698,8 @@
 									onDelete={handleDeleteClick}
 									onCopy={handleCopy}
 									onShare={canShareNativeText() ? () => shareNativeText(streamReplacement ? displayedContent : message.content) : undefined}
+									onReadAloud={readAloudStore.available && !streamReplacement && streamTail == null ? () => readAloudStore.start(readAloudText(bodyHtml), `${chatStore.activeChat?.title || 'Chat'} · #${ordinal}`) : undefined}
+									readingBusy={readAloudStore.busy}
 									onToggleBookmark={toggleBookmark}
 									bookmarked={!!message.isBookmarked}
 									{bookmarkBusy}

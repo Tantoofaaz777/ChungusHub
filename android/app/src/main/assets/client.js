@@ -171,6 +171,18 @@
     copyText,
     shareText,
     shareFile,
+    readAloud: async (text, title) => {
+      if (typeof text !== 'string' || !text.trim() || text.length > 80000) throw Error('The message is empty or too long to read (maximum 80,000 characters).');
+      // Bound the complete escaped JSON, not just its source string.
+      if (JSON.stringify({ text, title: String(title).slice(0, 180) }).length > 99000) throw Error('The message is too large to send to the reader.');
+      await request('speech.start', { text, title: String(title).slice(0, 180) }, 10000);
+    },
+    readingState: async () => (await request('speech.state', {}, 5000)).state,
+    notifyReading: () => window.dispatchEvent(new Event('chungus-android-reading')),
+    readingCommand: async command => {
+      if (!['play', 'pause', 'previous', 'next', 'stop'].includes(command)) throw Error('Unknown reading command.');
+      return (await request('speech.command', { command }, 5000)).state;
+    },
     incomingFiles: async () => (await request('incoming.list', {}, 15000)).files,
     readIncomingFile,
     removeIncomingFile: id => request('incoming.remove', { file: id }, 15000),

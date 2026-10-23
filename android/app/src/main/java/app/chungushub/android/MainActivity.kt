@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private var imeVisible = false
     private var backPending = false
     private var activityResumed = false
+    private var stopReadingObserver: (() -> Unit)? = null
     private val clipboard = ClipboardTransfer { text ->
         check(activityResumed && hasWindowFocus()) { "Return to Chungus and try copying again." }
         val manager = getSystemService(ClipboardManager::class.java)
@@ -125,6 +126,7 @@ class MainActivity : AppCompatActivity() {
             notifyIncoming()
             notifyChatShortcut()
         }, { showSetup() })
+        stopReadingObserver = ReadAloudService.observe { notifyReading() }
         captureIncoming(intent, savedInstanceState?.getString("incomingShareToken"))
         addressInput.setText(preferences.getString("url", ""))
         restoreChatShortcut(intent, savedInstanceState)
@@ -192,6 +194,12 @@ class MainActivity : AppCompatActivity() {
             view.evaluateJavascript("window.ChungusAndroidClient?.notifyChatShortcut?.()", null)
     }
 
+    private fun notifyReading() {
+        val view = browser ?: return
+        if (activityResumed && !appLock.locked && server?.trusts(view.url.orEmpty()) == true)
+            view.evaluateJavascript("window.ChungusAndroidClient?.notifyReading?.()", null)
+    }
+
     private fun connect() {
         val selected = try { ServerAddress.parse(addressInput.text.toString()) }
         catch (_: Exception) { addressInput.error = "Enter a valid HTTPS address without credentials or query parameters."; return }
@@ -201,6 +209,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         hideKeyboard()
+        ReadAloudService.serverChanged(selected.origin)
         clipboard.cancel()
         sharedText.cancel()
         shares.cancel()
@@ -360,6 +369,21 @@ class MainActivity : AppCompatActivity() {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) runCatching { proxy.postMessage(result.toString()) }
         }
         when (val type = message.optString("type")) {
+            "speech.start", "speech.command", "speech.state" -> {
+                try {
+                    val selected = server ?: error("Connect to your server first.")
+                    if (type != "speech.state") {
+                        check(activityResumed && hasWindowFocus()) { "Return to Chungus and try again." }
+                        if (type == "speech.start") ReadAloudService.start(this, selected.origin, message.getString("text"), message.getString("title"))
+                        else {
+                            val command = message.getString("command")
+                            require(command in setOf("play", "pause", "previous", "next", "stop")) { "Unknown reading command." }
+                            ReadAloudService.command(command, selected.origin)
+                        }
+                    }
+                    sharingReply(JSONObject().put("state", ReadAloudService.snapshot(selected.origin)))
+                } catch (error: Exception) { reply(false, error.message ?: "Could not control the reader.", null) }
+            }
             "shortcut.pin" -> {
                 try {
                     check(activityResumed && hasWindowFocus()) { "Return to Chungus and try again." }
@@ -477,6 +501,7 @@ class MainActivity : AppCompatActivity() {
         if (::appLock.isInitialized) appLock.windowFocusChanged(hasFocus)
     }
     override fun onDestroy() {
+        stopReadingObserver?.invoke(); stopReadingObserver = null
         appLock.close()
         clipboard.cancel()
         sharedText.cancel()

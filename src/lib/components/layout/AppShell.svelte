@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Workspace from '$lib/components/layout/Workspace.svelte';
 	import TitleBar from '$lib/components/layout/TitleBar.svelte';
+	import ReadAloudBar from '$lib/components/layout/ReadAloudBar.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { desktopLayoutStore } from '$lib/stores/desktop-layout.svelte';
 	import WelcomeDialog, { openWelcomeDialog } from '$lib/components/layout/WelcomeDialog.svelte';
@@ -323,6 +324,7 @@
 		     resolve while the app is open. -->
 		<DataAheadBar />
 		<ConnectionBar />
+		<ReadAloudBar />
 		<!-- Under the connection row on purpose: an outage is the more urgent of the two, and
 		     an outage also closes any window, so they only ever stack on a kept rung. -->
 		<DeleteGuardBar />

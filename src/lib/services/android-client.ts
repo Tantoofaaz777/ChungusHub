@@ -1,6 +1,14 @@
 /** A staged character file, held privately by Android until import or cancellation. */
 export interface AndroidSharedFile { id: string; name: string; mime: string; size: number }
 export interface AndroidChatShortcut { id: string; chatId: string }
+export interface AndroidReadingState {
+	phase: 'idle' | 'preparing' | 'playing' | 'paused' | 'error';
+	title?: string;
+	sentence?: number;
+	total?: number;
+	error?: string | null;
+}
+export type ReadingCommand = 'play' | 'pause' | 'previous' | 'next' | 'stop';
 
 /** Optional Android shell. The same server build runs normally in desktop browsers. */
 declare global {
@@ -18,6 +26,10 @@ declare global {
 			copyText?(text: string): Promise<void>;
 			/** Available since APK 0.1.5. Resolution means the Sharesheet opened. */
 			shareText?(text: string): Promise<void>;
+			/** Available since APK 0.1.8. Playback belongs to the native media service. */
+			readAloud?(text: string, title: string): Promise<void>;
+			readingState?(): Promise<AndroidReadingState>;
+			readingCommand?(command: ReadingCommand): Promise<AndroidReadingState>;
 			shareFile?(filename: string, mime: string, build: () => Promise<Blob>): Promise<void>;
 			incomingFiles?(): Promise<AndroidSharedFile[]>;
 			readIncomingFile?(file: AndroidSharedFile): Promise<File>;
@@ -44,6 +56,10 @@ export async function openAndroidSettings(): Promise<void> {
 }
 
 export function canShareNativeText(): boolean { return isAndroidClient() && !!window.ChungusAndroidClient?.shareText; }
+export function canReadAloud(): boolean {
+	const client = typeof window !== 'undefined' ? window.ChungusAndroidClient : undefined;
+	return isAndroidClient() && !!client?.readAloud && !!client.readingState && !!client.readingCommand;
+}
 export function canPinChatShortcut(): boolean { return isAndroidClient() && !!window.ChungusAndroidClient?.pinChatShortcut; }
 export async function pinChatShortcut(chatId: string, title: string): Promise<void> {
 	if (!canPinChatShortcut()) throw new Error('Update the Android app to create chat shortcuts.');

@@ -40,6 +40,7 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 		const respond = () => {
 			let response: any = { id: message.id, ok: true };
 			if (message.type === 'shortcut.pending') response.target = { id: 'launch-1', chatId: 'chat-1' };
+			if (message.type === 'speech.state' || message.type === 'speech.command') response.state = { phase: 'paused', sentence: 2, total: 5 };
 			if (message.type === 'share.text.begin') { shareBuffer = ''; response.transfer = 'text-share'; }
 			if (message.type === 'share.text.chunk') {
 				expect(message.offset).toBe(shareBuffer.length);
@@ -121,6 +122,25 @@ test('browser builds do not install Android navigation hooks', () => {
 	expect(isAndroidClient()).toBe(false);
 	expect(() => installAndroidBack(() => true)()).not.toThrow();
 	expect(canPinChatShortcut()).toBe(false);
+});
+
+test('native reader preserves speech text, bounds metadata and exposes transport state', async () => {
+	const h = harness(), client = h.window.ChungusAndroidClient;
+	const text = '“Olá!”\nThe moon 🌙 rose.';
+	await client.readAloud(text, 'x'.repeat(250));
+	expect(h.messages[0]).toMatchObject({ type: 'speech.start', text, title: 'x'.repeat(180) });
+	expect(await client.readingState()).toEqual({ phase: 'paused', sentence: 2, total: 5 });
+	for (const command of ['play', 'pause', 'previous', 'next', 'stop']) {
+		await client.readingCommand(command);
+		expect(h.messages.at(-1)).toMatchObject({ type: 'speech.command', command });
+	}
+});
+
+test('invalid and excessively escaped speech never reaches the Android bridge', async () => {
+	const h = harness(), client = h.window.ChungusAndroidClient;
+	for (const text of ['', ' \n', 'x'.repeat(80001), '\\'.repeat(60000)]) await expect(client.readAloud(text, 'Chat')).rejects.toThrow();
+	await expect(client.readingCommand('delete')).rejects.toThrow('Unknown reading command');
+	expect(h.messages).toHaveLength(0);
 });
 
 test('native shortcuts send chat metadata and acknowledge the exact launch request', async () => {

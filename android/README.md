@@ -16,8 +16,34 @@ assinatura de depuração do Android; uma futura distribuição definitiva terá
 
 O teste principal é abrir o mesmo chat no Android e Windows e conferir mensagens e memórias.
 Depois teste teclado, Voltar, importação de PNG/JSON/ZIP, exportação e reimportação de um arquivo.
-O app não mantém a CPU acordada em segundo plano; a geração continua no servidor conforme
-o comportamento atual do Chungus.
+A geração continua no servidor e não mantém a CPU do celular acordada. Durante uma leitura
+em voz alta, o serviço de áudio usa apenas os recursos necessários para preparar e reproduzir a fala.
+
+### Leitura em voz alta (0.1.8)
+
+Com o APK 0.1.8 e a interface atualizada na VPS, as ações de cada mensagem mostram
+**Read aloud**. A leitura usa o motor e a voz padrão configurados no Android. A barra
+abaixo da navegação permite voltar uma frase, pausar/continuar, avançar uma frase e parar.
+Frases muito longas são divididas em trechos menores. A pausa preserva o ponto do áudio.
+Nesta primeira versão, voz, idioma e velocidade seguem os padrões do motor do Android.
+
+A leitura continua ao trocar de aplicativo ou apagar a tela. Os mesmos comandos ficam
+disponíveis pelo player de mídia do sistema; nos Samsung compatíveis, testar também a
+aparição na Now Bar e a expansão ao tocar. O visual e a disponibilidade dependem da One UI.
+Não há pílula flutuante externa nem permissão de sobreposição. A notificação é somente
+do player, sem notificações de novas mensagens.
+
+O texto lido é o da mensagem exibida, sem Markdown, tags HTML, reasoning ou URLs de imagens.
+A fala é preparada em arquivos temporários privados, apagados ao parar, concluir ou trocar
+de mensagem. Nada é enviado para uma API de áudio na VPS. Algumas vozes do próprio motor
+Android podem precisar de internet; instale uma voz offline se desejar evitar isso.
+A leitura para ao trocar a origem do servidor e após dez minutos em pausa.
+
+Para testar no celular: iniciar uma leitura longa, pausar no meio de uma palavra e retomar;
+voltar/avançar frases; minimizar; apagar a tela; usar os controles de mídia e da Now Bar;
+receber uma interrupção de áudio e desconectar os fones. Verificar também o bloqueio por
+biometria ao voltar, sem interromper uma leitura já iniciada. Não há reprodução automática
+após encerrar o serviço/processo.
 
 **Voltar:** primeiro fecha o teclado. Depois, fecha o diálogo/editor/painel mais interno,
 volta à home e, por último, deixa o app em segundo plano. A integração completa depende

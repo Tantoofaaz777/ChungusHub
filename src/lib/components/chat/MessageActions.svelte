@@ -8,6 +8,8 @@
 		onDelete: () => void;
 		onCopy: () => Promise<void>;
 		onShare?: () => Promise<void>;
+		onReadAloud?: () => Promise<void>;
+		readingBusy?: boolean;
 		onTogglePrompt?: () => void;
 		onToggleBookmark?: () => void;
 		bookmarked?: boolean;
@@ -38,6 +40,8 @@
 		onDelete,
 		onCopy,
 		onShare,
+		onReadAloud,
+		readingBusy = false,
 		onTogglePrompt,
 		onToggleBookmark,
 		bookmarked = false,
@@ -89,6 +93,10 @@
 		catch (error) { toastStore.failed('share the message', error); }
 		finally { sharing = false; }
 	}
+	async function handleReadAloud() {
+		try { await onReadAloud?.(); }
+		catch (error) { toastStore.failed('read the message aloud', error); }
+	}
 </script>
 
 <div class="message-actions" role="toolbar" aria-label="Message actions">
@@ -123,6 +131,13 @@
 				<Icon name="share" class="w-3.5 h-3.5" strokeWidth={1.75} />
 				<span class="action-label">Share</span>
 			</button>
+	{/if}
+	{#if onReadAloud}
+		<button type="button" class="action-btn" onclick={handleReadAloud} disabled={readingBusy}
+			aria-busy={readingBusy} aria-label="Read message aloud" title="Read aloud">
+			<Icon name="volume" class="w-3.5 h-3.5" strokeWidth={1.75} />
+			<span class="action-label">Read aloud</span>
+		</button>
 	{/if}
 	{#if onToggleBookmark}
 		<button type="button" class="action-btn" class:action-btn-active={bookmarked}

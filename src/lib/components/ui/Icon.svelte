@@ -33,6 +33,11 @@
 		| 'arrowLeft'
 		| 'arrowRight'
 		| 'stop'
+		| 'volume'
+		| 'play'
+		| 'pause'
+		| 'skipBack'
+		| 'skipForward'
 		| 'refresh'
 		| 'dotsVertical'
 		| 'annotation'
@@ -496,6 +501,11 @@
 				'M19.7 4.7l-.4 1.5'
 			]
 		},
+		volume: { paths: ['M3 9v6h4l5 4V5L7 9H3z', 'M16 9a5 5 0 010 6', 'M19 6a9 9 0 010 12'] },
+		play: { paths: ['M7 4l14 8-14 8V4z'] },
+		pause: { paths: ['M8 5v14M16 5v14'] },
+		skipBack: { paths: ['M5 5v14M19 5L7 12l12 7V5z'] },
+		skipForward: { paths: ['M19 5v14M5 5l12 7-12 7V5z'] },
 		tag: {
 			paths: [
 				'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z'
