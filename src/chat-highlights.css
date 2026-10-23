@@ -1,0 +1,12 @@
+/* Find in chat uses the standard Custom Highlight API. Keep these global rules
+   separate from the Tailwind input: its optimizer reports a false unknown-pseudo
+   warning for ::highlight(). Vite still bundles/minifies and caches this CSS. */
+::highlight(chat-find) {
+	background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+	color: var(--color-text-primary);
+}
+
+::highlight(chat-find-current) {
+	background-color: var(--color-accent);
+	color: var(--color-on-accent);
+}

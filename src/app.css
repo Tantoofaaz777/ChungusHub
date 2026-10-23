@@ -2310,18 +2310,3 @@ input:not(
 .group:hover .browse-card-portrait {
 	transform: scale(calc(var(--portrait-zoom, 1) * 1.04));
 }
-
-/* ===== Find in chat =====
-   ChatSearchBar registers its hits in CSS.highlights, so the ranges are painted without
-   the message markup being touched. These rules are document-scoped by definition and
-   cannot live in the component's scoped style. ::highlight() only honours colour,
-   background-color, text-decoration and text-shadow: no box properties, no radius. */
-::highlight(chat-find) {
-	background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
-	color: var(--color-text-primary);
-}
-
-::highlight(chat-find-current) {
-	background-color: var(--color-accent);
-	color: var(--color-on-accent);
-}

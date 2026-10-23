@@ -12,6 +12,12 @@
 
 **Misc repo files**: `start.bat` and `start.command` (double-click wrappers that run `dev.ps1` and `dev.sh`; the `.command` extension is what has Finder open the file in Terminal rather than an editor), `architecture/`, the subsystem docs this file belongs to (tracked in the repo, never packaged).
 
+## Build warnings
+
+`scripts/chunk-size-warnings.ts` replaces Vite's generic chunk-size warning with explicit client-chunk budgets: application JavaScript still warns above 500 decimal kB; the lazy `gpt-tokenizer` vocabulary chunks allow 1,100 kB for `cl100k_base` and 2,300 kB for `o200k_base`. These exceptions require the chunk to contain only that package and exactly one encoding entry module. Mixed application code, merged encodings and unknown chunks keep the normal budget. Vocabulary growth past its finite budget also warns. The plugin disables only Vite's duplicate generic size warning; it does not filter logs or errors, and skips the server and service-worker bundles.
+
+Find-in-chat highlight rules live in `src/chat-highlights.css`, imported by the root layout alongside `app.css`. This preserves the standard `::highlight()` selectors while bypassing the Tailwind optimizer's false unknown-pseudo warning. Vite still bundles/minifies those rules into the normal stylesheets and offline boot asset graph. Keep them separate from the Tailwind input until its optimizer supports the selector.
+
 ## Before touching this
 
 - Anything touching auth/session behavior in `server/access.ts`, `server/security.ts`, or the gate order in `server/index.ts` must be mirrored in `vite.config.ts`'s dev gates. They are deliberate duplicates.

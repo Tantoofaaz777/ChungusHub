@@ -5,6 +5,7 @@ import { defineConfig, type Plugin } from 'vite';
 import { normalizeIp } from './server/access';
 import { ALLOWLIST_ENV, ALLOWLIST_PATH, OPEN_BROWSER, PORT, SECURITY_PATH } from './server/config';
 import { bootAssetManifest } from './scripts/boot-assets';
+import { chunkSizeWarnings } from './scripts/chunk-size-warnings';
 
 // Read from the server's own config, so the proxy cannot drift off the port it serves.
 const BACKEND = `http://localhost:${PORT}`;
@@ -191,6 +192,7 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit(),
 		bootAssetManifest(),
+		chunkSizeWarnings(),
 		allowlistGate()
 	],
 	clearScreen: false,
