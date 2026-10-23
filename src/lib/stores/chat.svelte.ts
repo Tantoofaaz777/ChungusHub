@@ -23,6 +23,7 @@ import { lorebookStore } from '$lib/lorebook/store.svelte';
 import { chatCastStore } from '$lib/stores/chatCast.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { memoryStore } from '$lib/memory/scene-store.svelte';
+import { trackReasoning } from '$lib/utils/reasoning-time';
 import { CoalescedTask } from '$lib/utils/coalesced-task';
 
 /** A reply being written for a chat by someone other than this page. */
@@ -887,6 +888,7 @@ class ChatStore {
 			startedAt: Date.now(),
 			content: '',
 			thinking: '',
+			reasoningTiming: null,
 			continuingMessageId: opts.continuingMessageId ?? null,
 			replacingMessageId: opts.replacingMessageId ?? null,
 			openingScene: opts.openingScene ?? false
@@ -909,13 +911,15 @@ class ChatStore {
 	// Tokens land on the stream record itself, which already names its owner, so they
 	// reach the chat that asked for them however far the reader has wandered.
 	appendStreamingContent(content: string): void {
-		if (!this.stream) return;
+		if (!this.stream || !content) return;
+		this.stream.reasoningTiming = trackReasoning(this.stream.reasoningTiming, 'content', Date.now());
 		this.stream.content += content;
 		this.queueStreamPaint();
 	}
 
 	appendStreamingThinking(thinking: string): void {
-		if (!this.stream) return;
+		if (!this.stream || !thinking) return;
+		this.stream.reasoningTiming = trackReasoning(this.stream.reasoningTiming, 'thinking', Date.now());
 		this.stream.thinking += thinking;
 		this.queueStreamPaint();
 	}

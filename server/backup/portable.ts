@@ -209,7 +209,7 @@ export function sweepPortableTemps(): number {
 
 function allowedArchivePath(name: string): boolean {
 	if (name === BACKUP_META || name === DB_ENTRY) return true;
-	return name.startsWith(`${SNAPSHOT_DATA_DIR}/images/`) || name.startsWith(`${SNAPSHOT_DATA_DIR}/presets/`);
+	return name.startsWith(`${SNAPSHOT_DATA_DIR}/images/`) || name.startsWith(`${SNAPSHOT_DATA_DIR}/presets/`) || name.startsWith(`${SNAPSHOT_DATA_DIR}/custom-fonts/`);
 }
 
 function allowedArchiveDirectory(name: string): boolean {
@@ -217,8 +217,9 @@ function allowedArchiveDirectory(name: string): boolean {
 		name === `${SNAPSHOT_DATA_DIR}/` ||
 		name === `${SNAPSHOT_DATA_DIR}/images/` ||
 		name === `${SNAPSHOT_DATA_DIR}/presets/` ||
+		name === `${SNAPSHOT_DATA_DIR}/custom-fonts/` ||
 		name.startsWith(`${SNAPSHOT_DATA_DIR}/images/`) ||
-		name.startsWith(`${SNAPSHOT_DATA_DIR}/presets/`)
+		name.startsWith(`${SNAPSHOT_DATA_DIR}/presets/`) || name.startsWith(`${SNAPSHOT_DATA_DIR}/custom-fonts/`)
 	);
 }
 

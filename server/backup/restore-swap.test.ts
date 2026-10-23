@@ -81,6 +81,8 @@ describe('restore swap', () => {
 	test('puts the data back and leaves the security files alone', async () => {
 		seedDatabase(['one', 'two']);
 		writeImage('kept.png', 'KEPT');
+		mkdirSync(join(dataDir, 'custom-fonts'), { recursive: true });
+		writeFileSync(join(dataDir, 'custom-fonts', 'kept.woff2'), 'FONT');
 		mkdirSync(join(dataDir, 'presets'), { recursive: true });
 		writeFileSync(join(dataDir, 'presets', 'p.json'), '{"name":"P","items":[]}');
 		const snapshot = await createSnapshot({ kind: 'manual', label: 'point' });
@@ -88,6 +90,7 @@ describe('restore swap', () => {
 		// Move on: a new chat, a new picture, one of the old pictures gone.
 		seedDatabase(['one', 'two', 'made-later']);
 		writeImage('made-later.png', 'LATER');
+		writeFileSync(join(dataDir, 'custom-fonts', 'made-later.woff2'), 'LATER');
 		rmSync(join(dataDir, 'images', 'characters', 'kept.png'));
 		writeFileSync(join(dataDir, 'security.json'), '{"passwordHash":"changed-since"}');
 		expect(chatIds()).toEqual(['made-later', 'one', 'two']);
@@ -101,6 +104,8 @@ describe('restore swap', () => {
 		expect(readFileSync(join(dataDir, 'images', 'characters', 'kept.png'), 'utf8')).toBe('KEPT');
 		expect(existsSync(join(dataDir, 'images', 'characters', 'made-later.png'))).toBe(false);
 		expect(existsSync(join(dataDir, 'presets', 'p.json'))).toBe(true);
+		expect(readFileSync(join(dataDir, 'custom-fonts', 'kept.woff2'), 'utf8')).toBe('FONT');
+		expect(existsSync(join(dataDir, 'custom-fonts', 'made-later.woff2'))).toBe(false);
 		// The door is not part of the room: untouched in both directions.
 		expect(readFileSync(join(dataDir, 'security.json'), 'utf8')).toContain('changed-since');
 		expect(existsSync(journalPath())).toBe(false);

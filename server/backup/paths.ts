@@ -32,7 +32,8 @@ type SnapshotEntry = {
 export const SNAPSHOT_ENTRIES: readonly SnapshotEntry[] = [
 	{ name: 'chungushub.db', kind: 'db' },
 	{ name: 'images', kind: 'dir' },
-	{ name: 'presets', kind: 'dir' }
+	{ name: 'presets', kind: 'dir' },
+	{ name: 'custom-fonts', kind: 'dir' }
 ] as const;
 
 /** The mirrored data dir inside a snapshot folder, beside its `manifest.json`. */

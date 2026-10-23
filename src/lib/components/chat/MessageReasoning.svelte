@@ -1,4 +1,7 @@
 <script lang="ts">
+	import type { ReasoningTiming } from '$lib/types/chat';
+	import { liveGenerationTime } from '$lib/utils/live-generation-time.svelte';
+	import { reasoningDuration, reasoningLabel } from '$lib/utils/reasoning-time';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { renderedHtml } from '$lib/actions/renderedHtml';
@@ -11,9 +14,11 @@
 		/** The reply's reasoning text. Non-empty: the caller owns the emptiness check. */
 		thinking: string;
 		isStreaming?: boolean;
+		reasoningMs?: number | null;
+		timing?: ReasoningTiming | null;
 	}
 
-	let { thinking, isStreaming = false }: Props = $props();
+	let { thinking, isStreaming = false, reasoningMs = null, timing = null }: Props = $props();
 
 	// Mount-time value on purpose: the setting seeds the box open/closed, then the
 	// toggle belongs to the user (no reactive re-open while streaming).
@@ -26,15 +31,26 @@
 		streaming: () => isStreaming, identity: () => chatStore.stream });
 	let thinkingTokens = $derived(estimate.value);
 	let bodyHtml = $derived(renderMarkdown(thinking));
+	const activeThinking = $derived(isStreaming && timing?.active === true);
+	const timer = liveGenerationTime({
+		startedAt: () => timing?.startedAt ?? null,
+		enabled: () => activeThinking
+	});
+	const duration = $derived(isStreaming && timing
+		? (reasoningMs ?? 0) + (activeThinking ? timer.value ?? 0 : reasoningDuration(timing, timing.lastTokenAt))
+		: reasoningMs);
+	const label = $derived(reasoningLabel(activeThinking, duration));
 </script>
 
 <div class="reasoning-wrap">
-	<button type="button" onclick={() => (expanded = !expanded)} class="reasoning-toggle">
+	<button type="button" onclick={() => (expanded = !expanded)} class="reasoning-toggle" aria-expanded={expanded}>
 		<Icon
-			name="sparkles"
-			class="w-4 h-4 text-text-muted flex-shrink-0 {isStreaming ? 'animate-pulse' : ''}"
+			name="brain"
+			fill="currentColor"
+			stroke="#000"
+			class="w-4 h-4 text-accent flex-shrink-0 {activeThinking ? 'animate-pulse' : ''}"
 		/>
-		<span class="reasoning-label">{isStreaming ? 'Thinking' : 'Reasoning'}</span>
+		<span class="reasoning-label">{label}</span>
 		{#if showTokens}
 			<span class="reasoning-tokens">~{thinkingTokens} tokens</span>
 		{/if}

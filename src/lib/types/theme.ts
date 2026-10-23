@@ -101,6 +101,8 @@ export interface FontOption {
 	 * Absent = already linked in app.html or a system font; nothing to load.
 	 */
 	bundledFont?: string;
+	/** Locally served stylesheet for a server-imported Google Font. */
+	stylesheet?: string;
 }
 
 /** Every user-tunable appearance knob. Persisted as one settings blob. */

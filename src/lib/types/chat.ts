@@ -370,6 +370,12 @@ export type MessagesDelta =
 	| { rev: number; chat: Chat; full: true; messages: Message[] }
 	| { rev: number; chat: Chat; full: false; upserts: Message[]; deletedIds: string[] };
 
+export interface ReasoningTiming {
+	startedAt: number;
+	lastTokenAt: number;
+	active: boolean;
+}
+
 /** The generation in flight, and the chat that owns it.
  *
  *  Deliberately NOT a field of ChatState: a stream belongs to the chat that started it,
@@ -383,6 +389,8 @@ export interface ChatStream {
 	startedAt: number;
 	content: string;
 	thinking: string;
+	/** Visible reasoning phase, retained across transcript remounts. */
+	reasoningTiming: ReasoningTiming | null;
 	/** Assistant turn a continue is streaming into: its bubble renders the live tail
 	 *  instead of the streaming indicator. Null while a fresh reply streams. */
 	continuingMessageId: string | null;

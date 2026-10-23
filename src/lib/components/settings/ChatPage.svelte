@@ -24,8 +24,10 @@
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
 	 * foot of the page and only there while something has actually moved.
 	 */
+	import { REASONING_DEPTH_MAX } from '$shared/reasoning-retention';
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
+	import FontPicker from './FontPicker.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import PillRow from '$lib/components/ui/PillRow.svelte';
 	import ColorSwatchPicker from '$lib/components/ui/ColorSwatchPicker.svelte';
@@ -217,6 +219,30 @@
 		</div>
 	</section>
 
+	<section class="card" data-setting="reasoning-retention">
+		<div class="card-head"><span class="card-title">Reasoning</span></div>
+		<div class="card-body">
+			<div class="toggle-row" use:toggleRow>
+				<span class="slider-label">Automatically clear old reasoning</span>
+				<Toggle label="Automatically clear old reasoning"
+					checked={generalSettingsStore.autoClearReasoning}
+					onchange={(on) => generalSettingsStore.setAutoClearReasoning(on)} />
+			</div>
+			<p class="field-hint">Applies to all chats, including existing messages. Older reasoning is permanently removed; message text and generation stats are kept.</p>
+			<div class="slider-block">
+				<label class="slider-label" for="reasoning-depth">Reasoning depth</label>
+				<input id="reasoning-depth" type="number" class="input-base w-full px-3 py-2 text-sm"
+					min="0" max={REASONING_DEPTH_MAX} step="1" value={generalSettingsStore.reasoningDepth}
+					onchange={(event) => {
+						const input = event.currentTarget;
+						if (input.value !== '' && Number.isFinite(input.valueAsNumber)) generalSettingsStore.setReasoningDepth(input.valueAsNumber);
+						input.value = String(generalSettingsStore.reasoningDepth);
+					}} />
+				<p class="field-hint">Keep reasoning in the latest {generalSettingsStore.reasoningDepth} messages, counting both user and AI turns. Swipes share the same position. Use 0 to keep none after generation.</p>
+			</div>
+		</div>
+	</section>
+
 	<section class="card" data-setting="reading-column">
 		<div class="card-head">
 			<span class="card-title">Reading Column</span>
@@ -301,17 +327,7 @@
 		<div class="card-body">
 			<div class="slider-block">
 				<label for="story-font" class="slider-label">Story font</label>
-				<Select
-					id="story-font"
-					variant="compact"
-					class="w-full"
-					value={appearance.bodyFont}
-					onchange={(e) => themeStore.update({ bodyFont: (e.target as HTMLSelectElement).value })}
-				>
-					{#each themeStore.bodyFonts as font (font.id)}
-						<option value={font.id}>{font.label}</option>
-					{/each}
-				</Select>
+				<FontPicker id="story-font" field="bodyFont" />
 			</div>
 
 			<div class="slider-block">

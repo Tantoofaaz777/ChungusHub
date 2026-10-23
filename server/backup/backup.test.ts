@@ -259,6 +259,9 @@ describe('snapshot', () => {
 describe('portable backups', () => {
 	test('round-trips one snapshot through a streamed ZIP as an imported restore point', async () => {
 		writeImage('characters', 'portable.png', 'PORTABLE-IMAGE');
+		mkdirSync(join(dataDir, 'custom-fonts', 'fixture'), { recursive: true });
+		writeFileSync(join(dataDir, 'custom-fonts', 'fixture', 'font.woff2'), 'FONT');
+		writeFileSync(join(dataDir, 'custom-fonts', 'fixture', 'LICENSE.txt'), 'LICENSE');
 		const source = await snapshotMod.createSnapshot({ kind: 'manual', label: 'take me elsewhere' });
 		const prepared = await portableMod.preparePortableExport(source.id);
 		const download = portableMod.takePreparedExport(prepared.token);
@@ -275,6 +278,8 @@ describe('portable backups', () => {
 		expect(
 			readFileSync(join(backupDir, imported.id, 'data', 'images', 'characters', 'portable.png'), 'utf8')
 		).toBe('PORTABLE-IMAGE');
+		expect(readFileSync(join(backupDir, imported.id, 'data', 'custom-fonts', 'fixture', 'font.woff2'), 'utf8')).toBe('FONT');
+		expect(readFileSync(join(backupDir, imported.id, 'data', 'custom-fonts', 'fixture', 'LICENSE.txt'), 'utf8')).toBe('LICENSE');
 		expect(existsSync(join(backupDir, imported.id, '.building'))).toBe(false);
 	});
 

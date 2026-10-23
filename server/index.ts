@@ -6,6 +6,8 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { serveStaticAsset } from './static';
+import { FontLibrary } from './fonts';
+import { parseReasoningRetention } from '../shared/reasoning-retention';
 import { renderUnlockPage } from './unlock-page';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
@@ -62,6 +64,8 @@ import { downloadCardAsset } from './card-assets';
 import { complete, fetchAccount, fetchAvailableModels, fetchModelEndpoints, isProvider, providerMetadata, resolvedBaseUrl, validateCredentials, type RoutingConfig } from './llm/registry';
 import * as promptLog from './promptLog';
 import { MAX_PROMPT_LOG_LIMIT, validPromptLogLimit } from '../shared/prompt-log';
+
+const fontLibrary = new FontLibrary(DATA_DIR);
 
 /** Stop with a reason, where the reader can read it. A portable build's console closes
  *  with the process, so it is held there, and only where there is a console to hold. */
@@ -818,9 +822,24 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 			args: unknown[];
 			clientId?: string;
 		};
+		const retentionChange = method === 'setSetting' && args?.[0] === 'generalSettings';
+		const previousRetention = retentionChange ? parseReasoningRetention(serverDb.getSetting('generalSettings')) : null;
 		const result = callDbMethod(method, args ?? []);
 		const scope = MUTATION_SCOPES[method];
 		if (scope) broadcastSync(scope, clientId ?? null);
+		if (retentionChange) {
+			const current = parseReasoningRetention(serverDb.getSetting('generalSettings'));
+			if (current.autoClearReasoning && JSON.stringify(previousRetention) !== JSON.stringify(current)) {
+				// Enabling/tightening retention rewrites messages, including on the settings writer.
+				broadcastSync('messages', null);
+			}
+		}
+		const movesLeaf = method === 'updateChatActiveLeaf' || (method === 'updateChat' &&
+			args?.[0] && typeof args[0] === 'object' && (args[0] as { activeLeafId?: unknown }).activeLeafId !== undefined);
+		if (movesLeaf && parseReasoningRetention(serverDb.getSetting('generalSettings')).autoClearReasoning) {
+			// Navigation is optimistic on its sender; pruning also invalidates that local transcript.
+			broadcastSync('messages', null);
+		}
 		// A card edit reaches the openings of chats nobody has written in yet (server/db.ts
 		// refreshSeededGreetings), which is a message write on top of a library one. This hint
 		// deliberately goes to EVERY client, the writer included: the device editing the card
@@ -891,6 +910,38 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 		backupService.markChanged();
 		return json({ ok: true });
 	}
+	// Imported Google Fonts are authenticated local assets, never remote browser requests.
+	if (path === '/api/fonts' && req.method === 'GET') return json({ fonts: fontLibrary.list() });
+	if (path === '/api/fonts' && req.method === 'POST') {
+		try {
+			const { family, clientId } = await req.json() as { family?: unknown; clientId?: string };
+			const font = await fontLibrary.import(family);
+			broadcastSync('settings', clientId ?? null);
+			return json({ font });
+		} catch (error) {
+			return json({ error: error instanceof Error ? error.message : 'Could not import this font.' }, 400);
+		}
+	}
+	if (path.startsWith('/api/fonts/')) {
+		const parts = path.slice('/api/fonts/'.length).split('/');
+		if (req.method === 'GET' && parts.length === 2) return fontLibrary.asset(parts[0], parts[1]);
+		if (req.method === 'DELETE' && parts.length === 1) {
+			try {
+				const { clientId } = await req.json().catch(() => ({})) as { clientId?: string };
+				await fontLibrary.remove(parts[0]);
+				const raw = serverDb.getSetting('appearance');
+				if (raw) {
+					const appearance = JSON.parse(raw);
+					if (appearance.bodyFont === parts[0]) delete appearance.bodyFont;
+					if (appearance.uiFont === parts[0]) delete appearance.uiFont;
+					serverDb.setSetting('appearance', JSON.stringify(appearance));
+				}
+				broadcastSync('settings', clientId ?? null);
+				return json({ ok: true });
+			} catch { return json({ error: 'Could not remove this font.' }, 400); }
+		}
+	}
+
 	// ----- Backgrounds (bundled defaults + user uploads) -----
 	if (path === '/api/backgrounds' && req.method === 'GET') {
 		return json({ backgrounds: listBackgrounds() });

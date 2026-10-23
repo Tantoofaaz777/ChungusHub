@@ -13,6 +13,7 @@
  * read time, with no data rewrite.
  */
 import type {
+	FontOption,
 	AppearanceScope,
 	AppearanceState,
 	AccentDef,
@@ -44,6 +45,8 @@ import {
 	PALETTE_COLOR_KEYS,
 	proseQuoteDefault
 } from '$lib/themes/presets';
+import { apiGet, apiSend, getClientId } from '$lib/services/transport';
+import { customFontStack, type CustomFont } from '../../../shared/fonts';
 import { ensureFontLoaded } from '$lib/services/fonts';
 import { db } from '$lib/services/database';
 import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
@@ -194,7 +197,7 @@ function hex(value: unknown, fallback: string): string {
  * boot and land back on the house default. A palette that has genuinely been deleted
  * still falls back here, which is the one thing that keeps the app painting.
  */
-function normalize(raw: Partial<AppearanceState> | null, known: PaletteDef[]): AppearanceState {
+function normalize(raw: Partial<AppearanceState> | null, known: PaletteDef[], customFonts: CustomFont[] = []): AppearanceState {
 	const d = DEFAULT_APPEARANCE;
 	return {
 		palette: known.some((p) => p.id === raw?.palette) ? raw!.palette! : d.palette,
@@ -204,8 +207,8 @@ function normalize(raw: Partial<AppearanceState> | null, known: PaletteDef[]): A
 				: d.accent,
 		customAccent: hex(raw?.customAccent, d.customAccent),
 		contrast: oneOf<ContrastLevel>(raw?.contrast, ['soft', 'standard', 'high'], d.contrast),
-		bodyFont: bodyFonts.some((f) => f.id === raw?.bodyFont) ? raw!.bodyFont! : d.bodyFont,
-		uiFont: uiFonts.some((f) => f.id === raw?.uiFont) ? raw!.uiFont! : d.uiFont,
+		bodyFont: [...bodyFonts, ...customFonts].some((f) => f.id === raw?.bodyFont) ? raw!.bodyFont! : d.bodyFont,
+		uiFont: [...uiFonts, ...customFonts].some((f) => f.id === raw?.uiFont) ? raw!.uiFont! : d.uiFont,
 		fontScale: clamp(raw?.fontScale, 0.85, 1.25, d.fontScale),
 		lineHeight: clamp(raw?.lineHeight, 1.4, 2.1, d.lineHeight),
 		paragraphSpacing: clamp(raw?.paragraphSpacing, 0.4, 1.8, d.paragraphSpacing),
@@ -362,8 +365,29 @@ class ThemeStore {
 	customPalettes = $state<PaletteDef[]>([]);
 
 	accents = accents;
-	bodyFonts = bodyFonts;
-	uiFonts = uiFonts;
+	customFonts = $state<CustomFont[]>([]);
+	private importedFonts = $derived(this.customFonts.map((font): FontOption => ({
+		id: font.id, label: `${font.family} (${font.category})`, stack: customFontStack(font),
+		stylesheet: `/api/fonts/${font.id}/font.css`
+	})));
+	bodyFonts = $derived([...bodyFonts, ...this.importedFonts]);
+	uiFonts = $derived([...uiFonts, ...this.importedFonts]);
+
+	async addFont(family: string): Promise<string> {
+		const { font } = await apiSend('/api/fonts', 'POST', { family, clientId: getClientId() }) as { font: CustomFont };
+		await this.reloadFonts();
+		return font.id;
+	}
+
+	async removeFont(id: string): Promise<void> {
+		await apiSend(`/api/fonts/${id}`, 'DELETE', { clientId: getClientId() });
+		await this.syncReload();
+	}
+
+	private async reloadFonts(): Promise<void> {
+		const data = await apiGet('/api/fonts') as { fonts: CustomFont[] };
+		this.customFonts = data.fonts;
+	}
 
 	/** Every palette a picker may offer: the shipped set first, then the reader's own. */
 	palettes = $derived([...shippedPalettes, ...this.customPalettes]);
@@ -416,23 +440,24 @@ class ThemeStore {
 	 * would be dragged back to the house default by its own boot.
 	 */
 	async syncReload(): Promise<void> {
+		await this.reloadFonts();
 		this.customPalettes = normalizePalettes(await readSetting<unknown>(PALETTES_KEY, null));
 
 		const raw = await readSetting<Partial<AppearanceState> | null>(SETTINGS_KEY, null);
 		if (raw) {
-			this.appearance = normalize(raw, this.palettes);
+			this.appearance = normalize(raw, this.palettes, this.customFonts);
 		} else {
 			// Fresh blob from the pre-overhaul theme id, if one was ever saved.
 			const legacy = await db.getSetting('activeTheme');
 			const mapped = legacy ? LEGACY_THEME_MAP[legacy] : undefined;
-			this.appearance = normalize(mapped ? { ...mapped } : null, this.palettes);
+			this.appearance = normalize(mapped ? { ...mapped } : null, this.palettes, this.customFonts);
 		}
 		this.applyTheme();
 	}
 
 	/** Change any subset of knobs; persists and applies immediately. */
 	update(partial: Partial<AppearanceState>): void {
-		this.appearance = normalize({ ...this.appearance, ...partial }, this.palettes);
+		this.appearance = normalize({ ...this.appearance, ...partial }, this.palettes, this.customFonts);
 		writeSetting(SETTINGS_KEY, this.appearance);
 		this.applyTheme();
 	}
@@ -553,10 +578,10 @@ class ThemeStore {
 
 		const blur = GLASS_BLUR[a.glass];
 
-		const bodyFont = bodyFonts.find((f) => f.id === a.bodyFont) ?? bodyFonts[0];
-		const uiFont = uiFonts.find((f) => f.id === a.uiFont) ?? uiFonts[0];
-		ensureFontLoaded(bodyFont.bundledFont);
-		ensureFontLoaded(uiFont.bundledFont);
+		const bodyFont = this.bodyFonts.find((f) => f.id === a.bodyFont) ?? bodyFonts[0];
+		const uiFont = this.uiFonts.find((f) => f.id === a.uiFont) ?? uiFonts[0];
+		ensureFontLoaded(bodyFont.bundledFont, bodyFont.stylesheet);
+		ensureFontLoaded(uiFont.bundledFont, uiFont.stylesheet);
 
 		// Every surface alpha passes through here, so light mode can never inherit a
 		// dark palette's translucency by accident (see LIGHT_GLASS_KEEP).

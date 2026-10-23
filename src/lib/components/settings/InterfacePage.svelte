@@ -19,6 +19,7 @@
 	 */
 	import InfoTip from '$lib/components/ui/InfoTip.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import FontPicker from './FontPicker.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
@@ -326,17 +327,7 @@
 					<label for="interface-font" class="slider-label">Interface font</label>
 					<InfoTip text="Fonts other than the default download the first time you pick them." />
 				</div>
-				<Select
-					id="interface-font"
-					variant="compact"
-					class="w-full"
-					value={appearance.uiFont}
-					onchange={(e) => themeStore.update({ uiFont: (e.target as HTMLSelectElement).value })}
-				>
-					{#each themeStore.uiFonts as font (font.id)}
-						<option value={font.id}>{font.label}</option>
-					{/each}
-				</Select>
+				<FontPicker id="interface-font" field="uiFont" />
 			</div>
 
 			<div class="sub-block">

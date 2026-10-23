@@ -599,7 +599,9 @@
 								<div class="message-thinking">
 									<MessageReasoning
 										thinking={liveThinking!}
-										isStreaming={streamReplacement || !!streamTailThinking}
+										isStreaming={streamReplacement || streamTail != null}
+										reasoningMs={streamReplacement ? null : message.reasoningMs}
+										timing={streamReplacement || streamTail != null ? chatStore.visibleStreamPreview?.reasoningTiming : null}
 									/>
 								</div>
 							{/if}

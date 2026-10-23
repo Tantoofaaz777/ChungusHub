@@ -583,6 +583,24 @@ describe('scene-memory publication', () => {
 
 
 describe('display-only streaming snapshots', () => {
+	test('reasoning timing belongs to the stream and resets for a new generation', async () => {
+		chatStore.startStream(CHAT.id);
+		try {
+			expect(chatStore.stream?.reasoningTiming).toBeNull();
+			chatStore.appendStreamingThinking('First thought');
+			const first = chatStore.stream!.reasoningTiming!;
+			expect(first.active).toBe(true);
+			await new Promise(resolve => setTimeout(resolve, 70));
+			expect(chatStore.visibleStreamPreview?.reasoningTiming).toEqual(first);
+			chatStore.appendStreamingContent('');
+			expect(chatStore.stream?.reasoningTiming?.active).toBe(true);
+			chatStore.appendStreamingContent('Answer');
+			expect(chatStore.stream?.reasoningTiming).toEqual({ ...first, active: false });
+			chatStore.startStream(CHAT.id, { replacingMessageId: 'reply' });
+			expect(chatStore.stream?.reasoningTiming).toBeNull();
+		} finally { chatStore.endStream(); }
+	});
+
 	test('raw content and reasoning stay complete while the visual copy coalesces both channels', async () => {
 		chatStore.startStream(CHAT.id, { replacingMessageId: 'reply' });
 		try {

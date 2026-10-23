@@ -1,3 +1,4 @@
+import { DEFAULT_REASONING_RETENTION, normalizeReasoningRetention } from '$shared/reasoning-retention';
 import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
 
 export type InputHistoryScope = 'global' | 'chat';
@@ -23,6 +24,8 @@ interface GeneralSettings {
 	transcriptLoadMode: TranscriptLoadMode;
 	/** Open the per-message reasoning box by default (streaming and saved turns). */
 	autoExpandReasoning: boolean;
+	autoClearReasoning: boolean;
+	reasoningDepth: number;
 	/** Open the normal message editor by double-clicking the rendered story text. */
 	doubleClickToEdit: boolean;
 	/** Read by nothing. Who a story plays as is claimed in the chat itself (the composer's
@@ -55,6 +58,7 @@ const DEFAULT_SETTINGS: GeneralSettings = {
 	transcriptPageSize: 100,
 	transcriptLoadMode: 'scroll',
 	autoExpandReasoning: false,
+	...DEFAULT_REASONING_RETENTION,
 	doubleClickToEdit: false,
 	personaSwitcher: false,
 	settingsSplitView: false,
@@ -75,6 +79,7 @@ function clampPageSize(value: number): number {
 /** Coerce a raw settings blob into a valid config, dropping anything unexpected. */
 function normalize(raw: Partial<GeneralSettings> | null): GeneralSettings {
 	return {
+		...normalizeReasoningRetention(raw),
 		saveDrafts: typeof raw?.saveDrafts === 'boolean' ? raw.saveDrafts : DEFAULT_SETTINGS.saveDrafts,
 		inputHistory:
 			typeof raw?.inputHistory === 'boolean' ? raw.inputHistory : DEFAULT_SETTINGS.inputHistory,
@@ -130,6 +135,8 @@ class GeneralSettingsStore {
 	transcriptPageSize = $derived(this.settings.transcriptPageSize);
 	transcriptLoadMode = $derived(this.settings.transcriptLoadMode);
 	autoExpandReasoning = $derived(this.settings.autoExpandReasoning);
+	autoClearReasoning = $derived(this.settings.autoClearReasoning);
+	reasoningDepth = $derived(this.settings.reasoningDepth);
 	doubleClickToEdit = $derived(this.settings.doubleClickToEdit);
 	settingsSplitView = $derived(this.settings.settingsSplitView);
 	welcomeSeen = $derived(this.settings.welcomeSeen);
@@ -180,6 +187,16 @@ class GeneralSettingsStore {
 
 	setAutoExpandReasoning(enabled: boolean): void {
 		this.settings.autoExpandReasoning = enabled;
+		this.persist();
+	}
+
+	setAutoClearReasoning(enabled: boolean): void {
+		this.settings.autoClearReasoning = enabled;
+		this.persist();
+	}
+
+	setReasoningDepth(depth: number): void {
+		this.settings.reasoningDepth = normalizeReasoningRetention({ reasoningDepth: depth }).reasoningDepth;
 		this.persist();
 	}
 

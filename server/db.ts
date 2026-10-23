@@ -9,6 +9,7 @@
  * exactly once, tracked in the _migrations table. No "IF NOT EXISTS" guesswork.
  */
 import { Database } from 'bun:sqlite';
+import { parseReasoningRetention } from '../shared/reasoning-retention';
 import { normalizeAo3Information, emptyAo3Information, type Ao3Information } from '../shared/threads/ao3';
 import { threadsSelectionOverlaps } from '../shared/threads/model';
 import { inheritThreadsRounds } from '../shared/threads/inheritance';
@@ -1083,23 +1084,21 @@ class ServerDatabase {
 		if (updates.length === 0) return;
 		values.push(chat.id);
 
-		this.execute(`UPDATE chats SET ${updates.join(', ')} WHERE id = ?`, values);
+		if (chat.activeLeafId === undefined) {
+			this.execute(`UPDATE chats SET ${updates.join(', ')} WHERE id = ?`, values);
+		} else {
+			this.inTransaction(() => {
+				this.execute(`UPDATE chats SET ${updates.join(', ')} WHERE id = ?`, values);
+				this.pruneOldReasoning(chat.id);
+			});
+		}
 	}
 
 	updateChatActiveLeaf(chatId: string, leafId: string | null, options: { touchUpdatedAt?: boolean } = {}): void {
 		if (leafId !== null && !this.select<{ id: string }[]>(
 			'SELECT id FROM messages WHERE id = ? AND chat_id = ?', [leafId, chatId]
 		).length) throw new Error('The selected response no longer exists in this chat.');
-		const { touchUpdatedAt = false } = options;
-		if (touchUpdatedAt) {
-			this.execute('UPDATE chats SET active_leaf_id = ?, updated_at = ? WHERE id = ?', [
-				leafId,
-				Date.now(),
-				chatId
-			]);
-			return;
-		}
-		this.execute('UPDATE chats SET active_leaf_id = ? WHERE id = ?', [leafId, chatId]);
+		this.updateChat({ id: chatId, activeLeafId: leafId }, options);
 	}
 
 	touchChatActivity(chatId: string): void {
@@ -1230,6 +1229,7 @@ class ServerDatabase {
 
 			// Disable only the one-shot guidance this prompt used, in the reply transaction.
 			const spentSteeringIds = this.consumeSteeringNotes(commit.spendSteeringIds);
+			if (pointers.activeLeafId === undefined) this.pruneOldReasoning(commit.chatId);
 
 			return { messageId, spentSteeringIds };
 		});
@@ -1808,6 +1808,8 @@ class ServerDatabase {
 					messageId
 				]
 			);
+			const owner = this.select<{ chat_id: string }[]>('SELECT chat_id FROM messages WHERE id = ?', [messageId])[0];
+			if (owner) this.pruneOldReasoning(owner.chat_id);
 		});
 	}
 
@@ -2015,7 +2017,39 @@ class ServerDatabase {
 	}
 
 	setSetting(key: string, value: string): void {
-		this.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+		if (key !== 'generalSettings') {
+			this.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+			return;
+		}
+		this.inTransaction(() => {
+			const before = parseReasoningRetention(this.getSetting(key));
+			const after = parseReasoningRetention(value);
+			this.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+			if (after.autoClearReasoning && JSON.stringify(before) !== JSON.stringify(after)) {
+				const chats = this.select<{ chat_id: string }[]>('SELECT DISTINCT chat_id FROM messages WHERE thinking IS NOT NULL');
+				for (const chat of chats) this.pruneOldReasoning(chat.chat_id, after);
+			}
+		});
+	}
+
+	/** Retention counts message positions, so swipes at one position never age the chat.
+	 *  Only the text is discarded: timing/usage and story edits remain historical facts. */
+	private pruneOldReasoning(chatId: string, policy = parseReasoningRetention(this.getSetting('generalSettings'))): void {
+		if (!policy.autoClearReasoning) return;
+		this.inTransaction(() => {
+			const changed = this.execute(`WITH RECURSIVE positions(id, depth) AS (
+				SELECT id, 0 FROM messages WHERE chat_id = ? AND parent_id IS NULL
+				UNION ALL
+				SELECT m.id, p.depth + 1 FROM messages m JOIN positions p ON m.parent_id = p.id WHERE m.chat_id = ?
+			)
+			UPDATE messages SET thinking = NULL, rev = (SELECT messages_rev + 1 FROM chats WHERE id = ?)
+			WHERE chat_id = ? AND thinking IS NOT NULL AND id IN (
+				SELECT id FROM positions WHERE depth <= (
+					SELECT depth FROM positions WHERE id = (SELECT active_leaf_id FROM chats WHERE id = ?)
+				) - ?
+			)`, [chatId, chatId, chatId, chatId, chatId, policy.reasoningDepth]);
+			if (changed) this.bumpMessagesRev(chatId);
+		});
 	}
 
 	deleteSetting(key: string): void {

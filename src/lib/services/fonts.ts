@@ -37,14 +37,15 @@ function watchFontCache(): void {
 	void document.fonts.ready.then(warmUsedFonts);
 }
 
-export function ensureFontLoaded(bundledFont: string | undefined): void {
+export function ensureFontLoaded(bundledFont: string | undefined, stylesheet?: string): void {
 	watchFontCache();
-	if (!bundledFont || loaded.has(bundledFont) || typeof document === 'undefined') return;
-	loaded.add(bundledFont);
+	const href = stylesheet ?? (bundledFont ? `/fonts/${bundledFont}.css` : undefined);
+	if (!href || loaded.has(href) || typeof document === 'undefined') return;
+	loaded.add(href);
 	const link = document.createElement('link');
 	link.rel = 'stylesheet';
-	link.href = `/fonts/${bundledFont}.css`;
+	link.href = href;
 	link.addEventListener('load', () => { void document.fonts.ready.then(warmUsedFonts); });
-	link.addEventListener('error', () => { loaded.delete(bundledFont); link.remove(); });
+	link.addEventListener('error', () => { loaded.delete(href); link.remove(); });
 	document.head.appendChild(link);
 }

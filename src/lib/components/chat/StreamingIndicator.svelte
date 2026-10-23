@@ -110,7 +110,7 @@
 
 						{#if hasReasoning}
 							<div class="stream-thinking">
-								<MessageReasoning {thinking} isStreaming={true} />
+								<MessageReasoning {thinking} isStreaming={true} timing={chatStore.visibleStreamPreview?.reasoningTiming} />
 							</div>
 						{/if}
 
