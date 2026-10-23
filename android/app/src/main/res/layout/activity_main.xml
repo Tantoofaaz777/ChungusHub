@@ -25,6 +25,8 @@
                 android:text="@string/resume_chat" android:textAllCaps="false" android:visibility="gone" />
             <TextView android:id="@+id/setup_message" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="14dp" android:textColor="#AAB9B6" android:textSize="14sp" />
+            <LinearLayout android:id="@+id/lock_settings" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginTop="24dp" android:visibility="gone" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp"
                 android:text="@string/settings_help"
                 android:textColor="#7F928D" android:textSize="13sp" />

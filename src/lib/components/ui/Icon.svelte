@@ -28,6 +28,7 @@
 		| 'check'
 		| 'checkCircle'
 		| 'copy'
+		| 'share'
 		| 'menu'
 		| 'arrowLeft'
 		| 'arrowRight'
@@ -219,6 +220,9 @@
 			paths: [
 				'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z'
 			]
+		},
+		share: {
+			paths: ['M12 16V3m0 0L7 8m5-5l5 5M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7']
 		},
 		menu: {
 			paths: ['M4 6h16M4 12h16M4 18h16']

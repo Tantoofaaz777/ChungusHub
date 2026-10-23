@@ -7,6 +7,7 @@
 		onEdit: () => void;
 		onDelete: () => void;
 		onCopy: () => Promise<void>;
+		onShare?: () => Promise<void>;
 		onTogglePrompt?: () => void;
 		onToggleBookmark?: () => void;
 		bookmarked?: boolean;
@@ -36,6 +37,7 @@
 		onEdit,
 		onDelete,
 		onCopy,
+		onShare,
 		onTogglePrompt,
 		onToggleBookmark,
 		bookmarked = false,
@@ -58,6 +60,7 @@
 
 	let justCopied = $state(false);
 	let copying = $state(false);
+	let sharing = $state(false);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	onDestroy(() => clearTimeout(copiedTimer));
 
@@ -77,6 +80,14 @@
 		} finally {
 			copying = false;
 		}
+	}
+
+	async function handleShare() {
+		if (sharing || !onShare) return;
+		sharing = true;
+		try { await onShare(); }
+		catch (error) { toastStore.failed('share the message', error); }
+		finally { sharing = false; }
 	}
 </script>
 
@@ -106,6 +117,13 @@
 		<span class="action-label">{justCopied ? 'Copied' : 'Copy'}</span>
 	</button>
 
+	{#if onShare}
+			<button type="button" class="action-btn" onclick={handleShare} disabled={sharing}
+				aria-busy={sharing} aria-label="Share message" title="Share message">
+				<Icon name="share" class="w-3.5 h-3.5" strokeWidth={1.75} />
+				<span class="action-label">Share</span>
+			</button>
+	{/if}
 	{#if onToggleBookmark}
 		<button type="button" class="action-btn" class:action-btn-active={bookmarked}
 			onclick={onToggleBookmark} disabled={bookmarkBusy} aria-pressed={bookmarked}

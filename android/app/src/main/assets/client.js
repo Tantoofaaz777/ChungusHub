@@ -4,6 +4,7 @@
   let nextId = 0;
   let foreground = document.visibilityState !== 'hidden';
   let copying = false;
+  let sharing = false;
   const pending = new Map(), blobs = new Map();
   const native = window.ChungusNative;
   native.onmessage = event => {
@@ -18,7 +19,7 @@
       const id = String(++nextId);
       const timer = timeout ? setTimeout(() => {
         pending.delete(id);
-        reject(new Error('Android did not confirm the copy. Please try again.'));
+        reject(new Error(type.startsWith('clipboard.') ? 'Android did not confirm the copy. Please try again.' : 'Android did not respond. Please try again.'));
       }, timeout) : undefined;
       pending.set(id, { resolve, reject, timer });
       try { native.postMessage(JSON.stringify({ ...data, id, type })); }
@@ -26,28 +27,36 @@
     });
   }
 
-  async function copyText(text) {
-    if (typeof text !== 'string' || !text.length || text.length > 1000000) throw Error('The text is empty or too large to copy.');
-    if (copying) throw Error('Another copy is in progress.');
-    copying = true;
+  async function transferText(text, operation) {
+    if (typeof text !== 'string' || !text.length || text.length > 1000000) throw Error('The text is empty or too large.');
     let transfer;
     try {
-      transfer = (await request('clipboard.begin', { size: text.length }, 5000)).transfer;
+      transfer = (await request(operation + '.begin', { size: text.length }, 5000)).transfer;
       // Even JSON's worst-case escaping stays below the native 100,000-character limit.
       for (let offset = 0; offset < text.length; offset += 8192) {
-        await request('clipboard.chunk', { transfer, offset, text: text.slice(offset, offset + 8192) }, 5000);
+        await request(operation + '.chunk', { transfer, offset, text: text.slice(offset, offset + 8192) }, 5000);
       }
-      await request('clipboard.end', { transfer }, 5000);
+      await request(operation + '.end', { transfer }, 10000);
     } catch (error) {
-      if (transfer) await request('clipboard.abort', { transfer }, 1000).catch(() => {});
+      if (transfer) await request(operation + '.abort', { transfer }, 1000).catch(() => {});
       throw error;
-    } finally { copying = false; }
+    }
+  }
+  async function copyText(text) {
+    if (copying) throw Error('Another copy is in progress.');
+    copying = true;
+    try { await transferText(text, 'clipboard'); } finally { copying = false; }
+  }
+  async function shareText(text) {
+    if (sharing) throw Error('Another share is in progress.');
+    sharing = true;
+    try { await transferText(text, 'share.text'); } finally { sharing = false; }
   }
   const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
   URL.createObjectURL = blob => { const url = create(blob); if (blob instanceof Blob) blobs.set(url, blob); return url; };
   URL.revokeObjectURL = url => { blobs.delete(url); revoke(url); };
 
-  async function writeStream(transfer, reader) {
+  async function writeStream(transfer, reader, operation = 'export') {
     let offset = 0;
     while (true) {
       const { done, value } = await reader.read();
@@ -55,11 +64,45 @@
       for (let i = 0; i < value.length; i += 49152) {
         const chunk = value.subarray(i, i + 49152);
         const data = btoa(String.fromCharCode(...chunk));
-        await request('export.chunk', { transfer, offset, data });
+        await request(operation + '.chunk', { transfer, offset, data });
         offset += chunk.length;
       }
     }
-    await request('export.end', { transfer });
+    await request(operation + '.end', { transfer });
+  }
+
+  async function shareFile(filename, mime, build) {
+    if (sharing) throw Error('Another share is in progress.');
+    sharing = true;
+    let transfer, reader;
+    try {
+      transfer = (await request('share.begin', { filename, mime, size: -1 }, 10000)).transfer;
+      const blob = await build();
+      if (!(blob instanceof Blob)) throw Error('The export did not produce a file');
+      if (blob.size > 128 * 1024 * 1024) throw Error('Shared file is too large (maximum 128 MiB).');
+      reader = blob.stream().getReader();
+      await writeStream(transfer, reader, 'share');
+    } catch (error) {
+      await request('share.abort', { transfer: transfer || '' }, 1000).catch(() => {});
+      throw error;
+    } finally {
+      if (reader) await reader.cancel().catch(() => {});
+      sharing = false;
+    }
+  }
+
+  async function readIncomingFile(file) {
+    if (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > 128 * 1024 * 1024) throw Error('Invalid shared file size.');
+    const chunks = [];
+    let offset = 0;
+    while (offset < file.size) {
+      const { data } = await request('incoming.read', { file: file.id, offset }, 15000);
+      const chunk = Uint8Array.from(atob(data), char => char.charCodeAt(0));
+      if (!chunk.length || chunk.length > 49152 || offset + chunk.length > file.size) throw Error('The shared file is incomplete.');
+      chunks.push(chunk);
+      offset += chunk.length;
+    }
+    return new File(chunks, file.name, { type: file.mime });
   }
 
   // The destination must be chosen before portrait fetches, PNG encoding or ZIP work.
@@ -121,7 +164,17 @@
       window.dispatchEvent(new Event('chungus-android-lifecycle'));
     },
     settings: () => request('settings'),
+    pinChatShortcut: async (chatId, title) => { await request('shortcut.pin', { chatId, title }, 10000); },
+    pendingChatShortcut: async () => (await request('shortcut.pending', {}, 10000)).target,
+    acknowledgeChatShortcut: async id => { await request('shortcut.acknowledge', { request: id }, 10000); },
+    notifyChatShortcut: () => window.dispatchEvent(new Event('chungus-android-chat-shortcut')),
     copyText,
+    shareText,
+    shareFile,
+    incomingFiles: async () => (await request('incoming.list', {}, 15000)).files,
+    readIncomingFile,
+    removeIncomingFile: id => request('incoming.remove', { file: id }, 15000),
+    notifyIncoming: () => window.dispatchEvent(new Event('chungus-android-incoming')),
     download,
     save,
     back: () => {

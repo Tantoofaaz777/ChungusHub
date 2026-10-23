@@ -10,6 +10,8 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { lorebookStore } from '$lib/lorebook/store.svelte';
+	import { canShareNativeFiles } from '$lib/services/android-client';
+	import type { ExportDestination } from '$lib/services/libraryExport';
 	import {
 		exportEntryAsSillyTavern,
 		exportEntriesAsSillyTavernZip,
@@ -44,11 +46,11 @@
 		}
 	});
 
-	async function handleExport() {
+	async function handleExport(destination: ExportDestination = 'download') {
 		if (busy) return;
 		busy = true;
 		try {
-			const opts = { format, schema, lorebooks: lorebookStore.books };
+			const opts = { format, schema, lorebooks: lorebookStore.books, destination };
 			if (single) {
 				await exportEntryAsSillyTavern(single.entry, single.versions, versionSel, opts);
 			} else {
@@ -57,7 +59,7 @@
 			onClose();
 		} catch (error) {
 			console.error('Failed to export character:', error);
-			toastStore.failed('export that entry', error);
+			toastStore.failed(destination === 'share' ? 'share that entry' : 'export that entry', error);
 		} finally {
 			busy = false;
 		}
@@ -144,9 +146,14 @@
 			</p>
 		{/if}
 
-		<div class="flex gap-3 justify-end pt-1">
+		<div class="flex flex-wrap gap-3 justify-end pt-1">
 			<Button variant="ghost" onclick={onClose} disabled={busy}>Cancel</Button>
-			<Button variant="primary" onclick={handleExport} disabled={busy}>
+			{#if canShareNativeFiles()}
+				<Button variant="secondary" onclick={() => handleExport('share')} disabled={busy}>
+					<Icon name="share" class="w-4 h-4" /> Share
+				</Button>
+			{/if}
+			<Button variant="primary" onclick={() => handleExport()} disabled={busy}>
 				<Icon name="download" class="w-4 h-4" />
 				Export
 			</Button>

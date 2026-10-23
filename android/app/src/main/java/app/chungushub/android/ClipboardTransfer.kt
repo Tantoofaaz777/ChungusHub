@@ -25,12 +25,13 @@ class ClipboardTransfer(private val write: (String) -> Unit) {
         text.append(chunk)
     }
 
-    fun finish(transfer: String) {
+    fun finish(transfer: String): String {
         check(id != null && transfer == id) { "The copy is no longer available." }
         require(text.length == expected) { "The clipboard text is incomplete." }
         val result = text.toString()
         cancel()
         write(result) // Only a verified OS write may acknowledge the final request.
+        return result
     }
 
     fun abort(transfer: String) { if (id == transfer) cancel() }

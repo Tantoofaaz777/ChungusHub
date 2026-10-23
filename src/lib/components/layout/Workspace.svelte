@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ChatContainer from '$lib/components/chat/ChatContainer.svelte';
+	import AndroidSharedImport from '$lib/components/library/AndroidSharedImport.svelte';
 	import RetainedView from '$lib/components/ui/RetainedView.svelte';
 	import LazyPanel from '$lib/components/ui/LazyPanel.svelte';
 	import { panels } from './panel-loaders';
@@ -7,6 +8,10 @@
 	import PromptReviewDialog from '$lib/components/chat/PromptReviewDialog.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { installAndroidBack } from '$lib/services/android-client';
+	import { installAndroidChatShortcuts } from '$lib/services/android-chat-shortcuts';
+	import { db } from '$lib/services/database';
+	import { messageStore } from '$lib/stores/messages.svelte';
+	import { toastStore } from '$lib/stores/toast.svelte';
 	import { surfaceMotion, scrimMotion } from '$lib/components/ui/surface-motion';
 	import { retainedPanel } from '$lib/components/ui/retained-panel';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -249,9 +254,24 @@
 		}
 		return false;
 	}));
+
+	onMount(() => installAndroidChatShortcuts({
+		blocked: () => uiStore.guardBlocksNav() || messageStore.warnIfNavigationBusy() || !!document.querySelector('.dialog-portal:not([inert])'),
+		exists: async id => !!await db.getChat(id),
+		open: async id => {
+			try { await chatStore.selectChat(id); } catch { return; } // selectChat owns its error toast.
+			uiStore.closeOverlay();
+			if (!uiStore.settingsLocked) uiStore.closeSettings();
+			if (!uiStore.libraryLocked) uiStore.closeLibrary();
+			uiStore.closeDebugPanel();
+		},
+		missing: () => toastStore.error('This chat no longer exists on this server'),
+		failed: error => toastStore.failed('open the chat shortcut', error)
+	}));
 </script>
 
 <svelte:window onkeydown={handleKeydown} onmousedown={handleBackgroundMouseDown} />
+<AndroidSharedImport />
 
 <div class="workspace-shell">
 	<main

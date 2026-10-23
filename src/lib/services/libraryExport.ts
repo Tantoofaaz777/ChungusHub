@@ -150,8 +150,14 @@ export function triggerDownload(filename: string, blob: Blob): void {
 }
 
 /** Android chooses the destination first; browsers and older APKs build then download. */
-export async function saveGeneratedDownload(filename: string, mime: string, build: () => Promise<Blob>): Promise<void> {
+export type ExportDestination = 'download' | 'share';
+export async function saveGeneratedDownload(filename: string, mime: string, build: () => Promise<Blob>, destination: ExportDestination = 'download'): Promise<void> {
 	const client = isAndroidClient() ? window.ChungusAndroidClient : undefined;
+	if (destination === 'share') {
+		if (!client?.shareFile) throw new Error('Update the Android app to share files.');
+		await client.shareFile(filename, mime, build);
+		return;
+	}
 	if (client?.save) {
 		await client.save(filename, mime, build);
 		return;

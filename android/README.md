@@ -49,6 +49,66 @@ da confirmação da API do WebView. Textos longos são enviados em blocos com co
 falhas e falta de resposta aparecem como erro. É necessário instalar o APK novo e
 atualizar a interface na VPS. APKs anteriores continuam usando a cópia do navegador.
 
+Na versão 0.1.5, mensagens e feeds ganham **Share** ao lado de Copy. O feed continua
+sendo convertido para texto simples antes do envio. No diálogo de exportação de
+personagens, **Share** envia o PNG/JSON/CHARX ou ZIP preparado para o menu de
+compartilhamento do Android; **Export** continua salvando pelo seletor de arquivos.
+Textos muito grandes são compartilhados como arquivo `.txt` para respeitar o limite
+de transações do Android. Abrir o menu não confirma que outro aplicativo recebeu o conteúdo.
+
+O app também recebe PNG/APNG, JSON e CHARX via **Compartilhar → Chungus**. O Android
+guarda uma cópia privada até a interface estar aberta e autenticada. Um diálogo
+mostra os arquivos e o servidor de destino; **Import** usa o importador de personagens
+normal, com a opção de incluir lorebooks. Cancelar descarta só as cópias temporárias.
+São aceitos até 20 arquivos pendentes, de até 128 MiB cada e 256 MiB no total.
+É preciso atualizar também a interface da VPS para usar estas funções.
+
+### Bloqueio por senha e biometria
+
+Em **Settings → Android app → App lock**, ative **Require unlock** e confirme a
+senha do próprio servidor. Esse bloqueio é opcional e exclusivo deste Android:
+não muda o prazo de sessão do navegador nem as configurações globais da VPS.
+O servidor precisa ter uma senha configurada no Chungus.
+
+Uma nova abertura do processo pede desbloqueio. Ao trocar de app ou apagar a tela,
+**Lock after leaving the app** oferece Immediately, 30 seconds, 1 minute (padrão),
+5 minutes e 15 minutes. Voltar antes do prazo preserva o acesso. O relógio usado
+inclui o tempo de suspensão e não depende de ajustes na hora do celular.
+
+**Biometric unlock** é opcional e usa uma biometria forte cadastrada no Android.
+Na ativação, a senha é confirmada no servidor e criptografada com AES-GCM por uma
+chave do Android Keystore que exige autorização biométrica em cada uso. O arquivo
+criptografado e a chave são vinculados à origem HTTPS exata; uma mudança de servidor
+não envia a credencial antiga ao endereço novo. A senha nunca passa pela ponte JavaScript.
+Cada desbloqueio, por senha ou biometria, faz um novo login real no servidor. Uma senha
+alterada ou chave invalidada pede a senha novamente; ausência ou cancelamento de
+biometria mantém a alternativa de senha do servidor, sem usar o PIN do celular.
+
+O app cobre a página ao sair e protege a prévia nas telas recentes. Uma escolha de
+arquivo que retornar depois do prazo espera o desbloqueio antes de continuar.
+O chat permanece carregado para preservar posição, rascunho e geração em andamento.
+Este bloqueio é nativo e não exige atualizar a interface da VPS. Ele vem desligado
+para instalações existentes; ative-o neste aparelho depois de instalar o APK novo.
+
+### Atalhos de chats
+
+No app Android, **Chat actions → Add to home screen** pede ao launcher para fixar
+um atalho com o nome do chat e o ícone do Chungus. A confirmação e a posição final
+ficam com o launcher. Pedir novamente para o mesmo chat atualiza o mesmo identificador,
+inclusive após renomeá-lo, em vez de criar um destino diferente.
+
+Tocar no atalho abre o chat depois do desbloqueio e do carregamento autenticado da
+interface. Também funciona com o app já aberto. Gerações em andamento continuam no
+chat de origem; editores e diálogos que impedem navegação são respeitados. Um chat
+excluído mostra um aviso e mantém a conversa atual. O atalho é vinculado ao servidor
+onde foi criado: se você configurar outro endereço, reconecte ao servidor original
+antes de usar seus atalhos. Ele não troca silenciosamente o servidor configurado.
+
+O launcher recebe um identificador de registro privado, sem senha, cookie ou URL de
+login. Reinstalar o app remove esses registros, então é necessário recriar os atalhos.
+Esta função exige o APK novo e a atualização correspondente da interface na VPS;
+navegadores e APKs antigos não exibem o botão.
+
 ## Abrir no Android Studio
 
 Abra esta pasta `android/` como projeto. O Gradle usa JDK 21 (critério declarado em
@@ -69,6 +129,7 @@ Não é preciso executar o build web para compilar o APK: ele carrega a interfac
 - `MainActivity.kt`: endereço, sessão WebView, teclado/insets, Voltar e seletor de importação.
 - `ServerAddress.kt`: validação HTTPS e comparação exata de origem.
 - `DocumentExports.kt`: seletor de destino do Android e escrita em uma thread de IO.
+- `NativeShares.kt` / `SharedInbox.kt`: envio pelo Sharesheet com `FileProvider` e fila privada de arquivos recebidos.
 - `assets/client.js`: adaptador dos downloads existentes (blob, data URI e HTTP da mesma origem).
 - `../src/lib/services/android-client.ts`: integração opcional com a navegação web e configuração nativa.
 

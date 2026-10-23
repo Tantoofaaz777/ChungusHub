@@ -29,10 +29,11 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
+import androidx.core.content.IntentCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -41,7 +42,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private lateinit var root: View
     private lateinit var setup: View
     private lateinit var addressInput: EditText
@@ -49,6 +50,11 @@ class MainActivity : ComponentActivity() {
     private lateinit var resume: Button
     private lateinit var progress: ProgressBar
     private lateinit var exports: DocumentExports
+    private lateinit var shares: NativeShares
+    private lateinit var appLock: AppLock
+    private lateinit var chatShortcuts: ChatShortcuts
+    private var incomingToken: String? = null
+    private val sharedText = ClipboardTransfer { }
     private var browser: WebView? = null
     private var server: ServerAddress? = null
     private var chooserCallback: ValueCallback<Array<Uri>>? = null
@@ -66,10 +72,13 @@ class MainActivity : ComponentActivity() {
     private val chooseFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val callback = chooserCallback
         chooserCallback = null
-        callback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
+        appLock.whenUnlocked(discard = { callback?.onReceiveValue(null) }) {
+            callback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
+        }
     }
     private val saveFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        exports.destination(if (result.resultCode == RESULT_OK) result.data?.data else null)
+        val uri = if (result.resultCode == RESULT_OK) result.data?.data else null
+        appLock.whenUnlocked(discard = { exports.cancel(); exports.destination(uri) }) { exports.destination(uri) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,9 +110,26 @@ class MainActivity : ComponentActivity() {
                 addCategory(Intent.CATEGORY_OPENABLE); type = mime; putExtra(Intent.EXTRA_TITLE, name)
             })
         }, { toast("File saved.") })
+        shares = NativeShares(applicationContext, { runOnUiThread(it) }, { shareIntent ->
+            check(activityResumed && !appLock.locked && hasWindowFocus() && server?.trusts(browser?.url.orEmpty()) == true)
+            startActivity(shareIntent)
+        }, { notifyIncoming() }, { toast(it) })
+        chatShortcuts = ChatShortcuts(this)
+        appLock = AppLock(this, root as FrameLayout, findViewById(R.id.lock_settings), {
+            browser?.visibility = if (appLock.locked) View.INVISIBLE else View.VISIBLE
+            updatePageLifecycle()
+        }, {
+            hideKeyboard()
+            val view = browser
+            if (view != null && (view.url == null || Uri.parse(view.url).path == "/unlock")) server?.let { view.loadUrl(it.url) }
+            notifyIncoming()
+            notifyChatShortcut()
+        }, { showSetup() })
+        captureIncoming(intent, savedInstanceState?.getString("incomingShareToken"))
         addressInput.setText(preferences.getString("url", ""))
+        restoreChatShortcut(intent, savedInstanceState)
         findViewById<Button>(R.id.connect).setOnClickListener { connect() }
-        resume.setOnClickListener { setup.visibility = View.GONE; hideKeyboard() }
+        resume.setOnClickListener { setup.visibility = View.GONE; appLock.settingsClosed(); hideKeyboard() }
         addressInput.setOnEditorActionListener { _, action, _ ->
             if (action == EditorInfo.IME_ACTION_GO) { connect(); true } else false
         }
@@ -115,7 +141,55 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        captureIncoming(intent)
         if (intent.action == SETTINGS_ACTION) showSetup()
+        if (intent.action == ChatShortcuts.OPEN_CHAT) {
+            restoreChatShortcut(intent, null)
+            if (chatShortcuts.pending != null) {
+                if (browser == null) connect()
+                else { setup.visibility = View.GONE; appLock.settingsClosed(); notifyChatShortcut() }
+            }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        incomingToken?.let { outState.putString("incomingShareToken", it) }
+        chatShortcuts.save(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun captureIncoming(intent: Intent, restoredToken: String? = null) {
+        if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_SEND_MULTIPLE) return
+        incomingToken = restoredToken ?: java.util.UUID.randomUUID().toString()
+        val uris = mutableListOf<Uri>()
+        if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            uris.addAll(IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty())
+        } else IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)?.let { uris.add(it) }
+        intent.clipData?.let { clip -> for (index in 0 until minOf(clip.itemCount, 20)) clip.getItemAt(index).uri?.let { uris.add(it) } }
+        if (uris.isEmpty()) toast("No character file was shared.")
+        else shares.capture(uris.distinct(), incomingToken!!)
+    }
+
+    private fun notifyIncoming() {
+        val view = browser ?: return
+        if (!appLock.locked && server?.trusts(view.url.orEmpty()) == true) view.evaluateJavascript("window.ChungusAndroidClient?.notifyIncoming?.()", null)
+    }
+
+    private fun restoreChatShortcut(intent: Intent, state: Bundle?) {
+        if (intent.action != ChatShortcuts.OPEN_CHAT && state?.getBoolean("chatShortcutState") != true) return
+        chatShortcuts.clearPending()
+        runCatching {
+            val configured = ServerAddress.parse(preferences.getString("url", "").orEmpty())
+            if (state?.getBoolean("chatShortcutState") == true) chatShortcuts.restore(state, configured)
+            else chatShortcuts.capture(intent, configured)
+        }.onFailure { toast(it.message ?: "Could not open the chat shortcut.") }
+    }
+
+    private fun notifyChatShortcut() {
+        val view = browser ?: return
+        if (activityResumed && !appLock.locked && chatShortcuts.pending != null && server?.trusts(view.url.orEmpty()) == true)
+            view.evaluateJavascript("window.ChungusAndroidClient?.notifyChatShortcut?.()", null)
     }
 
     private fun connect() {
@@ -128,10 +202,13 @@ class MainActivity : ComponentActivity() {
         }
         hideKeyboard()
         clipboard.cancel()
+        sharedText.cancel()
+        shares.cancel()
         exports.cancel()
         chooserCallback?.onReceiveValue(null); chooserCallback = null
         browser?.let { (it.parent as FrameLayout).removeView(it); it.destroy() }
         server = selected
+        chatShortcuts.serverChanged(selected)
         preferences.edit().putString("url", selected.url).apply()
         addressInput.setText(selected.url)
         val view = createBrowser(selected)
@@ -140,7 +217,8 @@ class MainActivity : ComponentActivity() {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         setup.visibility = View.GONE
         status.text = ""
-        view.loadUrl(selected.url)
+        appLock.attach(selected)
+        if (!appLock.locked) view.loadUrl(selected.url)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -174,7 +252,13 @@ class MainActivity : ComponentActivity() {
             if (!mainFrame || !selected.trusts(origin.toString()) || browser !== view || !selected.trusts(view.url.orEmpty())) return@addWebMessageListener
             val data = message.data ?: return@addWebMessageListener
             if (data.length > 100000) return@addWebMessageListener
-            runCatching { receive(JSONObject(data), reply) }
+            runCatching {
+                val payload = JSONObject(data)
+                if (appLock.locked && !payload.optString("type").endsWith(".abort")) {
+                    reply.postMessage(JSONObject().put("id", payload.optString("id")).put("ok", false)
+                        .put("error", "Unlock Chungus and try again.").toString())
+                } else receive(payload, reply) // Allow cancellation to clean up a private partial transfer.
+            }
         }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(view, assets.open("client.js").bufferedReader().use { it.readText() }, setOf(selected.origin))
@@ -188,13 +272,18 @@ class MainActivity : ComponentActivity() {
             }
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 clipboard.cancel()
+                sharedText.cancel()
+                shares.cancel()
                 exports.cancel()
                 progress.visibility = View.VISIBLE
             }
             override fun onPageFinished(view: WebView, url: String) {
                 progress.visibility = View.GONE
                 CookieManager.getInstance().flush()
+                if (selected.trusts(url) && Uri.parse(url).path == "/unlock") appLock.sessionExpired()
                 updatePageLifecycle(view)
+                notifyIncoming()
+                notifyChatShortcut()
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) showSetup("Could not connect. Check the address, your connection, and whether the server is running.")
@@ -215,6 +304,8 @@ class MainActivity : ComponentActivity() {
             }
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
                 clipboard.cancel()
+                sharedText.cancel()
+                shares.cancel()
                 exports.cancel()
                 (view.parent as? FrameLayout)?.removeView(view)
                 if (browser === view) browser = null
@@ -258,6 +349,10 @@ class MainActivity : ComponentActivity() {
 
     private fun receive(message: JSONObject, proxy: JavaScriptReplyProxy) {
         val id = message.optString("id")
+        val sharingReply: (JSONObject) -> Unit = { result ->
+            result.put("id", id).put("ok", !result.has("error"))
+            runCatching { proxy.postMessage(result.toString()) }
+        }
         val reply: (Boolean, String, String?) -> Unit = { ok, error, transfer ->
             val result = JSONObject().put("id", id).put("ok", ok)
             if (error.isNotEmpty()) result.put("error", error)
@@ -265,8 +360,33 @@ class MainActivity : ComponentActivity() {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) runCatching { proxy.postMessage(result.toString()) }
         }
         when (val type = message.optString("type")) {
+            "shortcut.pin" -> {
+                try {
+                    check(activityResumed && hasWindowFocus()) { "Return to Chungus and try again." }
+                    chatShortcuts.pin(server ?: error("Connect to your server first."), message.getString("chatId"), message.getString("title"))
+                    reply(true, "", null)
+                } catch (error: Exception) { reply(false, error.message ?: "Could not create the chat shortcut.", null) }
+            }
+            "shortcut.pending" -> sharingReply(JSONObject().put("target", server?.let { chatShortcuts.payload(it) } ?: JSONObject.NULL))
+            "shortcut.acknowledge" -> { chatShortcuts.acknowledge(message.getString("request")); reply(true, "", null) }
             "settings" -> { showSetup(); reply(true, "", null) }
             "notice" -> { toast(message.optString("message").take(180)); reply(true, "", null) }
+            "share.text.begin", "share.text.chunk", "share.text.end", "share.text.abort" -> {
+                try {
+                    check(activityResumed && hasWindowFocus())
+                    val transfer = message.optString("transfer")
+                    when (type) {
+                        "share.text.begin" -> reply(true, "", sharedText.begin(message.getInt("size")))
+                        "share.text.chunk" -> { sharedText.append(transfer, message.getInt("offset"), message.getString("text")); reply(true, "", null) }
+                        "share.text.end" -> shares.text(sharedText.finish(transfer), sharingReply)
+                        else -> { sharedText.abort(transfer); reply(true, "", null) }
+                    }
+                } catch (_: Exception) {
+                    sharedText.abort(message.optString("transfer"))
+                    reply(false, "Could not share the text. Return to Chungus and try again.", null)
+                }
+            }
+            "share.begin", "share.chunk", "share.end", "share.abort", "incoming.list", "incoming.read", "incoming.remove" -> shares.handle(type, message, sharingReply)
             "clipboard.begin", "clipboard.chunk", "clipboard.end", "clipboard.abort" -> {
                 try {
                     check(activityResumed && hasWindowFocus()) { "Return to Chungus and try copying again." }
@@ -296,15 +416,17 @@ class MainActivity : ComponentActivity() {
     private fun showSetup(message: String = "") {
         setup.visibility = View.VISIBLE
         progress.visibility = View.GONE
-        resume.visibility = if (browser != null) View.VISIBLE else View.GONE
+        resume.visibility = if (browser != null && !appLock.locked) View.VISIBLE else View.GONE
         status.text = message
         addressInput.clearFocus()
+        appLock.settingsOpened()
     }
 
     private fun goBack() {
         if (imeVisible) { hideKeyboard(); return }
+        if (appLock.back()) return
         if (setup.visibility == View.VISIBLE) {
-            if (browser != null) setup.visibility = View.GONE else moveTaskToBack(true)
+            if (browser != null) { setup.visibility = View.GONE; appLock.settingsClosed() } else moveTaskToBack(true)
             return
         }
         val view = browser ?: run { showSetup(); return }
@@ -325,11 +447,14 @@ class MainActivity : ComponentActivity() {
     }
     private fun updatePageLifecycle(view: WebView? = browser) {
         if (view == null || browser !== view || server?.trusts(view.url.orEmpty()) != true) return
-        view.evaluateJavascript("window.ChungusAndroidClient?.setForeground?.($activityResumed)", null)
+        val active = activityResumed && !appLock.locked
+        view.evaluateJavascript("window.ChungusAndroidClient?.setForeground?.($active)", null)
     }
     override fun onPause() {
         activityResumed = false
+        appLock.pause()
         clipboard.cancel()
+        sharedText.cancel()
         updatePageLifecycle()
         browser?.onPause()
         CookieManager.getInstance().flush()
@@ -338,11 +463,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         activityResumed = true
+        appLock.resume()
         browser?.onResume()
         updatePageLifecycle()
+        notifyChatShortcut()
     }
     override fun onDestroy() {
+        appLock.close()
         clipboard.cancel()
+        sharedText.cancel()
+        shares.close()
         chooserCallback?.onReceiveValue(null); chooserCallback = null
         exports.close()
         browser?.let { (it.parent as? FrameLayout)?.removeView(it); it.destroy() }; browser = null

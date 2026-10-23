@@ -14,6 +14,7 @@
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { copyText } from '$lib/utils/clipboard';
+	import { canShareNativeText, shareNativeText } from '$lib/services/android-client';
 	import { threadsStore as store } from '$lib/threads/store.svelte';
 	import { activeThreadsFeed } from '$shared/threads/model';
 	import { serializeFeedAsPlainText } from '$shared/threads/feed';
@@ -33,6 +34,7 @@
 	let removing = $state<ThreadsRound | null>(null);
 	let resetting = $state<{ chatId: string; rounds: { id: string; revision: number }[] } | null>(null);
 	let copying = $state(false);
+	let sharing = $state(false);
 	let copiedFeed = $state<string | null>(null);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => { if (resetting && resetting.chatId !== store.chatId) resetting = null; });
@@ -113,6 +115,13 @@
 		if (next) void store.chooseVersion(round, next.id);
 		else if (direction === 1) void store.generate(round);
 	}
+	async function share(round: ThreadsRound) {
+		if (sharing) return;
+		sharing = true;
+		try { await shareNativeText(serializeFeedAsPlainText(activeThreadsFeed(round))); }
+		catch (error) { toastStore.failed('share the thread', error); }
+		finally { sharing = false; }
+	}
 </script>
 
 <div class="threads-panel">
@@ -153,7 +162,7 @@
 						<article class="feed-card">
 							<div class="round-info"><span>{round.label || `Thread ${store.rounds.indexOf(round) + 1}`} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its full scene is not on the current branch.">Outside this branch</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
 							<div class="feed-actions">
-								<div class="actions"><button type="button" class="icon-btn" disabled={copying} aria-busy={copying} aria-label="Copy thread" title={copied ? 'Copied!' : 'Copy thread'} onclick={() => copy(round)}><Icon name={copied ? 'check' : 'copy'} class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy || !!store.pending || !featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)} aria-label="Generate another version" title="Generate another version" onclick={() => store.generate(round)}><Icon name="refresh" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy} aria-label="Delete thread" title="Delete thread" onclick={() => removing = round}><Icon name="trash" class="w-4 h-4" /></button></div>
+								<div class="actions"><button type="button" class="icon-btn" disabled={copying} aria-busy={copying} aria-label="Copy thread" title={copied ? 'Copied!' : 'Copy thread'} onclick={() => copy(round)}><Icon name={copied ? 'check' : 'copy'} class="w-4 h-4" /></button>{#if canShareNativeText()}<button type="button" class="icon-btn" disabled={sharing} aria-busy={sharing} aria-label="Share thread" title="Share thread" onclick={() => share(round)}><Icon name="share" class="w-4 h-4" /></button>{/if}<button class="icon-btn" disabled={store.busy || !!store.pending || !featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)} aria-label="Generate another version" title="Generate another version" onclick={() => store.generate(round)}><Icon name="refresh" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy} aria-label="Delete thread" title="Delete thread" onclick={() => removing = round}><Icon name="trash" class="w-4 h-4" /></button></div>
 								<div class="actions"><button class="icon-btn" disabled={store.busy || versionIndex === 0} aria-label="Previous thread version" onclick={() => swipe(round,-1)}><Icon name="chevronLeft" class="w-4 h-4" /></button><span class="version">{versionIndex + 1} / {round.versions.length}</span><button class="icon-btn" disabled={store.busy || !!store.pending || (versionIndex === round.versions.length - 1 && (!featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)))} aria-label={versionIndex === round.versions.length - 1 ? 'Generate another thread version' : 'Next thread version'} onclick={() => swipe(round,1)}><Icon name="chevronRight" class="w-4 h-4" /></button></div>
 							</div>
 							<section class="feed-post">

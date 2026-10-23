@@ -1,19 +1,25 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { isAndroidClient, installAndroidBack } from './android-client';
-import { exportEntryAsSillyTavern } from './sillyTavernExport';
+import { isAndroidClient, installAndroidBack, shareNativeText, canPinChatShortcut, pinChatShortcut } from './android-client';
+import { serializeFeedAsPlainText } from '$shared/threads/feed';
+import { exportEntryAsSillyTavern, buildSillyTavernCard } from './sillyTavernExport';
 import { importSillyTavernCard } from './sillyTavernImport';
 import type { LibraryEntry } from '$lib/types/library';
 import { saveGeneratedDownload } from './libraryExport';
 import { copyText } from '$lib/utils/clipboard';
 
 const script = readFileSync(new URL('../../../android/app/src/main/assets/client.js', import.meta.url), 'utf8');
-function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean; holdPicker?: boolean; failCopy?: boolean; holdCopy?: boolean; dropCopy?: boolean } = {}) {
+function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean; holdPicker?: boolean; failCopy?: boolean; holdCopy?: boolean; dropCopy?: boolean;
+	holdShare?: boolean; failShare?: boolean; incoming?: { name: string; mime: string; bytes: Uint8Array }[] } = {}) {
 	let browserClicks = 0, objectId = 0;
 	let pickerReply: (() => void) | undefined;
 	let copyReply: (() => void) | undefined;
 	let copiedText = '', copyBuffer = '';
+	let sharedText = '', shareBuffer = '';
+	let shareReply: (() => void) | undefined;
+	const shared: Buffer[] = [], shareChunks: Buffer[] = [];
+	const inbox = new Map((options.incoming ?? []).map((file, i) => [String(i), file]));
 	const messages: any[] = [], saved: Buffer[] = [], chunks: Buffer[] = [], revoked: string[] = [];
 	const events = new Map<string, (event: any) => void>();
 	class Anchor {
@@ -33,6 +39,36 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 		const message = JSON.parse(text); messages.push(message);
 		const respond = () => {
 			let response: any = { id: message.id, ok: true };
+			if (message.type === 'shortcut.pending') response.target = { id: 'launch-1', chatId: 'chat-1' };
+			if (message.type === 'share.text.begin') { shareBuffer = ''; response.transfer = 'text-share'; }
+			if (message.type === 'share.text.chunk') {
+				expect(message.offset).toBe(shareBuffer.length);
+				expect(message.text.length).toBeLessThanOrEqual(8192);
+				shareBuffer += message.text;
+			}
+			if (message.type === 'share.text.end') {
+				if (options.failShare) response = { ...response, ok: false, error: 'Sharing unavailable' };
+				else sharedText = shareBuffer;
+			}
+			if (message.type === 'share.begin') { response.transfer = 'share'; shareChunks.length = 0; }
+			if (message.type === 'share.chunk') {
+				if (options.failChunk) response = { ...response, ok: false, error: 'Cache full' };
+				else {
+					expect(message.offset).toBe(shareChunks.reduce((sum, chunk) => sum + chunk.length, 0));
+					const bytes = Buffer.from(message.data, 'base64'); expect(bytes.length).toBeLessThanOrEqual(49152); shareChunks.push(bytes);
+				}
+			}
+			if (message.type === 'share.end') {
+				if (options.failShare) response = { ...response, ok: false, error: 'Sharing unavailable' };
+				else shared.push(Buffer.concat(shareChunks));
+			}
+			if (message.type === 'incoming.list') response.files = [...inbox].map(([id, f]) => ({ id, name: f.name, mime: f.mime, size: f.bytes.length }));
+			if (message.type === 'incoming.read') {
+				const item = inbox.get(message.file);
+				response = item ? { ...response, data: Buffer.from(item.bytes.slice(message.offset, message.offset + 49152)).toString('base64') }
+					: { ...response, ok: false, error: 'The shared file is no longer available' };
+			}
+			if (message.type === 'incoming.remove') inbox.delete(message.file);
 			if (message.type === 'clipboard.begin') { copyBuffer = ''; response.transfer = 'clipboard'; }
 			if (message.type === 'clipboard.chunk') {
 				expect(message.offset).toBe(copyBuffer.length);
@@ -56,18 +92,21 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 			window.ChungusNative.onmessage({ data: JSON.stringify(response) });
 		};
 		if (message.type === 'clipboard.begin' && options.dropCopy) return;
-		if (message.type === 'clipboard.end' && options.holdCopy) copyReply = respond;
+		if (['share.end', 'share.text.end'].includes(message.type) && options.holdShare) shareReply = respond;
+		else if (message.type === 'clipboard.end' && options.holdCopy) copyReply = respond;
 		else if (message.type === 'export.begin' && options.holdPicker) pickerReply = respond;
 		else queueMicrotask(respond);
 	} };
 	let fetches = 0;
 	const bytes = Uint8Array.from({ length: 160000 }, (_, i) => i % 256);
 	runInNewContext(script, { window, location: { href: 'https://chungus.test/', origin: 'https://chungus.test' }, URL: BrowserURL,
-		Blob, HTMLAnchorElement: Anchor, Element: Anchor, Event: class { constructor(public type: string) {} }, KeyboardEvent: class {}, btoa, setTimeout, clearTimeout,
+		Blob, File, HTMLAnchorElement: Anchor, Element: Anchor, Event: class { constructor(public type: string) {} }, KeyboardEvent: class {}, btoa, atob, setTimeout, clearTimeout,
 		document: { addEventListener: (type: string, fn: (event: any) => void) => events.set(type, fn) },
 		fetch: async (_url: string, init: RequestInit) => { fetches++; expect(init.credentials).toBe('same-origin'); return new Response(bytes); }
 	});
 	return { window, messages, saved, bytes, revoked, Anchor, BrowserURL, events,
+		shared, get sharedText() { return sharedText; },
+		confirmShare() { if (!shareReply) throw Error('No share to confirm'); shareReply(); shareReply = undefined; },
 		get copiedText() { return copiedText; },
 		confirmCopy() { if (!copyReply) throw Error('No copy to confirm'); copyReply(); copyReply = undefined; },
 		chooseDestination() { if (!pickerReply) throw new Error('Picker has not opened'); pickerReply(); pickerReply = undefined; },
@@ -81,6 +120,21 @@ async function until(condition: () => boolean) {
 test('browser builds do not install Android navigation hooks', () => {
 	expect(isAndroidClient()).toBe(false);
 	expect(() => installAndroidBack(() => true)()).not.toThrow();
+	expect(canPinChatShortcut()).toBe(false);
+});
+
+test('native shortcuts send chat metadata and acknowledge the exact launch request', async () => {
+	const h = harness();
+	const previous = globalThis.window;
+	globalThis.window = h.window;
+	try {
+		expect(canPinChatShortcut()).toBe(true);
+		await pinChatShortcut('chat-1', 'Minha história 🦝');
+		expect(h.messages[0]).toMatchObject({ type: 'shortcut.pin', chatId: 'chat-1', title: 'Minha história 🦝' });
+		expect(await h.window.ChungusAndroidClient.pendingChatShortcut()).toEqual({ id: 'launch-1', chatId: 'chat-1' });
+		await h.window.ChungusAndroidClient.acknowledgeChatShortcut('launch-1');
+		expect(h.messages.at(-1)).toMatchObject({ type: 'shortcut.acknowledge', request: 'launch-1' });
+	} finally { if (previous === undefined) delete (globalThis as any).window; else globalThis.window = previous; }
 });
 
 test('native copy preserves long Unicode and escaped text and waits for the final acknowledgement', async () => {
@@ -118,6 +172,107 @@ test('a missing Android clipboard acknowledgement rejects instead of leaving the
 	const h = harness({ dropCopy: true });
 	await expect(h.window.ChungusAndroidClient.copyText('test')).rejects.toThrow('Android did not confirm');
 }, 7000);
+
+test('native sharing uses the feed plain-text serializer and waits for the Sharesheet', async () => {
+	const h = harness({ holdShare: true }), previousWindow = globalThis.window;
+	globalThis.window = h.window;
+	try {
+		const text = serializeFeedAsPlainText({ title: 'A fictional thread', post: { username: 'reader', body: 'A post about the chapter.', score: 10 },
+			comments: [{ username: 'another_reader', body: 'A reply with ação 🦝.', score: 3, replies: [] }] });
+		let done = false;
+		const sharing = shareNativeText(text).then(() => { done = true; });
+		await until(() => h.messages.at(-1)?.type === 'share.text.end');
+		expect(done).toBe(false);
+		await expect(shareNativeText('Second click')).rejects.toThrow('Another share is in progress');
+		h.confirmShare(); await sharing;
+		expect(h.sharedText).toBe(text);
+		expect(h.sharedText).toContain('A reply with ação 🦝.');
+		expect(h.sharedText).not.toContain('"username":');
+		expect(h.messages.every(message => !message.type.startsWith('clipboard.'))).toBe(true);
+	} finally {
+		if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
+	}
+});
+
+test('file sharing preserves binary bytes in bounded chunks and aborts preparation and write failures', async () => {
+	const h = harness();
+	await h.window.ChungusAndroidClient.shareFile('character.png', 'image/png', async () => new Blob([h.bytes]));
+	expect(h.shared[0]).toEqual(Buffer.from(h.bytes));
+	expect(h.saved).toHaveLength(0);
+	expect(h.messages[0]).toMatchObject({ type: 'share.begin', filename: 'character.png', mime: 'image/png', size: -1 });
+	const failed = harness({ failChunk: true });
+	await expect(failed.window.ChungusAndroidClient.shareFile('character.png', 'image/png', async () => new Blob([h.bytes]))).rejects.toThrow('Cache full');
+	expect(failed.messages.at(-1).type).toBe('share.abort');
+	expect(failed.shared).toHaveLength(0);
+	const preparation = harness();
+	await expect(preparation.window.ChungusAndroidClient.shareFile('character.png', 'image/png', async () => { throw Error('Portrait failed'); })).rejects.toThrow('Portrait failed');
+	expect(preparation.messages.map(message => message.type)).toEqual(['share.begin', 'share.abort']);
+});
+
+test('Sharesheet failures propagate instead of reporting a successful share', async () => {
+	const h = harness({ failShare: true });
+	await expect(h.window.ChungusAndroidClient.shareText('A message')).rejects.toThrow('Sharing unavailable');
+	await expect(h.window.ChungusAndroidClient.shareFile('character.json', 'application/json', async () => new Blob(['{}']))).rejects.toThrow('Sharing unavailable');
+	expect(h.messages.at(-1).type).toBe('share.abort');
+	expect(h.shared).toHaveLength(0);
+});
+
+const sharedCharacter: LibraryEntry = { id: 'shared-test', type: 'character', identity: { name: 'A shared character' },
+	data: { traits: { description: 'A fictional character, preserved across sharing.' } }, isFavorite: false, createdAt: 1, updatedAt: 2 };
+
+test('incoming shares are listed without reading their bytes, retain Unicode names and import through the normal parser', async () => {
+	const json = JSON.stringify(buildSillyTavernCard(sharedCharacter, [], 'all'));
+	const h = harness({ incoming: [{ name: '🦝 ação.json', mime: 'application/json', bytes: new TextEncoder().encode(json) }] });
+	const [item] = await h.window.ChungusAndroidClient.incomingFiles();
+	expect(h.messages.map(message => message.type)).toEqual(['incoming.list']);
+	const file = await h.window.ChungusAndroidClient.readIncomingFile(item);
+	expect(file.name).toBe('🦝 ação.json');
+	expect(await file.text()).toBe(json);
+	const imported = await importSillyTavernCard(file);
+	expect(imported.character.name).toBe(sharedCharacter.identity.name);
+	expect(imported.character.traits.description).toBe(sharedCharacter.data.traits.description);
+	expect(await h.window.ChungusAndroidClient.incomingFiles()).toHaveLength(1);
+	await h.window.ChungusAndroidClient.removeIncomingFile(item.id);
+	expect(await h.window.ChungusAndroidClient.incomingFiles()).toHaveLength(0);
+	await expect(h.window.ChungusAndroidClient.readIncomingFile(item)).rejects.toThrow('no longer available');
+});
+
+test('incoming large files reassemble exactly and reject invalid lengths before allocating', async () => {
+	const bytes = Uint8Array.from({ length: 160000 }, (_, i) => i % 256);
+	const h = harness({ incoming: [{ name: 'character.png', mime: 'image/png', bytes }] });
+	const [item] = await h.window.ChungusAndroidClient.incomingFiles();
+	const file = await h.window.ChungusAndroidClient.readIncomingFile(item);
+	expect(Buffer.from(await file.arrayBuffer())).toEqual(Buffer.from(bytes));
+	expect(h.messages.filter(m => m.type === 'incoming.read').map(m => m.offset)).toEqual([0, 49152, 98304, 147456]);
+	await expect(h.window.ChungusAndroidClient.readIncomingFile({ ...item, size: 0 })).rejects.toThrow('Invalid shared file size');
+	await expect(h.window.ChungusAndroidClient.readIncomingFile({ ...item, size: 129 * 1024 * 1024 })).rejects.toThrow('Invalid shared file size');
+});
+
+test('shared PNG exports use the same card metadata and original portrait as saved PNG exports', async () => {
+	const h = harness(), previousWindow = globalThis.window, previousFetch = globalThis.fetch;
+	globalThis.window = h.window;
+	const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5xkAAAAASUVORK5CYII=', 'base64');
+	globalThis.fetch = (async () => new Response(png, { headers: { 'content-type': 'image/png' } })) as typeof fetch;
+	try {
+		const entry = { ...sharedCharacter, identity: { ...sharedCharacter.identity, imageUrl: 'images/characters/test.png' } };
+		await exportEntryAsSillyTavern(entry, [], 'all', { format: 'png', schema: 'v3', destination: 'share' });
+		expect(h.messages[0].type).toBe('share.begin');
+		expect(h.saved).toHaveLength(0);
+		const imported = await importSillyTavernCard(new File([h.shared[0]], 'character.png', { type: 'image/png' }));
+		expect(imported.character.name).toBe(entry.identity.name);
+		expect(imported.character.traits.description).toBe(entry.data.traits.description);
+		expect(Buffer.from(await imported.imageFile!.arrayBuffer())).toEqual(png);
+	} finally {
+		globalThis.fetch = previousFetch;
+		if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
+	}
+});
+
+test('browsers and older APKs never silently download a file requested for native sharing', async () => {
+	let builds = 0;
+	await expect(saveGeneratedDownload('character.json', 'application/json', async () => { builds++; return new Blob(['{}']); }, 'share')).rejects.toThrow('Update the Android app');
+	expect(builds).toBe(0);
+});
 
 test('native lifecycle exposes current foreground state and signals only changes', () => {
 	const h = harness(), changes: boolean[] = [];

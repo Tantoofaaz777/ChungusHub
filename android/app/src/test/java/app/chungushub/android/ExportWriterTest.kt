@@ -29,4 +29,12 @@ class ExportWriterTest {
         assertThrows(IllegalArgumentException::class.java) { ExportWriter(ByteArrayOutputStream(), -1).append(0, encoded(ByteArray(49153))) }
         writer.close()
     }
+    @Test fun unknownSizeSharesStillHaveAHardByteLimit() {
+        val output = ByteArrayOutputStream()
+        val writer = ExportWriter(output, -1, 3)
+        writer.append(0, encoded(byteArrayOf(1, 2)))
+        assertThrows(IllegalArgumentException::class.java) { writer.append(2, encoded(byteArrayOf(3, 4))) }
+        assertArrayEquals(byteArrayOf(1, 2), output.toByteArray())
+        writer.close()
+    }
 }

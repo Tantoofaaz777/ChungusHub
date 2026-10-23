@@ -17,6 +17,7 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { messageStore } from '$lib/stores/messages.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
+	import { canPinChatShortcut, pinChatShortcut } from '$lib/services/android-client';
 	import { inputDraftStore } from '$lib/stores/inputDraft.svelte';
 	import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
 	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
@@ -132,6 +133,16 @@
 	function handleOpenChats() {
 		menuOpen = false;
 		uiStore.openChats();
+	}
+
+	let shortcutBusy = $state(false);
+	async function addChatShortcut() {
+		const chat = chatStore.activeChat;
+		if (!chat || shortcutBusy) return;
+		menuOpen = false; shortcutBusy = true;
+		try { await pinChatShortcut(chat.id, chat.title); }
+		catch (error) { toastStore.failed('create the chat shortcut', error); }
+		finally { shortcutBusy = false; }
 	}
 
 	// Another chat with this story's character, greeting and all: the Chats panel's own
@@ -965,6 +976,13 @@
 									<Icon name="chat" class="w-4 h-4" />
 									Chats
 								</button>
+								{#if canPinChatShortcut()}
+									<button type="button" class="composer-menu-item" disabled={shortcutBusy || !chatStore.activeChat}
+										onclick={addChatShortcut}>
+										<Icon name="pin" class="w-4 h-4" />
+										Add to home screen
+									</button>
+								{/if}
 								<!-- Directly under Chats: this is that panel's own New chat button
 								     surfaced as a shortcut, so it reads as one beside the row that
 								     opens the panel. -->

@@ -21,7 +21,7 @@ import {
 	sanitizeFilename,
 	saveGeneratedDownload
 } from '$lib/services/libraryExport';
-import type { ExportedLibraryEntry } from '$lib/services/libraryExport';
+import type { ExportedLibraryEntry, ExportDestination } from '$lib/services/libraryExport';
 import { buildTextChunk, encodeBase64Utf8, insertTextChunk } from '$lib/services/pngText';
 import { createZip, type ZipEntry } from '$lib/services/zip';
 import type { CardAsset, CharacterCardV3 } from '$lib/types/character-card';
@@ -203,6 +203,7 @@ export function buildCharacterCardV3(entry: LibraryEntry, versions: CharacterVer
 /** Container, schema and linked books selected for an export. */
 export interface ExportOptions {
 	format: ExportFormat;
+	destination?: ExportDestination;
 	/** V2 remains available for older readers; the export dialog defaults to V3. */
 	schema?: CardSchema;
 	lorebooks?: Lorebook[];
@@ -287,7 +288,7 @@ export async function exportEntryAsSillyTavern(
 	await saveGeneratedDownload(`${exportBaseName(entry)}.${opts.format}`, mime, async () => {
 		const file = await buildSillyTavernCardFile(entry, versions, selection, opts.format, opts);
 		return new Blob([file.data as BlobPart], { type: file.mime });
-	});
+	}, opts.destination);
 }
 
 /** Export several cards in a ZIP, including every character version. */
@@ -302,7 +303,7 @@ export async function exportEntriesAsSillyTavernZip(
 			files.push(...(await buildCharacterFiles(entry, versions, 'all', opts, usedBases)));
 		}
 		return createZip(files);
-	});
+	}, opts.destination);
 }
 
 /** One card per character in a bulk archive; V3 assets travel inside the card. */

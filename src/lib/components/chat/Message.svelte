@@ -22,6 +22,7 @@
 	import { renderedHtml } from '$lib/actions/renderedHtml';
 	import { editOnDoublePress } from '$lib/actions/editOnDoublePress';
 	import { copyText } from '$lib/utils/clipboard';
+	import { canShareNativeText, shareNativeText } from '$lib/services/android-client';
 	import { previewContinuation } from '$lib/utils/continuation';
 	import { displaySelfRefs } from '$lib/macros';
 	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
@@ -694,6 +695,7 @@
 									onEdit={handleEditClick}
 									onDelete={handleDeleteClick}
 									onCopy={handleCopy}
+									onShare={canShareNativeText() ? () => shareNativeText(streamReplacement ? displayedContent : message.content) : undefined}
 									onToggleBookmark={toggleBookmark}
 									bookmarked={!!message.isBookmarked}
 									{bookmarkBusy}
