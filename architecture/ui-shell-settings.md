@@ -4,7 +4,7 @@
 
 At `min-width: 64rem` with a fine pointer and hover, `viewport.desktopLayout` moves the existing TitleBar into a vertical rail. Touch-first devices and narrower windows keep the top bar and overlay layout. AppShell's body retains the same banners and Workspace instance when switching layouts, so chat drafts, streaming and scroll are not recreated.
 
-The desktop rail places Preset Controls, Memory, Threads, Prompt Debug and Library at the top, with Home and Settings at the bottom. The rendered DOM follows that order for keyboard navigation. The mobile top bar keeps its original grouping and order.
+The desktop rail places Preset Controls, Memory, Threads and Prompt Debug at the top, with Home, Library and Settings at the bottom, in that order. The rendered DOM follows that order for keyboard navigation. The mobile top bar keeps its original grouping and order.
 
 On this desktop layout, all tools share `Workspace`'s `workspace-panels` dock, including Chats, Preset Controls, Memory, Threads, Settings, Library editors and the prompt inspector. `uiStore.setSinglePanel(true)` makes them mutually exclusive even if an older layout left pins enabled. The existing unsaved-entry navigation guard still applies. The Library's shelf keeps ownership of that guard while its editor replaces its visible surface. Settings uses drill-down inside the same dock. The earlier pin and split-view rules below apply only to the legacy layout. A desktop dock closes through its toggle, navigation or Escape; interacting with the chat does not dismiss it.
 

@@ -176,10 +176,10 @@
 			<div class="nav-group nav-group-tools">
 				{@render toolButtons()}
 				{@render debugButton()}
-				{@render libraryButton()}
 			</div>
 			<div class="nav-group nav-group-bottom">
 				{@render homeButton()}
+				{@render libraryButton()}
 				{@render settingsButton()}
 			</div>
 		{:else}
