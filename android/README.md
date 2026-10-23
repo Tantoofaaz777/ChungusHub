@@ -43,6 +43,12 @@ oculta; ao voltar, verifica o socket existente ou reconecta imediatamente se ele
 Gerações continuam na VPS e são retomadas sem enviar uma segunda solicitação. Essa melhoria
 também exige atualizar a interface na VPS. O Android ainda pode suspender a rede em segundo plano.
 
+Na versão 0.1.4, os botões de copiar usam a área de transferência nativa do Android.
+O app só confirma a cópia depois de gravar e conferir o próprio texto, sem depender
+da confirmação da API do WebView. Textos longos são enviados em blocos com confirmação;
+falhas e falta de resposta aparecem como erro. É necessário instalar o APK novo e
+atualizar a interface na VPS. APKs anteriores continuam usando a cópia do navegador.
+
 ## Abrir no Android Studio
 
 Abra esta pasta `android/` como projeto. O Gradle usa JDK 21 (critério declarado em

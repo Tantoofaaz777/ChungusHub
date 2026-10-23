@@ -337,7 +337,7 @@
 				if (showRegenerate) void handleRegenerateClick();
 				break;
 			case 'c':
-				void handleCopy();
+				void handleCopy().catch(error => toastStore.failed('copy the message', error));
 				break;
 			case 'delete':
 			case 'backspace':

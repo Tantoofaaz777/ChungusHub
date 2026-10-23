@@ -7,6 +7,8 @@ declare global {
 			back(): boolean;
 			/** Available since APK 0.1.3; independent of delayed WebView visibility events. */
 			readonly foreground?: boolean;
+			/** Available since APK 0.1.4; resolves after Android verifies its own write. */
+			copyText?(text: string): Promise<void>;
 			/** Available since APK 0.1.2: choose the destination before building the file. */
 			save?(filename: string, mime: string, build: () => Promise<Blob>): Promise<void>;
 		};

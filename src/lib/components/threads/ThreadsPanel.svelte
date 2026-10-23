@@ -32,6 +32,9 @@
 
 	let removing = $state<ThreadsRound | null>(null);
 	let resetting = $state<{ chatId: string; rounds: { id: string; revision: number }[] } | null>(null);
+	let copying = $state(false);
+	let copiedFeed = $state<string | null>(null);
+	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => { if (resetting && resetting.chatId !== store.chatId) resetting = null; });
 	const viewedRound = $derived(store.rounds.find(round => round.id === store.viewedRoundId) ?? store.rounds.at(-1));
 	let notesOpen = $state(false);
@@ -90,10 +93,20 @@
 			void store.flushNotes().catch(() => {});
 		});
 	});
-	onDestroy(() => { clearTouch(); if (suppressTimer) clearTimeout(suppressTimer); void store.flushNotes().catch(() => {}); });
+	onDestroy(() => { clearTouch(); if (suppressTimer) clearTimeout(suppressTimer); clearTimeout(copiedTimer); void store.flushNotes().catch(() => {}); });
 	async function copy(round: ThreadsRound) {
-		try { await copyText(serializeFeedAsPlainText(activeThreadsFeed(round))); toastStore.success('Thread copied.'); }
+		if (copying) return;
+		clearTimeout(copiedTimer);
+		copiedFeed = null;
+		copying = true;
+		const key = `${round.id}/${round.activeVersionId}`;
+		try {
+			await copyText(serializeFeedAsPlainText(activeThreadsFeed(round)));
+			copiedFeed = key;
+			copiedTimer = setTimeout(() => copiedFeed = null, 1500);
+		}
 		catch (error) { toastStore.failed('copy the thread', error); }
+		finally { copying = false; }
 	}
 	function swipe(round: ThreadsRound, direction: -1 | 1) {
 		const index = round.versions.findIndex(v => v.id === round.activeVersionId), next = round.versions[index + direction];
@@ -136,10 +149,11 @@
 					{#each viewedRound ? [viewedRound] : [] as round (round.id)}
 						{@const feed = activeThreadsFeed(round)}
 						{@const versionIndex = round.versions.findIndex(v => v.id === round.activeVersionId)}
+						{@const copied = copiedFeed === `${round.id}/${round.activeVersionId}`}
 						<article class="feed-card">
 							<div class="round-info"><span>{round.label || `Thread ${store.rounds.indexOf(round) + 1}`} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its full scene is not on the current branch.">Outside this branch</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
 							<div class="feed-actions">
-								<div class="actions"><button class="icon-btn" aria-label="Copy thread" title="Copy thread" onclick={() => copy(round)}><Icon name="copy" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy || !!store.pending || !featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)} aria-label="Generate another version" title="Generate another version" onclick={() => store.generate(round)}><Icon name="refresh" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy} aria-label="Delete thread" title="Delete thread" onclick={() => removing = round}><Icon name="trash" class="w-4 h-4" /></button></div>
+								<div class="actions"><button type="button" class="icon-btn" disabled={copying} aria-busy={copying} aria-label="Copy thread" title={copied ? 'Copied!' : 'Copy thread'} onclick={() => copy(round)}><Icon name={copied ? 'check' : 'copy'} class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy || !!store.pending || !featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)} aria-label="Generate another version" title="Generate another version" onclick={() => store.generate(round)}><Icon name="refresh" class="w-4 h-4" /></button><button class="icon-btn" disabled={store.busy} aria-label="Delete thread" title="Delete thread" onclick={() => removing = round}><Icon name="trash" class="w-4 h-4" /></button></div>
 								<div class="actions"><button class="icon-btn" disabled={store.busy || versionIndex === 0} aria-label="Previous thread version" onclick={() => swipe(round,-1)}><Icon name="chevronLeft" class="w-4 h-4" /></button><span class="version">{versionIndex + 1} / {round.versions.length}</span><button class="icon-btn" disabled={store.busy || !!store.pending || (versionIndex === round.versions.length - 1 && (!featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)))} aria-label={versionIndex === round.versions.length - 1 ? 'Generate another thread version' : 'Next thread version'} onclick={() => swipe(round,1)}><Icon name="chevronRight" class="w-4 h-4" /></button></div>
 							</div>
 							<section class="feed-post">

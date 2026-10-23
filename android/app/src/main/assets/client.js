@@ -3,21 +3,45 @@
   if (window.top !== window || !window.ChungusNative || window.ChungusAndroidClient) return;
   let nextId = 0;
   let foreground = document.visibilityState !== 'hidden';
+  let copying = false;
   const pending = new Map(), blobs = new Map();
   const native = window.ChungusNative;
   native.onmessage = event => {
     const message = JSON.parse(event.data), entry = pending.get(message.id);
     if (!entry) return;
     pending.delete(message.id);
-    message.ok ? entry.resolve(message) : entry.reject(new Error(message.error || 'Export failed'));
+    clearTimeout(entry.timer);
+    message.ok ? entry.resolve(message) : entry.reject(new Error(message.error || 'Native operation failed'));
   };
-  function request(type, data = {}) {
+  function request(type, data = {}, timeout = 0) {
     return new Promise((resolve, reject) => {
       const id = String(++nextId);
-      pending.set(id, { resolve, reject });
+      const timer = timeout ? setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('Android did not confirm the copy. Please try again.'));
+      }, timeout) : undefined;
+      pending.set(id, { resolve, reject, timer });
       try { native.postMessage(JSON.stringify({ ...data, id, type })); }
-      catch (error) { pending.delete(id); reject(error); }
+      catch (error) { clearTimeout(timer); pending.delete(id); reject(error); }
     });
+  }
+
+  async function copyText(text) {
+    if (typeof text !== 'string' || !text.length || text.length > 1000000) throw Error('The text is empty or too large to copy.');
+    if (copying) throw Error('Another copy is in progress.');
+    copying = true;
+    let transfer;
+    try {
+      transfer = (await request('clipboard.begin', { size: text.length }, 5000)).transfer;
+      // Even JSON's worst-case escaping stays below the native 100,000-character limit.
+      for (let offset = 0; offset < text.length; offset += 8192) {
+        await request('clipboard.chunk', { transfer, offset, text: text.slice(offset, offset + 8192) }, 5000);
+      }
+      await request('clipboard.end', { transfer }, 5000);
+    } catch (error) {
+      if (transfer) await request('clipboard.abort', { transfer }, 1000).catch(() => {});
+      throw error;
+    } finally { copying = false; }
   }
   const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
   URL.createObjectURL = blob => { const url = create(blob); if (blob instanceof Blob) blobs.set(url, blob); return url; };
@@ -97,6 +121,7 @@
       window.dispatchEvent(new Event('chungus-android-lifecycle'));
     },
     settings: () => request('settings'),
+    copyText,
     download,
     save,
     back: () => {

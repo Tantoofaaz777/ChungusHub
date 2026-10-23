@@ -6,11 +6,14 @@ import { exportEntryAsSillyTavern } from './sillyTavernExport';
 import { importSillyTavernCard } from './sillyTavernImport';
 import type { LibraryEntry } from '$lib/types/library';
 import { saveGeneratedDownload } from './libraryExport';
+import { copyText } from '$lib/utils/clipboard';
 
 const script = readFileSync(new URL('../../../android/app/src/main/assets/client.js', import.meta.url), 'utf8');
-function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean; holdPicker?: boolean } = {}) {
+function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean; holdPicker?: boolean; failCopy?: boolean; holdCopy?: boolean; dropCopy?: boolean } = {}) {
 	let browserClicks = 0, objectId = 0;
 	let pickerReply: (() => void) | undefined;
+	let copyReply: (() => void) | undefined;
+	let copiedText = '', copyBuffer = '';
 	const messages: any[] = [], saved: Buffer[] = [], chunks: Buffer[] = [], revoked: string[] = [];
 	const events = new Map<string, (event: any) => void>();
 	class Anchor {
@@ -30,6 +33,17 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 		const message = JSON.parse(text); messages.push(message);
 		const respond = () => {
 			let response: any = { id: message.id, ok: true };
+			if (message.type === 'clipboard.begin') { copyBuffer = ''; response.transfer = 'clipboard'; }
+			if (message.type === 'clipboard.chunk') {
+				expect(message.offset).toBe(copyBuffer.length);
+				expect(message.text.length).toBeLessThanOrEqual(8192);
+				expect(text.length).toBeLessThanOrEqual(100000);
+				copyBuffer += message.text;
+			}
+			if (message.type === 'clipboard.end') {
+				if (options.failCopy) response = { ...response, ok: false, error: 'Android refused the copy' };
+				else copiedText = copyBuffer;
+			}
 			if (message.type === 'export.begin') response = options.cancel ? { ...response, ok: false, error: 'cancelled' } : { ...response, transfer: 'file' };
 			if (message.type === 'export.chunk') {
 				if (options.failChunk) response = { ...response, ok: false, error: 'Disk full' };
@@ -41,17 +55,21 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 			if (message.type === 'export.end') saved.push(Buffer.concat(chunks));
 			window.ChungusNative.onmessage({ data: JSON.stringify(response) });
 		};
-		if (message.type === 'export.begin' && options.holdPicker) pickerReply = respond;
+		if (message.type === 'clipboard.begin' && options.dropCopy) return;
+		if (message.type === 'clipboard.end' && options.holdCopy) copyReply = respond;
+		else if (message.type === 'export.begin' && options.holdPicker) pickerReply = respond;
 		else queueMicrotask(respond);
 	} };
 	let fetches = 0;
 	const bytes = Uint8Array.from({ length: 160000 }, (_, i) => i % 256);
 	runInNewContext(script, { window, location: { href: 'https://chungus.test/', origin: 'https://chungus.test' }, URL: BrowserURL,
-		Blob, HTMLAnchorElement: Anchor, Element: Anchor, Event: class { constructor(public type: string) {} }, KeyboardEvent: class {}, btoa,
+		Blob, HTMLAnchorElement: Anchor, Element: Anchor, Event: class { constructor(public type: string) {} }, KeyboardEvent: class {}, btoa, setTimeout, clearTimeout,
 		document: { addEventListener: (type: string, fn: (event: any) => void) => events.set(type, fn) },
 		fetch: async (_url: string, init: RequestInit) => { fetches++; expect(init.credentials).toBe('same-origin'); return new Response(bytes); }
 	});
 	return { window, messages, saved, bytes, revoked, Anchor, BrowserURL, events,
+		get copiedText() { return copiedText; },
+		confirmCopy() { if (!copyReply) throw Error('No copy to confirm'); copyReply(); copyReply = undefined; },
 		chooseDestination() { if (!pickerReply) throw new Error('Picker has not opened'); pickerReply(); pickerReply = undefined; },
 		get browserClicks() { return browserClicks; }, get fetches() { return fetches; } };
 }
@@ -64,6 +82,42 @@ test('browser builds do not install Android navigation hooks', () => {
 	expect(isAndroidClient()).toBe(false);
 	expect(() => installAndroidBack(() => true)()).not.toThrow();
 });
+
+test('native copy preserves long Unicode and escaped text and waits for the final acknowledgement', async () => {
+	const h = harness({ holdCopy: true });
+	const previousWindow = globalThis.window;
+	globalThis.window = h.window;
+	try {
+		const text = ('🦝 ação, 日本語, "quotes" \\ tabs\t\n\n' + '\u0001'.repeat(100)).repeat(1000);
+		let done = false;
+		const copying = copyText(text).then(() => { done = true; });
+		await until(() => h.messages.at(-1)?.type === 'clipboard.end');
+		expect(done).toBe(false);
+		expect(h.copiedText).toBe('');
+		await expect(copyText('A concurrent copy')).rejects.toThrow('Another copy is in progress');
+		h.confirmCopy();
+		await copying;
+		expect(done).toBe(true);
+		expect(h.copiedText).toBe(text);
+		expect(h.messages[0]).toMatchObject({ type: 'clipboard.begin', size: text.length });
+	} finally {
+		if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
+	}
+});
+
+test('native clipboard errors reject, abort and never report browser success', async () => {
+	const h = harness({ failCopy: true });
+	await expect(h.window.ChungusAndroidClient.copyText('Keep my text')).rejects.toThrow('Android refused the copy');
+	expect(h.copiedText).toBe('');
+	expect(h.messages.map(m => m.type)).toEqual(['clipboard.begin', 'clipboard.chunk', 'clipboard.end', 'clipboard.abort']);
+	await expect(h.window.ChungusAndroidClient.copyText('Retry')).rejects.toThrow('Android refused the copy');
+	await expect(h.window.ChungusAndroidClient.copyText('')).rejects.toThrow('empty or too large');
+});
+
+test('a missing Android clipboard acknowledgement rejects instead of leaving the button stuck', async () => {
+	const h = harness({ dropCopy: true });
+	await expect(h.window.ChungusAndroidClient.copyText('test')).rejects.toThrow('Android did not confirm');
+}, 7000);
 
 test('native lifecycle exposes current foreground state and signals only changes', () => {
 	const h = harness(), changes: boolean[] = [];

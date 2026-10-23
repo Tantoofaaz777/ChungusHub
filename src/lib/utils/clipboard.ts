@@ -1,25 +1,35 @@
-/**
- * The app's only way to put text on the clipboard.
- *
- * `navigator.clipboard` exists in a secure context and nowhere else, and a phone
- * reaching this server over the LAN is on plain http. The modern API is therefore
- * missing exactly where copying is hardest to work around. The selection path below
- * is the one that still works there.
- *
- * This throws when the text did not reach the clipboard. Every caller that shows a
- * "copied" state must await it and only flip that state on success: a checkmark over
- * an empty clipboard is worse than a button that visibly failed.
+import { isAndroidClient } from '$lib/services/android-client';
+
+/** The app's only clipboard writer. Callers must await it before showing success.
+ * Android confirms a native write; browsers use their Clipboard API, with a selection
+ * fallback both on plain HTTP and when the modern API refuses permission or focus.
+ * Never read a browser clipboard just to verify: that requires a separate permission.
  */
 export async function copyText(text: string): Promise<void> {
-	if (navigator.clipboard) {
-		await navigator.clipboard.writeText(text);
+	if (!text.length) throw new Error('There is no text to copy.');
+	if (isAndroidClient() && window.ChungusAndroidClient?.copyText) {
+		// A native failure must reach the UI, not become a WebView's false success.
+		await window.ChungusAndroidClient.copyText(text);
 		return;
 	}
+	try {
+		if (navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(text);
+			return;
+		}
+	} catch { /* The browser may still permit copying the selected text. */ }
 	if (!selectionCopy(text)) throw new Error('This browser refused the copy.');
 }
 
 /** `execCommand('copy')` over a throwaway textarea, the pre-secure-context path. */
 function selectionCopy(text: string): boolean {
+	const previous = document.activeElement as HTMLElement | null;
+	const selection = window.getSelection();
+	const ranges = selection ? Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i).cloneRange()) : [];
+	const input = previous instanceof HTMLInputElement || previous instanceof HTMLTextAreaElement ? previous : null;
+	const caret = input && input.selectionStart !== null
+		? { start: input.selectionStart, end: input.selectionEnd!, direction: input.selectionDirection ?? undefined }
+		: null;
 	const field = document.createElement('textarea');
 	field.value = text;
 	// Off-screen rather than hidden: a display:none or visibility:hidden node holds no
@@ -29,8 +39,10 @@ function selectionCopy(text: string): boolean {
 	// Read-only keeps the on-screen keyboard down. iOS is the exception: it selects
 	// nothing in a read-only field and needs an editable one with an explicit range.
 	field.readOnly = true;
-	document.body.appendChild(field);
+	// A native modal makes the rest of the document inert, including body children.
+	(document.querySelector('dialog[open]:not([inert])') ?? document.body).appendChild(field);
 	try {
+		field.focus({ preventScroll: true });
 		if (/iP(ad|hone|od)/.test(navigator.userAgent)) {
 			field.readOnly = false;
 			field.contentEditable = 'true';
@@ -42,9 +54,20 @@ function selectionCopy(text: string): boolean {
 			field.setSelectionRange(0, text.length);
 		} else {
 			field.select();
+			field.setSelectionRange(0, text.length);
 		}
 		return document.execCommand('copy');
 	} finally {
 		field.remove();
+		if (selection) {
+			selection.removeAllRanges();
+			for (const range of ranges) selection.addRange(range);
+		}
+		if (previous?.isConnected && !previous.closest('[inert]')) {
+			previous.focus({ preventScroll: true });
+			// Restoring a document range can reset a field's caret in Chromium.
+			// Restore the input selection last, after both document selection and focus.
+			if (input && caret) input.setSelectionRange(caret.start, caret.end, caret.direction);
+		}
 	}
 }

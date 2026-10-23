@@ -3,6 +3,8 @@ package app.chungushub.android
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Color
 import android.net.Uri
 import android.net.http.SslError
@@ -53,6 +55,12 @@ class MainActivity : ComponentActivity() {
     private var imeVisible = false
     private var backPending = false
     private var activityResumed = false
+    private val clipboard = ClipboardTransfer { text ->
+        check(activityResumed && hasWindowFocus()) { "Return to Chungus and try copying again." }
+        val manager = getSystemService(ClipboardManager::class.java)
+        manager.setPrimaryClip(ClipData.newPlainText("Chungus", text))
+        check(manager.primaryClip?.getItemAt(0)?.text?.toString() == text) { "Android did not retain the copied text." }
+    }
     private val preferences by lazy { getSharedPreferences("server", MODE_PRIVATE) }
 
     private val chooseFile = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -119,6 +127,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         hideKeyboard()
+        clipboard.cancel()
         exports.cancel()
         chooserCallback?.onReceiveValue(null); chooserCallback = null
         browser?.let { (it.parent as FrameLayout).removeView(it); it.destroy() }
@@ -178,6 +187,7 @@ class MainActivity : ComponentActivity() {
                 return true
             }
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                clipboard.cancel()
                 exports.cancel()
                 progress.visibility = View.VISIBLE
             }
@@ -204,6 +214,7 @@ class MainActivity : ComponentActivity() {
                     .setNegativeButton("Cancel") { _, _ -> handler.cancel() }.setOnCancelListener { handler.cancel() }.show()
             }
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                clipboard.cancel()
                 exports.cancel()
                 (view.parent as? FrameLayout)?.removeView(view)
                 if (browser === view) browser = null
@@ -256,6 +267,26 @@ class MainActivity : ComponentActivity() {
         when (val type = message.optString("type")) {
             "settings" -> { showSetup(); reply(true, "", null) }
             "notice" -> { toast(message.optString("message").take(180)); reply(true, "", null) }
+            "clipboard.begin", "clipboard.chunk", "clipboard.end", "clipboard.abort" -> {
+                try {
+                    check(activityResumed && hasWindowFocus()) { "Return to Chungus and try copying again." }
+                    val transfer = message.optString("transfer")
+                    when (type) {
+                        "clipboard.begin" -> {
+                            val started = clipboard.begin(message.getInt("size"))
+                            reply(true, "", started)
+                            return
+                        }
+                        "clipboard.chunk" -> clipboard.append(transfer, message.getInt("offset"), message.getString("text"))
+                        "clipboard.end" -> clipboard.finish(transfer)
+                        "clipboard.abort" -> clipboard.abort(transfer)
+                    }
+                    reply(true, "", null)
+                } catch (_: Exception) {
+                    clipboard.abort(message.optString("transfer"))
+                    reply(false, "Could not copy the text. Return to Chungus and try again.", null)
+                }
+            }
             "export.begin" -> exports.begin(message, reply)
             "export.chunk", "export.end", "export.abort" -> exports.handle(type, message, reply)
             else -> reply(false, "Unknown operation.", null)
@@ -298,6 +329,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onPause() {
         activityResumed = false
+        clipboard.cancel()
         updatePageLifecycle()
         browser?.onPause()
         CookieManager.getInstance().flush()
@@ -310,6 +342,7 @@ class MainActivity : ComponentActivity() {
         updatePageLifecycle()
     }
     override fun onDestroy() {
+        clipboard.cancel()
         chooserCallback?.onReceiveValue(null); chooserCallback = null
         exports.close()
         browser?.let { (it.parent as? FrameLayout)?.removeView(it); it.destroy() }; browser = null

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import { onDestroy } from 'svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 
 	interface Props {
@@ -56,18 +57,26 @@
 	}: Props = $props();
 
 	let justCopied = $state(false);
+	let copying = $state(false);
+	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+	onDestroy(() => clearTimeout(copiedTimer));
 
 	// The checkmark waits for the copy: claiming it over an empty clipboard sends the
 	// user off to paste nothing.
 	async function handleCopy() {
+		if (copying) return;
+		clearTimeout(copiedTimer);
+		justCopied = false;
+		copying = true;
 		try {
 			await onCopy();
+			justCopied = true;
+			copiedTimer = setTimeout(() => (justCopied = false), 1500);
 		} catch {
 			toastStore.error('Copy failed. Select the text and copy it by hand.');
-			return;
+		} finally {
+			copying = false;
 		}
-		justCopied = true;
-		setTimeout(() => (justCopied = false), 1500);
 	}
 </script>
 
@@ -88,6 +97,8 @@
 		type="button"
 		class="action-btn"
 		onclick={handleCopy}
+		disabled={copying}
+		aria-busy={copying}
 		aria-label="Copy message"
 		title={justCopied ? 'Copied!' : 'Copy'}
 	>
