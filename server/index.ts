@@ -4,8 +4,9 @@
  * One process: serves the built PWA, exposes the DB/files/LLM API over HTTP,
  * and runs a WebSocket for live cross-device sync and LLM token streaming.
  */
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { serveStaticAsset } from './static';
+import { renderUnlockPage } from './unlock-page';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import type { ServerWebSocket } from 'bun';
@@ -499,50 +500,15 @@ document.getElementById('cancel').addEventListener('click', () => {
 	return new Response(html, { status: 503, headers: htmlHeaders(null) });
 }
 
-/** The password gate for devices without a valid session. Same look as forbidden(). */
+/** App artwork only, embedded because locked devices cannot fetch static assets yet. */
+let unlockMark: string | null | undefined;
+
 function loginPage(host: string | null, status = 200): Response {
-	const html = `<!doctype html><html lang="en"><head><meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Unlock · ChungusHub</title>
-<style>
-  html,body{height:100%;margin:0}
-  body{display:grid;place-items:center;background:#1a1714;color:#e7e2da;
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:1.5rem}
-  .card{max-width:26rem;width:100%;text-align:center;background:#221e1a;border:1px solid #3a342d;
-    border-radius:16px;padding:2rem 1.6rem;box-shadow:0 20px 60px rgba(0,0,0,.45)}
-  h1{font-size:1.2rem;margin:0 0 .6rem}
-  p{margin:.4rem 0 1rem;line-height:1.5;color:#b8b0a4;font-size:.92rem}
-  form{display:flex;gap:.5rem}
-  input{flex:1;min-width:0;padding:.6rem .8rem;border-radius:10px;border:1px solid #3a342d;
-    background:#15120f;color:#e7e2da;font-size:1rem}
-  input:focus{outline:none;border-color:#f0a868}
-  button{padding:.6rem 1rem;border-radius:10px;border:0;background:#f0a868;color:#1a1714;
-    font-weight:600;font-size:.95rem;cursor:pointer}
-  .err{color:#d97b6c;font-size:.85rem;min-height:1.2em;margin:.6rem 0 0}
-</style></head><body><div class="card">
-  <h1>ChungusHub is locked</h1>
-  <p>Enter the password to use this device.</p>
-  <form id="f"><input id="pw" type="password" autocomplete="current-password" autofocus />
-  <button type="submit">Unlock</button></form>
-  <p class="err" id="err"></p>
-</div>
-<script>
-  document.getElementById('f').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const err = document.getElementById('err');
-    err.textContent = '';
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password: document.getElementById('pw').value })
-    });
-    if (res.ok) { location.replace('/'); return; }
-    err.textContent = res.status === 429
-      ? 'Too many attempts. Wait 30 seconds.'
-      : 'Wrong password.';
-  });
-</script></body></html>`;
-	return new Response(html, { status, headers: htmlHeaders(host) });
+	if (unlockMark === undefined) {
+		try { unlockMark = readFileSync(join(CLIENT_DIR, 'icons', 'icon-192.png')).toString('base64'); }
+		catch { unlockMark = null; } // Still usable before the client is built.
+	}
+	return new Response(renderUnlockPage(unlockMark), { status, headers: htmlHeaders(host) });
 }
 
 // ===== API =====

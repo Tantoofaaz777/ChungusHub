@@ -273,7 +273,13 @@ describe('password authentication through a local tunnel', () => {
 			const page = await exchange('GET', '/', visitor);
 			expect(page.status).toBe(302);
 			expect(page.headers.location).toBe('/unlock');
-			expect((await exchange('GET', '/unlock', visitor)).status).toBe(200);
+			const unlock = await exchange('GET', '/unlock', visitor);
+			expect(unlock.status).toBe(200);
+			// This page must work before any app asset is accessible. Native submission
+			// must never put the password in the URL, even if JavaScript is unavailable.
+			expect(unlock.body).toMatch(/<form\b[^>]*method="post"/);
+			expect(unlock.body).not.toMatch(/<(?:script|link)\b[^>]*(?:src|href)="\//);
+			expect(unlock.body).not.toMatch(/<img\b[^>]*src="(?!data:)/);
 			// Even a proxy that reports loopback must not exempt a public host.
 			expect((await exchange('GET', '/api/config', { ...visitor, 'X-Forwarded-For': '127.0.0.1' })).status).toBe(401);
 			expect(await socketOpens({ 'X-Forwarded-For': visitor['X-Forwarded-For'] })).toBe(false);
