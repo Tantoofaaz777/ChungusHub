@@ -270,14 +270,23 @@ export function lorebookWokenBy(recursion: ResolvedRecursion): LorebookWokenBy {
 // ===== where an entry lands =====
 
 /**
- * SillyTavern's `position` enum, carried verbatim. Only two of its eight values name a place
- * this app has: 4 puts the entry at a depth inside the chat, and every other value puts it in
- * the `{{lorebook}}` block the preset placed. The other six describe SillyTavern's own prompt
- * skeleton (its author's note, its example-message block), which we do not have; they survive
- * a round trip untouched and read here as the block.
+ * SillyTavern's `position` enum, carried verbatim. 4 puts an entry at a chat depth; 7 is an
+ * exclusive named outlet. Other values join the `{{lorebook}}` block, including foreign
+ * structural positions that survive round trips but have no equivalent in our preset.
  */
 export const LOREBOOK_POSITION_BLOCK = 0;
 export const LOREBOOK_POSITION_AT_DEPTH = 4;
+/** Exclusive named destination, matching SillyTavern's outlet position. */
+export const LOREBOOK_POSITION_OUTLET = 7;
+
+export function normalizeLorebookOutletName(value: unknown): string {
+	return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+/** Older imported rows kept this field in rest before outlets were supported. */
+export function lorebookOutletName(entry: LorebookEntry): string {
+	return normalizeLorebookOutletName(entry.outletName ?? entry.rest?.outletName);
+}
 
 /** SillyTavern's own name for a position this app cannot place, so an imported entry says what
  *  it actually is instead of quietly reading as one of ours. */
@@ -286,8 +295,7 @@ export const ST_POSITION_NAMES: Record<number, string> = {
 	2: 'Author’s note, top (SillyTavern)',
 	3: 'Author’s note, bottom (SillyTavern)',
 	5: 'Example messages, top (SillyTavern)',
-	6: 'Example messages, bottom (SillyTavern)',
-	7: 'Outlet (SillyTavern)'
+	6: 'Example messages, bottom (SillyTavern)'
 };
 
 /** The turn role an at-depth injection wears. */
@@ -414,9 +422,11 @@ export interface LorebookEntry {
 	groupWeight?: number;
 	/** Decide this group by how many keys matched instead of by weight. */
 	useGroupScoring?: boolean | null;
-	/** Where the entry lands ({@link LOREBOOK_POSITION_BLOCK} / {@link LOREBOOK_POSITION_AT_DEPTH}
+	/** Where the entry lands (block, chat depth, {@link LOREBOOK_POSITION_OUTLET}
 	 *  and SillyTavern's own structural values). Absent = the block. */
 	position?: number;
+	/** Outlet only: inserted exclusively by {{outlet::name}}, never by the normal block. */
+	outletName?: string;
 	/** At-depth only: turns back from the newest one. Absent = {@link DEFAULT_LOREBOOK_DEPTH}. */
 	depth?: number;
 	/** At-depth only: the role the injected turn wears ({@link LOREBOOK_ROLES}). Absent = system. */
@@ -429,8 +439,8 @@ export interface LorebookEntry {
 	delayUntilRecursion?: boolean | number;
 	/**
 	 * Every other SillyTavern field (characterFilter, automationId, vectorized, …), carried
-	 * verbatim so export → import in SillyTavern is lossless. Apart from the recursion flags
-	 * an older row may still hold here ({@link resolveEntryRecursion}), the app never reads these.
+	 * verbatim so export → import in SillyTavern is lossless. Older rows may still hold modelled
+	 * recursion flags or outletName here; their shared read-time resolvers provide the fallback.
 	 */
 	rest: Record<string, unknown>;
 }
@@ -654,6 +664,8 @@ export type LorebookStatus =
 	| 'disabled'
 	/** Nothing to inject. */
 	| 'empty'
+	/** Activated, but its outlet has no name or is not referenced by this prompt. */
+	| 'outletUnused'
 	/** This kind of generation is not one it fires on. */
 	| 'offTrigger'
 	/** Still held in by the window that opened when it last fired. */
@@ -696,6 +708,8 @@ export interface LorebookEntryRecord {
 	probability?: number;
 	/** Where an entry landed when it did not go into the `{{lorebook}}` block. */
 	placedAt?: { role: LorebookRole; depth: number };
+	/** The exclusive outlet that placed this entry. */
+	outlet?: string;
 	/** The group a `groupLost` entry lost, and the entry that took the slot. Without this the
 	 *  feature is invisible: the reader sees an entry that matched and did not arrive. */
 	lostTo?: { group: string; title: string };

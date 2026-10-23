@@ -66,10 +66,12 @@ import {
 	DEFAULT_LOREBOOK_DEPTH,
 	DEFAULT_LOREBOOK_GLOBAL_SETTINGS,
 	firesOnTrigger,
+	LOREBOOK_POSITION_OUTLET,
 	LOREBOOK_SCAN_FIELDS,
 	lorebookGroupsOf,
 	lorebookHistory,
 	lorebookIsAtDepth,
+	lorebookOutletName,
 	lorebookRoleOf,
 	lorebookWasInjected,
 	resolveBookActivation,
@@ -753,9 +755,10 @@ export function scanLorebooks(input: LorebookScanInput): LorebookSelection {
 	return { entries: kept, records: [...records.values()] };
 }
 
-/** The injected block, the at-depth groups, and the records rendering itself updated. */
+/** The block, named outlets, at-depth groups, and the records rendering itself updated. */
 export interface LorebookRender {
 	text: string;
+	outlets: Record<string, string>;
 	fields?: Partial<Record<'before_desc' | 'after_desc' | 'personality' | 'scenario', string>>;
 	placed: LorebookPlacedGroup[];
 	records: LorebookEntryRecord[];
@@ -773,7 +776,7 @@ export interface LorebookRender {
  * vanishing into a position nothing renders.
  *
  * With a `budget`, entries are admitted greedily in priority order (the selection's own sort)
- * against ONE shared allowance, block and at-depth together, because the budget caps all lore in
+ * against ONE shared allowance, block, outlets and at-depth together, because the budget caps all lore in
  * a prompt at once. An entry that doesn't fit is dropped and its record says so; a later,
  * smaller one may still fit. Deterministic given the same inputs, so the meters and the real
  * prompt agree on what survives.
@@ -782,16 +785,23 @@ export function renderLorebookBlock(
 	selection: LorebookSelection,
 	expand: (text: string) => string = (t) => t,
 	budget?: LorebookBudget,
-	placeAtDepth = false
+	placeAtDepth = false,
+	outletNames: ReadonlySet<string> = new Set()
 ): LorebookRender {
 	const parts: string[] = [];
+	const outlets = new Map<string, string[]>();
+	const outletByEntry = new Map(selection.entries.filter((entry) => entry.position === LOREBOOK_POSITION_OUTLET)
+		.map((entry) => [entry.id, lorebookOutletName(entry)]));
+	const unusedOutlets = new Set([...outletByEntry].filter(([, name]) => !name || !outletNames.has(name)).map(([id]) => id));
 	/** Keyed by role and depth, so entries sharing both become one turn. */
 	const groups = new Map<string, LorebookPlacedGroup & { texts: string[] }>();
 	const trimmed = new Set<string>();
 	const blank = new Set<string>();
 	const placedAt = new Map<string, { role: LorebookRole; depth: number }>();
 	const fields: NonNullable<LorebookRender['fields']> = {};
-	const contents = new Map(selection.entries.map((entry) => [entry.id, expand(expandCardCbs(entry.content)).trim()]));
+	const contents = new Map(selection.entries.filter((entry) => !unusedOutlets.has(entry.id))
+		.map((entry) => [entry.id, expand(expandCardCbs(entry.content)).trim()]));
+	const hasCardV3 = selection.entries.some((entry) => entry.cardV3 && !unusedOutlets.has(entry.id));
 	const bookSpent = new Map<string, number>();
 	const ranked = [...selection.entries].sort((a, b) =>
 		Number(!!a.v3Runtime?.ignoreOnMaxContext) - Number(!!b.v3Runtime?.ignoreOnMaxContext) ||
@@ -799,6 +809,7 @@ export function renderLorebookBlock(
 	// Select by priority, then render in insertion order. Book limits remain independent.
 	let reserved = 0;
 	for (const entry of ranked) {
+		if (unusedOutlets.has(entry.id)) continue;
 		const runtime = entry.v3Runtime;
 		const content = contents.get(entry.id)!;
 		if (!content) continue;
@@ -810,7 +821,7 @@ export function renderLorebookBlock(
 			bookCost = count(used > 0 ? `\n\n${content}` : content);
 			if (used + bookCost > runtime.bookTokenBudget) { trimmed.add(entry.id); continue; }
 		}
-		if (budget && selection.entries.some((e) => e.cardV3)) {
+		if (budget && hasCardV3) {
 			if (reserved + cost > budget.maxTokens) { trimmed.add(entry.id); continue; }
 			reserved += cost;
 		}
@@ -818,6 +829,7 @@ export function renderLorebookBlock(
 	}
 	let spent = 0;
 	for (const entry of selection.entries) {
+		if (unusedOutlets.has(entry.id)) continue;
 		if (trimmed.has(entry.id)) continue;
 		const content = contents.get(entry.id)!;
 		if (!content) {
@@ -825,20 +837,27 @@ export function renderLorebookBlock(
 			blank.add(entry.id);
 			continue;
 		}
-		const atDepth = placeAtDepth && lorebookIsAtDepth(entry);
+		const outlet = outletByEntry.get(entry.id) ?? '';
+		const atDepth = !outlet && placeAtDepth && lorebookIsAtDepth(entry);
 		const role = lorebookRoleOf(entry);
 		const depth = entry.depth ?? DEFAULT_LOREBOOK_DEPTH;
 		const group = atDepth ? groups.get(`${role} ${depth}`) : undefined;
 		if (budget) {
-			// The separator an entry brings into its container (the block, or its role+depth
+			// The separator an entry brings into its container (block, outlet, or role+depth
 			// group) is part of what lore injects, so it is priced with the entry.
-			const joins = atDepth ? group !== undefined : parts.length > 0;
+			const joins = outlet ? outlets.has(outlet) : atDepth ? group !== undefined : parts.length > 0;
 			const cost = budget.count(joins ? `\n\n${content}` : content);
 			if (spent + cost > budget.maxTokens) {
 				trimmed.add(entry.id);
 				continue;
 			}
 			spent += cost;
+		}
+		if (outlet) {
+			const texts = outlets.get(outlet) ?? [];
+			texts.push(content);
+			outlets.set(outlet, texts);
+			continue;
 		}
 		if (entry.v3Runtime?.position) {
 			const position = entry.v3Runtime.position;
@@ -854,8 +873,11 @@ export function renderLorebookBlock(
 		parts.push(content);
 	}
 	const records = selection.records.map((record) => {
+		if (unusedOutlets.has(record.entryId)) return { ...record, status: 'outletUnused' as const };
 		if (trimmed.has(record.entryId)) return { ...record, status: 'trimmed' as const };
 		if (blank.has(record.entryId)) return { ...record, status: 'empty' as const };
+		const outlet = outletByEntry.get(record.entryId);
+		if (outlet) return { ...record, outlet };
 		const at = placedAt.get(record.entryId);
 		return at ? { ...record, placedAt: at } : record;
 	});
@@ -863,6 +885,7 @@ export function renderLorebookBlock(
 	// {{lorebook}} (tags, lead-in), so the block composes instead of asserting itself.
 	return {
 		text: parts.join('\n\n'),
+		outlets: Object.fromEntries([...outlets].map(([name, texts]) => [name, texts.join('\n\n')])),
 		...(Object.keys(fields).length ? { fields } : {}),
 		placed: [...groups.values()].map(({ role, depth, texts }) => ({ role, depth, text: texts.join('\n\n') })),
 		records
@@ -872,6 +895,7 @@ export function renderLorebookBlock(
 /** What a context injects: the block, the turns to splice into the chat, and why. */
 export interface LorebookResolution {
 	text: string;
+	outlets: Record<string, string>;
 	fields?: LorebookRender['fields'];
 	/** Reuses the same scan and rolls when the prompt must shed optional context. */
 	withoutOptional?: () => LorebookResolution;
@@ -904,6 +928,8 @@ export function resolveLorebooks(opts: {
 	/** Whether this caller can splice turns into the chat. False (the default) folds every
 	 *  at-depth entry into the block, so no entry lands in a position nothing renders. */
 	placeAtDepth?: boolean;
+	/** Names explicitly referenced in this request's enabled templates. No implicit fallback. */
+	outletNames?: ReadonlySet<string>;
 }): LorebookResolution {
 	const expand = opts.expand ?? ((t: string) => t);
 	// Card fields go in FRONT of the chat: sources are searched from the back, so a key present
@@ -920,9 +946,10 @@ export function resolveLorebooks(opts: {
 		history: opts.history,
 		expand
 	});
-	const rendered = renderLorebookBlock(selection, expand, opts.budget, opts.placeAtDepth);
+	const rendered = renderLorebookBlock(selection, expand, opts.budget, opts.placeAtDepth, opts.outletNames);
 	return {
 		text: rendered.text,
+		outlets: rendered.outlets,
 		...(rendered.fields ? { fields: rendered.fields } : {}),
 		placed: rendered.placed,
 		trace: buildLorebookTrace(rendered.records),
@@ -931,8 +958,8 @@ export function resolveLorebooks(opts: {
 				const removed = new Set(selection.entries.filter((entry) => entry.v3Runtime?.ignoreOnMaxContext).map((entry) => entry.id));
 				const reduced = renderLorebookBlock({ entries: selection.entries.filter((entry) => !removed.has(entry.id)),
 					records: selection.records.map((record) => removed.has(record.entryId) ? { ...record, status: 'trimmed' as const } : record)
-				}, expand, opts.budget, opts.placeAtDepth);
-				return { text: reduced.text, fields: reduced.fields, placed: reduced.placed, trace: buildLorebookTrace(reduced.records) };
+				}, expand, opts.budget, opts.placeAtDepth, opts.outletNames);
+				return { text: reduced.text, outlets: reduced.outlets, fields: reduced.fields, placed: reduced.placed, trace: buildLorebookTrace(reduced.records) };
 			}
 		} : {})
 	};

@@ -147,6 +147,8 @@
 	}
 
 	// ---- Trait fields ----
+	const fieldsWithoutTokenCount = new Set<TraitKey>(['creator', 'characterVersion', 'creatorNotes']);
+
 	// The fixed character-card set: never renamed or deleted, only toggling AI-exclude.
 	interface TraitField {
 		key: TraitKey;
@@ -350,16 +352,19 @@
 				</span>
 			</div>
 			<div class="flex flex-wrap items-center justify-end gap-2 min-w-0 max-w-full ml-auto">
-				<FieldTokenCount value={field.value} label={field.label} {entityId} />
+				{#if !fieldsWithoutTokenCount.has(field.key)}
+					<FieldTokenCount value={field.value} label={field.label} {entityId} />
+				{/if}
 				{@render headerExtra?.()}
 
 				{#if field.notSent}
 					<span
-						class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-ui font-medium rounded-[var(--radius-sm)] bg-warning/15 text-warning shrink-0"
+						class="inline-flex items-center text-warning shrink-0"
+						role="img"
+						aria-label="Not sent to AI"
 						title={field.notSentTitle}
 					>
 						<Icon name="eyeOff" class="w-3 h-3" />
-						Not sent to AI
 					</span>
 				{/if}
 			</div>

@@ -14,7 +14,7 @@ import { memoryStore } from '$lib/memory/scene-store.svelte';
 
 import type { Message } from '$lib/types/chat';
 import { chatAuthorsNote } from '$lib/types/chat';
-import { expandMacros, cardLoreContext, cardLorePositions, withLorebookFields, type MacroContext } from '$lib/macros';
+import { expandMacros, cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields, type MacroContext } from '$lib/macros';
 import { resolveLorebooks } from '$lib/lorebook/engine';
 import { lorebookHistory, lorebookScanFields, type LorebookTrigger } from '$lib/lorebook/types';
 import { chatStore } from '$lib/stores/chat.svelte';
@@ -42,6 +42,8 @@ export interface LiveMacroContextOptions {
 	lorebookTrigger?: LorebookTrigger;
 	/** Impersonation uses history and live identities only, independently of the RP preset. */
 	historyOnly?: boolean;
+	/** Explicit templates for a request that does not assemble the roleplay preset. */
+	templates?: string[];
 }
 
 export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): MacroContext {
@@ -90,6 +92,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 	// buildMacroContext, through the same resolver, so these surfaces cannot select
 	// differently from the prompt they sit beside.
 	const lore = resolveLorebooks({
+		outletNames: referencedLorebookOutlets(opts.templates ?? (preset?.items ?? []).filter((item) => item.enabled).map((item) => item.content)),
 		cardContext: cardLoreContext(base),
 		books: lorebookStore.booksForChat({
 			cards: [...(characterData?.lorebookIds ?? []), ...(persona?.data.lorebookIds ?? [])],
@@ -104,5 +107,5 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 		expand: (text) => expandMacros(text, base),
 		budget: lorebookBudget
 	});
-	return withLorebookFields({ ...base, lorebook: lore.text, lorebookTrace: lore.trace }, lore.fields);
+	return withLorebookFields({ ...base, lorebook: lore.text, lorebookOutlets: lore.outlets, lorebookTrace: lore.trace }, lore.fields);
 }

@@ -200,7 +200,7 @@ export const PERMANENT_TRAITS: Record<LibraryEntryType, PermanentTraitDef[]> = {
 		{ key: 'exampleDialogue', label: 'Examples of dialogue', macro: 'mesExamples', inBlob: true },
 		{ key: 'firstMessage', label: 'First Message', macro: 'charFirstMessage', seedsChat: true },
 		{ key: 'systemPrompt', label: 'System Prompt', macro: 'charPrompt' },
-		{ key: 'postHistoryInstructions', label: 'Post-History Instructions', macro: 'charInstruction' },
+		{ key: 'postHistoryInstructions', label: 'Post-History', macro: 'charInstruction' },
 		{ key: 'characterVersion', label: 'Character Version', macro: 'charVersion' },
 		{ key: 'creator', label: 'Created by', macro: 'charCreator' },
 		{ key: 'creatorNotes', label: "Creator's Notes", macro: 'charCreatorNotes' }

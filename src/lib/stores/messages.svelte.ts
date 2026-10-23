@@ -832,7 +832,7 @@ class MessageStore {
 			// that macro belongs to the character card's scenario field, which resolves
 			// normally here alongside this direction.
 			const openingSceneDirection = await withTokenizers(() => substitute(openingSceneTemplate, {
-				...resolveMacroValues(openingSceneTemplate, buildLiveMacroContext({ memory: memoryStore.recall })),
+				...resolveMacroValues(openingSceneTemplate, buildLiveMacroContext({ memory: memoryStore.recall, templates: [openingSceneTemplate] })),
 				idea: sceneIdea
 			}));
 

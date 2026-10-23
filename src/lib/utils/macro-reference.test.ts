@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { MACROS, cappedHistoryTurns } from '$lib/macros';
+import { MACROS, cappedHistoryTurns, outletMacroName } from '$lib/macros';
 import { resolveCardCbs } from '$lib/card-cbs';
 import { macroToken, matchesMacro, TEMPLATE_MACROS } from './macro-reference';
 
@@ -26,6 +26,8 @@ describe('macro reference', () => {
 			const name = macro.example ?? macro.name;
 			if (macro.name === 'chatHistoryLastN') {
 				expect(cappedHistoryTurns(name)).toBe(20);
+			} else if (macro.name === 'outlet::name') {
+				expect(outletMacroName(name)).toBe('name');
 			} else {
 				expect(resolveCardCbs(name, { rng: () => 0 })).toBeDefined();
 			}

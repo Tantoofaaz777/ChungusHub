@@ -24,7 +24,7 @@ import type { PromptControl, PromptItem, PromptPreset } from '$lib/types/databas
 import type { Lorebook, LorebookGlobalSettings, LorebookTrace, LorebookTrigger } from '$lib/lorebook/types';
 import { EMPTY_LOREBOOK_TRACE, lorebookHistory, lorebookScanFields } from '$lib/lorebook/types';
 import { resolveLorebooks } from '$lib/lorebook/engine';
-import { cardLoreContext, cardLorePositions, withLorebookFields } from '$lib/macros';
+import { cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields } from '$lib/macros';
 import {
 	expandMacros,
 	expandSelfRefs,
@@ -204,6 +204,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 	// yet: that is what makes a stray {{lorebook}} inside an entry resolve to nothing instead of
 	// recursing, and it leaves ONE roll of the probabilistic entries per assembly.
 	const lore = resolveLorebooks({
+		outletNames: referencedLorebookOutlets((input.preset?.items ?? []).filter((item) => item.enabled).map((item) => item.content)),
 		cardContext: cardLoreContext(base),
 		books: input.lorebooks,
 		// An at-depth entry needs a chat to sit inside. Without {{chatHistory}} in the enabled
@@ -221,7 +222,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 		budget: lorebookBudget
 	});
 	const applyLore = (value: typeof lore): MacroContext => withLorebookFields({ ...base,
-		lorebook: value.text, lorebookTrace: value.trace, lorebookPlaced: value.placed }, value.fields);
+		lorebook: value.text, lorebookOutlets: value.outlets, lorebookTrace: value.trace, lorebookPlaced: value.placed }, value.fields);
 	return { ...applyLore(lore), ...(lore.withoutOptional ? { withoutOptionalLore: () => applyLore(lore.withoutOptional!()) } : {}) };
 }
 

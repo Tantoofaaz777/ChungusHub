@@ -49,6 +49,7 @@ export function buildComposerTransformPrompt(params: ComposerTransformParams): L
 	// Spellcheck keeps its existing macro context under the plain send's terms.
 	const ctx = buildLiveMacroContext({
 		chatMessages,
+		templates: [template],
 		historyOnly: kind === 'impersonate'
 	});
 	const filled = substitute(template, {

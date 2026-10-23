@@ -35,6 +35,7 @@
 		trimmed: 'Fired, then the token budget dropped it',
 		disabled: 'Switched off',
 		empty: 'Nothing to inject',
+		outletUnused: 'Its outlet has no name or is not referenced by this prompt',
 		offTrigger: 'This kind of generation is not one it fires on',
 		sticky: 'Still held in by the window it opened when it fired',
 		cooldown: 'Fired recently, and its window has not reopened',
@@ -54,6 +55,7 @@
 
 	/** Where an entry landed, said only when it is not the block everything else went into. */
 	function placementOf(record: LorebookEntryRecord): string {
+		if (record.outlet) return `at {{outlet::${record.outlet}}}`;
 		if (!record.placedAt) return '';
 		const { role, depth } = record.placedAt;
 		const where = depth === 0 ? 'after the last turn' : `${depth} ${depth === 1 ? 'turn' : 'turns'} back`;

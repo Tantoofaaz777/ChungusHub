@@ -959,7 +959,7 @@ describe('placement', () => {
 	});
 
 	test('SillyTavern’s other positions read as the block and are never placed', () => {
-		for (const position of [0, 1, 2, 3, 5, 6, 7]) {
+		for (const position of [0, 1, 2, 3, 5, 6]) {
 			const out = resolveLorebooks({ books: [atDepth({ position })], messages: [], placeAtDepth: true });
 			expect(out.text).toBe('lore');
 			expect(out.placed).toEqual([]);

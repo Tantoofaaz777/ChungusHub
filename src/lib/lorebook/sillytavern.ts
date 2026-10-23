@@ -187,7 +187,7 @@ const MODELLED_KEYS = new Set([
 	'scanDepth', 'triggers', KEY_RULES_FIELD,
 	'sticky', 'cooldown', 'delay',
 	'group', 'groupOverride', 'groupWeight', 'useGroupScoring',
-	'position', 'depth', 'role',
+	'position', 'depth', 'role', 'outletName',
 	// Both spellings, so a file written under either one leaves no stale copy behind in `rest`.
 	...Object.keys(RECURSION_FIELDS), ...Object.values(RECURSION_FIELDS),
 	...LOREBOOK_SCAN_FIELDS.map((f) => f.native)
@@ -241,6 +241,7 @@ function fromNativeEntry(raw: Record<string, unknown>): LorebookEntry {
 		groupWeight: asNumber(raw.groupWeight, DEFAULT_GROUP_WEIGHT),
 		useGroupScoring: asTriState(raw.useGroupScoring),
 		position: asNumber(raw.position, LOREBOOK_POSITION_BLOCK),
+		outletName: asString(raw.outletName),
 		depth: asNumber(raw.depth, DEFAULT_LOREBOOK_DEPTH),
 		role: asNumberOrNull(raw.role),
 		...asRecursionFlags(raw),
@@ -275,6 +276,7 @@ function fromCharacterBookEntry(raw: Record<string, unknown>, v3 = false): Loreb
 		// The card spec's own top-level `position` is a two-value string; the real enum rides in
 		// extensions, which is the one that decides where an entry lands.
 		position: asNumber(ext.position, LOREBOOK_POSITION_BLOCK),
+		outletName: asString(ext.outletName),
 		depth: asNumber(ext.depth, DEFAULT_LOREBOOK_DEPTH),
 		role: asNumberOrNull(ext.role)
 	};
@@ -293,6 +295,7 @@ function fromCharacterBookEntry(raw: Record<string, unknown>, v3 = false): Loreb
 	delete ext.group_weight;
 	delete ext.use_group_scoring;
 	delete ext.position;
+	delete ext.outletName;
 	delete ext.depth;
 	delete ext.role;
 	for (const field of Object.keys(RECURSION_FIELDS) as LorebookRecursionField[]) {
@@ -445,6 +448,7 @@ function toNativeEntry(entry: LorebookEntry, uid: number): Record<string, unknow
 		groupWeight: entry.groupWeight ?? DEFAULT_GROUP_WEIGHT,
 		useGroupScoring: entry.useGroupScoring ?? null,
 		position: entry.position ?? LOREBOOK_POSITION_BLOCK,
+		outletName: entry.outletName ?? asString(entry.rest.outletName),
 		depth: entry.depth ?? DEFAULT_LOREBOOK_DEPTH,
 		role: entry.role ?? null,
 		...recursionFlags(entry, 'native'),
@@ -496,6 +500,7 @@ function toCharacterBookEntry(entry: LorebookEntry, i: number): Record<string, u
 		extensions: {
 			...withoutStoredRecursion(entry.rest),
 			position,
+			outletName: entry.outletName ?? asString(entry.rest.outletName),
 			selectiveLogic: entry.selectiveLogic,
 			match_whole_words: entry.matchWholeWords,
 			probability: entry.probability,

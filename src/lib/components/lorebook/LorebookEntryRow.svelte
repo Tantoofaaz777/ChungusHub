@@ -8,11 +8,13 @@
 		LOREBOOK_LOGICS,
 		LOREBOOK_POSITION_AT_DEPTH,
 		LOREBOOK_POSITION_BLOCK,
+		LOREBOOK_POSITION_OUTLET,
 		LOREBOOK_ROLES,
 		LOREBOOK_SCAN_FIELDS,
 		LOREBOOK_TRIGGERS,
 		delayValue,
 		lorebookWokenBy,
+		lorebookOutletName,
 		pruneKeyRules,
 		resolveBookActivation,
 		natureOf,
@@ -282,6 +284,8 @@
 	// entry silently limited to one field reads as broken.
 	let showAdvanced = $state(false);
 	let atDepth = $derived((entry?.position ?? LOREBOOK_POSITION_BLOCK) === LOREBOOK_POSITION_AT_DEPTH);
+	let atOutlet = $derived(entry?.position === LOREBOOK_POSITION_OUTLET);
+	let outletMacro = $derived(`{{outlet::${entry && lorebookOutletName(entry) || 'name'}}}`);
 	/** A SillyTavern position this app has no place for: named rather than quietly read as ours. */
 	let foreignPosition = $derived(
 		entry?.position == null ? '' : (ST_POSITION_NAMES[entry.position] ?? '')
@@ -316,6 +320,8 @@
 		if (atDepth) {
 			const d = entry.depth ?? DEFAULT_LOREBOOK_DEPTH;
 			parts.push(d === 0 ? 'in the chat after the last turn' : `in the chat, ${d} back`);
+		} else if (atOutlet) {
+			parts.push(`outlet ${lorebookOutletName(entry) || '(unnamed)'}`);
 		} else if (foreignPosition) {
 			parts.push('SillyTavern placement');
 		}
@@ -863,7 +869,7 @@
 								<div class="ed-adv-label">
 									<label for="entry-place-{entryId}" class="ed-label section-label !mb-0">Placement</label>
 									<InfoTip
-										text="It joins the block the preset placed at {'{{lorebook}}'}, or rides inside the story as its own turn, that many turns back from the newest. Without {'{{chatHistory}}'} in the preset an at-depth entry falls back to the block."
+										text="Choose the lorebook block, a depth inside the chat, or an exclusive named outlet. Outlet entries appear only at their macro in an enabled preset item; without it, they are not inserted. At-depth entries fall back to the block without {'{{chatHistory}}'}."
 									/>
 								</div>
 								<div class="flex items-end gap-3 flex-wrap">
@@ -877,6 +883,7 @@
 									>
 										<option value={String(LOREBOOK_POSITION_BLOCK)}>In the lorebook block</option>
 										<option value={String(LOREBOOK_POSITION_AT_DEPTH)}>At a depth in the chat</option>
+										<option value={String(LOREBOOK_POSITION_OUTLET)}>Outlet</option>
 										{#if foreignPosition}
 											<option value={String(entry.position)}>{foreignPosition}</option>
 										{/if}
@@ -909,6 +916,25 @@
 										</label>
 									{/if}
 								</div>
+								{#if atOutlet}
+									<div class="mt-2 min-w-0">
+										<label for="entry-outlet-{entryId}" class="ed-label section-label block !mb-1">Outlet name</label>
+										<input
+											id="entry-outlet-{entryId}"
+											type="text"
+											value={entry.outletName ?? (typeof entry.rest.outletName === 'string' ? entry.rest.outletName : '')}
+											oninput={(e) => update({ outletName: (e.target as HTMLInputElement).value })}
+											placeholder="e.g. locations"
+											autocapitalize="off"
+											spellcheck={false}
+											aria-describedby="entry-outlet-hint-{entryId}"
+											class="input-base w-full px-2 py-1.5 font-mono text-sm text-text-primary"
+										/>
+										<p id="entry-outlet-hint-{entryId}" class="mt-1 text-xs font-ui text-text-muted break-words">
+											Insert with <code class="font-mono">{outletMacro}</code>
+										</p>
+									</div>
+								{/if}
 								<!-- Not the knob's own help: an imported entry sitting somewhere this app has no
 								     place for is a fact about THIS entry, so it stays on screen. -->
 								{#if foreignPosition}

@@ -11,6 +11,7 @@
  * way back from that.
  */
 import type { Lorebook, LorebookEntry } from './types';
+import { LOREBOOK_POSITION_OUTLET, lorebookOutletName } from './types';
 
 /**
  * One entry's substance: what it says, what wakes it, and whether it is on.
@@ -27,6 +28,7 @@ function entryPrint(entry: LorebookEntry): string {
 		entry.constant,
 		entry.disable,
 		entry.order,
+		...(entry.position === LOREBOOK_POSITION_OUTLET ? ['outlet', lorebookOutletName(entry)] : []),
 		...(entry.cardV3 ? [entry.cardV3.useRegex, entry.cardV3.selective] : [])
 	]);
 }

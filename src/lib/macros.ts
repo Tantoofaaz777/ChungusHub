@@ -23,6 +23,7 @@ import { PERMANENT_TRAITS } from '$lib/types/library';
 import type { Message } from '$lib/types/chat';
 import type { PromptControl } from '$lib/types/database';
 import type { LorebookPlacedGroup, LorebookTrace } from '$lib/lorebook/types';
+import { normalizeLorebookOutletName } from '$lib/lorebook/types';
 import { formatControlForPrompt } from '$lib/utils/prompt-controls';
 import { personaPronouns } from '$lib/utils/persona-pronouns';
 import { expandCardCbs, resolveCardCbs, type CardTextMode } from '$lib/card-cbs';
@@ -63,10 +64,8 @@ export interface MacroDef {
 	 */
 	engine?: boolean;
 	/**
-	 * The registered name is a SHAPE, not a resolvable name: the author writes the numbered
-	 * form ({{chatHistoryLast20}}) and a parser turns it into a value. Kept out of
-	 * SYSTEM_MACROS so the lint warns on the placeholder, which resolves to nothing, rather
-	 * than on the spelling that works.
+	 * The registered name describes a shape, such as {{chatHistoryLastN}} or {{outlet::name}}.
+	 * A dedicated parser reads its number or argument; it is not an exact SYSTEM_MACROS key.
 	 */
 	parameterized?: boolean;
 	/** A usable example name for reference UIs to display and copy (without braces). */
@@ -100,6 +99,7 @@ export const MACROS: readonly MacroDef[] = [
 	{ name: 'persona', description: "The active persona's description.", engine: true, group: 'context' },
 	{ name: 'character', description: "The active character's full profile (the whole-sheet blob).", engine: true, group: 'context' },
 	{ name: 'lorebook', description: 'Lorebook entries, keyword-matched against recent messages.', engine: true, group: 'context' },
+	{ name: 'outlet::name', description: 'Activated lorebook entries assigned to this outlet. Empty when none are active.', engine: true, parameterized: true, group: 'context' },
 	{ name: 'memory', description: 'Chat-memory recall block (episode summaries).', engine: true, group: 'context' },
 	{ name: 'authorsNote', description: "This chat's author's notes. Empty when the text box is blank; place in a preset or lorebook entry.", engine: true, group: 'context' },
 	{ name: 'chatHistory', description: 'Every turn, as native-role messages. Prompt items only: anywhere else it resolves to nothing.', engine: true, structural: true, group: 'context' },
@@ -144,8 +144,7 @@ export const MACROS: readonly MacroDef[] = [
 ] as const;
 
 /** Names of the engine-owned macros that resolve exactly as written, derived so it can never
- *  drift from MACROS. Parameterized entries are excluded on purpose: only their numbered form
- *  resolves, so the bare placeholder is not a name anything provides. */
+ *  drift from MACROS. Parameterized spellings use their dedicated parsers instead. */
 export const SYSTEM_MACROS: readonly string[] = MACROS.filter((m) => m.engine && !m.parameterized).map(
 	(m) => m.name
 );
@@ -183,7 +182,26 @@ export function substitute(template: string, values: Record<string, string>): st
 
 export function isBuiltinMacro(name: string): boolean {
 	return SYSTEM_MACROS.some((key) => key.toLowerCase() === name.toLowerCase()) ||
+		outletMacroName(name) !== undefined ||
 		cappedHistoryTurns(name) !== undefined || resolveCardCbs(name, { rng: () => 0 }) !== undefined;
+}
+
+/** Undefined for other macros; an empty outlet is recognized but resolves to nothing. */
+export function outletMacroName(macro: string): string | undefined {
+	const match = /^outlet::([\s\S]*)$/i.exec(macro);
+	return match ? normalizeLorebookOutletName(match[1]) : undefined;
+}
+
+/** Only explicit references in the request's templates enable an outlet destination. */
+export function referencedLorebookOutlets(templates: Iterable<string>): Set<string> {
+	const names = new Set<string>();
+	for (const template of templates) {
+		for (const macro of extractMacroNames(template)) {
+			const name = outletMacroName(macro);
+			if (name) names.add(name);
+		}
+	}
+	return names;
 }
 
 /** Parses a {{chatHistoryLastN}} macro name into N, or undefined for any other name.
@@ -348,6 +366,8 @@ export interface MacroContext {
 	/** The lorebook block injected at {{lorebook}}, already scanned and rendered by the context
 	 *  builder (`resolveLorebooks`, lorebook/engine.ts). Empty when nothing fired. */
 	lorebook?: string;
+	/** Named, activated lore. Only explicit outlet macros insert these strings. */
+	lorebookOutlets?: Readonly<Record<string, string>>;
 	/** Why that block holds what it holds. A resolution OUTPUT carried here so assembly can hand
 	 *  it to the caller that stores it on the turn; no macro reads it. */
 	lorebookTrace?: LorebookTrace;
@@ -527,6 +547,9 @@ export function expandMacros(text: string, context: MacroContext): string {
  * The Prompt Builder flags such a control in the UI as well.
  */
 function resolveMacro(name: string, context: MacroContext): string | undefined {
+	const outlet = outletMacroName(name);
+	if (outlet !== undefined) return Object.hasOwn(context.lorebookOutlets ?? {}, outlet)
+		? context.lorebookOutlets![outlet] : '';
 	const cbs = resolveCardCbs(name, { seed: context.chatMessages?.map((message) => message.id).join('|') ?? '' });
 	if (cbs !== undefined) return cbs;
 	const canonical = MACROS.find((macro) => macro.engine && macro.name.toLowerCase() === name.toLowerCase())?.name;
