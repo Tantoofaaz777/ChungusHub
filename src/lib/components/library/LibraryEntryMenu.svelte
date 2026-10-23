@@ -13,7 +13,7 @@
 		/** Favorite toggle lives in the menu now (shared across every view mode). */
 		isFavorite?: boolean;
 		onToggleFavorite?: () => void;
-		/** Absent where the shelf has no copy action, e.g. a lorebook row. */
+		/** Adds the shared copy action when this shelf supports it. */
 		onDuplicate?: () => void;
 		/** Opens the conversion dialog: a persona made from this character, or the reverse. */
 		onConvert?: () => void;

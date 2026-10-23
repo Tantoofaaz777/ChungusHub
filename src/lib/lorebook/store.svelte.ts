@@ -105,6 +105,34 @@ class LorebookStore {
 		return this.deleteBooks([id]);
 	}
 
+	/** Independent copy of the live edits. A copy never activates itself in existing chats. */
+	async duplicateBook(id: string): Promise<Lorebook | null> {
+		const source = this.getBook(id);
+		if (!source) return null;
+		const copy = structuredClone($state.snapshot(source)) as Lorebook;
+		copy.id = crypto.randomUUID();
+		copy.name = `${source.name || 'Untitled lorebook'} (Copy)`;
+		copy.global = undefined;
+		copy.createdAt = copy.updatedAt = Date.now();
+		copy.entries = copy.entries.map((entry) => ({ ...entry, id: crypto.randomUUID() }));
+		const sourceCover = copy.cover;
+		copy.cover = undefined;
+		try {
+			if (sourceCover) {
+				const cover = await imageService.copyImage(sourceCover, 'lorebooks');
+				if (!cover) throw new Error('Could not copy the lorebook cover');
+				copy.cover = cover;
+			}
+			await db.insertLorebook(copy);
+		} catch (error) {
+			if (copy.cover) await imageService.deleteImage(copy.cover);
+			throw error;
+		}
+		// Only publish after persistence, so a failed insertion leaves no phantom copy.
+		this._books = [copy, ...this._books];
+		return copy;
+	}
+
 	/** Every delete goes through here, one reassignment of the reactive list however many
 	 *  books go: a per-book assignment turns a fifty-book selection into fifty re-renders
 	 *  of the shelf that is showing them. */

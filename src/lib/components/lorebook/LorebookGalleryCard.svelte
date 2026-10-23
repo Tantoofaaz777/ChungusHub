@@ -24,6 +24,7 @@
 		onToggleSelect?: (id: string) => void;
 		onOpen: (id: string) => void;
 		onExport: (id: string) => void;
+		onDuplicate: (id: string) => void;
 		onDelete: (id: string) => void;
 	}
 
@@ -35,6 +36,7 @@
 		onToggleSelect,
 		onOpen,
 		onExport,
+		onDuplicate,
 		onDelete
 	}: Props = $props();
 
@@ -92,6 +94,7 @@
 			class="absolute top-2 right-2 flex items-center [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-within:opacity-100 transition-opacity"
 		>
 			<LibraryEntryMenu
+				onDuplicate={() => onDuplicate(book.id)}
 				onExport={() => onExport(book.id)}
 				exportLabel="Export World Info"
 				onDelete={() => onDelete(book.id)}

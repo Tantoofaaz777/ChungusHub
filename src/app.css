@@ -2083,6 +2083,12 @@
 		text-align: right;
 	}
 
+	/* Shared touch-range policy: vertical gestures scroll; the JS guard owns horizontal
+	   adjustment and release-to-commit taps, including ranges inside future popovers. */
+	input[type='range'] {
+		touch-action: pan-y pinch-zoom;
+	}
+
 	input.slider {
 		width: 100%;
 		height: 0.5rem;

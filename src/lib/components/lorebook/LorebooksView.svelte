@@ -247,6 +247,15 @@
 		if (book) downloadLorebook(book);
 	}
 
+	async function duplicateOne(id: string) {
+		try {
+			const copy = await lorebookStore.duplicateBook(id);
+			if (copy) toastStore.success(`Duplicated "${copy.name}"`);
+		} catch (error) {
+			toastStore.failed('duplicate that lorebook', error);
+		}
+	}
+
 	function exportSelection() {
 		if (selected.length > 0) downloadLorebooks(selected);
 	}
@@ -760,6 +769,7 @@
 						onToggleSelect={toggleSelect}
 						onOpen={open}
 						onExport={exportOne}
+						onDuplicate={duplicateOne}
 						onDelete={(id) => (deleteId = id)}
 					/>
 				{/each}
@@ -776,6 +786,7 @@
 						onToggleSelect={toggleSelect}
 						onOpen={open}
 						onExport={exportOne}
+						onDuplicate={duplicateOne}
 						onDelete={(id) => (deleteId = id)}
 					/>
 				{/each}
@@ -793,6 +804,7 @@
 						showCover={lorebookViewPrefs.listCovers}
 						onOpen={open}
 						onExport={exportOne}
+						onDuplicate={duplicateOne}
 						onDelete={(id) => (deleteId = id)}
 					/>
 				{/each}

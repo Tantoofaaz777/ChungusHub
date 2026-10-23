@@ -417,6 +417,16 @@
 		if (selectedBook) downloadLorebook(selectedBook);
 	}
 
+	async function duplicateBook() {
+		if (!selectedBook) return;
+		try {
+			const copy = await lorebookStore.duplicateBook(selectedBook.id);
+			if (copy) toastStore.success(`Duplicated "${copy.name}"`);
+		} catch (error) {
+			toastStore.failed('duplicate that lorebook', error);
+		}
+	}
+
 	let bookDeleteMessage = $derived(
 		selectedBook ? lorebookDeleteMessage(selectedBook, linked.length) : ''
 	);
@@ -556,6 +566,15 @@
 								<Icon name="dotsVertical" class="w-4 h-4" strokeWidth={1.5} />
 							</button>
 						{/snippet}
+						<button
+							type="button"
+							role="menuitem"
+							class="brw-menu-item"
+							onclick={() => closeActionsAnd(duplicateBook)}
+						>
+							<Icon name="copy" class="w-4 h-4" strokeWidth={1.5} />
+							<span>Duplicate</span>
+						</button>
 						<button
 							type="button"
 							role="menuitem"

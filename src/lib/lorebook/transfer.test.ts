@@ -19,7 +19,7 @@
  * to another book through it, and an aliasing shim would report two books sharing one object
  * as a pass.
  */
-import { describe, test, expect, beforeEach, afterAll, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from 'bun:test';
 import type { Lorebook, LorebookEntry } from './types';
 
 const identity = <T>(value?: T): T | undefined => value;
@@ -34,6 +34,7 @@ const copy = <T>(value: T): T => structuredClone(value);
 const rows = new Map<string, Lorebook>();
 /** The id of the one book whose next write is to fail, for the half-finished-move cases. */
 let breakWriteOf: string | null = null;
+let breakInsert = false;
 
 /**
  * Bun's module registry is process-wide, so the stub is a SPREAD of the real module and the
@@ -59,6 +60,7 @@ mock.module('$lib/services/database', () => ({
 	db: {
 		getAllLorebooks: async () => [...rows.values()].map(copy),
 		insertLorebook: async (book: Lorebook) => {
+			if (breakInsert) throw new Error('the insertion failed');
 			rows.set(book.id, copy(book));
 		},
 		updateLorebook: async (book: Lorebook) => {
@@ -80,6 +82,7 @@ mock.module('$lib/services/database', () => ({
 }));
 
 const { lorebookStore } = await import('./store.svelte');
+const { imageService } = await import('$lib/services/imageService');
 const { createEmptyLorebook, createEmptyLorebookEntry } = await import('./types');
 
 function entry(comment: string, extra: Partial<LorebookEntry> = {}): LorebookEntry {
@@ -102,6 +105,7 @@ const ids = (id: string): string[] => lorebookStore.getBook(id)!.entries.map((e)
 beforeEach(async () => {
 	rows.clear();
 	breakWriteOf = null;
+	breakInsert = false;
 	// The store is one process-wide singleton: re-reading an empty server is what empties it.
 	await lorebookStore.refresh();
 });
@@ -315,5 +319,81 @@ describe('a book on the shelf', () => {
 
 		await lorebookStore.setGlobal(world.id, false);
 		expect(rows.get(world.id)!.global).toBeUndefined();
+	});
+});
+
+
+describe('duplicating whole lorebooks', () => {
+	test('copies live pending edits, all settings and nested entries with independent ids and data', async () => {
+		const source = await book('World', [entry('Alpha', { content: 'Original', keyRules: { dragon: { mode: 'word' } },
+			position: 7, outletName: 'places', rest: { nested: { flags: [1, 2] } } }), entry('Beta', { disable: true })]);
+		lorebookStore.updateBookMeta(source.id, { scanDepth: 7, recursiveScanning: true, matchWholeWords: true });
+		lorebookStore.updateEntry(source.id, source.entries[0].id, { content: 'Latest pending edit' });
+		const duplicate = (await lorebookStore.duplicateBook(source.id))!;
+		expect(duplicate.id).not.toBe(source.id);
+		expect(duplicate.name).toBe('World (Copy)');
+		expect(duplicate.entries.map((entry) => entry.id).some((id) => source.entries.some((entry) => entry.id === id))).toBe(false);
+		expect(duplicate.entries[0].content).toBe('Latest pending edit');
+		expect(duplicate.entries[0].outletName).toBe('places');
+		expect(duplicate.entries[1].disable).toBe(true);
+		expect(duplicate.scanDepth).toBe(7); expect(duplicate.recursiveScanning).toBe(true);
+		expect(rows.get(duplicate.id)).toEqual(duplicate);
+		duplicate.entries[0].keyRules!.dragon.mode = 'start';
+		(duplicate.entries[0].rest.nested as { flags: number[] }).flags.push(3);
+		expect(source.entries[0].keyRules!.dragon.mode).toBe('word');
+		expect(source.entries[0].rest.nested).toEqual({ flags: [1, 2] });
+		await lorebookStore.flush();
+	});
+
+	test('the copy stays out of existing prompts, while a global source remains active', async () => {
+		const source = await book('Everywhere', [entry('Alpha')]);
+		await lorebookStore.setGlobal(source.id, true);
+		const duplicate = (await lorebookStore.duplicateBook(source.id))!;
+		expect(duplicate.global).toBeUndefined(); expect(source.global).toBe(true);
+		expect(lorebookStore.booksForChat({ cards: [], chat: [] }).map((book) => book.id)).toEqual([source.id]);
+	});
+
+	test('empty books and missing ids behave like the other library copy actions', async () => {
+		const source = await book('', []);
+		const duplicate = (await lorebookStore.duplicateBook(source.id))!;
+		expect(duplicate.name).toBe('Untitled lorebook (Copy)'); expect(duplicate.entries).toEqual([]);
+		expect(await lorebookStore.duplicateBook('missing')).toBeNull(); expect(rows.size).toBe(2);
+	});
+
+	test('copies the cover into its own file and retains independent framing', async () => {
+		const source = await book('Illustrated', []);
+		source.cover = 'images/lorebooks/source.png'; source.coverFocus = { x: 0.3, y: 0.7, zoom: 1.5 };
+		const copyImage = spyOn(imageService, 'copyImage').mockResolvedValue('images/lorebooks/copy.png');
+		try {
+			const duplicate = (await lorebookStore.duplicateBook(source.id))!;
+			expect(copyImage).toHaveBeenCalledWith(source.cover, 'lorebooks');
+			expect(duplicate.cover).toBe('images/lorebooks/copy.png');
+			expect(duplicate.coverFocus).toEqual(source.coverFocus);
+			expect(duplicate.coverFocus).not.toBe(source.coverFocus);
+			expect(rows.get(duplicate.id)?.cover).toBe(duplicate.cover);
+		} finally { copyImage.mockRestore(); }
+	});
+
+	test('a failed insert publishes no copy and deletes only the newly copied cover', async () => {
+		const source = await book('Source', []); source.cover = 'images/lorebooks/source.png';
+		const copyImage = spyOn(imageService, 'copyImage').mockResolvedValue('images/lorebooks/copy.png');
+		const deleteImage = spyOn(imageService, 'deleteImage').mockResolvedValue();
+		try {
+			breakInsert = true;
+			await expect(lorebookStore.duplicateBook(source.id)).rejects.toThrow('the insertion failed');
+			expect(rows.size).toBe(1); expect(lorebookStore.books.map((book) => book.id)).toEqual([source.id]);
+			expect(deleteImage).toHaveBeenCalledTimes(1);
+			expect(deleteImage).toHaveBeenCalledWith('images/lorebooks/copy.png');
+			expect(source.cover).toBe('images/lorebooks/source.png');
+		} finally { copyImage.mockRestore(); deleteImage.mockRestore(); }
+	});
+
+	test('an unreadable cover fails clearly, leaving no incomplete copy', async () => {
+		const source = await book('Source', []); source.cover = 'images/lorebooks/missing.png';
+		const copyImage = spyOn(imageService, 'copyImage').mockResolvedValue(null);
+		try {
+			await expect(lorebookStore.duplicateBook(source.id)).rejects.toThrow('Could not copy the lorebook cover');
+			expect(rows.size).toBe(1); expect(lorebookStore.books).toHaveLength(1);
+		} finally { copyImage.mockRestore(); }
 	});
 });

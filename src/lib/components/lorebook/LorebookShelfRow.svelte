@@ -31,6 +31,7 @@
 		showCover?: boolean;
 		onOpen: (id: string) => void;
 		onExport: (id: string) => void;
+		onDuplicate: (id: string) => void;
 		onDelete: (id: string) => void;
 	}
 
@@ -43,6 +44,7 @@
 		showCover = true,
 		onOpen,
 		onExport,
+		onDuplicate,
 		onDelete
 	}: Props = $props();
 
@@ -146,6 +148,7 @@
 			class="shrink-0 flex items-center [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-within:opacity-100 transition-opacity"
 		>
 			<LibraryEntryMenu
+				onDuplicate={() => onDuplicate(book.id)}
 				onExport={() => onExport(book.id)}
 				exportLabel="Export World Info"
 				onDelete={() => onDelete(book.id)}
