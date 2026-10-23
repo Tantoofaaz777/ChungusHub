@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { removeDatabaseFixture } from './test-fixtures';
 import { normalizeReasoningRetention, parseReasoningRetention } from '../shared/reasoning-retention';
 
 let root: string;
@@ -18,7 +19,7 @@ beforeEach(() => {
 });
 afterAll(() => {
 	db.closeForTests();
-	rmSync(root, { recursive: true, force: true });
+	removeDatabaseFixture(root, 'chungus-reasoning-retention-');
 });
 
 function policy(enabled: boolean, depth: number) {

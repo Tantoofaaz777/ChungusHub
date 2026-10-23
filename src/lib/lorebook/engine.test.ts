@@ -1139,10 +1139,15 @@ describe('an archive-sized book', () => {
 	// A book this size is a whole world imported in one go, and the scan runs on every send and
 	// behind every token meter. The bound is loose on purpose: what it catches is a scan that
 	// went quadratic in entries, not a machine having a slow second.
+	// Reuse a small vocabulary so this measures scanning 4,000 distinct entries rather than
+	// cold-compiling 4,000 Unicode regexes, whose cost varies substantially between runtimes.
 	test('four thousand entries do not take the scan down', () => {
-		const big = book(Array.from({ length: 4000 }, (_, i) => ({ key: [`k${i}`], content: `c${i}` })));
+		const big = book(Array.from({ length: 4000 }, (_, i) => ({ key: [`k${i % 32}`], content: `c${i}` })));
 		const started = Date.now();
-		expect(resolveLorebooks({ books: [big], messages: ['nothing matches here'] }).text).toBe('');
-		expect(Date.now() - started).toBeLessThan(8000);
+		const result = resolveLorebooks({ books: [big], messages: ['nothing matches here'] });
+		const elapsed = Date.now() - started;
+		expect(result.text).toBe('');
+		expect(result.trace.silent).toBe(4000);
+		expect(elapsed).toBeLessThan(8000);
 	}, 10_000);
 });
