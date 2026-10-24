@@ -14,6 +14,7 @@
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { toastStore } from '$lib/stores/toast.svelte';
 	import { readAloudStore as reader } from '$lib/stores/read-aloud.svelte';
+	import { readAloudHighlight } from '$lib/actions/readAloudHighlight.svelte';
 	import { copyText } from '$lib/utils/clipboard';
 	import { canShareNativeText, shareNativeText } from '$lib/services/android-client';
 	import { threadsStore as store } from '$lib/threads/store.svelte';
@@ -121,7 +122,7 @@
 		const feed = activeThreadsFeed(round);
 		try {
 			// Match Copy's plain-text format, including nested replies, for this version.
-			await reader.start(serializeFeedAsPlainText(feed), `Threads · ${feed.title}`);
+			await reader.start(serializeFeedAsPlainText(feed), `Threads · ${feed.title}`, `threads:${store.chatId}:${round.id}:${round.activeVersionId}`);
 		} catch (error) { toastStore.failed('read the thread aloud', error); }
 	}
 	async function share(round: ThreadsRound) {
@@ -168,7 +169,7 @@
 						{@const feed = activeThreadsFeed(round)}
 						{@const versionIndex = round.versions.findIndex(v => v.id === round.activeVersionId)}
 						{@const copied = copiedFeed === `${round.id}/${round.activeVersionId}`}
-						<article class="feed-card">
+						<article class="feed-card" use:readAloudHighlight={{ key: `threads:${store.chatId}:${round.id}:${round.activeVersionId}`, version: JSON.stringify(feed), text: () => serializeFeedAsPlainText(feed) }}>
 							<div class="round-info"><span>{round.label || `Thread ${store.rounds.indexOf(round) + 1}`} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its full scene is not on the current branch.">Outside this branch</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
 							<div class="feed-actions">
 								<div class="actions">
@@ -182,8 +183,8 @@
 							</div>
 							<section class="feed-post">
 								<ThreadsAuthor username={feed.post.username} op />
-								<h3 class="post-title">{feed.title}</h3>
-								<p class="post">{feed.post.body}</p>
+								<h3 class="post-title" data-speech-text>{feed.title}</h3>
+								<p class="post" data-speech-text>{feed.post.body}</p>
 								<ThreadsEngagement score={feed.post.score} commentCount={totalComments(feed.comments)} />
 							</section>
 							<div class="comments">{#each feed.comments as comment}<ThreadsComment {comment} />{/each}</div>

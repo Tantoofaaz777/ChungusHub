@@ -9,12 +9,16 @@ export interface AndroidReadingState {
 	sentence?: number;
 	total?: number;
 	error?: string | null;
+	/** APK 0.1.12: UTF-16 offsets in the exact filtered text, never in display HTML. */
+	requestId?: string;
+	highlightSpeech?: boolean;
+	range?: { start: number; end: number } | null;
 	/** APK 0.1.11: monotonic native startup durations, retained for this reading. */
 	startup?: { engineInitializationMs: number; engineWaitMs: number; engineReused: boolean } | null;
 }
 export type ReadingCommand = 'play' | 'pause' | 'previous' | 'next' | 'stop';
 
-export interface AndroidSpeechChoice { engine: string; voice: string; rate: number; mixAudio?: boolean }
+export interface AndroidSpeechChoice { engine: string; voice: string; rate: number; mixAudio?: boolean; highlightSpeech?: boolean }
 export interface AndroidSpeechVoice { id: string; language: string; languageLabel: string; network: boolean }
 export interface AndroidSpeechSettings extends AndroidSpeechChoice {
 	engineLabel: string;
@@ -40,7 +44,9 @@ declare global {
 			/** Available since APK 0.1.5. Resolution means the Sharesheet opened. */
 			shareText?(text: string): Promise<void>;
 			/** Available since APK 0.1.8. Playback belongs to the native media service. */
-			readAloud?(text: string, title: string): Promise<void>;
+			readAloud?(text: string, title: string, requestId?: string): Promise<void>;
+			/** APK 0.1.12: playback ranges and the sentence-highlight preference. */
+			readonly readingHighlights?: boolean;
 			readingState?(): Promise<AndroidReadingState>;
 			readingCommand?(command: ReadingCommand): Promise<AndroidReadingState>;
 			/** Available since APK 0.1.9. Settings are stored only on this Android device. */

@@ -41,7 +41,7 @@ class SpeechSettings(private val context: Context) {
                     val options = SpeechPreferences.load(context)
                     val payload = JSONObject().put("engine", engineId)
                         .put("engineLabel", tts.engines.find { it.name == engineId }?.label ?: engineId)
-                        .put("voice", options.voice).put("rate", options.rate).put("mixAudio", options.mixAudio)
+                        .put("voice", options.voice).put("rate", options.rate).put("mixAudio", options.mixAudio).put("highlightSpeech", options.highlightSpeech)
                         .put("defaultVoice", tts.defaultVoice?.name.orEmpty())
                         .put("selectionAvailable", options.voice.isBlank() || (options.engine == engineId && options.voice in voiceNames))
                         .put("voices", JSONArray().apply { voices.forEach { voice -> put(JSONObject()
@@ -63,9 +63,11 @@ class SpeechSettings(private val context: Context) {
         require(!message.has("mixAudio") || message.get("mixAudio") is Boolean) { "Invalid audio playback setting." }
         // Older server interfaces omit this field; changing a voice must preserve the saved mode.
         val mixAudio = if (message.has("mixAudio")) message.getBoolean("mixAudio") else SpeechPreferences.load(context).mixAudio
-        val options = SpeechOptions.checked(selectedEngine, voice, message.getDouble("rate").toFloat(), mixAudio)
+        require(!message.has("highlightSpeech") || message.get("highlightSpeech") is Boolean) { "Invalid sentence highlight setting." }
+        val highlightSpeech = if (message.has("highlightSpeech")) message.getBoolean("highlightSpeech") else SpeechPreferences.load(context).highlightSpeech
+        val options = SpeechOptions.checked(selectedEngine, voice, message.getDouble("rate").toFloat(), mixAudio, highlightSpeech)
         SpeechPreferences.save(context, options)
-        return JSONObject().put("voice", options.voice).put("rate", options.rate).put("engine", selectedEngine).put("mixAudio", options.mixAudio)
+        return JSONObject().put("voice", options.voice).put("rate", options.rate).put("engine", selectedEngine).put("mixAudio", options.mixAudio).put("highlightSpeech", options.highlightSpeech)
     }
 
     private fun complete(result: JSONObject) {

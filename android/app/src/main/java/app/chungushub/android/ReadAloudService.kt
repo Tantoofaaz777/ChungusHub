@@ -54,7 +54,9 @@ class ReadAloudService : Service() {
     private var closed = false
     private var origin = ""
     private var title = "Chungus"
-    private var parts = emptyList<String>()
+    private var parts = emptyList<SpeechText.Part>()
+    private var requestId = ""
+    private var spokenIndex: Int? = null
     private var index = 0
     private var wantsPlay = false
     private var hasFocus = false
@@ -136,7 +138,9 @@ class ReadAloudService : Service() {
         else startForeground(NOTIFICATION, notification())
         try {
             resetAudio()
-            parts = SpeechText.sentences(intent.getStringExtra("text").orEmpty(), minOf(3000, TextToSpeech.getMaxSpeechInputLength()))
+            parts = SpeechText.parts(intent.getStringExtra("text").orEmpty(), minOf(3000, TextToSpeech.getMaxSpeechInputLength()))
+            requestId = intent.getStringExtra("requestId").orEmpty()
+            spokenIndex = null
             index = 0
             wantsPlay = true
             error = null
@@ -199,7 +203,7 @@ class ReadAloudService : Service() {
         if (!hasFocus) { pause(); return }
         wantsPlay = true
         if (playerReady) {
-            try { player?.start(); phase = "playing"; publish() }
+            try { player?.start(); spokenIndex = index; phase = "playing"; publish() }
             catch (_: Exception) { fail("Could not resume the audio.") }
         } else { phase = "preparing"; publish(); ensureAudio() }
     }
@@ -243,7 +247,7 @@ class ReadAloudService : Service() {
                 current.setOnPreparedListener {
                     if (player !== current || closed) return@setOnPreparedListener
                     playerReady = true
-                    if (wantsPlay && hasFocus) { current.start(); phase = "playing"; publish(); ensureAudio() }
+                    if (wantsPlay && hasFocus) { current.start(); spokenIndex = index; phase = "playing"; publish(); ensureAudio() }
                 }
                 current.setOnCompletionListener {
                     if (player !== current || closed) return@setOnCompletionListener
@@ -270,7 +274,7 @@ class ReadAloudService : Service() {
         pending = Pending(id, part, file)
         preparingLock.acquire(45000)
         main.postDelayed(synthesisTimeout, 45000)
-        if (tts?.synthesizeToFile(parts[part], Bundle(), file, id) != TextToSpeech.SUCCESS) synthesisFailed(id)
+        if (tts?.synthesizeToFile(parts[part].text, Bundle(), file, id) != TextToSpeech.SUCCESS) synthesisFailed(id)
     }
 
     private fun synthesized(id: String?) {
@@ -339,6 +343,9 @@ class ReadAloudService : Service() {
     private fun status(): JSONObject = JSONObject().put("phase", phase).put("title", title)
         .put("sentence", index + 1).put("total", parts.size).put("error", error ?: JSONObject.NULL)
         .put("startup", startup ?: JSONObject.NULL)
+        .put("requestId", requestId).put("highlightSpeech", options.highlightSpeech)
+        .put("range", if (options.highlightSpeech && spokenIndex == index && phase in setOf("playing", "paused"))
+            parts.getOrNull(index)?.let { JSONObject().put("start", it.start).put("end", it.end) } ?: JSONObject.NULL else JSONObject.NULL)
 
     // Only a MediaStyle notification with an active session token is posted here.
     // Media-session notifications are exempt from POST_NOTIFICATIONS (Android docs).
@@ -408,10 +415,11 @@ class ReadAloudService : Service() {
             observers.add(callback)
             return { observers.remove(callback) }
         }
-        fun start(context: Context, origin: String, text: String, title: String) {
+        fun start(context: Context, origin: String, text: String, title: String, requestId: String = "") {
             require(text.isNotBlank() && text.length <= SpeechText.MAX_TEXT) { "The message is empty or too long to read (maximum 80,000 characters)." }
+            require(requestId.length <= 80 && requestId.all { it.isLetterOrDigit() || it == '-' }) { "Invalid reading request." }
             ContextCompat.startForegroundService(context, Intent(context, ReadAloudService::class.java).setAction(START)
-                .putExtra("origin", origin).putExtra("text", text).putExtra("title", title.take(180)))
+                .putExtra("origin", origin).putExtra("text", text).putExtra("title", title.take(180)).putExtra("requestId", requestId))
         }
         fun snapshot(origin: String): JSONObject = instance?.takeIf { !it.closed && it.origin == origin }?.status()
             ?: JSONObject().put("phase", "idle")

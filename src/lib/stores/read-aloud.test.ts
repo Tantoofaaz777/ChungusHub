@@ -15,6 +15,37 @@ function client(overrides: Partial<NonNullable<Window['ChungusAndroidClient']>> 
 	} } as Window & typeof globalThis;
 }
 
+test('highlight follows the exact filtered range and request identity, including repeated sentences', async () => {
+ let current: AndroidReadingState = { phase: 'idle' };
+ client({ readingHighlights: true,
+  readingRules: async () => [{ id: 'skip', pattern: '[skip]', regex: false, caseSensitive: false, enabled: true }],
+  readAloud: async (text, _title, requestId) => { current = { phase: 'playing', requestId, highlightSpeech: true, range: { start: text.lastIndexOf('Same'), end: text.length } }; },
+  readingState: async () => current });
+ const original = 'Same. [skip] Same.';
+ await reader.start(original, 'Chat', 'message:chat:message');
+ const active = reader.highlight!;
+ expect(active.key).toBe('message:chat:message');
+ expect(active.offsets[active.start]).toBe(original.lastIndexOf('Same'));
+ reader.state = { ...current, phase: 'paused' }; expect(reader.highlight).not.toBeNull();
+ reader.state = { ...current, phase: 'preparing' }; expect(reader.highlight).toBeNull();
+ reader.state = { ...current, requestId: 'older-reading' }; expect(reader.highlight).toBeNull();
+ reader.state = { ...current, highlightSpeech: false }; expect(reader.highlight).toBeNull();
+ reader.state = { ...current, range: { start: 0, end: 99999 } }; expect(reader.highlight).toBeNull();
+ reader.state = current; reader.available = true;
+ await reader.command('stop'); expect(reader.highlight).toBeNull();
+});
+
+test('failed preprocessing leaves the existing reading and highlight intact', async () => {
+ let current: AndroidReadingState = { phase: 'idle' };
+ client({ readingHighlights: true, readingRules: async () => [],
+  readAloud: async (text, _title, requestId) => { current = { phase: 'playing', requestId, highlightSpeech: true, range: { start: 0, end: text.length } }; },
+  readingState: async () => current });
+ await reader.start('Original story.', 'Chat', 'original');
+ window.ChungusAndroidClient!.readingRules = async () => { throw Error('Rules unavailable'); };
+ const error = await reader.start('New story.', 'Chat', 'new').then(() => null, error => error);
+ expect(error?.message).toBe('Rules unavailable'); expect(reader.highlight?.key).toBe('original');
+});
+
 test('an old APK cannot expose a partially supported reader', async () => {
 	client({ readingCommand: undefined });
 	await reader.refresh();

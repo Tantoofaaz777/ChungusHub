@@ -391,7 +391,7 @@ class MainActivity : AppCompatActivity() {
                     val selected = server ?: error("Connect to your server first.")
                     if (type != "speech.state") {
                         check(activityResumed && hasWindowFocus()) { "Return to Chungus and try again." }
-                        if (type == "speech.start") ReadAloudService.start(this, selected.origin, message.getString("text"), message.getString("title"))
+                        if (type == "speech.start") ReadAloudService.start(this, selected.origin, message.getString("text"), message.getString("title"), message.optString("requestId", ""))
                         else {
                             val command = message.getString("command")
                             require(command in setOf("play", "pause", "previous", "next", "stop")) { "Unknown reading command." }

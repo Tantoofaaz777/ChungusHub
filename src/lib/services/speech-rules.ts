@@ -7,7 +7,7 @@ export interface SpeechProcessingTiming {
  reusedWorker: boolean;
 }
 type Job = {
- id: number; text: string; rules: SpeechRule[]; started: number; sent: number; reused: boolean;
+ id: number; text: string; rules: SpeechRule[]; started: number; sent: number; reused: boolean; trackOffsets: boolean;
  resolve: (result: SpeechRuleResult) => void; reject: (error: Error) => void;
  measured?: (timing: SpeechProcessingTiming) => void;
 };
@@ -31,13 +31,14 @@ export class SpeechRuleProcessor {
   this.active = null; this.queue = [];
   for (const job of jobs) job.reject(new Error('Text processing was cancelled.'));
  }
- process(text: string, rules: SpeechRule[], measured?: Job['measured']): Promise<SpeechRuleResult> {
+ process(text: string, rules: SpeechRule[], measured?: Job['measured'], trackOffsets = false): Promise<SpeechRuleResult> {
   if (!rules.length) {
    measured?.({ workerWaitMs: 0, processingMs: 0, totalMs: 0, reusedWorker: false });
-   return Promise.resolve({ text: text.trim(), errors: {} });
+   const start = text.length - text.trimStart().length, trimmed = text.trim();
+   return Promise.resolve({ text: trimmed, errors: {}, ...(trackOffsets ? { offsets: Array.from({ length: trimmed.length }, (_, i) => start + i) } : {}) });
   }
   return new Promise((resolve, reject) => {
-   this.queue.push({ id: ++this.sequence, text, rules, started: performance.now(), sent: 0, reused: this.ready, resolve, reject, measured });
+   this.queue.push({ id: ++this.sequence, text, rules, started: performance.now(), sent: 0, reused: this.ready, resolve, reject, measured, trackOffsets });
    this.ensureWorker(); this.dispatch();
   });
  }
@@ -78,7 +79,7 @@ export class SpeechRuleProcessor {
   this.active = job; job.sent = performance.now();
   (this.worker as Worker & { ref?: () => void })?.ref?.();
   this.timer = setTimeout(() => this.failed(new Error('Text processing took too long. Simplify your regex rules in Settings > TTS.')), 1500);
-  try { this.worker!.postMessage({ id: job.id, text: job.text, rules: job.rules }); }
+  try { this.worker!.postMessage({ id: job.id, text: job.text, rules: job.rules, trackOffsets: job.trackOffsets }); }
   catch { this.failed(new Error('Could not process speech rules. Check Settings > TTS.')); }
  }
  private failed(error: Error) {
@@ -99,4 +100,4 @@ export class SpeechRuleProcessor {
 const processor = new SpeechRuleProcessor();
 export const prepareSpeechProcessing = () => processor.prepare();
 export const suspendSpeechProcessing = () => processor.suspend();
-export const processSpeechText = (text: string, rules: SpeechRule[], measured?: Job['measured']) => processor.process(text, rules, measured);
+export const processSpeechText = (text: string, rules: SpeechRule[], measured?: Job['measured'], trackOffsets = false) => processor.process(text, rules, measured, trackOffsets);

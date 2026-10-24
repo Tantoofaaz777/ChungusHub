@@ -43,7 +43,7 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 			if (message.type === 'speech.state' || message.type === 'speech.command') response.state = { phase: 'paused', sentence: 2, total: 5 };
 			if (message.type === 'speech.rules') response.rules = [];
 			if (message.type === 'speech.settings') response.settings = { engine: 'google', voice: '', rate: 1, voices: [] };
-			if (message.type === 'speech.settings.save') response.settings = { engine: message.engine, voice: message.voice, rate: message.rate, ...(message.mixAudio !== undefined ? { mixAudio: message.mixAudio } : {}) };
+			if (message.type === 'speech.settings.save') response.settings = { engine: message.engine, voice: message.voice, rate: message.rate, ...(message.mixAudio !== undefined ? { mixAudio: message.mixAudio } : {}), ...(message.highlightSpeech !== undefined ? { highlightSpeech: message.highlightSpeech } : {}) };
 			if (message.type === 'share.text.begin') { shareBuffer = ''; response.transfer = 'text-share'; }
 			if (message.type === 'share.text.chunk') {
 				expect(message.offset).toBe(shareBuffer.length);
@@ -144,6 +144,16 @@ test('invalid and excessively escaped speech never reaches the Android bridge', 
 	for (const text of ['', ' \n', 'x'.repeat(80001), '\\'.repeat(60000)]) await expect(client.readAloud(text, 'Chat')).rejects.toThrow();
 	await expect(client.readingCommand('delete')).rejects.toThrow('Unknown reading command');
 	expect(h.messages).toHaveLength(0);
+});
+
+test('sentence highlighting carries a bounded reading identity and preserves optional preferences', async () => {
+ const h = harness(), client = h.window.ChungusAndroidClient;
+ expect(client.readingHighlights).toBe(true);
+ await client.readAloud('One. One.', 'Chat', 'reading-123');
+ expect(h.messages.at(-1)).toMatchObject({ requestId: 'reading-123', text: 'One. One.' });
+ for (const requestId of ['', 'x'.repeat(81), {}, 'with space']) await expect(client.readAloud('Text.', 'Chat', requestId)).rejects.toThrow();
+ for (const highlightSpeech of [true, false]) expect(await client.saveReadingSettings({ engine: 'google', voice: '', rate: 1, highlightSpeech })).toMatchObject({ highlightSpeech });
+ for (const highlightSpeech of ['true', null, 1]) await expect(client.saveReadingSettings({ engine: 'google', voice: '', rate: 1, highlightSpeech })).rejects.toThrow();
 });
 
 test('voice settings bridge preserves exact voice IDs and rejects invalid speeds and identifiers', async () => {

@@ -171,11 +171,14 @@
     copyText,
     shareText,
     shareFile,
-    readAloud: async (text, title) => {
+    readingHighlights: true,
+    readAloud: async (text, title, requestId) => {
       if (typeof text !== 'string' || !text.trim() || text.length > 80000) throw Error('The message is empty or too long to read (maximum 80,000 characters).');
+      if (requestId !== undefined && (typeof requestId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(requestId))) throw Error('Invalid reading request.');
+      const payload = { text, title: String(title).slice(0, 180), ...(requestId !== undefined ? { requestId } : {}) };
       // Bound the complete escaped JSON, not just its source string.
-      if (JSON.stringify({ text, title: String(title).slice(0, 180) }).length > 99000) throw Error('The message is too large to send to the reader.');
-      await request('speech.start', { text, title: String(title).slice(0, 180) }, 10000);
+      if (JSON.stringify(payload).length > 99000) throw Error('The message is too large to send to the reader.');
+      await request('speech.start', payload, 10000);
     },
     readingState: async () => (await request('speech.state', {}, 5000)).state,
     readingRuleNames: true,
@@ -196,9 +199,11 @@
       if (!settings || typeof settings.engine !== 'string' || typeof settings.voice !== 'string' ||
           settings.engine.length > 512 || settings.voice.length > 512 ||
           !Number.isFinite(settings.rate) || settings.rate < 0.5 || settings.rate > 2 ||
-          (settings.mixAudio !== undefined && typeof settings.mixAudio !== 'boolean')) throw Error('Invalid voice, reading speed or audio playback setting.');
+          (settings.mixAudio !== undefined && typeof settings.mixAudio !== 'boolean') ||
+          (settings.highlightSpeech !== undefined && typeof settings.highlightSpeech !== 'boolean')) throw Error('Invalid voice, reading speed or audio playback setting.');
       const choice = { engine: settings.engine, voice: settings.voice, rate: settings.rate };
       if (settings.mixAudio !== undefined) choice.mixAudio = settings.mixAudio;
+      if (settings.highlightSpeech !== undefined) choice.highlightSpeech = settings.highlightSpeech;
       return (await request('speech.settings.save', choice, 5000)).settings;
     },
     notifyReading: () => window.dispatchEvent(new Event('chungus-android-reading')),

@@ -10,3 +10,9 @@
 	background-color: var(--color-accent);
 	color: var(--color-on-accent);
 }
+/* Read aloud paints existing text ranges, including dialogue and inline formatting. */
+::highlight(tts-reading) {
+	background-color: var(--tts-reading-bg);
+	color: var(--tts-reading-ink);
+	text-shadow: none;
+}

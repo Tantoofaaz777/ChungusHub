@@ -24,6 +24,7 @@
 	import { copyText } from '$lib/utils/clipboard';
 	import { readAloudText } from '$lib/utils/read-aloud-text';
 	import { readAloudStore } from '$lib/stores/read-aloud.svelte';
+	import { readAloudHighlight } from '$lib/actions/readAloudHighlight.svelte';
 	import { canShareNativeText, shareNativeText } from '$lib/services/android-client';
 	import { previewContinuation } from '$lib/utils/continuation';
 	import { displaySelfRefs } from '$lib/macros';
@@ -359,8 +360,7 @@
 	function handleReadAloud() {
 		// Display-only regex may turn hidden comments into visible widgets. Speech uses
 		// the stored message, resolving identities without inheriting that presentation.
-		const source = displaySelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns);
-		return readAloudStore.start(readAloudText(source), `${chatStore.activeChat?.title || 'Chat'} · #${ordinal}`);
+		return readAloudStore.start(speechText, `${chatStore.activeChat?.title || 'Chat'} · #${ordinal}`, `message:${message.chatId}:${message.id}`);
 	}
 
 	const isUser = $derived(message.role === 'user');
@@ -494,6 +494,8 @@
 	// A refreshed row or visibility flag can invalidate preprocessing without changing
 	// its result. Keep that string boundary so unchanged prose never reparses/sanitizes.
 	const bodyHtml = $derived(renderMarkdown(bodyText));
+	// Lazy: only the message being read needs a plain-text source. Reuse it per sentence.
+	const speechText = $derived(readAloudText(displaySelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns)));
 	// Portraits style renders the portrait INSIDE the card (floated top-left),
 	// so the outer avatar column has to come off the DOM, not just hide.
 	const isPortraitStyle = $derived(themeStore.appearance.chatStyle === 'portrait');
@@ -688,7 +690,10 @@
 									<div class="prose message-prose" data-search-text use:editOnDoublePress={{
 										enabled: generalSettingsStore.doubleClickToEdit && !messageStore.busy,
 										onEdit: handleEditClick
-									}} use:renderedHtml={bodyHtml}></div>
+									}} use:renderedHtml={bodyHtml} use:readAloudHighlight={{
+										key: `message:${message.chatId}:${message.id}`, version: bodyHtml,
+										text: () => streamReplacement || streamTail != null ? '' : speechText
+									}}></div>
 								</div>
 							{/if}
 							</div>

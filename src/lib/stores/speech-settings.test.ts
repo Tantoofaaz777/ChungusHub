@@ -23,6 +23,19 @@ test('catalog and choices stay device-local and successful writes clear pending 
 	expect(store.unsaved).toBe(false);
 });
 
+test('highlight preference remains explicit when voice, speed and mixing change', async () => {
+ const writes: AndroidSpeechChoice[] = [];
+ client(async value => { writes.push(value); return value; }, true);
+ window.ChungusAndroidClient = { ...window.ChungusAndroidClient!, readingHighlights: true,
+  readingSettings: async () => ({ ...catalog, mixAudio: true, highlightSpeech: true }) };
+ const store = new SpeechSettingsStore(); await store.load();
+ expect(store.canHighlight).toBe(true);
+ store.update({ highlightSpeech: false }); await store.save();
+ store.update({ voice: 'en', rate: 1.25, mixAudio: false }); await store.save();
+ expect(writes[1]).toMatchObject({ highlightSpeech: false, voice: 'en', rate: 1.25, mixAudio: false });
+ expect(store.unsaved).toBe(false);
+});
+
 test('a slow native write cannot overwrite a newer gesture and saves are serialized', async () => {
 	let resolveFirst!: (value: AndroidSpeechChoice) => void;
 	const writes: AndroidSpeechChoice[] = [];

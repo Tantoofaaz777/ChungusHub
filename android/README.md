@@ -240,3 +240,11 @@ Instale o APK 0.1.10 e atualize a interface na VPS para salvar nomes. Em APKs an
 Em **Settings → TTS → Audio playback**, o switch **Play alongside other audio** permite pedir ao Android que a música continue em volume reduzido durante a leitura. Ele começa desligado, é salvo somente neste aparelho e passa a valer na próxima leitura. Outros players podem optar por pausar; o resultado depende do app de música e do Android. Ao pausar ou encerrar a leitura, o Chungus libera o foco para a música recuperar o volume.
 
 Instale o APK 0.1.11 e atualize a VPS. APKs anteriores mostram o switch desabilitado com o aviso de atualização. As escolhas de voz, velocidade e as regras existentes são preservadas.
+
+### Destaque da frase em leitura (0.1.12)
+
+O switch **Settings → TTS → Audio playback → Highlight current sentence** começa ligado e vale na próxima leitura. O chat e o feed de Threads destacam o trecho que está tocando com o accent do tema, usando texto preto ou branco conforme o contraste. Ao pausar, o destaque permanece na frase atual; ao parar ou terminar, ele desaparece. A tela não rola automaticamente.
+
+O destaque respeita as palavras removidas pelas regras de TTS e fica vinculado à mensagem e ao swipe/versão de origem. Trocar de swipe ou editar o texto remove um destaque que não corresponde mais ao conteúdo. Trechos reescritos por regex de display ou com correspondência ambígua podem ficar sem destaque; a leitura continua usando o texto original tratado. A formatação e as cores originais voltam quando o destaque sai do trecho.
+
+Atualize a VPS e instale o APK 0.1.12 por cima do atual. A sincronização usa as frases que já eram geradas, sem mudar a voz, a divisão do áudio ou a leitura em segundo plano. WebViews sem suporte à API de destaque continuam reproduzindo áudio normalmente.

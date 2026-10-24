@@ -8,7 +8,7 @@
 {#snippet renderComment(item: ThreadsComment, level: number)}
 	<div class="comment" class:root={level === 0}>
 		<ThreadsAuthor username={item.username} />
-		<p>{item.body}</p>
+		<p data-speech-text>{item.body}</p>
 		<ThreadsEngagement score={item.score} />
 		{#if item.replies.length}
 			<div class="replies" class:flat={level >= 3}>

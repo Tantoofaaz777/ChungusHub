@@ -55,6 +55,9 @@
 				<div class="audio-option"><span>Play alongside other audio</span><Toggle checked={speech.data.mixAudio ?? false} label="Play alongside other audio" disabled={!speech.canMixAudio || !speech.data.selectionAvailable} onchange={mixAudio => speech.update({ mixAudio })} /></div>
 				<p class="help">Allow music to keep playing at reduced volume when supported by the other app. Applies to the next reading.</p>
 				{#if !speech.canMixAudio}<p class="help">Update the Android app to 0.1.11 or newer to use this option.</p>{/if}
+				<div class="audio-option"><span>Highlight current sentence</span><Toggle checked={speech.canHighlight && (speech.data.highlightSpeech ?? true)} label="Highlight current sentence" disabled={!speech.canHighlight || !speech.data.selectionAvailable} onchange={highlightSpeech => speech.update({ highlightSpeech })} /></div>
+				<p class="help">Follow the sentence being read. Text switches to black or white for contrast. Applies to the next reading.</p>
+				{#if !speech.canHighlight}<p class="help">Update the Android app to 0.1.12 or newer to highlight sentences.</p>{/if}
 			</div>
 		</section>
 		<SpeechRulesEditor />

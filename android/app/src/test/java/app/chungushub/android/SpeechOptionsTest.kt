@@ -4,6 +4,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SpeechOptionsTest {
+    @Test fun highlightDefaultsOnAndExplicitChoiceSurvivesOtherSettings() {
+        assertTrue(SpeechOptions().highlightSpeech)
+        assertFalse(SpeechOptions.checked("google", "voice", 1.249f, mixAudio = true, highlightSpeech = false).highlightSpeech)
+        assertTrue(SpeechOptions.checked("old", "", 1f, highlightSpeech = true).highlightSpeech)
+    }
     @Test fun selectedVoiceRetainsItsEngineAndRoundsTheRate() {
         assertEquals(SpeechOptions("google", "en-us-voice", 1.25f), SpeechOptions.checked("google", "en-us-voice", 1.249f))
     }
