@@ -356,6 +356,13 @@
 		await copyText(streamReplacement ? displayedContent : message.content);
 	}
 
+	function handleReadAloud() {
+		// Display-only regex may turn hidden comments into visible widgets. Speech uses
+		// the stored message, resolving identities without inheriting that presentation.
+		const source = displaySelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns);
+		return readAloudStore.start(readAloudText(source), `${chatStore.activeChat?.title || 'Chat'} · #${ordinal}`);
+	}
+
 	const isUser = $derived(message.role === 'user');
 	// Whether this turn already has a reply below it. A user leaf (no reply) should offer
 	// "Generate Reply" (make the first one), not "Regenerate".
@@ -698,7 +705,7 @@
 									onDelete={handleDeleteClick}
 									onCopy={handleCopy}
 									onShare={canShareNativeText() ? () => shareNativeText(streamReplacement ? displayedContent : message.content) : undefined}
-									onReadAloud={readAloudStore.available && !streamReplacement && streamTail == null ? () => readAloudStore.start(readAloudText(bodyHtml), `${chatStore.activeChat?.title || 'Chat'} · #${ordinal}`) : undefined}
+									onReadAloud={readAloudStore.available && !streamReplacement && streamTail == null ? handleReadAloud : undefined}
 									readingBusy={readAloudStore.busy}
 									onToggleBookmark={toggleBookmark}
 									bookmarked={!!message.isBookmarked}

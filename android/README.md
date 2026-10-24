@@ -33,7 +33,7 @@ aparição na Now Bar e a expansão ao tocar. O visual e a disponibilidade depen
 Não há pílula flutuante externa nem permissão de sobreposição. A notificação é somente
 do player, sem notificações de novas mensagens.
 
-O texto lido é o da mensagem exibida, sem Markdown, tags HTML, reasoning ou URLs de imagens.
+O texto lido vem da mensagem original, com macros de identidade resolvidos e sem aplicar regex de display. Markdown, tags HTML, comentários HTML, reasoning e URLs de imagens não são lidos.
 A fala é preparada em arquivos temporários privados, apagados ao parar, concluir ou trocar
 de mensagem. Nada é enviado para uma API de áudio na VPS. Algumas vozes do próprio motor
 Android podem precisar de internet; instale uma voz offline se desejar evitar isso.
@@ -214,6 +214,6 @@ Em **Settings > TTS > Text processing**, adicione regras para remover palavras, 
 - **Save rules** valida e salva a lista inteira, incluindo a ordem. Edições ainda não salvas não mudam a fala.
 - **Preview draft rules** permite conferir o texto final usando texto simples e as regras atuais, antes de salvar. A prévia não inicia áudio.
 - A execução fica em um worker descartável, com limite de tempo. Se uma regex for inválida ou demorar demais, a leitura não começa; nenhum texto sem filtragem é enviado como fallback.
-- O processamento ocorre depois da conversão do conteúdo exibido em texto simples e antes da divisão em frases. Avançar/voltar usa apenas as frases restantes. A leitura atual não é alterada por novas regras.
+- O processamento ocorre depois da conversão da mensagem original em texto simples, sem aplicar regex de display, e antes da divisão em frases. Avançar/voltar usa apenas as frases restantes. A leitura atual não é alterada por novas regras.
 
 Atualize a interface na VPS e instale o APK 0.1.9 para disponibilizar todos esses controles.

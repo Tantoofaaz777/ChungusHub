@@ -35,9 +35,10 @@ Older APKs and normal browsers use document visibility. Android can still suspen
 ## Read aloud (APK 0.1.8)
 
 Message actions expose Read aloud only when all native speech capabilities are available.
-The frontend extracts plain story text from the same sanitized, macro/regex-resolved HTML
-displayed in the message. Reasoning, toolbar content, images and link destinations are not
-sent. Speech text is bounded to 80,000 UTF-16 characters and the fully escaped bridge request
+The frontend extracts plain story text from the original message after identity macro
+resolution, independently of display-scope regex and its rendered widgets. Markdown and
+HTML formatting are stripped; comments, reasoning, toolbar content, images and link destinations
+are not sent. Speech text is bounded to 80,000 UTF-16 characters and the fully escaped bridge request
 stays below its existing 100,000-character limit. No speech state or audio is stored on the VPS.
 
 `ReadAloudService` is a non-exported foreground `mediaPlayback` service with a platform
@@ -98,6 +99,6 @@ Gradle. Native keyboard/SAF behavior still needs a real device or emulator to ve
 
 APK 0.1.9 adds `speech.rules` and `speech.rules.save` behind the existing exact-origin, main-frame, unlocked bridge guard. Rules live in private `read-aloud` SharedPreferences, separately from voice and rate, with bounded, unique IDs and a maximum of 30 patterns of 1,000 characters each. Native code validates the schema and preserves list order; it never executes user regex on the Android main thread.
 
-The web reader fetches the saved list at each new playback request, after rendered story content has become plain text and before native sentence splitting. The same disposable module worker executes draft previews and playback filtering. Each enabled rule removes all literal or JavaScript regex matches, optionally case-sensitive, from the preceding output. The worker validates disabled patterns as well. A 1.5-second execution watchdog terminates pathological regex after the worker is ready; loading the worker asset has a separate 15-second deadline. Errors and empty results prevent playback instead of falling back to unfiltered text; existing playback is not replaced until preprocessing succeeds. Original chat content and server settings remain unchanged.
+The web reader fetches the saved list at each new playback request, after the original message content has become plain text and before native sentence splitting. Identity macros resolve first, but display-scope regex never runs on the speech source. Markdown rendering and sanitization are used only for safe plain-text extraction, so HTML comments are discarded without becoming display widgets. The same disposable module worker executes draft previews and playback filtering. Each enabled rule removes all literal or JavaScript regex matches, optionally case-sensitive, from the preceding output. The worker validates disabled patterns as well. A 1.5-second execution watchdog terminates pathological regex after the worker is ready; loading the worker asset has a separate 15-second deadline. Errors and empty results prevent playback instead of falling back to unfiltered text; existing playback is not replaced until preprocessing succeeds. Original chat content and server settings remain unchanged.
 
-Settings use explicit Save rules for atomic list/order persistence. Draft previews never synthesize audio. Drag ordering reuses the steering library's `svelte-dnd-action` handle-only pattern with a touch delay and keyboard support. The preview accepts plain text because playback's rendered-HTML-to-text conversion already precedes the rule stage.
+Settings use explicit Save rules for atomic list/order persistence. Draft previews never synthesize audio. Drag ordering reuses the steering library's `svelte-dnd-action` handle-only pattern with a touch delay and keyboard support. The preview accepts plain text because playback's original-message-to-text conversion already precedes the rule stage.
