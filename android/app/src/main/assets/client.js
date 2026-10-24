@@ -178,13 +178,15 @@
       await request('speech.start', { text, title: String(title).slice(0, 180) }, 10000);
     },
     readingState: async () => (await request('speech.state', {}, 5000)).state,
+    readingRuleNames: true,
     readingRules: async () => (await request('speech.rules', {}, 5000)).rules,
     saveReadingRules: async rules => {
       if (!Array.isArray(rules) || rules.length > 30 || rules.some(rule => !rule || typeof rule.id !== 'string' ||
           !rule.id.trim() || rule.id.length > 80 || typeof rule.pattern !== 'string' || !rule.pattern.trim() || rule.pattern.length > 1000 ||
+          (rule.name !== undefined && (typeof rule.name !== 'string' || rule.name.length > 120)) ||
           typeof rule.regex !== 'boolean' || typeof rule.caseSensitive !== 'boolean' || typeof rule.enabled !== 'boolean') ||
           new Set(rules.map(rule => rule.id)).size !== rules.length) throw Error('Invalid speech rules.');
-      const clean = rules.map(({ id, pattern, regex, caseSensitive, enabled }) => ({ id, pattern, regex, caseSensitive, enabled }));
+      const clean = rules.map(({ id, name, pattern, regex, caseSensitive, enabled }) => ({ id, name: name ?? '', pattern, regex, caseSensitive, enabled }));
       if (JSON.stringify({ rules: clean }).length > 99000) throw Error('Speech rules are too large to save.');
       await request('speech.rules.save', { rules: clean }, 5000);
     },

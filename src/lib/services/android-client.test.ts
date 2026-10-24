@@ -449,3 +449,17 @@ test('speech rules preserve order and regex source, reject malformed payloads be
   await expect(h.window.ChungusAndroidClient.saveReadingRules(invalid)).rejects.toThrow('Invalid speech rules');
  expect(h.messages).toHaveLength(count);
 });
+
+
+test('rule-name capability preserves labels and legacy unnamed rules, and bounds names before native writes', async () => {
+ const h = harness();
+ expect(h.window.ChungusAndroidClient.readingRuleNames).toBe(true);
+ const named = { id: 'named', name: 'Hide emojis', pattern: '[a-z]', regex: true, caseSensitive: false, enabled: true };
+ const legacy = { id: 'old', pattern: 'OOC', regex: false, caseSensitive: false, enabled: false };
+ await h.window.ChungusAndroidClient.saveReadingRules([named, legacy]);
+ expect(h.messages.at(-1).rules).toEqual([named, { ...legacy, name: '' }]);
+ const count = h.messages.length;
+ for (const name of [null, 42, 'x'.repeat(121)])
+  await expect(h.window.ChungusAndroidClient.saveReadingRules([{ ...named, name }])).rejects.toThrow('Invalid speech rules');
+ expect(h.messages).toHaveLength(count);
+});

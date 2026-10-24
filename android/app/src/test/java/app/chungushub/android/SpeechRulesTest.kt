@@ -20,4 +20,16 @@ class SpeechRulesTest {
         assertThrows(IllegalArgumentException::class.java) { SpeechRule.checked(listOf(rule(id = "x".repeat(81)))) }
         assertEquals(emptyList<SpeechRule>(), SpeechRule.checked(emptyList()))
     }
+    @Test fun namesAreOptionalMetadataAndFollowRuleOrder() {
+        val oldRule = rule()
+        val named = rule("two").copy(name = "Hide emojis")
+        assertEquals("", oldRule.name)
+        assertEquals(listOf(named, oldRule), SpeechRule.checked(listOf(named, oldRule)))
+        assertEquals("OOC", named.pattern)
+    }
+    @Test fun boundsNamesWithoutRejectingLegacyOrBlankNames() {
+        assertEquals(120, SpeechRule.checked(listOf(rule().copy(name = "x".repeat(120)))).single().name.length)
+        assertThrows(IllegalArgumentException::class.java) { SpeechRule.checked(listOf(rule().copy(name = "x".repeat(121)))) }
+        assertEquals("", SpeechRule.checked(listOf(rule())).single().name)
+    }
 }

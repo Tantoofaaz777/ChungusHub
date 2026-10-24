@@ -24,3 +24,10 @@ test('Unicode and zero-width matches terminate and completely removed text stays
  expect(applySpeechRules('OOC\nOOC', [rule('OOC')]).text).toBe('');
  expect(() => applySpeechRules('a'.repeat(80001), [])).toThrow();
 });
+
+
+test('rule labels do not become spoken text or affect filtering', () => {
+ const named = rule('OOC', { name: 'Do not speak this label' });
+ expect(applySpeechRules('OOC Hello', [named]).text).toBe('Hello');
+ expect(applySpeechRules('OOC Hello', [rule('OOC')]).text).toBe('Hello');
+});

@@ -1,5 +1,7 @@
 export interface SpeechRule {
  id: string;
+ /** Optional for rules saved before APK 0.1.10. Metadata only, never part of speech. */
+ name?: string;
  pattern: string;
  regex: boolean;
  caseSensitive: boolean;

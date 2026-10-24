@@ -217,3 +217,12 @@ Em **Settings > TTS > Text processing**, adicione regras para remover palavras, 
 - O processamento ocorre depois da conversão da mensagem original em texto simples, sem aplicar regex de display, e antes da divisão em frases. Avançar/voltar usa apenas as frases restantes. A leitura atual não é alterada por novas regras.
 
 Atualize a interface na VPS e instale o APK 0.1.9 para disponibilizar todos esses controles.
+
+
+### Nomes e lista compacta de regras (0.1.10)
+
+As regras de **Text processing** começam recolhidas. Toque no nome para abrir o editor; apenas uma regra fica expandida por vez. Novas regras abrem seu editor automaticamente. Switch, excluir e alça de arraste continuam independentes da expansão.
+
+No editor, **Name** define um nome opcional de até 120 caracteres. Sem nome, a lista mostra `Rule 1`, `Rule 2` etc. O nome acompanha a regra ao reordenar e é salvo com **Save rules**, no mesmo armazenamento privado do aparelho. Ele não altera a correspondência nem entra no texto falado. As regras antigas continuam válidas e não perdem seus padrões, ordem ou switches.
+
+Instale o APK 0.1.10 e atualize a interface na VPS para salvar nomes. Em APKs anteriores, a lista compacta funciona, mas o campo de nome fica desabilitado com um aviso de atualização para evitar que a versão antiga descarte os nomes ao salvar.
