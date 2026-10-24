@@ -13,7 +13,7 @@ import {
 	collectSubtree,
 	findActivePath,
 	findDeepestLeafFromNode,
-	findSiblings,
+	groupSiblings,
 	subtreeBlastRadius
 } from './message-tree';
 
@@ -108,7 +108,7 @@ describe('canSpliceMessage', () => {
 	});
 });
 
-describe('findSiblings', () => {
+describe('groupSiblings (the transcript swipe index)', () => {
 	test('walks every branch at a point, forks included (mixed roles after a splice)', () => {
 		// The shape a this_only delete leaves behind: two user turns plus the deleted
 		// turn's reply, re-parented next to them. All three are alternative continuations
@@ -127,13 +127,18 @@ describe('findSiblings', () => {
 		shape('u1', 'user', 0);
 		shape('u2', 'user', 1);
 		shape('r', 'assistant', 2);
-		for (const id of ['u1', 'u2', 'r']) {
-			expect(findSiblings(msgs, id).map((m) => m.id)).toEqual(['u1', 'u2', 'r']);
-		}
+		expect(groupSiblings(msgs).get('p')?.map((m) => m.id)).toEqual(['u1', 'u2', 'r']);
 	});
 
-	test('an unknown id yields an empty list', () => {
-		expect(findSiblings(FORKED, 'ghost')).toEqual([]);
+	test('includes root alternatives, sorts without mutating input, and handles empty trees', () => {
+		const msgs = tree([['late', null], ['early', null], ['child', 'early']]);
+		msgs[0].siblingIndex = 2;
+		msgs[1].siblingIndex = 0;
+		const indexed = groupSiblings(msgs);
+		expect(indexed.get(null)?.map(m => m.id)).toEqual(['early', 'late']);
+		expect(indexed.get('early')?.map(m => m.id)).toEqual(['child']);
+		expect(msgs.map(m => m.id)).toEqual(['late', 'early', 'child']);
+		expect(groupSiblings([]).size).toBe(0);
 	});
 });
 

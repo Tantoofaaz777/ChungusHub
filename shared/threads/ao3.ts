@@ -59,13 +59,6 @@ export function normalizeAo3Information(value: unknown): Ao3Information {
   return result
 }
 
-export function hasAo3Information(value: Ao3Information | undefined): boolean {
-  return Boolean(value && (
-    value.enabled || value.rating || value.archiveWarnings.length || value.categories.length
-    || AO3_TEXT_FIELDS.some(([key]) => value[key].trim())
-  ))
-}
-
 export function serializeAo3Information(value: Ao3Information | undefined): string {
   if (!value?.enabled) return ''
   const fields: Array<[string, string]> = [

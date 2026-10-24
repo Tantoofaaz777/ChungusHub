@@ -40,6 +40,14 @@ function fixture() {
 }
 
 describe('batched sync invalidations', () => {
+	test('startup hints and reconnects wait for initialization and are replayed once', async () => {
+		const calls: string[] = [];
+		const batch = new SyncBatch({ settings: async () => { calls.push('settings'); }, chats: async () => { calls.push('chats'); } }, () => {}, {}, undefined, true);
+		batch.enqueue('chats'); batch.reconnect(); batch.enqueue('settings');
+		await new Promise(resolve => setTimeout(resolve, 60)); expect(calls).toEqual([]);
+		batch.resume(); await new Promise(resolve => setTimeout(resolve, 60));
+		expect(calls).toEqual(['settings', 'chats']);
+	});
 	test('deduplicates a burst, merges chat scopes and keeps the first 50ms deadline', async () => {
 		const f = fixture();
 		f.batch.enqueue('messages');

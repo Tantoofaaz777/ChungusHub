@@ -97,9 +97,9 @@ function parseManifest(raw: unknown, id: string): SnapshotManifest | null {
 }
 
 export function readManifest(id: string): SnapshotManifest | null {
-	const path = manifestPath(id);
-	if (!existsSync(path)) return null;
 	try {
+		const path = manifestPath(id);
+		if (!existsSync(path)) return null;
 		return parseManifest(JSON.parse(readFileSync(path, 'utf8')), id);
 	} catch {
 		return null;

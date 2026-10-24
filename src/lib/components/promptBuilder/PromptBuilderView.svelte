@@ -149,7 +149,7 @@
 		controls: currentPreset?.controls ?? [],
 		customFields: presetControlsStore.valuesFor(currentPreset?.id ?? null),
 		chatMessages: chatStore.currentChatState?.activePath ?? [],
-		recall: { text: memoryStore.recall || null, archivedIds: memoryStore.archivedMessageIds, scenes: memoryStore.scenes },
+		recall: { text: null, archivedIds: memoryStore.archivedMessageIds, scenes: memoryStore.scenes },
 		model: promptTarget.model,
 		postProcessing: promptTarget.postProcessing,
 		contextBudget: promptTarget.contextBudget,

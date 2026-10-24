@@ -29,12 +29,7 @@ export function initSync(): void {
 	if (started) return;
 	started = true;
 
-	// One read per scope in a 50ms burst, ordered by dependencies. Both chat hints
-	// refresh the same transcript and persona cast, so share a single invalidation.
-	const batch = new SyncBatch<SyncScope>(HANDLERS, reportFailure, { messages: 'chats' });
-	onSync((scope) => batch.enqueue(scope));
-	// Hints lost while disconnected require every scope to be read again.
-	onReconnect(() => batch.reconnect());
+	batch.resume();
 }
 
 /**
@@ -65,25 +60,32 @@ const HANDLERS: Record<SyncScope, () => Promise<void>> = {
 	presets: () => presetService.syncReload(),
 	settings: async () => {
 		// Global active persona + preset-control values are stored as settings.
-		await personaStore.syncReload();
-		await presetControlsStore.syncReload();
 		// Every store that rides the synced-setting primitive (theme,
 		// view prefs, …) re-reads here, so a setting changed on one
 		// device shows up live on the others instead of only on next boot.
-		await reloadAllSyncedSettings();
+		const results = await Promise.allSettled([
+			personaStore.syncReload(), presetControlsStore.syncReload(), reloadAllSyncedSettings()
+		]);
+		const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
+		if (errors.length) throw new AggregateError(errors, 'Some settings could not be synchronized');
 	},
 	// A composer draft changed on another device; only the open chat's matters
 	// here. The rest are read when their chat opens.
 	drafts: () => inputDraftStore.syncReload(chatStore.activeChatId),
 	inputHistory: () => inputHistoryStore.reload(),
-	// Another device folded/rolled back/edited the open chat's memory, so refresh
-	// the panel data and ghost boundary.
+	// Refresh manual summaries and their coverage on the open path.
 	memory: () => memoryStore.syncReload(),
 	threads: () => threadsStore.syncReload(),
 	// A snapshot finished, was pinned or was deleted. A no-op unless the Backups page
 	// has been opened on this device.
 	backups: () => backupStore.syncReload()
 };
+
+// Listen before boot opens its socket. Applying waits for initSync, so startup changes
+// are retained without reloading every scope or racing the initial migration sequence.
+const batch = new SyncBatch<SyncScope>(HANDLERS, reportFailure, { messages: 'chats' }, undefined, true);
+onSync(scope => batch.enqueue(scope));
+onReconnect(() => batch.reconnect());
 
 function reportFailure(scope: string, ...failure: [unknown?]): void {
 	if (failure.length === 0) {

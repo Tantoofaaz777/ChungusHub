@@ -9,6 +9,7 @@
 import { db } from '$lib/services/database';
 import { imageService } from '$lib/services/imageService';
 import { DebouncedWriter } from '$lib/utils/debounced-write';
+import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
 import type { PortraitFocus } from '$lib/utils/portrait-focus';
 import type { Lorebook, LorebookEntry, LorebookLinks } from './types';
 import {
@@ -42,6 +43,8 @@ class LorebookStore {
 	}
 
 	async refresh(): Promise<void> {
+		const ticket = ++this.refreshTicket;
+		const before = captureEditorRows(this._books);
 		this._loading = true;
 		try {
 			// Commit pending debounced edits first: a sync-triggered reload must not silently
@@ -52,14 +55,12 @@ class LorebookStore {
 			// touched since can be newer than the row that comes back. The local copy wins,
 			// or the reload rewinds an open entry under the caret; that copy's own write is
 			// already scheduled, so the server still gets it.
-			this._books = rows.map((row) => {
-				const live = this.getBook(row.id);
-				return live && live.updatedAt > row.updatedAt ? live : row;
-			});
+			if (ticket === this.refreshTicket) this._books = retainEditorChanges(rows, before, this._books);
 		} finally {
-			this._loading = false;
+			if (ticket === this.refreshTicket) this._loading = false;
 		}
 	}
+	private refreshTicket = 0;
 
 	syncReload(): Promise<void> {
 		return this.refresh();
@@ -146,7 +147,7 @@ class LorebookStore {
 	// ===== mutations (debounced write-through) =====
 
 	private touch(book: Lorebook): void {
-		book.updatedAt = Date.now();
+		book.updatedAt = Math.max(Date.now(), book.updatedAt + 1);
 		this._books = [...this._books];
 		this.writer.schedule(book.id);
 	}
@@ -373,7 +374,7 @@ class LorebookStore {
 		const book = this.getBook(bookId);
 		if (!book) return;
 		this.writer.cancel(bookId);
-		book.updatedAt = Date.now();
+		book.updatedAt = Math.max(Date.now(), book.updatedAt + 1);
 		this._books = [...this._books];
 		await db.updateLorebook(book);
 	}

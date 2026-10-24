@@ -168,6 +168,17 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(0);
 	});
 
+	test('a generation cannot attach its reply to a message in another chat', () => {
+		const chatId = makeChat(), otherChat = makeChat();
+		const ownParent = addMessage(chatId, null, 'user');
+		const foreignParent = addMessage(otherChat, null, 'user');
+		serverDb.updateChatActiveLeaf(chatId, ownParent);
+		const before = serverDb.getMessagesDelta(chatId, null);
+		expect(() => serverDb.commitGeneratedTurn(commit({ chatId, parentId: foreignParent, expectedLeafId: ownParent }))).toThrow(/nowhere to hang/);
+		expect(serverDb.getMessagesDelta(chatId, null)).toEqual(before);
+		expect(serverDb.getMessagesByChat(otherChat)).toHaveLength(1);
+	});
+
 	test('an opening scene claims the root only when the chat holds none', () => {
 		const empty = makeChat();
 		const first = serverDb.commitGeneratedTurn(commit({ chatId: empty, claimsRoot: true }));

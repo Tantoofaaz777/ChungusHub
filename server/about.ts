@@ -11,6 +11,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR, IMAGES_ROOT, IS_COMPILED } from './config';
 import { APP_VERSION } from './version';
+import { LATEST_RELEASE_API } from '../shared/project';
 
 export interface InstallInfo {
 	/** 'dev' from source, the baked number in a portable build (server/version.ts). */
@@ -62,8 +63,6 @@ export function installInfo(): InstallInfo {
 	};
 }
 
-const LATEST_RELEASE_URL = 'https://api.github.com/repos/patcireamo/ChungusHub/releases/latest';
-
 export interface LatestRelease {
 	/** The tag with its leading `v` off, so the client can weigh it against its own number. */
 	version: string;
@@ -79,15 +78,15 @@ export interface LatestRelease {
  * Every failure is a sentence the reader gets to read. A check that quietly answered
  * "you are up to date" because the request died would be the one lie this page could tell.
  */
-export async function latestRelease(): Promise<LatestRelease> {
-	const res = await fetch(LATEST_RELEASE_URL, {
+export async function latestRelease(fetcher: typeof fetch = fetch): Promise<LatestRelease> {
+	const res = await fetcher(LATEST_RELEASE_API, {
 		headers: { accept: 'application/vnd.github+json', 'user-agent': 'ChungusHub' },
 		signal: AbortSignal.timeout(10_000)
 	});
 	// A 404 is the same answer for two states, so it names both: an unauthenticated request
 	// cannot tell a repository with no release from one it is not allowed to see at all.
 	if (res.status === 404) {
-		throw new Error('GitHub has nothing to compare against: no release is published, or the repository is not public.');
+		throw new Error('GitHub has no stable server release to compare against, or the repository is not public. Android test APKs are released separately.');
 	}
 	if (res.status === 403 || res.status === 429) {
 		throw new Error('GitHub is rate limiting this address. It clears within the hour.');

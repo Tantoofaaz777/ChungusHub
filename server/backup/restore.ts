@@ -20,15 +20,17 @@
  * open on that directory for the life of the process (watch-file.ts), and Windows refuses to
  * rename a directory anything has open.
  */
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
-import { dirname, join, relative, sep } from 'node:path';
+import { existsSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { Database } from 'bun:sqlite';
+import { copyFile, mkdir, readdir, readFile, rm } from 'node:fs/promises';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { ensureDirs, resolveDataDir } from '../config';
-import { LATEST_SCHEMA_VERSION } from '../db';
+import { BASELINE_SCHEMA_VERSION, LATEST_SCHEMA_VERSION } from '../db';
 import { APP_VERSION } from '../version';
 import { restoreBlockedReason } from '../../shared/backups';
 import { readManifest } from './manifest';
-import { SNAPSHOT_ENTRIES, journalPath, snapshotDataPath } from './paths';
+import { SNAPSHOT_ENTRIES, BUILDING_MARKER, assertBackupDirUsable, journalPath, snapshotDataPath, snapshotPath, validSnapshotId } from './paths';
+import { mapLimit } from './copy-batch';
 
 const COPY_CONCURRENCY = 16;
 
@@ -43,9 +45,9 @@ export function readJournal(): RestoreJournal | null {
 	if (!existsSync(path)) return null;
 	try {
 		const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
-		if (!raw || typeof raw !== 'object') return null;
+		if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid restore journal');
 		const j = raw as Record<string, unknown>;
-		if (typeof j.snapshotId !== 'string' || !j.snapshotId) return null;
+		if (typeof j.snapshotId !== 'string' || !validSnapshotId(j.snapshotId)) throw new Error('Invalid restore journal');
 		return {
 			snapshotId: j.snapshotId,
 			startedAt: typeof j.startedAt === 'number' ? j.startedAt : 0,
@@ -79,13 +81,7 @@ export function cancelPendingRestore(): void {
  * and validates that the snapshot can be read by this build at all.
  */
 export function beginRestore(snapshotId: string): void {
-	const manifest = readManifest(snapshotId);
-	if (!manifest) throw new Error(`No readable snapshot named "${snapshotId}".`);
-	const blocked = restoreBlockedReason(manifest, LATEST_SCHEMA_VERSION);
-	if (blocked) throw new Error(blocked);
-	if (!existsSync(snapshotDataPath(snapshotId))) {
-		throw new Error(`Snapshot "${snapshotId}" has no data folder to restore from.`);
-	}
+	validateRestoreSource(snapshotId);
 	const path = journalPath();
 	const temp = `${path}.tmp`;
 	const journal: RestoreJournal = {
@@ -97,31 +93,53 @@ export function beginRestore(snapshotId: string): void {
 	renameSync(temp, path);
 }
 
-async function mapLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
-	let next = 0;
-	await Promise.all(
-		Array.from({ length: Math.min(limit, items.length) }, async () => {
-			for (;;) {
-				const i = next++;
-				if (i >= items.length) return;
-				await fn(items[i]);
-			}
-		})
-	);
+/** Validate before claiming AND immediately before any live entry can be removed. */
+function validateRestoreSource(snapshotId: string): string {
+	assertBackupDirUsable();
+	const manifest = readManifest(snapshotId);
+	if (!manifest) throw new Error(`No readable snapshot named "${snapshotId}".`);
+	const blocked = restoreBlockedReason(manifest, LATEST_SCHEMA_VERSION);
+	if (blocked) throw new Error(blocked);
+	const root = snapshotPath(snapshotId), source = snapshotDataPath(snapshotId);
+	if (existsSync(join(root, BUILDING_MARKER))) throw new Error('This snapshot has not finished being written.');
+	if (!existsSync(source)) {
+		throw new Error(`Snapshot "${snapshotId}" has no data folder to restore from.`);
+	}
+	if (lstatSync(root).isSymbolicLink() || lstatSync(source).isSymbolicLink() || !lstatSync(source).isDirectory()) {
+		throw new Error('The snapshot data must be a real directory inside the backup store.');
+	}
+	if (!realpathSync(source).startsWith(realpathSync(dirname(root)) + sep)) throw new Error('The snapshot is outside the backup store.');
+	const database = join(source, 'chungushub.db');
+	if (!existsSync(database) || !lstatSync(database).isFile() || lstatSync(database).isSymbolicLink()) {
+		throw new Error('The snapshot database is missing or is not a regular file.');
+	}
+	const db = new Database(database, { readonly: true });
+	try {
+		const integrity = db.query('PRAGMA integrity_check').all() as Record<string, unknown>[];
+		if (integrity.length !== 1 || Object.values(integrity[0])[0] !== 'ok') throw new Error('The snapshot database is damaged.');
+		const row = db.query('SELECT MAX(version) AS version FROM _migrations').get() as { version: number | null };
+		if (!Number.isSafeInteger(row.version) || row.version! < BASELINE_SCHEMA_VERSION) throw new Error('The snapshot database format is not supported.');
+		const actualBlocked = restoreBlockedReason({ ...manifest, schemaVersion: row.version! }, LATEST_SCHEMA_VERSION);
+		if (actualBlocked) throw new Error(actualBlocked);
+	} finally { db.close(); }
+	return source;
 }
 
 async function walk(root: string, base = root): Promise<string[]> {
 	let entries;
 	try {
+		if (lstatSync(root).isSymbolicLink()) throw new Error(`The snapshot contains a symbolic link: ${root}.`);
 		entries = await readdir(root, { withFileTypes: true });
-	} catch {
-		return [];
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+		throw error;
 	}
 	const out: string[] = [];
 	for (const entry of entries) {
 		const abs = join(root, entry.name);
 		if (entry.isDirectory()) out.push(...(await walk(abs, base)));
 		else if (entry.isFile()) out.push(relative(base, abs).split(sep).join('/'));
+		else throw new Error(`The snapshot contains an unsupported file: ${abs}.`);
 	}
 	return out;
 }
@@ -135,11 +153,8 @@ async function walk(root: string, base = root): Promise<string[]> {
  * below it is the only thing a headless install has to look at.
  */
 export async function swapEntries(snapshotId: string): Promise<void> {
-	const dataDir = resolveDataDir();
-	const sourceRoot = snapshotDataPath(snapshotId);
-	if (!existsSync(sourceRoot)) {
-		throw new Error(`Snapshot "${snapshotId}" has no data folder at ${sourceRoot}.`);
-	}
+	const dataDir = resolve(resolveDataDir());
+	const sourceRoot = validateRestoreSource(snapshotId);
 
 	const files: string[] = [];
 	for (const entry of SNAPSHOT_ENTRIES) {
@@ -151,12 +166,25 @@ export async function swapEntries(snapshotId: string): Promise<void> {
 			files.push(entry.name);
 		}
 	}
+	const manifest = readManifest(snapshotId)!;
+	if (manifest.fileCount > 0 && files.length !== manifest.fileCount) {
+		throw new Error('Files are missing from this snapshot or its inventory has changed.');
+	}
+	// Presets are loaded independently of SQLite. A readable database cannot make a
+	// truncated preset usable, so check those files before removing any live entry too.
+	for (const rel of files) {
+		if (rel.startsWith('presets/') && rel.endsWith('.json')) {
+			try { JSON.parse(await readFile(join(sourceRoot, rel), 'utf8')); }
+			catch { throw new Error(`The snapshot contains an unreadable preset: ${rel}.`); }
+		}
+	}
 
 	// Remove first, all of it, so nothing from the present survives inside a folder the
 	// snapshot also has: a character deleted before the snapshot must not come back to life
 	// because its file happened to still be there.
 	for (const entry of SNAPSHOT_ENTRIES) {
-		const target = join(dataDir, entry.name);
+		const target = resolve(dataDir, entry.name);
+		if (dirname(target) !== dataDir) throw new Error('Restore target is outside the data directory.');
 		await rm(target, { recursive: true, force: true });
 		if (entry.kind === 'db') {
 			// A live journal paired with a database from another month is unrecoverable, so

@@ -7,7 +7,7 @@
  * One packed settings key per surface.
  */
 import { PER_PAGE_OPTIONS, CHARACTER_SORT_OPTIONS, type SortOption, type ViewMode } from '$lib/components/library/browse';
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 
 interface BrowseViewState {
 	viewMode: ViewMode;
@@ -63,12 +63,12 @@ class BrowseViewPrefs {
 	}
 
 	async initialize(): Promise<void> {
-		this.apply(normalize(await readSetting<Partial<BrowseViewState> | null>(this.#key, null)));
+		await this.syncReload();
 		registerSettingsReload(() => this.syncReload());
 	}
 
 	async syncReload(): Promise<void> {
-		this.apply(normalize(await readSetting<Partial<BrowseViewState> | null>(this.#key, null)));
+		await reloadSettings([this.#key], () => readSetting<Partial<BrowseViewState> | null>(this.#key, null), raw => this.apply(normalize(raw)));
 	}
 
 	private apply(state: BrowseViewState): void {

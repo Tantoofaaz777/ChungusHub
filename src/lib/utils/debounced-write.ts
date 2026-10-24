@@ -8,8 +8,9 @@
  * out per store, that is where the differences crept in: one would forget the
  * tab-going-away commit, another would write rows nobody had touched.
  *
- * **The pending timer is the record of "this key holds an unwritten change"**, and a commit
- * only ever runs for a key that has one. Writing unprompted is not a harmless extra write:
+ * Timers record unsent changes; active promises record saves awaiting acknowledgement.
+ * A commit only starts for a key with a timer; flush also waits for active saves.
+ * Writing unprompted is not a harmless extra write:
  * every write broadcasts a sync scope, so it lands this device's copy on all the others.
  *
  * `commit` receives the key and nothing else: the store reads its own current state for
@@ -30,6 +31,7 @@ export class DebouncedWriter {
 	// wants the answer to change under it, and a plain Map would answer once and never
 	// again. Nothing else about the timers is state.
 	private timers = new SvelteMap<string, ReturnType<typeof setTimeout>>();
+	private writes = new SvelteMap<string, Promise<void>>();
 
 	constructor(
 		private readonly delayMs: number,
@@ -60,7 +62,7 @@ export class DebouncedWriter {
 
 	/** Does this key hold a change that hasn't reached the server yet? Reactive. */
 	pending(key: string = SINGLE): boolean {
-		return this.timers.has(key);
+		return this.timers.has(key) || this.writes.has(key);
 	}
 
 	/** Commit now and wait for it: one key, or every pending key when called with none. */
@@ -69,12 +71,19 @@ export class DebouncedWriter {
 			await this.run(key);
 			return;
 		}
-		await Promise.all([...this.timers.keys()].map((pending) => this.run(pending)));
+		await Promise.all([...new Set([...this.timers.keys(), ...this.writes.keys()])].map((pending) => this.run(pending)));
 	}
 
 	private async run(key: string): Promise<void> {
-		if (!this.timers.has(key)) return;
+		if (!this.timers.has(key)) {
+			await this.writes.get(key);
+			return;
+		}
 		this.cancel(key);
-		await this.commit(key);
+		const previous = this.writes.get(key);
+		const write = (previous ? previous.catch(() => {}) : Promise.resolve()).then(async () => { await this.commit(key); });
+		this.writes.set(key, write);
+		try { await write; }
+		finally { if (this.writes.get(key) === write) this.writes.delete(key); }
 	}
 }

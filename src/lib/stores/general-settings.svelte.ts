@@ -1,5 +1,5 @@
 import { DEFAULT_REASONING_RETENTION, normalizeReasoningRetention } from '$shared/reasoning-retention';
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 
 export type InputHistoryScope = 'global' | 'chat';
 
@@ -142,12 +142,12 @@ class GeneralSettingsStore {
 	welcomeSeen = $derived(this.settings.welcomeSeen);
 
 	async initialize(): Promise<void> {
-		this.settings = normalize(await readSetting<Partial<GeneralSettings> | null>(SETTINGS_KEY, null));
+		await this.syncReload();
 		registerSettingsReload(() => this.syncReload());
 	}
 
 	async syncReload(): Promise<void> {
-		this.settings = normalize(await readSetting<Partial<GeneralSettings> | null>(SETTINGS_KEY, null));
+		await reloadSettings([SETTINGS_KEY], () => readSetting<Partial<GeneralSettings> | null>(SETTINGS_KEY, null), raw => { this.settings = normalize(raw); });
 	}
 
 	setSaveDrafts(enabled: boolean): void {

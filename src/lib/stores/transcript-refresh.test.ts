@@ -32,6 +32,8 @@ let memoryLeaves: (string | null)[] = [];
 let writes: { leafId: string; resolve: () => void; reject: (error: Error) => void }[] = [];
 let visibility: { sinceRev: number; resolve: (delta: Delta) => void; reject: (error: Error) => void }[] = [];
 let chatReads = 0;
+let delayedLists = false;
+let chatLists: { resolve: (rows: unknown[]) => void }[] = [];
 
 const CHAT = { id: 'chat-1', title: 'Overlap', activeLeafId: 'reply', rootMessageId: 'greeting' };
 /** The chat row as the server currently holds it. Moved between reads to model a swipe,
@@ -75,7 +77,7 @@ mock.module('$lib/services/database', () => ({
 			const chat = { ...serverChat };
 			return new Promise((resolve, reject) => owed.push({ resolve: (delta: Delta) => resolve({ ...delta, chat }), reject }));
 		},
-		getAllChats: async () => [{ ...serverChat }]
+		getAllChats: async () => delayedLists ? new Promise(resolve => chatLists.push({ resolve })) : [{ ...serverChat }]
 	}
 }));
 mock.module('$lib/services/transport', () => ({
@@ -112,6 +114,8 @@ beforeEach(() => {
 	writes = [];
 	visibility = [];
 	chatReads = 0;
+	delayedLists = false;
+	chatLists = [];
 	serverChat = { ...CHAT };
 	chatReadApart = null;
 	chatStore.openingChatId = null;
@@ -144,6 +148,31 @@ const NOTHING_CHANGED: Delta = { rev: 5, full: false, upserts: [], deletedIds: [
 
 const ids = () => chatStore.currentChatState!.allMessages.map((m) => m.id);
 const userTurn = () => chatStore.currentChatState!.allMessages.find((m) => m.id === 'user')!.content;
+
+describe('chat list synchronization', () => {
+	test('an older list cannot remove a newer chat after overlapping syncs', async () => {
+		delayedLists = true;
+		await chatStore.goHome();
+		const older = chatStore.syncReload(), newer = chatStore.syncReload();
+		const added = { ...CHAT, id: 'new-chat' };
+		chatLists[1].resolve([CHAT, added]); await newer;
+		chatLists[0].resolve([CHAT]); await older;
+		expect(chatStore.chats.map(chat => chat.id)).toEqual([CHAT.id, added.id]);
+	});
+
+	test('a list read cannot close a chat created and opened while it was in flight', async () => {
+		delayedLists = true;
+		const reload = chatStore.syncReload();
+		const added = { ...CHAT, id: 'new-chat' };
+		chatStore.chats = [...chatStore.chats, added] as never;
+		chatStore.activeChatId = added.id;
+		chatStore.currentChatState = { ...chatStore.currentChatState!, chat: added } as never;
+		chatLists[0].resolve([CHAT]); await reload;
+		expect(chatStore.activeChatId).toBe(added.id);
+		expect(chatStore.currentChatState?.chat.id).toBe(added.id);
+		expect(chatStore.chats.some(chat => chat.id === added.id)).toBe(true);
+	});
+});
 
 describe('single-call prompt visibility', () => {
 	test('adopts the acknowledged delta and preserves text without another transcript/chat request', async () => {

@@ -135,18 +135,19 @@ export function canvasToPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
 	});
 }
 
-/** Prompt a browser download of a blob under the given filename. The anchor is put in the
- *  page before the click and the url revoked after: a detached anchor plus an immediate
- *  revoke drops the download on a blob big enough to matter. */
+/** Keep the URL alive while the browser starts consuming a potentially large file. */
 export function triggerDownload(filename: string, blob: Blob): void {
 	const url = URL.createObjectURL(blob);
 	const anchor = document.createElement('a');
 	anchor.href = url;
 	anchor.download = filename;
 	document.body.appendChild(anchor);
-	anchor.click();
-	anchor.remove();
-	URL.revokeObjectURL(url);
+	try {
+		anchor.click();
+	} finally {
+		anchor.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	}
 }
 
 /** Android chooses the destination first; browsers and older APKs build then download. */

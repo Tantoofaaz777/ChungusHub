@@ -10,7 +10,7 @@
  */
 import { describe, test, expect, beforeEach, afterAll } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -18,6 +18,7 @@ import { createSnapshot } from './snapshot';
 import { beginRestore, cancelPendingRestore, readJournal, resumeInterruptedRestore } from './restore';
 import { patchManifest } from './manifest';
 import { journalPath } from './paths';
+import { BASELINE_SCHEMA_VERSION } from '../db';
 
 const roots: string[] = [];
 let dataDir: string;
@@ -29,7 +30,7 @@ function seedDatabase(chatIds: string[]): void {
 	const db = new Database(join(dataDir, 'chungushub.db'), { create: true });
 	db.exec('PRAGMA journal_mode = WAL');
 	db.exec('CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)');
-	db.run('INSERT OR REPLACE INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)', [1, 'test', Date.now()]);
+	db.run('INSERT OR REPLACE INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)', [BASELINE_SCHEMA_VERSION, 'test', Date.now()]);
 	db.exec('CREATE TABLE IF NOT EXISTS chats (id TEXT PRIMARY KEY, title TEXT, created_at INTEGER, updated_at INTEGER)');
 	db.exec(
 		'CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, chat_id TEXT, content TEXT, created_at INTEGER, attachments_json TEXT)'
@@ -170,4 +171,63 @@ describe('restore swap', () => {
 		writeFileSync(journalPath(), 'not json at all');
 		expect(() => readJournal()).toThrow(/cannot be read/i);
 	});
+
+	test('valid JSON with an invalid restore marker is fatal too', () => {
+		mkdirSync(backupDir, { recursive: true });
+		for (const raw of [null, [], {}, { snapshotId: '' }, { snapshotId: '../outside' }]) {
+			writeFileSync(journalPath(), JSON.stringify(raw));
+			expect(() => readJournal()).toThrow(/cannot be read/i);
+		}
+	});
+
+	test('claiming a backup with no database preserves the current data', async () => {
+		seedDatabase(['present']);
+		const snapshot = await createSnapshot({ kind: 'manual' });
+		rmSync(join(backupDir, snapshot.id, 'data', 'chungushub.db'));
+		expect(() => beginRestore(snapshot.id)).toThrow(/database/i);
+		expect(chatIds()).toEqual(['present']);
+		expect(existsSync(journalPath())).toBe(false);
+	});
+
+	test('snapshot identifiers cannot point outside the backup store', () => {
+		seedDatabase(['present']);
+		for (const id of ['', '.', '..', '../outside', '..\\outside', 'C:\\outside', 'alias.']) {
+			expect(() => beginRestore(id)).toThrow();
+		}
+		expect(chatIds()).toEqual(['present']); expect(existsSync(journalPath())).toBe(false);
+	});
+
+	for (const damage of ['missing', 'corrupt', 'newer schema', 'unreadable folder', 'corrupt preset', 'symbolic folder', 'deleted image'] as const) {
+		test(`a ${damage} source detected at boot leaves live data and the restore journal intact`, async () => {
+			seedDatabase(['saved']); writeImage('keep.png', 'KEEP');
+			mkdirSync(join(dataDir, 'presets'), { recursive: true });
+			writeFileSync(join(dataDir, 'presets', 'preset.json'), '{}');
+			const snapshot = await createSnapshot({ kind: 'manual' });
+			seedDatabase(['saved', 'current']); beginRestore(snapshot.id);
+			const sourceDb = join(backupDir, snapshot.id, 'data', 'chungushub.db');
+			if (damage === 'missing') rmSync(sourceDb);
+			if (damage === 'corrupt') writeFileSync(sourceDb, 'not a SQLite database');
+			if (damage === 'newer schema') {
+				const db = new Database(sourceDb); db.run("INSERT INTO _migrations VALUES (9999, 'future', 1)"); db.close();
+			}
+			if (damage === 'unreadable folder') {
+				const images = join(backupDir, snapshot.id, 'data', 'images');
+				rmSync(images, { recursive: true, force: true }); writeFileSync(images, 'not a directory');
+			}
+			if (damage === 'corrupt preset') {
+				const presets = join(backupDir, snapshot.id, 'data', 'presets');
+				writeFileSync(join(presets, 'preset.json'), '{');
+			}
+			if (damage === 'symbolic folder') {
+				const images = join(backupDir, snapshot.id, 'data', 'images');
+				rmSync(images, { recursive: true, force: true });
+				symlinkSync(join(dataDir, 'images'), images, 'junction');
+			}
+			if (damage === 'deleted image') rmSync(join(backupDir, snapshot.id, 'data', 'images', 'characters', 'keep.png'));
+			await expect(resumeInterruptedRestore()).rejects.toThrow();
+			expect(chatIds()).toEqual(['current', 'saved']);
+			expect(readFileSync(join(dataDir, 'images', 'characters', 'keep.png'), 'utf8')).toBe('KEEP');
+			expect(readJournal()?.snapshotId).toBe(snapshot.id);
+		});
+	}
 });

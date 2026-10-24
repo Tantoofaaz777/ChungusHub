@@ -13,7 +13,7 @@
  * (`sortEntries` in lorebook/types.ts).
  */
 import type { LorebookEntryNature, LorebookEntrySort } from '$lib/lorebook/types';
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 
 const SETTINGS_KEY = 'lorebookEntryPrefs';
 
@@ -69,7 +69,7 @@ class LorebookEntryPrefs {
 	}
 
 	async syncReload(): Promise<void> {
-		this.apply(normalize(await readSetting<Partial<EntryPrefsState> | null>(SETTINGS_KEY, null)));
+		await reloadSettings([SETTINGS_KEY], () => readSetting<Partial<EntryPrefsState> | null>(SETTINGS_KEY, null), raw => this.apply(normalize(raw)));
 	}
 
 	private apply(state: EntryPrefsState): void {

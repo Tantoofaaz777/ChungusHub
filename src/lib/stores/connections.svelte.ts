@@ -16,7 +16,7 @@
  * data and the routing map, riding the settings spine (cross-device synced).
  * `llmService` reads it to resolve who serves each call.
  */
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 import { db } from '$lib/services/database';
 import { customBodyError } from '$shared/custom-body';
 import { ENGINES } from '$lib/engines/registry';
@@ -145,14 +145,17 @@ class ConnectionStore {
 	}
 
 	private async load(): Promise<void> {
-		const rawConns = await readSetting<Partial<Connection>[]>(CONNECTIONS_KEY, []);
-		const conns = (Array.isArray(rawConns) ? rawConns : [])
-			.map(normalizeConnection)
-			.filter((c): c is Connection => c !== null);
-		this.connections = conns;
-
-		const rawAssignments = await readSetting<Partial<Record<string, string>> | null>(ASSIGNMENTS_KEY, null);
-		this.assignments = normalizeAssignments(rawAssignments, conns);
+		await reloadSettings([CONNECTIONS_KEY, ASSIGNMENTS_KEY], async () => {
+			const rawConns = await readSetting<Partial<Connection>[]>(CONNECTIONS_KEY, []);
+			const conns = (Array.isArray(rawConns) ? rawConns : [])
+				.map(normalizeConnection)
+				.filter((c): c is Connection => c !== null);
+			const rawAssignments = await readSetting<Partial<Record<string, string>> | null>(ASSIGNMENTS_KEY, null);
+			return { conns, assignments: normalizeAssignments(rawAssignments, conns) };
+		}, ({ conns, assignments }) => {
+			this.connections = conns;
+			this.assignments = assignments;
+		});
 	}
 
 	private persist(): void {

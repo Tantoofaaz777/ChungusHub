@@ -1,4 +1,4 @@
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 import type { PromptPreset } from '$lib/types/database';
 import { DebouncedWriter } from '$lib/utils/debounced-write';
 import {
@@ -44,9 +44,12 @@ class RegexRulesStore {
 	}
 
 	private async load(): Promise<void> {
-		const raw = await readSetting<Partial<RegexRulesBlob> | null>(SETTINGS_KEY, null);
-		this.rules = normalizeRegexRules(raw?.rules);
-		this.carriedOverrides = normalizeCarriedOverrides(raw?.carriedOverrides);
+		await this.writer.flush();
+		await reloadSettings([SETTINGS_KEY], () => readSetting<Partial<RegexRulesBlob> | null>(SETTINGS_KEY, null), raw => {
+			if (this.writer.pending()) return;
+			this.rules = normalizeRegexRules(raw?.rules);
+			this.carriedOverrides = normalizeCarriedOverrides(raw?.carriedOverrides);
+		});
 	}
 
 	/** The rules a preset ships with, switched-off ones included: what the Regex page lists as
@@ -171,8 +174,8 @@ class RegexRulesStore {
 		this.write();
 	}
 
-	private write(): void {
-		writeSetting(SETTINGS_KEY, {
+	private write(): Promise<void> {
+		return writeSetting(SETTINGS_KEY, {
 			rules: this.rules,
 			carriedOverrides: this.carriedOverrides
 		} satisfies RegexRulesBlob);

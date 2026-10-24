@@ -5,15 +5,15 @@
 
 ChungusHub is a local-first, privacy-focused LLM frontend for roleplay. Character cards and lorebooks use compatible file formats for individual import and export.
 
-A chat is a tree rather than a line, so an edit or a regeneration branches instead of overwriting, and the story map lets you find your way around it.
+This fork keeps alternative replies as swipes and lets you branch a conversation into an independent chat. Regenerate replaces the selected replies only after the new response succeeds.
 
 ## Download
 
-**[Windows](https://github.com/patcireamo/ChungusHub/releases/latest)** · **[macOS (Apple Silicon)](https://github.com/patcireamo/ChungusHub/releases/latest)** · **[Linux](https://github.com/patcireamo/ChungusHub/releases/latest)**
+**[Android test APKs and releases](https://github.com/Tantoofaaz777/ChungusHub/releases)**
 
-Portable: unpack it and run it, nothing is installed and your data stays in the folder beside it.
+Run the server from this repository on Windows, macOS or Linux using the source instructions below. Portable desktop builds can also be produced locally with `bun run package`.
 
-The **[documentation](https://chungushub.mintlify.app/)** covers installing it, the first run and importing individual files.
+The **[documentation](docs/)** covers installing it, the first run and importing individual files. This is a fork of [the original ChungusHub](https://github.com/patcireamo/ChungusHub).
 
 ChungusHub is under active development. So there might be some rough edges. Please do not hold back on bug reports, feature requests or plain feedback.
 
@@ -64,10 +64,9 @@ ChungusHub is under active development. So there might be some rough edges. Plea
 
 ### Writing
 
-- **Branching:** swipes, regenerations, edits and forks are all branches of one chat, so no version is ever lost.
-- **Story Map:** see the whole tree on one canvas, name branches, mark one path as canon and jump into any turn.
+- **Swipes and branching:** navigate alternative replies in the transcript, or copy a conversation up to a selected turn into an independent chat. Regenerate replaces the prior replies after a successful generation.
 - **Composer:** per-chat drafts sync across devices, and input history recalls what you sent.
-- **Search:** find-in-chat searches every branch, and the chats panel finds and previews chats without opening them.
+- **Search:** find-in-chat searches saved branches, and the chats panel finds chats and matching messages without opening them.
 
 ### Story state
 
@@ -75,7 +74,7 @@ ChungusHub is under active development. So there might be some rough edges. Plea
 - **Character Card V3:** import PNG/APNG, JSON and CHARX; export V3 PNG/JSON/CHARX or V2 compatibility cards. Preserves nickname, translated creator notes, sources, greetings, lorebooks and asset bytes.
 - **Lorebooks:** standalone, shareable, keyword-triggered world info in SillyTavern's own format, with scan and budget knobs.
 - **Steering:** guidance notes that ride the prompt, scoped globally, per character or per chat.
-- **Chat memory:** old scenes fold into summaries so long stories fit the context window, and each branch keeps its own.
+- **Chat memory:** select messages to summarize as chapters, then combine chapters into arcs and volumes. Saved summaries replace their source ranges in the prompt.
 
 ### The prompt
 
@@ -126,7 +125,7 @@ curl -fsSL https://bun.sh/install | bash
 ### Run it
 
 ```sh
-git clone https://github.com/patcireamo/ChungusHub.git
+git clone https://github.com/Tantoofaaz777/ChungusHub.git
 cd ChungusHub
 bun install --frozen-lockfile
 bun run start
@@ -189,4 +188,6 @@ The bundled typefaces are third-party and are not covered by that license. Each 
 
 ## Contact
 
-Discord: **patcireamo**
+For this fork, use [GitHub issues](https://github.com/Tantoofaaz777/ChungusHub/issues). For security reports, see [SECURITY.md](SECURITY.md).
+
+Original ChungusHub author: **Patcireamo**. The upstream project's community and releases belong to the original project.

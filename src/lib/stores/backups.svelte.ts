@@ -8,7 +8,7 @@ import {
 	startBackup,
 	startRestore
 } from '$lib/services/transport';
-import { readSetting, registerSettingsReload, writeSetting } from '$lib/services/syncedSetting';
+import { readSetting, registerSettingsReload, writeSetting, reloadSettings } from '$lib/services/syncedSetting';
 import {
 	BACKUP_INTERVALS,
 	DEFAULT_BACKUP_SETTINGS,
@@ -84,12 +84,12 @@ class BackupStore {
 
 	/** Settings only: cheap, and the root row's preview needs them before the page opens. */
 	async initialize(): Promise<void> {
-		this.settings = normalize(await readSetting<Partial<BackupSettings> | null>(SETTINGS_KEY, null));
+		await this.reloadSettings();
 		registerSettingsReload(() => this.reloadSettings());
 	}
 
 	async reloadSettings(): Promise<void> {
-		this.settings = normalize(await readSetting<Partial<BackupSettings> | null>(SETTINGS_KEY, null));
+		await reloadSettings([SETTINGS_KEY], () => readSetting<Partial<BackupSettings> | null>(SETTINGS_KEY, null), raw => { this.settings = normalize(raw); });
 	}
 
 	/** Called when the page mounts. The matching `close()` stops the polling. */

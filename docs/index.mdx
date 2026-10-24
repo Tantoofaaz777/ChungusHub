@@ -5,13 +5,13 @@ description: "A self-hosted workspace for long-form roleplay."
 
 ChungusHub is a local-first, privacy-focused LLM frontend for roleplay. Character cards and lorebooks use compatible file formats for individual import and export.
 
-A chat is a tree rather than a line, so an edit or a regeneration branches instead of overwriting, and the story map lets you find your way around it.
+This fork keeps alternative replies as swipes and can copy a conversation up to a selected turn into an independent chat. Regenerate replaces previous replies after a successful generation.
 
 ## Start here
 
 <CardGroup cols={3}>
   <Card title="Installation" icon="download" href="/installation">
-    Download a build for Windows, macOS or Linux, or run it from source.
+    Run the server from source and connect with the Android app or a browser.
   </Card>
   <Card title="Quickstart" icon="play" href="/quickstart">
     Connect a provider and open your first story.
@@ -25,12 +25,12 @@ A chat is a tree rather than a line, so an edit or a regeneration branches inste
 
 <CardGroup cols={2}>
   <Card title="Chats that branch" icon="git-branch">
-    Take a scene somewhere else without starting a second chat. Every version you
-    wrote stays where it was, and the Story Map shows you where the story split.
+    Navigate saved alternative replies directly in the transcript. Branch a scene
+    into an independent chat when you want to take the story somewhere else.
   </Card>
   <Card title="Chat memory" icon="brain">
-    Older turns fold into summaries so a long story stays inside its budget. Step
-    onto another branch and the memory that comes with it is that branch's.
+    Select messages to summarize as chapters, then combine chapters into arcs and
+    volumes. Saved summaries replace their source messages in the prompt.
   </Card>
   <Card title="Lorebooks" icon="book">
     Standalone, shareable world info with scan triggers, recursion and a token

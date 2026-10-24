@@ -83,8 +83,6 @@ export interface ResolvedSteeringNote {
 	role: SteeringRole;
 }
 
-export const STEERING_SCOPES: readonly SteeringScope[] = ['global', 'character', 'version', 'chat'];
-
 export const STEERING_ROLES: readonly SteeringRole[] = ['system', 'user', 'assistant'];
 
 /** Legacy fallback order: broad scopes precede narrow scopes until explicitly reordered. */

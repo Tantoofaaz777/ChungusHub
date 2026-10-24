@@ -15,6 +15,7 @@
  * knob moves and leaves "reset" pointing at two different configurations at once.
  */
 import { db } from '$lib/services/database';
+import { reloadSettings } from '$lib/services/syncedSetting';
 import { presetService } from '$lib/services/presets.svelte';
 
 /** The flat app-wide map this install carried while values were global. Read once, by the
@@ -44,7 +45,13 @@ class PresetControlsStore {
 	}
 
 	async syncReload(): Promise<void> {
-		await this.load();
+		await reloadSettings([VALUES_BY_PRESET_KEY, APPLIED_SETUPS_KEY], async () => {
+			const raw = await db.getSetting(VALUES_BY_PRESET_KEY);
+			return { values: raw ? parseValuesByPreset(raw) : {}, setups: await readAppliedSetups() };
+		}, ({ values, setups }) => {
+			this.valuesByPreset = values;
+			this.appliedSetups = setups;
+		});
 	}
 
 	/** One preset's values. A deleted preset's bucket is deliberately never swept, the same

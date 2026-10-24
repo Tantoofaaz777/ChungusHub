@@ -1,3 +1,4 @@
+import { seedLegacyMemoryState, seedLegacyEpisode, readLegacyEpisodes } from './test-fixtures';
 import { beforeAll, afterAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -89,14 +90,14 @@ describe('scene memory persistence', () => {
  test('imports legacy text once, retaining old rows, and flags disabled memory for review', () => {
   for(const enabled of [true,false]) {
    const {chatId,messages} = fixture();
-   db.memSetState(chatId,{enabled});
-   db.memApplyBatch(chatId,{supersedeEpisodeIds:[],episode:{content:'Existing memory',sourceMessageIds:messages.slice(0,2).map((m) => m.id),anchorMessageId:messages[1].id}});
+   seedLegacyMemoryState(db, chatId, {enabled});
+   seedLegacyEpisode(db, chatId, {content:'Existing memory',sourceMessageIds:messages.slice(0,2).map((m) => m.id),anchorMessageId:messages[1].id});
    const scenes = db.getMemoryScenes(chatId);
    expect(scenes).toHaveLength(1);
    expect(scenes[0].content).toBe('Existing memory');
    expect(resolveScenes(scenes,messages)[0].status).toBe(enabled ? 'active' : 'review');
    expect(db.getMemoryScenes(chatId)).toEqual(scenes);
-   expect(db.memListEpisodes(chatId)).toHaveLength(1);
+   expect(readLegacyEpisodes(db, chatId)).toHaveLength(1);
   }
  });
 });
@@ -104,7 +105,7 @@ describe('scene memory persistence', () => {
 
 test('malformed legacy source data preserves its text for review and does not block duplication', () => {
  const {chatId} = fixture();
- db.memSetState(chatId,{enabled:true});
+ seedLegacyMemoryState(db, chatId, {enabled:true});
  db.execute('INSERT INTO memory_episodes (id, chat_id, layer, content, source_message_ids, anchor_message_id, created_at) VALUES (?, ?, 0, ?, ?, NULL, 1)',[crypto.randomUUID(),chatId,'Preserve this memory','{invalid']);
  const scenes = db.getMemoryScenes(chatId);
  expect(scenes[0].content).toBe('Preserve this memory');

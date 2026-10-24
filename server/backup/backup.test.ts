@@ -203,12 +203,35 @@ describe('snapshot', () => {
 		expect(after.bytes.onDisk).toBeLessThan(after.bytes.logical);
 	});
 
-	test('brings back an image the database names but the copy pass missed', async () => {
-		const path = writeImage('chat', 'late.png', 'LATE');
-		seedChat('c-late', path);
-		const manifest = await snapshotMod.createSnapshot({ kind: 'manual' });
+	test('brings back an attachment uploaded after the file copy pass', async () => {
+		let uploaded = false;
+		const manifest = await snapshotMod.createSnapshot({ kind: 'manual', onProgress: ({ phase }) => {
+			if (phase !== 'Copying the database' || uploaded) return;
+			uploaded = true;
+			seedChat('c-late', writeImage('chat', 'late.png', 'LATE'));
+		} });
+		expect(uploaded).toBe(true);
 		expect(existsSync(join(backupDir, manifest.id, 'data', 'images', 'chat', 'late.png'))).toBe(true);
 		// A chat attachment has no thumbnail, and that must not read as a failure.
+		expect(manifest.warnings).toEqual([]);
+	});
+
+	test('reconciles a per-chat background uploaded after the file copy pass', async () => {
+		seedChat('c-late-background', null);
+		let uploaded = false;
+		const manifest = await snapshotMod.createSnapshot({ kind: 'manual', onProgress: ({ phase }) => {
+			if (phase !== 'Copying the database' || uploaded) return;
+			uploaded = true;
+			const path = writeImage('backgrounds', 'late-background.png', 'BACKGROUND');
+			writeImage('backgrounds/thumbnails', 'late-background.webp', 'THUMB');
+			const db = new Database(join(dataDir, 'chungushub.db'));
+			try { db.run('UPDATE chats SET feature_state = ? WHERE id = ?', [JSON.stringify({ background: { imagePath: path } }), 'c-late-background']); }
+			finally { db.close(); }
+		} });
+		expect(uploaded).toBe(true);
+		const root = join(backupDir, manifest.id, 'data', 'images', 'backgrounds');
+		expect(readFileSync(join(root, 'late-background.png'), 'utf8')).toBe('BACKGROUND');
+		expect(readFileSync(join(root, 'thumbnails', 'late-background.webp'), 'utf8')).toBe('THUMB');
 		expect(manifest.warnings).toEqual([]);
 	});
 
@@ -257,6 +280,23 @@ describe('snapshot', () => {
 });
 
 describe('portable backups', () => {
+	for (const damage of ['missing database', 'unfinished', 'unexpected file', 'deleted image'] as const) {
+		test(`refuses to export a snapshot with ${damage}`, async () => {
+			writeImage('chat', 'export-check.png', 'IMAGE');
+			const source = await snapshotMod.createSnapshot({ kind: 'manual' });
+			const root = join(backupDir, source.id);
+			if (damage === 'missing database') rmSync(join(root, 'data', 'chungushub.db'));
+			if (damage === 'unfinished') writeFileSync(join(root, '.building'), '1');
+			if (damage === 'unexpected file') writeFileSync(join(root, 'data', 'security.json'), 'KEEP OUT');
+			if (damage === 'deleted image') rmSync(join(root, 'data', 'images', 'chat', 'export-check.png'));
+			const before = readdirSync(backupDir).sort();
+			await expect(portableMod.preparePortableExport(source.id)).rejects.toThrow();
+			expect(readdirSync(backupDir).sort()).toEqual(before);
+			// Leave the shared fixture usable for later snapshots and sweeps.
+			rmSync(root, { recursive: true, force: true });
+		});
+	}
+
 	test('round-trips one snapshot through a streamed ZIP as an imported restore point', async () => {
 		writeImage('characters', 'portable.png', 'PORTABLE-IMAGE');
 		mkdirSync(join(dataDir, 'custom-fonts', 'fixture'), { recursive: true });

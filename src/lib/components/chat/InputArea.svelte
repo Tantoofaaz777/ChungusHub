@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { promptTokensStore } from '$lib/stores/promptTokens.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Dialog from '$lib/components/ui/Dialog.svelte';
@@ -198,6 +198,9 @@
 		const chatId = chatStore.activeChatId;
 		if (chatId === draftChatId) return;
 		draftChatId = chatId;
+		imageEpoch++;
+		pendingImages = [];
+		uploadingImages = 0;
 		historyPos = null;
 		content = '';
 		// Chat switched under the composer: close the steering popover and any transform
@@ -592,8 +595,11 @@
 
 	let pendingImages = $state<{ path: string; url: string }[]>([]);
 	let uploadingImages = $state(0);
+	let imageEpoch = 0;
+	onDestroy(() => { imageEpoch++; });
 
 	async function attachImageFiles(files: File[]): Promise<void> {
+		const epoch = imageEpoch;
 		const images: File[] = [];
 		for (const file of files) {
 			const refused = imageRejectionReason(file);
@@ -611,14 +617,16 @@
 		}
 		uploadingImages += images.length;
 		for (const file of images) {
+			if (epoch !== imageEpoch) break;
 			try {
 				const path = await imageService.saveImage(file, 'chat');
 				const url = imageService.thumbnailUrl(path) ?? (await imageService.getImageUrl(path)) ?? '';
+				if (epoch !== imageEpoch) { await imageService.deleteImage(path); continue; }
 				pendingImages = [...pendingImages, { path, url }];
 			} catch (error) {
 				toastStore.failed(`attach "${file.name}"`, error);
 			} finally {
-				uploadingImages -= 1;
+				if (epoch === imageEpoch) uploadingImages -= 1;
 			}
 		}
 	}
@@ -670,7 +678,7 @@
 		pendingImages = pendingImages.filter((img) => img.path !== path);
 		// The upload is already on the server; drop the file too so abandoned
 		// attachments don't pile up in images/chat/.
-		void imageService.deleteImage(path);
+		void imageService.deleteImage(path).catch(error => toastStore.failed('remove the attachment', error));
 	}
 
 	function handleSubmit() {
@@ -700,11 +708,12 @@
 	/** The draft is the message's now: record it for ↑ recall and clear the box. */
 	function releaseDraft(chatId: string | null, sent: string) {
 		if (sent) inputHistoryStore.record(chatId, sent);
+		if (chatId) inputDraftStore.clear(chatId);
+		if (chatId !== chatStore.activeChatId) return;
 		content = '';
 		pendingImages = [];
 		historyPos = null;
 		// The message is sent, so the draft's job is done.
-		if (chatId) inputDraftStore.clear(chatId);
 		if (textareaElement) {
 			textareaElement.style.height = 'auto';
 		}

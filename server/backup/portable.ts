@@ -18,7 +18,7 @@ import {
 	statSync,
 	writeFileSync
 } from 'node:fs';
-import { mkdir, readdir, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, stat } from 'node:fs/promises';
 import { dirname, extname, join, relative, sep } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -87,9 +87,11 @@ function availableBytes(path: string): number {
 async function walkFiles(root: string, base = root): Promise<string[]> {
 	let entries;
 	try {
+		if ((await lstat(root)).isSymbolicLink()) throw new Error(`The snapshot contains a symbolic link: ${relative(base, root) || 'data'}.`);
 		entries = await readdir(root, { withFileTypes: true });
-	} catch {
-		return [];
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+		throw error;
 	}
 	const out: string[] = [];
 	for (const entry of entries) {
@@ -117,12 +119,20 @@ export async function preparePortableExport(
 ): Promise<PreparedExport> {
 	const manifest = readManifest(id);
 	if (!manifest) throw new Error(`No readable snapshot named "${id}".`);
+	if (existsSync(join(snapshotPath(id), BUILDING_MARKER))) throw new Error('This snapshot has not finished being written.');
 	const dataRoot = snapshotDataPath(id);
 	if (!existsSync(dataRoot)) throw new Error(`Snapshot "${id}" has no data folder.`);
 
 	const backupRoot = dirname(snapshotPath(id));
 	mkdirSync(backupRoot, { recursive: true });
 	const files = await walkFiles(dataRoot);
+	if (!files.includes('chungushub.db')) throw new Error('The snapshot database is missing.');
+	for (const rel of files) {
+		if (!allowedArchivePath(`${SNAPSHOT_DATA_DIR}/${rel}`)) throw new Error(`The snapshot contains an unexpected file: ${rel}.`);
+	}
+	if (manifest.fileCount > 0 && files.length !== manifest.fileCount) {
+		throw new Error('Files are missing from this snapshot or its inventory has changed.');
+	}
 	const estimated = files.reduce((sum, rel) => sum + statSync(join(dataRoot, rel)).size, 0);
 	if (estimated + DISK_RESERVE > availableBytes(backupRoot)) {
 		throw new Error('There is not enough free disk space to prepare this backup for download.');

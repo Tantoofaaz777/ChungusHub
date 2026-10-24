@@ -36,46 +36,22 @@ export function findActivePath(messages: Message[], leafId: string): Message[] {
 }
 
 /**
- * Find all sibling messages at a given node: every child of the same parent,
+ * Index sibling messages once per tree update: every child of the same parent,
  * regardless of role. Siblings are the alternative continuations of the story from
  * that point: same-role ones are variants (swipes/regenerations), different-role ones
  * are forks (e.g. a reply re-parented next to user turns by a splice delete). The chat
  * arrows navigate ALL of them: a role-filtered count would make spliced branches
  * invisible in the transcript.
  */
-export function findSiblings(messages: Message[], messageId: string): Message[] {
-	const message = messages.find((m) => m.id === messageId);
-	if (!message) return [];
-
-	return messages
-		.filter((m) => m.parentId === message.parentId)
-		.sort((a, b) => a.siblingIndex - b.siblingIndex);
-}
-
-/**
- * Get the index of a message among its siblings.
- */
-export function getSiblingIndex(messages: Message[], messageId: string): number {
-	const siblings = findSiblings(messages, messageId);
-	return siblings.findIndex((m) => m.id === messageId);
-}
-
-/**
- * Find the next sibling in navigation.
- */
-export function findNextSibling(messages: Message[], messageId: string): Message | null {
-	const siblings = findSiblings(messages, messageId);
-	const currentIndex = siblings.findIndex((m) => m.id === messageId);
-	return siblings[currentIndex + 1] ?? null;
-}
-
-/**
- * Find the previous sibling in navigation.
- */
-export function findPrevSibling(messages: Message[], messageId: string): Message | null {
-	const siblings = findSiblings(messages, messageId);
-	const currentIndex = siblings.findIndex((m) => m.id === messageId);
-	return currentIndex > 0 ? siblings[currentIndex - 1] : null;
+export function groupSiblings(messages: Message[]): Map<string | null, Message[]> {
+	const groups = new Map<string | null, Message[]>();
+	for (const message of messages) {
+		const group = groups.get(message.parentId);
+		if (group) group.push(message);
+		else groups.set(message.parentId, [message]);
+	}
+	for (const group of groups.values()) group.sort((a, b) => a.siblingIndex - b.siblingIndex);
+	return groups;
 }
 
 /**
@@ -140,7 +116,7 @@ export function subtreeBlastRadius(
  *
  * Note this closes the direct route only. A lone child spliced away hands its own children
  * to a parent of the same role, and a later regenerate there can still fork a mixed set,
- * which is why sibling navigation stays role-agnostic (findSiblings).
+ * which is why sibling navigation stays role-agnostic (groupSiblings).
  */
 export function canSpliceMessage(messages: Message[], id: string): boolean {
 	const message = messages.find((m) => m.id === id);

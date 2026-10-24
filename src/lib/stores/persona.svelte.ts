@@ -6,6 +6,7 @@
  * generation. Persisted to the settings table so it survives restarts and syncs.
  */
 import { db } from '$lib/services/database';
+import { reloadSettings } from '$lib/services/syncedSetting';
 import { characterLibraryStore } from './characterLibrary.svelte';
 import { storyRoleName, type LibraryEntry } from '$lib/types/library';
 import type { PromptCharacter } from '$lib/macros';
@@ -25,14 +26,12 @@ class PersonaStore {
 	activeId = $state<string | null>(null);
 
 	async initialize(): Promise<void> {
-		const stored = await db.getSetting(ACTIVE_PERSONA_KEY);
-		this.activeId = stored || null;
+		await this.syncReload();
 	}
 
 	/** Reload after a cross-device settings change. */
 	async syncReload(): Promise<void> {
-		const stored = await db.getSetting(ACTIVE_PERSONA_KEY);
-		this.activeId = stored || null;
+		await reloadSettings([ACTIVE_PERSONA_KEY], () => db.getSetting(ACTIVE_PERSONA_KEY), stored => { this.activeId = stored || null; });
 	}
 
 	/** Only ever a real persona: the library keeps at least one and a delete hands the role

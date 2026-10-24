@@ -1,4 +1,4 @@
-import { readSetting, registerSettingsReload, BurstSettingWriter } from '$lib/services/syncedSetting';
+import { readSetting, registerSettingsReload, BurstSettingWriter, reloadSettings } from '$lib/services/syncedSetting';
 import { DEFAULT_THREADS_CONFIG, normalizeThreadsConfig, type ThreadsConfig } from '$shared/threads/model';
 class ThreadsConfigStore {
 	value = $state<ThreadsConfig>({ ...DEFAULT_THREADS_CONFIG });
@@ -8,8 +8,9 @@ class ThreadsConfigStore {
 		registerSettingsReload(() => this.reload());
 	}
 	private async reload() {
-		const value = normalizeThreadsConfig(await readSetting<ThreadsConfig | null>('threadsConfig', null));
-		if (!this.writer.busy) this.value = value;
+		await reloadSettings(['threadsConfig'], () => readSetting<ThreadsConfig | null>('threadsConfig', null), raw => {
+			if (!this.writer.busy) this.value = normalizeThreadsConfig(raw);
+		});
 	}
 	set<K extends keyof ThreadsConfig>(key: K, value: ThreadsConfig[K]) {
 		this.value = normalizeThreadsConfig({ ...this.value, [key]: value });

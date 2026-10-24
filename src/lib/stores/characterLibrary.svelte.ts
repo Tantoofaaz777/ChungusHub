@@ -16,6 +16,7 @@ import { lorebookStore } from '$lib/lorebook/store.svelte';
 import type { BookIndex } from '$lib/lorebook/identity';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { DebouncedWriter } from '$lib/utils/debounced-write';
+import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
 import {
 	clampPortraitFocus,
 	isDefaultPortraitFocus,
@@ -188,6 +189,7 @@ class CharacterLibraryStore {
 		const entry = this.getEntryById(id);
 		if (!entry) return;
 		entry.identity = { ...entry.identity, ...updates };
+		entry.updatedAt = Math.max(Date.now(), entry.updatedAt + 1);
 		this.writer.schedule(id);
 	}
 
@@ -196,6 +198,7 @@ class CharacterLibraryStore {
 		const entry = this.getEntryById(id);
 		if (!entry) return;
 		entry.data = this.mergeData(entry.data, updates);
+		entry.updatedAt = Math.max(Date.now(), entry.updatedAt + 1);
 		this.writer.schedule(id);
 	}
 
@@ -235,6 +238,8 @@ class CharacterLibraryStore {
 	}
 
 	async refresh(): Promise<void> {
+		const ticket = ++this.refreshTicket;
+		const beforeEntries = captureEditorRows(this._entries), beforeVersions = captureEditorRows(this._versions);
 		this._loading = true;
 		try {
 			// Commit what this device has typed but not yet sent, so the refetch can't hand
@@ -242,18 +247,17 @@ class CharacterLibraryStore {
 			await this.writer.flush();
 			const versions = await db.getAllCharacterVersions();
 			const rows = await db.getAllLibraryEntries();
-			this._versions = versions;
+			if (ticket !== this.refreshTicket) return;
+			this._versions = retainEditorChanges(versions, beforeVersions, this._versions);
 			// Typing carries on through those awaits, and an entry with a write still pending
 			// is one that was touched since the flush, so the copy on screen is the newer one.
 			// Keep it; its own pending write carries it to the server a moment later.
-			this._entries = rows.map((row) => {
-				const live = this.writer.pending(row.id) ? this.getEntryById(row.id) : null;
-				return live ?? row;
-			});
+			this._entries = retainEditorChanges(rows, beforeEntries, this._entries);
 		} finally {
-			this._loading = false;
+			if (ticket === this.refreshTicket) this._loading = false;
 		}
 	}
+	private refreshTicket = 0;
 
 	// ==================== Create / Import ====================
 
@@ -357,6 +361,9 @@ class CharacterLibraryStore {
 	): Promise<{ entry: LibraryEntry; book: { id: string; created: boolean } | null }> {
 		const character = { ...importResult.character };
 		const isPersona = importResult.entryType === 'persona';
+		if (!isPersona && importResult.versions?.length && importResult.versions.filter((v) => v.active).length !== 1) {
+			throw new Error('Import file must mark exactly one active character version.');
+		}
 
 		if (importResult.imageFile) {
 			const imageUrl = await imageService.saveImage(
@@ -444,7 +451,7 @@ class CharacterLibraryStore {
 		// This sends the whole entry, so a debounced write still waiting for it would only
 		// repeat the same row, and broadcast it to every other device a second time.
 		this.writer.cancel(entry.id);
-		entry.updatedAt = Date.now();
+		entry.updatedAt = Math.max(Date.now(), entry.updatedAt + 1);
 		await db.updateLibraryEntry(entry);
 		this._entries = [...this._entries];
 		// The server mirrors every save into the active variant's row (server/db.ts
@@ -647,9 +654,9 @@ class CharacterLibraryStore {
 		const entry = this.getEntryById(id);
 		if (!entry) return;
 
-		entry.isFavorite = !entry.isFavorite;
-		await db.updateLibraryEntryFavorite(id, entry.isFavorite);
-		this._entries = [...this._entries];
+		const isFavorite = !entry.isFavorite;
+		this._entries = this._entries.map(row => row.id === id ? { ...row, isFavorite } : row);
+		await db.updateLibraryEntryFavorite(id, isFavorite);
 	}
 
 	async updateTags(id: string, tags: string[]): Promise<void> {
@@ -872,9 +879,8 @@ class CharacterLibraryStore {
 
 	// ==================== Bulk operations ====================
 	//
-	// Each method touches the DB per entry but mutates the reactive `_entries`
-	// array exactly once at the end, so a 100+ selection doesn't trigger 100
-	// store re-renders. Chat lookups are fetched once, not per entry.
+	// Chat lookups are fetched once. Deletions publish each confirmed success so a
+	// later refusal cannot leave already-deleted entries visible in a partial batch.
 
 	/** Aggregate chat binding across a selection, for the bulk-delete warning. */
 	async getEntriesUsage(ids: string[]): Promise<{ boundCount: number; chatCount: number }> {
@@ -896,19 +902,21 @@ class CharacterLibraryStore {
 		if (ids.length === 0) return [];
 		const idSet = new Set(ids);
 
-		// Unbind every chat pointing at any of the deleted characters in one sweep.
+		// Keep one chat lookup, but let the server accept each deletion before touching
+		// that entry's files or bindings (the last-persona guard can refuse a deletion).
 		const chats = await db.getAllChats();
 		const unboundChatIds: string[] = [];
-		for (const chat of chats) {
-			if (chat.characterId && idSet.has(chat.characterId)) {
-				await db.updateChat({ id: chat.id, characterId: null, characterVersionId: null });
-				unboundChatIds.push(chat.id);
-			}
-		}
 
 		for (const id of ids) {
 			const entry = this.getEntryById(id);
 			this.writer.cancel(id);
+			await db.deleteLibraryEntry(id);
+			this._entries = this._entries.filter(row => row.id !== id);
+			this._versions = this._versions.filter(row => row.entryId !== id);
+			for (const chat of chats.filter(chat => chat.characterId === id)) {
+				await db.updateChat({ id: chat.id, characterId: null, characterVersionId: null });
+				unboundChatIds.push(chat.id);
+			}
 			if (entry?.identity.imageUrl) await imageService.deleteImage(entry.identity.imageUrl);
 			for (const path of new Set(entry?.identity.gallery ?? [])) {
 				await imageService.deleteImage(path);
@@ -916,7 +924,6 @@ class CharacterLibraryStore {
 			for (const sprite of entry?.identity.sprites ?? []) {
 				await imageService.deleteImage(sprite.path);
 			}
-			await db.deleteLibraryEntry(id);
 			this.confirmNewEntry(id);
 		}
 
@@ -930,7 +937,7 @@ class CharacterLibraryStore {
 		for (const id of ids) {
 			const entry = this.getEntryById(id);
 			if (!entry || entry.isFavorite === isFavorite) continue;
-			entry.isFavorite = isFavorite;
+			this._entries = this._entries.map(row => row.id === id ? { ...row, isFavorite } : row);
 			await db.updateLibraryEntryFavorite(id, isFavorite);
 			changed = true;
 		}
@@ -950,7 +957,7 @@ class CharacterLibraryStore {
 			for (const tag of clean) if (!merged.includes(tag)) merged.push(tag);
 			if (merged.length === existing.length) continue;
 			entry.identity = { ...this.clone(entry.identity), tags: merged };
-			entry.updatedAt = Date.now();
+			entry.updatedAt = Math.max(Date.now(), entry.updatedAt + 1);
 			await db.updateLibraryEntry(entry);
 			changed++;
 		}
@@ -970,7 +977,7 @@ class CharacterLibraryStore {
 			const filtered = existing.filter((tag) => !toRemove.has(tag));
 			if (filtered.length === existing.length) continue;
 			entry.identity = { ...this.clone(entry.identity), tags: filtered };
-			entry.updatedAt = Date.now();
+			entry.updatedAt = Math.max(Date.now(), entry.updatedAt + 1);
 			await db.updateLibraryEntry(entry);
 			changed++;
 		}

@@ -32,8 +32,7 @@
 	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 	import { memoryStore } from '$lib/memory/scene-store.svelte';
-	import { describeMemoryImpact } from '$lib/memory/impact-copy';
-	import { canSpliceMessage, collectSubtree, subtreeBlastRadius } from '$lib/utils/message-tree';
+	import { canSpliceMessage, subtreeBlastRadius } from '$lib/utils/message-tree';
 	import { countTokens } from '$lib/tokenizer';
 	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
 	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
@@ -110,9 +109,6 @@
 	let showDeleteMenu = $state(false);
 	/** The delete the user has been asked to confirm, or null while the menu offers choices. */
 	let confirmingDelete = $state<DeleteAction | null>(null);
-	/** Text waiting on the memory confirmation, set only when this turn is already summarised,
-	 *  so an ordinary edit still saves on the first press. */
-	let pendingEdit = $state<string | null>(null);
 	let deleteMenuElement = $state<HTMLDivElement | undefined>(undefined);
 
 	// Blast radius of the destructive actions on this message, since the confirmations always
@@ -127,28 +123,7 @@
 	// A branch head can't be spliced out from under its replies: see canSpliceMessage. When it
 	// holds anything below, the whole-subtree delete is the only offer the menu can honour.
 	const canSplice = $derived(canSpliceMessage(allMessages, message.id));
-
-	// What each destructive action costs chat memory, in the same lazy spirit as the blast
-	// radii above: nothing computes until a handler or a confirmation panel reads it, and
-	// every one of them reads zero when memory is off (architecture/memory.md).
-	//
-	// A rewrite keeps its turns and a delete removes them, which is the whole difference:
-	// the same summaries die either way, but only a rewrite has to re-read all of them.
-	const editImpact = $derived(memoryStore.impactOf([message.id], { removed: false }));
-	const spliceImpact = $derived(memoryStore.impactOf([message.id], { removed: true }));
-	const subtreeImpact = $derived(
-		memoryStore.impactOf(collectSubtree(allMessages, message.id).map((m) => m.id), { removed: true })
-	);
-	// The hold scales with what the action actually sets in motion, not just its row count:
-	// deleting one folded turn is a heavier act than deleting one loose reply, because the
-	// summary over it dies and everything behind it waits on a re-read.
-	const editBlast = $derived(editImpact.reread + editImpact.paused);
-	const confirmImpact = $derived(confirmingDelete === 'this_only' ? spliceImpact : subtreeImpact);
 	const confirmCount = $derived(confirmingDelete === 'this_only' ? 1 : deleteBlast.messages);
-	const confirmLines = $derived(
-		describeMemoryImpact(confirmImpact, { mode: 'delete', auto: memoryStore.autoExtract })
-	);
-	const editLines = $derived(describeMemoryImpact(editImpact, { mode: 'edit', auto: memoryStore.autoExtract }));
 
 	// Names and persona pronouns resolve live at display against the active persona + bound character.
 	// Greetings store their macros raw, so changing persona reflows them on screen without
@@ -181,39 +156,12 @@
 		// Ask before closing: a busy store rejects the edit, and closing first would
 		// throw away the draft the user just wrote.
 		if (messageStore.warnIfBusy()) return;
-		// Branching writes a new chat and leaves this turn untouched, so its summary
-		// stands: only a rewrite in place outdates one, and only that asks.
-		if (action === 'save_only' && (editImpact.dropped > 0 || editImpact.droppedStored > 0)) {
-			pendingEdit = newContent;
-			return;
-		}
 		isEditing = false;
 		await messageStore.editMessage(message.id, newContent, action);
 	}
 
-	/**
-	 * Commit the draft the confirmation is holding.
-	 *
-	 * `minor` is the user answering the question the app cannot: a typo and a retcon are the
-	 * same two strings to us, so nothing here inspects the text. It saves without advancing
-	 * the turn's edit stamp, which is what leaves the summary covering it alone.
-	 */
-	async function commitPendingEdit(minor: boolean) {
-		const content = pendingEdit;
-		if (content === null) return;
-		// Re-asked here, not only in handleEdit: a generation can start during the press-and-hold,
-		// and closing the editor before a rejected write would drop the draft on the floor.
-		if (messageStore.warnIfBusy()) return;
-		pendingEdit = null;
-		isEditing = false;
-		await messageStore.editMessage(message.id, content, 'save_only', { minor });
-	}
-
-	/** Leave the editor from any door. The pending draft must die with it, or the next
-	 *  editor (including a Branch, which never rewrites in place) opens pre-armed with
-	 *  text the user already walked away from. */
+	/** Leaving the editor discards its local draft. */
 	function closeEditor() {
-		pendingEdit = null;
 		isEditing = false;
 	}
 
@@ -222,10 +170,7 @@
 	}
 
 	async function handleDeleteAction(action: DeleteAction) {
-		// A whole-subtree delete always confirms for its blast radius; a single row confirms
-		// only when it costs memory, so an ordinary tidy-up stays one press.
-		const costsMemory = action === 'this_only' && (spliceImpact.dropped > 0 || spliceImpact.droppedStored > 0);
-		if (deleteGuard.asks && (action === 'with_descendants' || costsMemory) && confirmingDelete !== action) {
+		if (deleteGuard.asks && action === 'with_descendants' && confirmingDelete !== action) {
 			confirmingDelete = action;
 			return;
 		}
@@ -244,7 +189,6 @@
 	}
 
 	function handleBranchClick() {
-		pendingEdit = null;
 		editorMode = 'create_branch';
 		isEditing = true;
 	}
@@ -267,7 +211,6 @@
 	});
 
 	function handleEditClick() {
-		pendingEdit = null;
 		editorMode = 'save_only';
 		isEditing = true;
 	}
@@ -626,44 +569,8 @@
 										mode={editorMode}
 										onSave={handleEdit}
 										onCancel={closeEditor}
-										locked={pendingEdit !== null}
 									/>
-									<!-- Raised by Save, not by the Edit button: opening an editor costs nothing,
-									     and the draft has to be readable while the cost of keeping it is stated.
-									     Cancel drops back into the editor with the text still there. -->
-									{#if pendingEdit !== null}
-										<div class="memory-confirm">
-											<p class="memory-confirm-title">This turn is in memory</p>
-											{#each editLines as line (line)}
-												<p class="memory-confirm-line">{line}</p>
-											{/each}
-											<div class="memory-confirm-actions">
-												<HoldToConfirmButton holdMs={holdMsForBlast(editBlast)} onconfirm={() => commitPendingEdit(false)}>
-													<Icon name="check" class="w-3.5 h-3.5" />
-													Save the edit
-												</HoldToConfirmButton>
-												<!-- The cheap door, and a plain click on purpose: the gesture is the
-												     difference between the two saves. Holding pays for the rebuild;
-												     tapping says there is nothing to rebuild. -->
-												<button
-													class="memory-confirm-minor"
-													onclick={() => commitPendingEdit(true)}
-												>
-													<Icon name="feather" class="w-3.5 h-3.5" />
-													<span>
-														Save quietly
-														<span class="memory-confirm-minor-note">Saves without rebuilding this part of the memory. Use it when the turn still says the same thing.</span>
-													</span>
-												</button>
-												<button
-													class="w-full px-3 py-2 text-left text-sm font-ui font-medium text-text-secondary hover:bg-bg-tertiary rounded-[var(--radius-lg)] transition-all duration-150"
-													onclick={() => (pendingEdit = null)}
-												>
-													Keep editing
-												</button>
-											</div>
-										</div>
-									{/if}
+
 								</div>
 							{:else}
 								<div class="message-content">
@@ -760,16 +667,11 @@
 													This deletes {confirmCount} message{confirmCount === 1 ? '' : 's'}{confirmingDelete === 'with_descendants' && deleteBlast.branches > 1 ? ` across ${deleteBlast.branches} branches` : ''}.
 													This cannot be undone.
 												</p>
-												<!-- What it costs memory, in the numbers of THIS delete: which summaries
-												     go, which pause, and what re-reads them. Absent when memory is off or
-												     these turns were never folded. -->
-												{#each confirmLines as line (line)}
-													<p class="text-xs text-text-muted mt-1.5">{line}</p>
-												{/each}
+
 											</div>
 											<div class="p-1.5 space-y-1.5">
 												<HoldToConfirmButton
-													holdMs={holdMsForBlast(confirmCount + confirmImpact.reread + confirmImpact.paused)}
+													holdMs={holdMsForBlast(confirmCount)}
 													onconfirm={() => handleDeleteAction(confirmingDelete!)}
 												>
 													<Icon name="trash" class="w-3.5 h-3.5" />
@@ -1037,69 +939,6 @@
 
 	.message-content-editing {
 		padding-top: 0.45rem;
-	}
-
-	/* The memory cost of keeping this rewrite, under the editor it applies to. It carries the
-	   error tint the destructive menus use, because that is what the hold button below it
-	   means, but it sits inside the editor rather than over it, so the draft stays readable
-	   while the price is being read. */
-	.memory-confirm {
-		margin-top: 0.5rem;
-		padding: 0.6rem 0.65rem 0.5rem;
-		border: 1px solid color-mix(in srgb, var(--color-error) 26%, transparent);
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--color-error) 7%, transparent);
-	}
-	.memory-confirm-title {
-		font-family: var(--font-ui);
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: var(--color-error);
-	}
-	.memory-confirm-line {
-		margin-top: 0.3rem;
-		font-family: var(--font-ui);
-		font-size: 0.72rem;
-		line-height: 1.45;
-		color: var(--color-text-muted);
-	}
-	.memory-confirm-actions {
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
-		margin-top: 0.55rem;
-	}
-
-	/* Deliberately NOT in the error palette the hold button wears: this is the save that
-	   costs nothing, and the two must not read as variations of the same risk. */
-	.memory-confirm-minor {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.45rem;
-		width: 100%;
-		padding: 0.5rem 0.65rem;
-		border: 1px solid var(--color-border-subtle);
-		border-radius: var(--radius-md);
-		background: var(--color-bg-secondary);
-		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 0.8rem;
-		font-weight: 600;
-		text-align: left;
-		cursor: pointer;
-		transition: border-color 140ms ease, background-color 140ms ease;
-	}
-	.memory-confirm-minor:hover {
-		border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
-		background: var(--color-bg-tertiary);
-	}
-	.memory-confirm-minor-note {
-		display: block;
-		margin-top: 0.15rem;
-		font-weight: 400;
-		font-size: 0.72rem;
-		line-height: 1.4;
-		color: var(--color-text-muted);
 	}
 
 	.message-attachments {

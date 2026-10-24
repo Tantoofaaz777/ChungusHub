@@ -6,13 +6,13 @@ A snapshot is a **complete copy of the data dir at one moment**, kept in a store
 
 ### Portable archives
 
-[`portable.ts`](../server/backup/portable.ts) is the boundary between the internal snapshot shape and a transferable file. An export writes a standard ZIP to a temporary file under the backup store and then serves it through a short-lived, one-use download token. The browser never assembles the archive and the server never holds it in memory. `backup.json` identifies portable format version 1 and carries the source manifest; `data/` carries only the database, images and presets. Internal `index.json` does not travel because it records source-machine mtimes rather than content.
+[`portable.ts`](../server/backup/portable.ts) is the boundary between the internal snapshot shape and a transferable file. An export writes a standard ZIP to a temporary file under the backup store and then serves it through a short-lived, one-use download token. The browser never assembles the archive and the server never holds it in memory. `backup.json` identifies portable format version 1 and carries the source manifest; `data/` carries only the database, images, presets and custom fonts (including their license files). Internal `index.json` does not travel because it records source-machine mtimes rather than content.
 
 An import streams the request to a temporary ZIP, checks its entry names, methods, declared sizes, checksums and disk budget, then extracts only the allowed `data/` paths into a final snapshot directory that still carries `.building`. The database must pass SQLite's integrity check and expose a supported migration baseline; its schema and all row/file counts are recalculated instead of trusted from the archive. The imported index is empty on purpose, so the next native snapshot copies once instead of matching foreign mtimes. The manifest is written and `.building` removed last. Failures remove both the upload and the incomplete directory.
 
 Imported rows keep the source time and provenance but have kind `imported`. They are restore points, not evidence that this installation's current data was captured, so they are excluded from the scheduled-backup anchor and automatic retention. Only a person deletes them. A newer valid database may be imported and shown, but restore stays disabled until the app is new enough to read it. Security files never enter the portable archive because they never entered the source snapshot.
 
-**What a snapshot carries** is the explicit list in [`paths.ts`](../server/backup/paths.ts) `SNAPSHOT_ENTRIES` and not "everything in the folder": `chungushub.db`, `images/`, and `presets/` (unsaved drafts included). The inventory is named one by one so a new data directory is a visible edit in three places rather than a silent omission that still looks backed up (coupling 1). **`security.json` and `allowlist.json` are absent from both directions**: they are the door to the app rather than the content behind it, and a restore that quietly reinstated a months-old password, or reopened a port the reader had since closed, would be a security surprise arriving under the word "restore". The database's `-wal`/`-shm` are absent for a different reason: `VACUUM INTO` writes a self-contained file that already holds what the live WAL was carrying, so copying them would pair a stale journal with a database it does not describe.
+**What a snapshot carries** is the explicit list in [`paths.ts`](../server/backup/paths.ts) `SNAPSHOT_ENTRIES` and not "everything in the folder": `chungushub.db`, `images/`, `presets/` (unsaved drafts included), and `custom-fonts/`. The inventory is named one by one so a new data directory is a visible edit in three places rather than a silent omission that still looks backed up (coupling 1). **`security.json` and `allowlist.json` are absent from both directions**: they are the door to the app rather than the content behind it, and a restore that quietly reinstated a months-old password, or reopened a port the reader had since closed, would be a security surprise arriving under the word "restore". The database's `-wal`/`-shm` are absent for a different reason: `VACUUM INTO` writes a self-contained file that already holds what the live WAL was carrying, so copying them would pair a stale journal with a database it does not describe.
 
 ## Taking one
 
@@ -55,6 +55,21 @@ One timer re-deciding from the store each minute rather than re-arming itself, s
 **The thinning half stands down when the clock sits behind the store.** Every rule past the count caps reads an age, and an age is only as good as the clock that produced it: a machine with a dead battery, or a first boot before any time sync, reads every snapshot as more than a year old and empties the timeline in one pass at boot. That is data loss caused by a wrong date. The count-based caps need no clock and still run.
 
 ## Putting one back
+
+Before claiming a restore and again at boot, the source must be a completed snapshot inside
+the backup store with a regular SQLite database. Its integrity and actual migration version
+are checked independently of its manifest. All copied directories must be readable real
+directories; preset JSON is parsed before any live entry is removed. The recorded file count
+must still match the source inventory, so a subsequently deleted image or folder is not
+silently restored as an intentional absence. Invalid journals stop
+boot even when they are syntactically valid JSON. These preflight failures leave live data
+and an existing restore journal intact. Later disk/copy failures remain resumable through
+that journal and the pre-restore safety snapshot; the multi-file swap is not atomic.
+
+Copy batches settle every already-started worker before reporting a failure, so cleanup or
+a retry cannot race a previous worker still writing its destination. Image reconciliation
+includes per-chat `feature_state` backgrounds as well as message attachments and library
+art, including uploads that arrived after the first file scan but before the SQLite copy.
 
 **A restore happens at boot, never in a running server, and that is a hard constraint rather than a preference.** `bun:sqlite` does not release the database file once `db.transaction()` has been used on the handle: `close()` leaves a connection SQLite still owns, and on Windows that blocks deleting the file **and** renaming it (`close(true)` reports "database is locked" outright). Migrations run inside a transaction, so every live server has an unreleasable handle from its first boot. Anything shaped like "close the database, swap the files, reopen" cannot work here, and neither can a self-relaunch: a `Bun.spawn` child does not survive its parent exiting on Windows, so the process cannot hand over to a replacement either.
 

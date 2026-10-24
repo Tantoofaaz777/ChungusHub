@@ -8,14 +8,10 @@ import {
 	type ChatFeatureState
 } from '$lib/types/chat';
 import { db } from '$lib/services/database';
+import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
 import { llmStatus, stopGeneration } from '$lib/services/transport';
 import { findActivePath } from '$lib/utils/message-tree';
-import {
-	chatLorebookClaim,
-	chatMutedLorebookClaim,
-	chatPersonaClaim,
-	chatPresetClaim
-} from '$lib/utils/chat-setup';
+import { chatPersonaClaim } from '$lib/utils/chat-setup';
 import { formatDate } from '$lib/utils/date';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
@@ -370,9 +366,8 @@ class ChatStore {
 			messagesRev: rev
 		};
 
-		// Chat memory (non-blocking): load it when the chat changes, then re-sync the
-		// archive boundary for the current active path so the ghost markers stay correct
-		// after swipes/branches/edits. No-op when memory is off for this chat.
+		// Resolve manual summaries against the current path without blocking publication,
+		// so chapter coverage and review markers follow swipes, branches and edits.
 		void this.refreshMemory(chat, messages);
 		return true;
 	}
@@ -561,10 +556,7 @@ class ChatStore {
 				leafId: chat.activeLeafId,
 				characterId: chat.characterId,
 				characterVersionId: chat.characterVersionId,
-				personaId: chatPersonaClaim(chat),
-				presetId: chatPresetClaim(chat),
-				lorebookIds: chatLorebookClaim(chat),
-				mutedLorebookIds: chatMutedLorebookClaim(chat)
+				personaId: chatPersonaClaim(chat)
 			});
 		} catch (e) {
 			console.error('[memory] refresh failed:', e);
@@ -584,8 +576,16 @@ class ChatStore {
 		}
 		// Captured before the reload swaps the list out. It routes where we land if the
 		// active chat turns out to have vanished in the sync.
+		const ticket = ++this.listReadTicket;
+		const activeId = this.activeChatId;
+		const before = captureEditorRows(this.chats);
 		const prevCharacterId = this.activeChat?.characterId ?? null;
-		this.chats = await db.getAllChats();
+		const rows = await db.getAllChats();
+		if (ticket !== this.listReadTicket) return;
+		if (this.stream) { this.missedSyncWhileStreaming = true; return; }
+		this.chats = retainEditorChanges(rows, before, this.chats);
+		// Navigation or a new chat selected during the read owns the current view.
+		if (activeId !== this.activeChatId) return;
 		if (this.chats.length === 0) {
 			if (this.activeChatId) uiStore.openWelcome();
 			this.activeChatId = null;
@@ -614,6 +614,7 @@ class ChatStore {
 			}
 		}
 	}
+	private listReadTicket = 0;
 
 	/** Re-read `chatId`: the open transcript when that chat is the one on screen, and its
 	 *  row in the chat list either way. The generation paths call this with the chat that
@@ -623,8 +624,9 @@ class ChatStore {
 	 *  time and position, while re-reading a transcript nothing touched. */
 	async refreshChat(chatId: string): Promise<void> {
 		if (this.activeChatId === chatId) await this.loadChatState(chatId);
+		const before = this.chats.find(chat => chat.id === chatId);
 		const chat = await db.getChat(chatId);
-		if (chat) this.chats = this.chats.map((c) => (c.id === chat.id ? chat : c));
+		if (chat && this.chats.find(row => row.id === chatId) === before) this.chats = this.chats.map((c) => (c.id === chat.id ? chat : c));
 	}
 
 	/** The open chat, used by the instant mutations, which cannot span a navigation. */

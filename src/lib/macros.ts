@@ -100,7 +100,7 @@ export const MACROS: readonly MacroDef[] = [
 	{ name: 'character', description: "The active character's full profile (the whole-sheet blob).", engine: true, group: 'context' },
 	{ name: 'lorebook', description: 'Lorebook entries, keyword-matched against recent messages.', engine: true, group: 'context' },
 	{ name: 'outlet::name', description: 'Activated lorebook entries assigned to this outlet. Empty when none are active.', engine: true, parameterized: true, group: 'context' },
-	{ name: 'memory', description: 'Chat-memory recall block (episode summaries).', engine: true, group: 'context' },
+	{ name: 'memory', description: 'Legacy placeholder. Manual memories replace their source messages directly; no recall block is generated.', group: 'context' },
 	{ name: 'authorsNote', description: "This chat's author's notes. Empty when the text box is blank; place in a preset or lorebook entry.", engine: true, group: 'context' },
 	{ name: 'chatHistory', description: 'Every turn, as native-role messages. Prompt items only: anywhere else it resolves to nothing.', engine: true, structural: true, group: 'context' },
 	{ name: 'chatHistoryLastN', example: 'chatHistoryLast20', description: 'Only the newest N turns, as a plain transcript. Write the number: {{chatHistoryLast20}}.', engine: true, parameterized: true, group: 'context' },
@@ -173,9 +173,9 @@ export const DEFAULT_EXAMPLE_SEPARATOR = '***';
 export function substitute(template: string, values: Record<string, string>): string {
 	if (!template) return '';
 	return template.replace(MACRO_REGEX, (match, name: string) => {
-		if (name in values) return values[name];
+		if (Object.hasOwn(values, name)) return values[name];
 		const canonical = SYSTEM_MACROS.find((key) => key.toLowerCase() === name.toLowerCase());
-		if (canonical && canonical in values) return values[canonical];
+		if (canonical && Object.hasOwn(values, canonical)) return values[canonical];
 		return resolveCardCbs(name, { seed: template }) ?? match;
 	});
 }
@@ -241,6 +241,12 @@ export function extractMacroNames(text: string): string[] {
 	return [...names];
 }
 
+/** Match substitution's whitespace and built-in case folding; flow/control keys stay exact. */
+export function referencesMacro(text: string, name: string): boolean {
+	const foldCase = SYSTEM_MACROS.includes(name);
+	return extractMacroNames(text).some((candidate) => candidate === name || (foldCase && candidate.toLowerCase() === name.toLowerCase()));
+}
+
 // ============================================================================
 // Tag-block pruning: conditional framing without syntax
 // ============================================================================
@@ -298,7 +304,7 @@ function shouldPrune(block: PruneLevel, values: Record<string, string>): boolean
 	// Framing case: the block's own macros all came back empty, so its static text is
 	// framing for content that isn't there and goes with it. A surviving child always vetoes.
 	if (block.survivingChildren > 0 || block.directMacros.length === 0) return false;
-	return block.directMacros.every((name) => name in values && !values[name].trim());
+	return block.directMacros.every((name) => Object.hasOwn(values, name) && !values[name].trim());
 }
 
 /** One nesting level: recurse into child blocks, drop the ones that prune, and report
@@ -521,7 +527,7 @@ const CHARACTER_FIELD_MACROS: Record<string, TraitKey> = Object.fromEntries(
  * Unknown macros get no entry and stay literal, so typos surface instead of vanishing.
  */
 export function resolveMacroValues(text: string, context: MacroContext): Record<string, string> {
-	const values: Record<string, string> = {};
+	const values: Record<string, string> = Object.create(null);
 	if (!text) return values;
 	for (const name of extractMacroNames(text)) {
 		const value = resolveMacro(name, context);
@@ -660,7 +666,7 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 	// Per-field character macros: the bound character's raw field value (self-refs expanded),
 	// with no labels or framing, so the preset author supplies the wrapping. Engine-resolved,
 	// so a stray control can't shadow them.
-	const fieldKey = CHARACTER_FIELD_MACROS[name];
+	const fieldKey = Object.hasOwn(CHARACTER_FIELD_MACROS, name) ? CHARACTER_FIELD_MACROS[name] : undefined;
 	if (fieldKey) {
 		const char = resolvedCharacters?.[0];
 		if (!char) return '';

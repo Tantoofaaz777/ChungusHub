@@ -179,11 +179,3 @@ export function stripMarkdown(content: string): string {
 		.replace(/\n{2,}/g, '\n') // Multiple newlines
 		.trim();
 }
-
-/**
- * Truncate text with ellipsis.
- */
-export function truncate(text: string, maxLength: number): string {
-	if (text.length <= maxLength) return text;
-	return text.slice(0, maxLength - 1) + '\u2026';
-}

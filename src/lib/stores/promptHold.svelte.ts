@@ -15,7 +15,7 @@
  *
  * Which gates are armed rides the settings sync spine, so a device agrees with the rest.
  */
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 import { HOLD_GATES, holdGateById, type HoldGate, type HoldGateDef } from '$lib/config/prompt-hold';
 import type { CallTarget, LLMMessage } from '$lib/types/llm';
 
@@ -64,12 +64,12 @@ class PromptHoldStore {
 	}
 
 	async initialize(): Promise<void> {
-		this.gates = normalize(await readSetting<Partial<GateSwitches> | null>(SETTINGS_KEY, null));
+		await this.syncReload();
 		registerSettingsReload(() => this.syncReload());
 	}
 
 	async syncReload(): Promise<void> {
-		this.gates = normalize(await readSetting<Partial<GateSwitches> | null>(SETTINGS_KEY, null));
+		await reloadSettings([SETTINGS_KEY], () => readSetting<Partial<GateSwitches> | null>(SETTINGS_KEY, null), raw => { this.gates = normalize(raw); });
 	}
 
 	setGate(gate: HoldGate, armed: boolean): void {

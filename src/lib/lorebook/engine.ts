@@ -73,7 +73,6 @@ import {
 	lorebookIsAtDepth,
 	lorebookOutletName,
 	lorebookRoleOf,
-	lorebookWasInjected,
 	resolveBookActivation,
 	resolveEntryRecursion,
 	resolveKeyMatch

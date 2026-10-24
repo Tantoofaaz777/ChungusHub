@@ -24,7 +24,7 @@ import {
 import type { ExportedLibraryEntry, ExportDestination } from '$lib/services/libraryExport';
 import { buildTextChunk, encodeBase64Utf8, insertTextChunk } from '$lib/services/pngText';
 import { createZip, type ZipEntry } from '$lib/services/zip';
-import type { CardAsset, CharacterCardV3 } from '$lib/types/character-card';
+import type { CharacterCardV3 } from '$lib/types/character-card';
 import type { Lorebook } from '$lib/lorebook/types';
 import { toCharacterBook } from '$lib/lorebook/sillytavern';
 import { bytesDataUrl, dataUrlBytes } from './charx';

@@ -16,6 +16,36 @@ Everything the client persists or streams goes through exactly two files: [`tran
 
 **Boot settings batch** (`services/settings-snapshot.ts`): `AppShell` wraps store initialization in `db.withSettingsSnapshot`, which reads the settings table once through `getAllSettings`. Initializers keep their dependency order, JSON fallbacks, defaults and migrations. `getSetting` reuses this raw snapshot only inside that callback; it is always released in `finally`, including failed launches. Setting writes/deletes invalidate their key before the request and after settlement, so a migration reads its committed value, a rejected write never installs an optimistic value, and a write crossing the snapshot load cannot revive an old row. Remote settings hints and reconnects invalidate the entire snapshot. Sync reloads and prompt assembly after boot keep reading the server directly. Connection credentials remain in their separate table and are not part of this batch.
 
+## Synchronization ordering (maintenance audit, 2026-10-24)
+
+`settings-sync.ts` serializes writes per settings key. Direct reads used by prompt assembly
+wait for queued saves, while `reloadSettings` publishes related settings only when neither a
+newer read nor a local change has overtaken them. Connections/routing and palettes/appearance
+publish together after all their reads succeed. Debounced background/Threads changes invalidate
+older reads immediately and flush when the page is hidden. A failed settings reloader does not
+prevent the other reloaders from running or leave them running after the batch has finished.
+
+`editor-rpc.ts` snapshots editor CRUD payloads at invocation and orders writes per row. Library,
+lorebook and steering reads wait for active local writes in their scope. Input-history append
+and clear operations share one queue, so a pending append cannot resurrect cleared history.
+`DebouncedWriter.flush` also waits for autosaves already in flight; timers are not the entire
+save lifecycle. Failures still surface through existing caller/transport error paths.
+
+Editor refreshes use `captureEditorRows`/`retainEditorChanges` and read tickets. New/deleted or
+edited local rows survive an older response, including edits saved during that read. Mutable
+edits advance their local timestamps monotonically, and reconciliation compares against the
+read's baseline rather than another device's clock. Chat-list refreshes use the same baseline
+rule and cannot close a newly opened chat or replace a newer list with an older response.
+
+Sync listeners collect hints before boot finishes. `initSync` resumes the paused batch once
+dependent stores and migrations are ready, retaining startup hints without an unconditional
+second full load. Reconnect still requests every scope, and in-flight invalidations repeat.
+
+These changes order requests within one page and protect local optimistic state. They do not
+add an offline outbox, server-side compare-and-swap for every editor or automatic merging of
+simultaneous edits to the same row/settings blob from different devices. Those conflicts keep
+their existing last-committed-write semantics; manual memory/Threads revision checks remain.
+
 ## Before touching this
 
 - Read this file + architecture/server-core.md (the two describe one seam from opposite sides).

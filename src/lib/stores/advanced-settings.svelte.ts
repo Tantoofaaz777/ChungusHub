@@ -1,4 +1,4 @@
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 
 /**
  * The destructive-act ladder's three rungs, in one setting rather than two switches
@@ -51,12 +51,12 @@ class AdvancedSettingsStore {
 	developerMode = $derived(this.settings.developerMode);
 
 	async initialize(): Promise<void> {
-		this.settings = normalize(await readSetting<Partial<AdvancedSettings> | null>(SETTINGS_KEY, null));
+		await this.syncReload();
 		registerSettingsReload(() => this.syncReload());
 	}
 
 	async syncReload(): Promise<void> {
-		this.settings = normalize(await readSetting<Partial<AdvancedSettings> | null>(SETTINGS_KEY, null));
+		await reloadSettings([SETTINGS_KEY], () => readSetting<Partial<AdvancedSettings> | null>(SETTINGS_KEY, null), raw => { this.settings = normalize(raw); });
 	}
 
 	setPromptDebugPanel(enabled: boolean): void {

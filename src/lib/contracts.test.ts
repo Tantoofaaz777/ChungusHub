@@ -134,6 +134,39 @@ describe('live sync (architecture/client-data-layer.md #2, architecture/server-c
 	});
 });
 
+describe('retired Story Map surface', () => {
+	test('map UI, commands and dedicated label writers stay retired', () => {
+		const mapDirectory = join(ROOT, 'src/lib/components/storymap');
+		// Git does not track empty directories, but an old checkout may retain one.
+		expect(existsSync(mapDirectory) ? readdirSync(mapDirectory).filter(file => /\.(?:svelte|[jt]s)$/.test(file)) : []).toEqual([]);
+		for (const file of [
+			'src/lib/utils/story-map-layout.ts',
+			'src/lib/utils/diff.ts'
+		]) expect(existsSync(join(ROOT, file)), file).toBe(false);
+		const commands = read('src', 'lib', 'commands', 'registry.ts');
+		expect(commands).not.toMatch(/name:\s*['"](?:map|canon)['"]/);
+		expect(read('src', 'lib', 'services', 'database.ts')).not.toContain('updateMessageBranchLabel');
+		expect(read('server', 'db.ts')).not.toContain('updateMessageBranchLabel');
+		expect(read('README.md')).not.toContain('**Story Map:**');
+		// Legacy labels/canon pointers are deliberately not forbidden: saved chats keep them.
+	});
+});
+
+describe('retired automatic memory engine', () => {
+	test('old runtime modules and turn-triggered maintenance stay removed', () => {
+		for (const file of ['store.svelte.ts', 'engine.ts', 'db-adapter.ts', 'recall.ts', 'branching.ts',
+			'impact-copy.ts', 'config.ts', 'prompts.ts', 'types.ts']) {
+			expect(existsSync(join(ROOT, 'src/lib/memory', file)), file).toBe(false);
+		}
+		const messages = read('src', 'lib', 'stores', 'messages.svelte.ts');
+		expect(messages).not.toContain('triggerMemoryMaintenance');
+		expect(messages).not.toContain('invalidateMemoryFor');
+		const scenes = read('src', 'lib', 'memory', 'scene-store.svelte.ts');
+		expect(scenes).not.toContain('maintainAfterTurn');
+		expect(scenes).not.toContain('impactOf');
+	});
+});
+
 describe('retired Chungus Assistant surface', () => {
 	test('feature files and runtime storage hooks stay removed', () => {
 		for (const parts of [
@@ -157,6 +190,7 @@ describe('retired Chungus Assistant surface', () => {
 		const backup = [
 			read('server', 'backup', 'paths.ts'),
 			read('server', 'backup', 'inventory.ts'),
+			read('server', 'image-references.ts'),
 			read('server', 'backup', 'snapshot.ts')
 		].join('\n');
 		expect(backup.includes('assistant-files')).toBe(false);
@@ -481,9 +515,6 @@ describe('shared UI recipes (architecture/ui-shell-settings.md)', () => {
 	test('the empty-state orb is only drawn by ui/EmptyState', () => {
 		const offenders = svelteFiles()
 			.filter((f) => !f.endsWith('ui/EmptyState.svelte'))
-			// MemoryView's is an INTRO card, not an empty state: the panel has a chat and
-			// works, it is explaining an engine the reader has not switched on yet.
-			.filter((f) => !f.endsWith('memory/MemoryView.svelte'))
 			.filter((f) => /empty-orb/.test(readFileSync(f, 'utf8')))
 			.map((f) => f.slice(f.indexOf('src/')));
 		expect(offenders).toEqual([]);
@@ -851,7 +882,6 @@ describe('per-chat setup (architecture/ui-shell-settings.md)', () => {
 		const APP_WIDE = [
 			'src/lib/components/layout/AppShell.svelte',
 			'src/lib/components/layout/WelcomeDialog.svelte',
-			'src/lib/components/library/LibraryStatsBar.svelte',
 			'src/lib/components/library/PersonaEditor.svelte',
 			'src/lib/components/library/PersonasView.svelte',
 			'src/lib/services/sync.ts',
@@ -893,7 +923,6 @@ describe('per-chat setup (architecture/ui-shell-settings.md)', () => {
 			'src/lib/components/chat/ChatSetupChip.svelte',
 			'src/lib/components/library/EntryFormFields.svelte',
 			'src/lib/components/library/LibraryEntryEditor.svelte',
-			'src/lib/components/library/LibraryStatsBar.svelte',
 			'src/lib/components/library/PersonaEditor.svelte',
 			'src/lib/components/presetControls/PresetControlsView.svelte',
 			'src/lib/components/presets/PresetManager.svelte',
@@ -1228,7 +1257,7 @@ describe('image categories (architecture/server-core.md #5, architecture/backups
 
 	test("the snapshot's path pattern names every one of them", () => {
 		const [alternation] = scan(
-			read('server', 'backup', 'inventory.ts'),
+			read('server', 'image-references.ts'),
 			/images\\\/\(\?:([a-z|]+)\)/g,
 			"IMAGE_PATH_RE's category alternation"
 		);

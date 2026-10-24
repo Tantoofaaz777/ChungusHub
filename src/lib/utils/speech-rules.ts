@@ -47,7 +47,7 @@ function expandReplacement(template: string, match: RegExpMatchArray, source: st
 export function applySpeechRules(text: string, rules: SpeechRule[], trackOffsets = false): SpeechRuleResult {
  if (text.length > MAX_TEXT || rules.length > 30) throw new Error('Text or rule limit exceeded.');
  let offsets = trackOffsets ? Array.from({ length: text.length }, (_, i) => i) : undefined;
- const replace = (expression: RegExp, replacement: (match: string) => string, keepFrom = (match: string) => 0) => {
+ const replace = (expression: RegExp, replacement: (match: string) => string, keepFrom = (_match: string) => 0) => {
   if (!offsets) { text = text.replace(expression, replacement); return; }
   const chunks: string[] = [], next: number[] = [];
   let cursor = 0;

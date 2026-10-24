@@ -8,7 +8,7 @@ const identity = <T>(value: T) => value;
 (globalThis as any).$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
 const realDatabase = { ...await import('$lib/services/database') };
 const realLlm = { ...await import('$lib/services/llm/provider') };
-const { featurePromptsStore } = await import('$lib/stores/featurePrompts.svelte');
+const { featurePromptsStore, normalizeFeaturePrompts, FEATURE_PROMPT_DEFAULTS } = await import('$lib/stores/featurePrompts.svelte');
 const initialFeatures = structuredClone(featurePromptsStore.state);
 afterAll(() => {
 	mock.module('$lib/services/database', () => realDatabase);
@@ -45,7 +45,7 @@ describe('chapter source counts and generation progress', () => {
 	async function draft() {
 		await open();
 		await store.syncForPath({ chatId: 'a', allMessages: messages, leafId: 'second', characterId: null,
-			characterVersionId: null, personaId: null, presetId: null, lorebookIds: [], mutedLorebookIds: [] });
+			characterVersionId: null, personaId: null });
 		// Bun's rune shim does not recompute derived fields; supply the already tested path.
 		Object.defineProperty(store, 'path', { configurable: true, get: () => messages });
 		store.draft = { chatId: 'a', level: 'chapter', children: [], source: captureScene(messages),
@@ -122,7 +122,7 @@ describe('generation request context', () => {
 			: level === 'arc' ? [...chapters, ...arcs.slice(0, 6), ...volumes] : [...chapters, ...arcs, ...volumes];
 		const opening = store.loadForChat('a'); reads.shift()!.resolve(scenes.reverse()); await opening;
 		await store.syncForPath({ chatId: 'a', allMessages: messages, leafId: 'm15', characterId: null,
-			characterVersionId: null, personaId: null, presetId: null, lorebookIds: [], mutedLorebookIds: [] });
+			characterVersionId: null, personaId: null });
 		Object.defineProperty(store, 'path', { configurable: true, get: () => messages });
 		const children = level === 'chapter' ? [] : (level === 'arc' ? chapters.slice(12, 14) : arcs.slice(6, 8)).map(c => ({ id: c.id, revision: c.revision }));
 		store.draft = { chatId: 'a', level, children, source: captureScene(messages.slice(12, level === 'volume' ? 16 : level === 'arc' ? 14 : 13)),
@@ -213,4 +213,27 @@ describe('memory refresh lifecycle', () => {
 		expect(store.activeChatId).toBeNull(); expect(store.loaded).toBe(false); expect(store.refreshing).toBe(false);
 		expect(store.scenes).toEqual([]); expect(store.loadError).toBe('');
 	});
+});
+
+test('retired automatic-memory settings are ignored while current memory prompts and settings survive', () => {
+ const legacy = { ...initialFeatures, memoryEnabled: false, memoryPreviousSummaries: 9,
+  memoryDefaults: { batchSize: 99, verbatimTail: 42 },
+  overrides: { memoryScene: 'My chapter prompt', memoryArc: 'My arc prompt', memoryVolume: 'My volume prompt',
+   memoryExtract: 'Retired extractor', memoryPromote: 'Retired promoter' } };
+ const normalized = normalizeFeaturePrompts(legacy);
+ expect(normalized.memoryEnabled).toBe(false);
+ expect(normalized.memoryPreviousSummaries).toBe(9);
+ expect(normalized.overrides).toEqual({ memoryScene: 'My chapter prompt', memoryArc: 'My arc prompt', memoryVolume: 'My volume prompt' });
+ expect(Object.hasOwn(normalized, 'memoryDefaults')).toBe(false);
+ expect(Object.hasOwn(FEATURE_PROMPT_DEFAULTS, 'memoryExtract')).toBe(false);
+ expect(Object.hasOwn(FEATURE_PROMPT_DEFAULTS, 'memoryPromote')).toBe(false);
+});
+
+test('loading a chat and refreshing its path never starts automatic model work', async () => {
+ await open();
+ const ctx = { chatId: 'a', allMessages: [], leafId: null, characterId: null, characterVersionId: null, personaId: null };
+ await store.syncForPath(ctx);
+ await store.syncForPath({ ...ctx, leafId: 'another-turn' });
+ expect(calls).toHaveLength(0);
+ expect(store.draft).toBeNull();
 });

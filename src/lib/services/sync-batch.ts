@@ -11,7 +11,8 @@ export class SyncBatch<Scope extends string> {
 		private handlers: Record<Scope, () => Promise<void>>,
 		private report: (scope: string, error?: unknown) => void,
 		private aliases: Partial<Record<Scope, Scope>> = {},
-		scheduler?: TaskScheduler
+		scheduler?: TaskScheduler,
+		private paused = false
 	) {
 		this.order = Object.keys(handlers) as Scope[];
 		this.task = new CoalescedTask(50, scheduler);
@@ -37,8 +38,11 @@ export class SyncBatch<Scope extends string> {
 	}
 
 	private schedule(): void {
-		if (!this.running) this.task.queue(() => { void this.drain(); });
+		if (!this.paused && !this.running) this.task.queue(() => { void this.drain(); });
 	}
+
+	/** Collect startup hints immediately, then apply them after dependent stores initialize. */
+	resume(): void { this.paused = false; if (this.pending.size) this.schedule(); }
 
 	private async drain(): Promise<void> {
 		if (this.running) return;

@@ -1092,11 +1092,6 @@ export function parseKeys(input: string): string[] {
 		.filter((k) => k.length > 0);
 }
 
-/** Join keys back into the comma-separated form the inputs edit. */
-export function formatKeys(keys: string[]): string {
-	return keys.join(', ');
-}
-
 /** What {@link addLorebookKeys} decided, so the caller can say what it turned away. */
 export interface LorebookKeyAddition {
 	/** The list with every accepted key appended, in the order they were offered. */

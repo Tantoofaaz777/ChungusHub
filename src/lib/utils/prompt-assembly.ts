@@ -30,6 +30,7 @@ import {
 	expandSelfRefs,
 	historyTurns,
 	pruneEmptyTagBlocks,
+	referencesMacro,
 	resolveMacroValues,
 	splitExampleBlocks,
 	STRUCTURAL_MACROS,
@@ -174,8 +175,8 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 	// What the ENABLED preset actually injects. Two behaviors hang off this: archived turns
 	// only leave {{chatHistory}} when {{memory}} recalls them somewhere, and only turns
 	// {{chatHistory}} renders can be dropped by the budget trim.
-	const injects = (macro: string) => !!input.preset?.items.some((it) => it.enabled && it.content.includes(macro));
-	const memoryReferenced = injects('{{memory}}');
+	const injects = (macro: string) => !!input.preset?.items.some((it) => it.enabled && referencesMacro(it.content, macro));
+	const memoryReferenced = injects('memory');
 	// Lorebook token budget: a share of the same context budget the assembly trims against,
 	// counted with the same encoding, so the block the meter prices is the block that is sent.
 	const budgetPercent = input.lorebookSettings?.budgetPercent ?? 0;
@@ -196,7 +197,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 		customFields: input.customFields,
 		memory: input.recall.scenes ? '' : input.recall.text ?? '',
 		archivedMessageIds: !input.recall.scenes && memoryReferenced ? input.recall.archivedIds : undefined,
-		injectsHistory: injects('{{chatHistory}}'),
+		injectsHistory: injects('chatHistory'),
 		pruneEmptyBlocks: input.preset?.pruneEmptyBlocks ?? false,
 		exampleSeparator: input.preset?.exampleSeparator ?? undefined
 	};
@@ -232,6 +233,10 @@ function expandedSegment(raw: string, expanded: string, model?: string): { prese
 	return { preset: rawTokens, context: Math.max(0, countTokens(expanded, model) - rawTokens) };
 }
 
+function withoutMemory(values: Record<string, string>): Record<string, string> {
+	return Object.fromEntries(Object.entries(values).map(([name, value]) => [name, name === 'memory' ? '' : value]));
+}
+
 /**
  * Resolve one prompt item into the messages it contributes plus its token attribution.
  * The structural macro ({{chatHistory}}) injects native-role messages around the surrounding
@@ -261,9 +266,9 @@ export function resolveItem(item: PromptItem, ctx: MacroContext, model?: string)
 	// Chat-memory recall is its own category, not part of Context. Isolate exactly what
 	// the {{memory}} text contributed by re-substituting the same surviving template with
 	// it blanked (the template stays fixed so the block's framing stays in Preset).
-	if (ctx.memory && item.content.includes('{{memory}}')) {
-		const withoutMemory = countTokens(substitute(template, { ...values, memory: '' }), model);
-		memory = Math.max(0, expandedTokens - withoutMemory);
+	if (ctx.memory && referencesMacro(item.content, 'memory')) {
+		const without = countTokens(substitute(template, withoutMemory(values)), model);
+		memory = Math.max(0, expandedTokens - without);
 		context = Math.max(0, context - memory);
 	}
 	return { messages: [{ role: item.role, content: expanded }], raw, preset: presetTokens, context, memory, chat: 0 };
@@ -281,7 +286,7 @@ function historyExcludedIds(ctx: MacroContext): Set<string> | undefined {
  *  built from the registry's `structural` flag, so declaring one there is the only edit.
  *  {{chatHistory}} is the only one today; the alternation keeps that a registry fact. */
 const STRUCTURAL_ALTERNATION = STRUCTURAL_MACROS.join('|');
-const STRUCTURAL_TAG_RE = new RegExp(`\\{\\{(?:${STRUCTURAL_ALTERNATION})\\}\\}`);
+const STRUCTURAL_TAG_RE = new RegExp(`\\{\\{\\s*(?:${STRUCTURAL_ALTERNATION})\\s*\\}\\}`, 'i');
 
 /** A chat Message as an injected LLM turn: native role + attachment images.
  *  Identity refs (names and persona pronouns) are resolved live against the active persona/character
@@ -362,7 +367,7 @@ function structuralInjection(ctx: SplicedContext): LLMMessage[] {
 function resolveStructural(item: PromptItem, ctx: SplicedContext, raw: number, model?: string): ResolvedItem {
 	type Part = { type: 'text'; value: string } | { type: 'inject'; msgs: LLMMessage[] };
 	const parts: Part[] = [];
-	const re = new RegExp(`\\{\\{(?:${STRUCTURAL_ALTERNATION})\\}\\}`, 'g');
+	const re = new RegExp(STRUCTURAL_TAG_RE.source, 'gi');
 	let lastIndex = 0;
 	let anyInjected = false;
 	let match: RegExpExecArray | null;
@@ -401,9 +406,9 @@ function resolveStructural(item: PromptItem, ctx: SplicedContext, raw: number, m
 			// non-structural path makes. Putting {{memory}} in the same item as {{chatHistory}}
 			// is ordinary authoring, and pricing it as Context made the meter's Memory row
 			// disappear on exactly those presets.
-			if (ctx.memory && template.includes('{{memory}}')) {
-				const withoutMemory = countTokens(substitute(template, { ...values, memory: '' }).trim(), model);
-				const mem = Math.max(0, countTokens(expanded, model) - withoutMemory);
+			if (ctx.memory && referencesMacro(template, 'memory')) {
+				const without = countTokens(substitute(template, withoutMemory(values)).trim(), model);
+				const mem = Math.max(0, countTokens(expanded, model) - without);
 				memory += mem;
 				context += Math.max(0, seg.context - mem);
 			} else {
@@ -509,7 +514,7 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 			fallbackTail = input.continuation ? continuationTail(input, fallbackCtx) : undefined;
 			fallbackSteering = buildSteeringMessages(input, fallbackCtx, input.model);
 		}
-		return systemFallback(mode, placeholder, fallbackTail, fallbackSteering);
+		return systemFallback(mode, placeholder, fallbackTail, fallbackSteering, input.contextBudget, input.model);
 	}
 
 	let ctx: SplicedContext = buildMacroContext(input);
@@ -550,7 +555,7 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 	// when the preset actually injects {{mesExamples}} and the bound character has blocks to
 	// drop; the trim works purely by re-resolving with fewer blocks, no separate token bucket.
 	// {{mesExamplesRaw}} is deliberately not trimmable and deliberately not counted here.
-	const injectsExamples = preset.items.some((it) => it.enabled && it.content.includes('{{mesExamples}}'));
+	const injectsExamples = preset.items.some((it) => it.enabled && referencesMacro(it.content, 'mesExamples'));
 	const exampleBlocks = splitExampleBlocks(ctx.resolvedCharacters?.[0]?.traits.exampleDialogue ?? '');
 	if (budget != null && breakdown.total + fixedExtra > budget && injectsExamples && exampleBlocks.length > 0) {
 		for (let dropOldest = 1; dropOldest <= exampleBlocks.length; dropOldest++) {
@@ -575,13 +580,16 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 			// same call. The continuation tail and steering are fixed cost, so they weigh
 			// against history's budget.
 			const history = historyTurns(ctx.chatMessages, ctx.archivedMessageIds).filter((m) => !m.memorySceneId);
-			const historyTokens = history.reduce((sum, m) => sum + countTokens(m.content, input.model), 0);
+			const copies = preset.items.filter((item) => item.enabled).reduce((sum, item) =>
+				sum + [...item.content.matchAll(new RegExp(STRUCTURAL_TAG_RE.source, 'gi'))].length, 0);
+			const costs = history.map((m) => countTokens(toInjectedMessage(m, ctx).content, input.model) * copies);
+			const historyTokens = costs.reduce((sum, tokens) => sum + tokens, 0);
 			const historyBudget = budget - (breakdown.total + fixedExtra - historyTokens);
 			// Keep the newest contiguous run that fits: a gapped keep would break the conversation.
 			let oldestKept = history.length;
 			let kept = 0;
 			for (let i = history.length - 1; i >= 0; i--) {
-				const t = countTokens(history[i].content, input.model);
+				const t = costs[i];
 				if (kept + t > historyBudget) break;
 				kept += t;
 				oldestKept = i;
@@ -601,7 +609,10 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 		}
 	}
 
-	if (messages.length === 0) return systemFallback(mode, placeholder, tail, splices);
+	if (messages.length === 0) return {
+		...systemFallback(mode, placeholder, tail, splices, input.contextBudget, input.model),
+		trimmedMessages, trimmedExampleBlocks
+	};
 
 	// The fallback net for any group whose position no structural tag rendered: neither
 	// tag in the preset, or nothing left to inject after the trim. Tracked by object
@@ -636,7 +647,7 @@ export function assemblePrompt(input: AssembleInput): PromptAssembly {
 /** Resolve every enabled item against a context, the shared body for both assembly passes. */
 function resolveEnabled(
 	preset: PromptPreset,
-	ctx: MacroContext,
+	ctx: SplicedContext,
 	model?: string
 ): { messages: LLMMessage[]; breakdown: PromptTokenBreakdown } {
 	const messages: LLMMessage[] = [];
@@ -651,6 +662,12 @@ function resolveEnabled(
 		breakdown.memory += r.memory;
 		breakdown.chat += r.chat;
 	}
+	// The fixed-extra allowance already prices one copy. A deliberately repeated history
+	// tag repeats its splices too, so every additional occurrence must also fit the budget.
+	for (const splice of ctx.splices ?? []) {
+		const copies = messages.filter((message) => message === splice.message).length;
+		breakdown.context += Math.max(0, copies - 1) * splice.tokens;
+	}
 
 	breakdown.total = breakdown.preset + breakdown.context + breakdown.memory + breakdown.chat;
 	return { messages, breakdown };
@@ -660,9 +677,11 @@ function systemFallback(
 	mode: PromptPostProcessingMode = 'merge',
 	placeholder?: string,
 	tail?: { messages: LLMMessage[]; tokens: number },
-	splices: DepthSplice[] = []
+	splices: DepthSplice[] = [],
+	budget?: number | null,
+	model?: string
 ): PromptAssembly {
-	const preset = countTokens(DEFAULT_SYSTEM_PROMPT);
+	const preset = countTokens(DEFAULT_SYSTEM_PROMPT, model);
 	const steeringMessages = splices.map((b) => b.message);
 	const steeringTokens = splices.reduce((sum, b) => sum + b.tokens, 0);
 	const tailMessages = tail?.messages ?? [];
@@ -682,7 +701,7 @@ function systemFallback(
 		},
 		trimmedMessages: 0,
 		trimmedExampleBlocks: 0,
-		overBudget: false,
+		overBudget: budget != null && preset + steeringTokens + tailTokens > budget,
 		// The fallback prompt is the default system message and nothing else: no item resolved,
 		// so no lore reached this prompt whatever the scan decided.
 		lorebook: EMPTY_LOREBOOK_TRACE,
@@ -729,7 +748,7 @@ export function applyPostProcessing(
 			seenNonSystem = true;
 			return m;
 		}
-		return seenNonSystem ? { role: 'user', content: m.content } : m;
+		return seenNonSystem ? { ...m, role: 'user' } : m;
 	});
 	const merged = mergeConsecutiveRoles(demoted);
 

@@ -10,16 +10,17 @@
  */
 import { Database } from 'bun:sqlite';
 import { parseReasoningRetention } from '../shared/reasoning-retention';
-import { normalizeAo3Information, emptyAo3Information, type Ao3Information } from '../shared/threads/ao3';
+import { normalizeAo3Information, emptyAo3Information } from '../shared/threads/ao3';
 import { threadsSelectionOverlaps } from '../shared/threads/model';
 import { inheritThreadsRounds } from '../shared/threads/inheritance';
 import { parseGeneratedThreadsFeed } from '../shared/threads/feed';
 import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '../shared/threads/types';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { IMAGES_ROOT, resolveDbPath } from './config';
-import { deleteImage } from './files';
+import { deleteImage, IMAGE_EXT_RE, IMAGE_EXTENSIONS, thumbnailFor } from './files';
+import { referencedImagePaths, referencedPresetImages } from './image-references';
 import type { SyncScope } from '../shared/sync';
 import { librarySteeringNotes, type SteeringNote } from '../src/lib/types/steering';
 import { captureScene, resolveScenes, scenePath, sceneLevel, MEMORY_LEVELS, type MemoryScene, type SaveMemoryScene, type SceneMessage } from '../shared/memory-scenes';
@@ -29,6 +30,10 @@ import { captureScene, resolveScenes, scenePath, sceneLevel, MEMORY_LEVELS, type
  *  compares chats that already collided on a count+length signature. */
 function shortDigest(value: string): string {
 	return createHash('sha1').update(value).digest('hex').slice(0, 16);
+}
+
+function imageReferenceKey(path: string): string {
+	return process.platform === 'win32' ? path.toLowerCase() : path;
 }
 
 /**
@@ -1013,9 +1018,9 @@ class ServerDatabase {
 		}
 
 		// ORDER BY rowid: the copy's rows are re-inserted in the order they come back, and
-		// memListEpisodes breaks created_at ties by rowid, so reading in index order would
-		// silently re-order same-millisecond rows in the copy (architecture/memory.md coupling 6:
-		// insertion order must survive ties).
+		// Legacy episode reads break created_at ties by rowid, so reading in index order would
+		// silently re-order same-millisecond rows in the copy. Historical insertion order
+		// must survive ties; see architecture/memory.md.
 		const episodes = this.select<Record<string, unknown>[]>('SELECT * FROM memory_episodes WHERE chat_id = ? ORDER BY rowid', [fromChatId]);
 		for (const episode of episodes) {
 			let refs: string[];
@@ -1175,10 +1180,10 @@ class ServerDatabase {
 			}
 
 			if (commit.parentId) {
-				const parent = this.select<{ id: string }[]>('SELECT id FROM messages WHERE id = ?', [commit.parentId]);
+				const parent = this.select<{ id: string }[]>('SELECT id FROM messages WHERE id = ? AND chat_id = ?', [commit.parentId, commit.chatId]);
 				if (!parent[0]) {
 					throw new Error(
-						`commitGeneratedTurn: parent ${commit.parentId} is gone, so the generated turn has nowhere to hang.`
+						`commitGeneratedTurn: parent ${commit.parentId} is gone or belongs to another chat, so the generated turn has nowhere to hang.`
 					);
 				}
 			}
@@ -1242,9 +1247,8 @@ class ServerDatabase {
 	// A deleted chat or message must leave nothing behind on disk: the user deleted it, so
 	// its pictures are gone too. Two rules make that safe.
 	//
-	//  1. Reference counting. Branching or forking a message COPIES its attachment list,
-	//     so several rows can point at one file. A file dies only once NO message references
-	//     it any more, checked AFTER the rows are gone.
+	//  1. Branching/forking copies attachment lists. Cleanup checks all persisted owners,
+	//     including versions and presets, AFTER the deleted rows are gone.
 	//  2. images/chat/ only. Character and persona art lives in its own folder and is
 	//     always a copy (see edit_character_images), never an alias of a chat attachment.
 	//     This sweep refuses to touch anything outside images/chat/, so deleting a chat
@@ -1290,18 +1294,34 @@ class ServerDatabase {
 
 	/** Deletes every candidate file no surviving row points at. Call AFTER the rows are gone. */
 	private dropOrphanedChatImages(paths: string[]): void {
+		if (!paths.length) return;
+		let referenced: Set<string>;
+		try { referenced = this.imageReferences(); }
+		catch (error) { console.error('[db] image cleanup skipped:', error); return; }
 		for (const path of new Set(paths)) {
 			// The one folder this sweep owns. Entry art is never reachable from here.
 			if (!path.startsWith('images/chat/')) continue;
-			// Escape LIKE wildcards so a path containing % or _ can't false-match another
-			// row (which would leak the file). Paths are server-generated UUIDs today,
-			// but the sweep must not depend on that staying true.
-			const escaped = path.replace(/([\\%_])/g, '\\$1');
-			const needle = `%"${escaped}"%`;
-			const inMessages = this.select<{ n: number }[]>("SELECT COUNT(*) AS n FROM messages WHERE attachments_json LIKE ? ESCAPE '\\'", [needle])[0]?.n ?? 0;
-			if (inMessages > 0) continue;
-			deleteImage(path);
+			if (referenced.has(imageReferenceKey(path))) continue;
+			try { deleteImage(path); }
+			catch (error) { console.error('[db] image cleanup failed:', error); }
 		}
+	}
+
+	private imageReferences(): Set<string> {
+		const references = new Set([...referencedImagePaths(this.db, true), ...referencedPresetImages()]);
+		for (const path of [...references]) {
+			if (/\/thumbnails\//i.test(path)) {
+				const original = path.replace(/\/thumbnails\//i, '/').replace(/\.[^.]+$/, '');
+				for (const extension of IMAGE_EXTENSIONS) references.add(original + extension);
+			}
+		}
+		return new Set([...references].map(imageReferenceKey));
+	}
+
+	/** Cleanup requests never delete a file another persisted owner still names. */
+	deleteUnusedImage(path: string): boolean {
+		if (this.imageReferences().has(imageReferenceKey(path))) return false;
+		deleteImage(path); return true;
 	}
 
 	/**
@@ -1313,15 +1333,14 @@ class ServerDatabase {
 	sweepAbandonedChatImages(): number {
 		const dir = join(IMAGES_ROOT, 'chat');
 		if (!existsSync(dir)) return 0;
+		if (lstatSync(dir).isSymbolicLink()) return 0;
 		const cutoff = Date.now() - 60 * 60 * 1000;
 		// Every path any message references, parsed from the real rows.
 		// No LIKE guessing here, this sweep must err on the side of keeping files. If any
 		// row fails to parse, the reference set is unknowable: abort, delete nothing.
 		const referenced = new Set<string>();
 		try {
-			for (const row of this.select<{ attachments_json: string | null }[]>('SELECT attachments_json FROM messages WHERE attachments_json IS NOT NULL')) {
-				for (const p of this.imagePathsIn(row.attachments_json)) referenced.add(p);
-			}
+			for (const path of this.imageReferences()) referenced.add(path);
 		} catch (e) {
 			console.error('[db] abandoned-image sweep skipped because a row failed to parse:', e instanceof Error ? e.message : e);
 			return 0;
@@ -1329,12 +1348,25 @@ class ServerDatabase {
 		let swept = 0;
 		for (const name of readdirSync(dir)) {
 			const abs = join(dir, name);
-			if (!statSync(abs).isFile()) continue;
+			if (!lstatSync(abs).isFile() || !IMAGE_EXT_RE.test(name)) continue;
 			const rel = `images/chat/${name}`;
-			if (referenced.has(rel)) continue;
+			if (referenced.has(imageReferenceKey(rel))) continue;
 			if (statSync(abs).mtimeMs > cutoff) continue;
-			deleteImage(rel); // removes the thumbnail alongside
-			swept += 1;
+			try { deleteImage(rel); swept++; }
+			catch (error) { console.error('[db] abandoned image could not be removed:', error); }
+		}
+		const thumbs = join(dir, 'thumbnails');
+		if (existsSync(thumbs) && !lstatSync(thumbs).isSymbolicLink()) {
+			const owned = new Set(readdirSync(dir).filter(name => IMAGE_EXT_RE.test(name))
+				.map(name => imageReferenceKey(thumbnailFor(`images/chat/${name}`).replace(/\.[^.]+$/, ''))));
+			for (const path of referenced) owned.add(thumbnailFor(path).replace(/\.[^.]+$/, ''));
+			for (const name of readdirSync(thumbs)) {
+				const file = join(thumbs, name), rel = `images/chat/thumbnails/${name}`;
+				if (!IMAGE_EXT_RE.test(name) || !lstatSync(file).isFile() || statSync(file).mtimeMs > cutoff) continue;
+				if (referenced.has(imageReferenceKey(rel)) || owned.has(imageReferenceKey(rel.replace(/\.[^.]+$/, '')))) continue;
+				try { deleteImage(rel); swept++; }
+				catch (error) { console.error('[db] abandoned thumbnail could not be removed:', error); }
+			}
 		}
 		if (swept > 0) console.log(`[db] swept ${swept} abandoned chat image${swept === 1 ? '' : 's'}`);
 		return swept;
@@ -2608,7 +2640,7 @@ class ServerDatabase {
 		this.execute('DELETE FROM lorebooks WHERE id = ?', [id]);
 		if (cover) {
 			try {
-				deleteImage(cover);
+				this.deleteUnusedImage(cover);
 			} catch (e) {
 				// The row is already gone and its delete autocommitted. A file the OS refuses to
 				// unlink must not cost the sync hint, the backup stamp or the rest of a selection.
@@ -2737,30 +2769,6 @@ class ServerDatabase {
 		});
 	}
 
-	// ===== CHAT MEMORY =====
-
-	private mapMemoryState(r: Record<string, unknown>): unknown {
-		return {
-			chatId: r.chat_id,
-			enabled: r.enabled === 1,
-			autoExtract: r.auto_extract !== 0,
-			config: r.config_json ? JSON.parse(r.config_json as string) : null,
-			updatedAt: r.updated_at
-		};
-	}
-
-	private mapEpisode(r: Record<string, unknown>): unknown {
-		return {
-			id: r.id,
-			chatId: r.chat_id,
-			layer: r.layer,
-			content: r.content,
-			sourceMessageIds: r.source_message_ids ? JSON.parse(r.source_message_ids as string) : [],
-			anchorMessageId: r.anchor_message_id ?? null,
-			createdAt: r.created_at
-		};
-	}
-
 	private importLegacyScenes(chatId: string): void {
 		if (this.select<{ chat_id: string }[]>('SELECT chat_id FROM memory_scene_migrations WHERE chat_id = ?', [chatId]).length) return;
 		this.inTransaction(() => {
@@ -2837,213 +2845,6 @@ class ServerDatabase {
 			if (!scene || scene.revision !== expectedRevision) throw new Error('This memory changed. Reload Memory before removing it.');
 			this.execute('DELETE FROM memory_scenes WHERE id = ? AND chat_id = ?', [id, chatId]);
 		});
-	}
-
-	memGetState(chatId: string): unknown {
-		const rows = this.select<Record<string, unknown>[]>('SELECT * FROM memory_state WHERE chat_id = ?', [chatId]);
-		return rows[0] ? this.mapMemoryState(rows[0]) : null;
-	}
-
-	memListEpisodes(chatId: string): unknown[] {
-		// rowid tiebreak: a fast build can land several batches in the same millisecond,
-		// and downstream ordering (promotion picks "oldest N", recall is chronological)
-		// must stay insertion-ordered through created_at ties.
-		const rows = this.select<Record<string, unknown>[]>(
-			'SELECT * FROM memory_episodes WHERE chat_id = ? ORDER BY layer ASC, created_at ASC, rowid ASC',
-			[chatId]
-		);
-		return rows.map((r) => this.mapEpisode(r));
-	}
-
-	/** Fold a config patch onto whatever this chat already has stored. */
-	private mergeMemoryConfig(chatId: string, patch: unknown): Record<string, unknown> {
-		const row = this.select<{ config_json: string | null }[]>(
-			'SELECT config_json FROM memory_state WHERE chat_id = ?',
-			[chatId]
-		)[0];
-		const stored = row?.config_json ? (JSON.parse(row.config_json) as Record<string, unknown>) : {};
-		return { ...stored, ...(patch as Record<string, unknown>) };
-	}
-
-	memSetState(chatId: string, patch: Record<string, unknown>): void {
-		const now = Date.now();
-		const exists = this.select<{ chat_id: string }[]>('SELECT chat_id FROM memory_state WHERE chat_id = ?', [chatId]);
-		if (!exists.length) {
-			this.execute(
-				'INSERT INTO memory_state (chat_id, enabled, auto_extract, config_json, updated_at) VALUES (?, ?, ?, ?, ?)',
-				[
-					chatId,
-					patch.enabled ? 1 : 0,
-					patch.autoExtract === false ? 0 : 1,
-					patch.config ? JSON.stringify(patch.config) : null,
-					now
-				]
-			);
-			return;
-		}
-		const updates: string[] = [];
-		const values: unknown[] = [];
-		if (patch.enabled !== undefined) {
-			updates.push('enabled = ?');
-			values.push(patch.enabled ? 1 : 0);
-		}
-		if (patch.autoExtract !== undefined) {
-			updates.push('auto_extract = ?');
-			values.push(patch.autoExtract ? 1 : 0);
-		}
-		if (patch.config !== undefined) {
-			updates.push('config_json = ?');
-			// MERGE, don't replace. `patch.config` carries only the fields the caller changed
-			// (one slider), so a second device editing a different slider keeps its value.
-			// Replacing made every write a read-merge-write from a client cache that could be
-			// minutes stale, and worse while the other device was mid-build, since its sync
-			// reload is skipped whenever it is busy. An explicit null still clears the row.
-			values.push(patch.config ? JSON.stringify(this.mergeMemoryConfig(chatId, patch.config)) : null);
-		}
-		updates.push('updated_at = ?');
-		values.push(now);
-		values.push(chatId);
-		this.execute(`UPDATE memory_state SET ${updates.join(', ')} WHERE chat_id = ?`, values);
-	}
-
-	/**
-	 * The one invariant every memory write is checked against: **no two episodes of a chat
-	 * may cover the same message**.
-	 *
-	 * This replaced a compare-and-swap on a stored cursor. The cursor is derived now
-	 * (src/lib/memory/branching.ts resolveCoverage tiles the active path with episode
-	 * coverage), and a derived boundary is only well-defined while coverage is unique:
-	 * two summaries claiming one turn would both render in recall and make the tiling walk
-	 * pick arbitrarily. It is also a strictly better guard than the CAS was: it catches a
-	 * double-fold from any source (a raced run, another device, a chat copy) rather than
-	 * only one that moved a cursor.
-	 *
-	 * Call inside the transaction, AFTER the step's own deletes: a promotion legitimately
-	 * covers exactly what the episodes it just consumed did.
-	 */
-	private memAssertNoOverlap(chatId: string, sourceMessageIds: unknown): void {
-		const incoming = new Set(Array.isArray(sourceMessageIds) ? (sourceMessageIds as string[]) : []);
-		if (incoming.size === 0) return;
-		const rows = this.select<{ id: string; source_message_ids: string | null }[]>(
-			'SELECT id, source_message_ids FROM memory_episodes WHERE chat_id = ?',
-			[chatId]
-		);
-		for (const row of rows) {
-			const ids: string[] = row.source_message_ids ? JSON.parse(row.source_message_ids) : [];
-			const hit = ids.find((id) => incoming.has(id));
-			if (hit !== undefined) {
-				throw new Error(
-					`mem-op-superseded: episode ${row.id} already covers message ${hit} (concurrent update)`
-				);
-			}
-		}
-	}
-
-	memApplyBatch(chatId: string, result: Record<string, any>): void {
-		const now = Date.now();
-		const tx = this.db.transaction(() => {
-			// The engine fails loud rather than committing an unusable episode, so a batch
-			// without one is a bug upstream, not a case to absorb: it would move the boundary
-			// over turns nothing covers, which is exactly the gap the design must not have.
-			if (!result.episode) throw new Error('memApplyBatch: batch carries no episode, refusing to fold');
-			// Dormant summaries of the same span, written on a branch this fold abandons.
-			// They go first so the overlap check below sees only genuine conflicts.
-			for (const id of (result.supersedeEpisodeIds ?? []) as string[]) {
-				this.execute('DELETE FROM memory_episodes WHERE id = ? AND chat_id = ?', [id, chatId]);
-			}
-			this.memAssertNoOverlap(chatId, result.episode.sourceMessageIds);
-			this.execute(
-				`INSERT INTO memory_episodes (id, chat_id, layer, content, source_message_ids, anchor_message_id, created_at)
-				 VALUES (?, ?, 0, ?, ?, ?, ?)`,
-				[crypto.randomUUID(), chatId, result.episode.content, JSON.stringify(result.episode.sourceMessageIds ?? []), result.episode.anchorMessageId ?? null, now]
-			);
-			this.execute('UPDATE memory_state SET updated_at = ? WHERE chat_id = ?', [now, chatId]);
-		});
-		tx();
-	}
-
-	memApplyPromotion(chatId: string, result: Record<string, any>): void {
-		const now = Date.now();
-		const ins = result.insert;
-		const delIds: string[] = result.deleteEpisodeIds ?? [];
-		const tx = this.db.transaction(() => {
-			// Keep chronology: the merged episode inherits the newest covered timestamp.
-			// The COUNT doubles as a supersede guard: if any source episode is already gone
-			// (a reap or another device's promotion consumed it), merging the leftovers
-			// would duplicate their coverage, so reject the whole step instead.
-			let createdAt = now;
-			if (delIds.length) {
-				const ph = delIds.map(() => '?').join(',');
-				const rows = this.select<{ n: number; mx: number | null }[]>(
-					`SELECT COUNT(*) AS n, MAX(created_at) AS mx FROM memory_episodes WHERE chat_id = ? AND id IN (${ph})`,
-					[chatId, ...delIds]
-				);
-				if ((rows[0]?.n ?? 0) !== delIds.length) {
-					throw new Error('mem-op-superseded: episodes to merge changed (concurrent update)');
-				}
-				if (rows[0]?.mx != null) createdAt = rows[0].mx;
-			}
-			for (const id of delIds) this.execute('DELETE FROM memory_episodes WHERE id = ? AND chat_id = ?', [id, chatId]);
-			// After the deletes: the merge covers exactly what its sources did, so checking
-			// before them would flag the step against itself.
-			this.memAssertNoOverlap(chatId, ins.sourceMessageIds);
-			this.execute(
-				`INSERT INTO memory_episodes (id, chat_id, layer, content, source_message_ids, anchor_message_id, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				[
-					crypto.randomUUID(),
-					chatId,
-					ins.layer,
-					ins.content,
-					JSON.stringify(ins.sourceMessageIds ?? []),
-					ins.anchorMessageId ?? null,
-					createdAt
-				]
-			);
-		});
-		tx();
-	}
-
-	/**
-	 * Delete episodes that can never apply to this chat again: a turn they cover was
-	 * deleted, or was rewritten after the summary was written.
-	 *
-	 * Plain deletes with no guard, deliberately. There is no boundary to keep in step (it
-	 * is derived from whatever survives) and the operation is idempotent, so a reap racing
-	 * a fold cannot corrupt either: the fold's own overlap check still holds, and a second
-	 * reap of the same ids is a no-op. This is the ONLY delete path that isn't part of a
-	 * step that replaces what it removes. Branch changes never reach it.
-	 */
-	memReapEpisodes(chatId: string, episodeIds: string[]): void {
-		if (!episodeIds?.length) return;
-		const now = Date.now();
-		const tx = this.db.transaction(() => {
-			for (const id of episodeIds) this.execute('DELETE FROM memory_episodes WHERE id = ? AND chat_id = ?', [id, chatId]);
-			this.execute('UPDATE memory_state SET updated_at = ? WHERE chat_id = ?', [now, chatId]);
-		});
-		tx();
-	}
-
-	/** Rewrite one episode's text. Coverage is untouched (only the prose the model reads
-	 *  changes), so this needs no guard: it can neither open a gap nor move the boundary.
-	 *  Deleting an episode by hand deliberately has no method; that WOULD open a gap. */
-	memUpdateEpisodeContent(chatId: string, episodeId: string, content: string): void {
-		this.execute('UPDATE memory_episodes SET content = ? WHERE id = ? AND chat_id = ?', [content, episodeId, chatId]);
-	}
-
-	memReset(chatId: string): void {
-		const now = Date.now();
-		const tx = this.db.transaction(() => {
-			this.execute('DELETE FROM memory_episodes WHERE chat_id = ?', [chatId]);
-			// The insert branch only fires for a chat that was never enabled: reset wipes
-			// derived memory, it must not silently switch the engine on.
-			this.execute(
-				`INSERT INTO memory_state (chat_id, enabled, updated_at) VALUES (?, 0, ?)
-				 ON CONFLICT(chat_id) DO UPDATE SET updated_at = excluded.updated_at`,
-				[chatId, now]
-			);
-		});
-		tx();
 	}
 
 
@@ -3245,12 +3046,6 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	deleteSteeringNote: 'steering',
 	consumeSteeringNotes: 'steering',
 	reorderSteeringNotes: 'steering',
-	memSetState: 'memory',
-	memApplyBatch: 'memory',
-	memApplyPromotion: 'memory',
-	memReapEpisodes: 'memory',
-	memUpdateEpisodeContent: 'memory',
-	memReset: 'memory',
 	saveMemoryScene: 'memory',
 	deleteMemoryScene: 'memory',
 	saveThreadsRound: 'threads',
@@ -3270,8 +3065,7 @@ const READ_METHODS = [
 	'getAllLibraryEntries', 'getLibraryEntry',
 	'getAllCharacterVersions', 'getCharacterVersion',
 	'getAllLorebooks', 'getLorebook',
-	'getAllSteeringNotes',
-	'memGetState', 'memListEpisodes', 'getMemoryScenes', 'getThreadsData'
+	'getAllSteeringNotes', 'getMemoryScenes', 'getThreadsData'
 ];
 
 export const ALLOWED_DB_METHODS = new Set([...READ_METHODS, ...Object.keys(MUTATION_SCOPES)]);

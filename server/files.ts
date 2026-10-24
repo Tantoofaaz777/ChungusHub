@@ -4,8 +4,11 @@
  */
 import {
 	copyFileSync,
+	closeSync,
 	existsSync,
+	lstatSync,
 	mkdirSync,
+	openSync,
 	readFileSync,
 	readdirSync,
 	rmSync,
@@ -49,7 +52,7 @@ const IMAGE_TYPES: Record<string, string> = {
 	'.avif': 'image/avif'
 };
 
-const IMAGE_EXTENSIONS = Object.keys(IMAGE_TYPES);
+export const IMAGE_EXTENSIONS = Object.keys(IMAGE_TYPES);
 
 /** The type a stored picture is served with, or null for a name that is not one of them. */
 export function imageContentType(path: string): string | null {
@@ -125,8 +128,15 @@ function absFromRelative(relativePath: string): string {
 	}
 	// relativePath looks like images/<category>/<file>. Strip the images/ prefix and
 	// rejoin under the images root so paths can't escape it.
-	const safe = relativePath.replace(/^images\//, '').replace(/\.\./g, '');
-	return join(IMAGES_ROOT, safe);
+	const parts = relativePath.split('/');
+	if (parts[0] !== 'images' || !IMAGE_CATEGORIES.includes(parts[1] as ImageCategory) ||
+		parts.length < 2 || parts.length > 4 || parts.some(part => !part || part === '.' || part === '..' || /[:\0]/.test(part)) ||
+		(parts.length === 4 && parts[2] !== 'thumbnails')) throw new Error('Invalid stored image path.');
+	for (let i = 2; i < parts.length; i++) {
+		const parent = join(IMAGES_ROOT, ...parts.slice(1, i));
+		if (existsSync(parent) && lstatSync(parent).isSymbolicLink()) throw new Error('Linked image directories are not supported.');
+	}
+	return join(IMAGES_ROOT, ...parts.slice(1));
 }
 
 /**
@@ -135,10 +145,11 @@ function absFromRelative(relativePath: string): string {
  * left by an install that wrote them in another format. Going by today's extension alone
  * leaves those on disk, and nothing else ever walks that folder.
  */
-function removeThumbnails(relativePath: string): void {
+function removeThumbnails(relativePath: string, keep?: string): void {
 	const base = thumbnailFor(relativePath).replace(/\.[^.]+$/, '');
 	for (const ext of IMAGE_EXTENSIONS) {
 		const thumb = absFromRelative(`${base}${ext}`);
+		if (thumb === keep) continue;
 		if (existsSync(thumb)) rmSync(thumb);
 	}
 }
@@ -150,7 +161,8 @@ export async function saveImage(
 	category: ImageCategory = 'characters',
 	preferredName?: string | null
 ): Promise<string> {
-	const safeCategory = IMAGE_CATEGORIES.includes(category) ? category : 'characters';
+	if (!IMAGE_CATEGORIES.includes(category)) throw new Error('Invalid image category.');
+	const safeCategory = category;
 	const cleanExt = `.${ext.replace(/^\./, '')}`.toLowerCase();
 	// The caller names the extension and it lands in a filesystem path under an origin that
 	// serves what is written there. A shape check is not enough: ".html" is as plain an
@@ -160,6 +172,10 @@ export async function saveImage(
 			`"${ext}" is not a picture format ChungusHub stores. Use one of: ${IMAGE_EXTENSIONS.join(', ')}.`
 		);
 	}
+	// Decode both payloads before writing anything or choosing a collision-free name.
+	const [originalBytes, thumbBytes] = await Promise.all([
+		original.arrayBuffer(), thumb ? thumb.arrayBuffer() : Promise.resolve(null)
+	]);
 
 	const dir = join(IMAGES_ROOT, safeCategory);
 	const thumbsDir = join(dir, 'thumbnails');
@@ -178,33 +194,40 @@ export async function saveImage(
 			.slice(0, 64);
 		if (base) {
 			id = base;
-			for (let n = 2; existsSync(join(dir, `${id}${cleanExt}`)); n++) {
+			for (let n = 2; IMAGE_EXTENSIONS.some(extension => existsSync(join(dir, `${id}${extension}`))) || existsSync(join(thumbsDir, `${id}${THUMBNAIL_EXTENSION}`)); n++) {
 				id = `${base}-${n}`;
 			}
 		}
 	}
 	const filename = `${id}${cleanExt}`;
 
-	writeFileSync(join(dir, filename), Buffer.from(await original.arrayBuffer()));
-	if (thumb) {
-		writeFileSync(
-			join(thumbsDir, `${id}${THUMBNAIL_EXTENSION}`),
-			Buffer.from(await thumb.arrayBuffer())
-		);
-	}
+	const originalPath = join(dir, filename), thumbPath = join(thumbsDir, `${id}${THUMBNAIL_EXTENSION}`);
+	writeNewImage(originalPath, Buffer.from(originalBytes));
+	try { if (thumbBytes) writeNewImage(thumbPath, Buffer.from(thumbBytes)); }
+	catch (error) { rmSync(originalPath, { force: true }); throw error; }
 
 	return `images/${safeCategory}/${filename}`;
 }
 
+/** A failed write removes only the new file this call exclusively created. */
+function writeNewImage(path: string, bytes: Buffer): void {
+	const fd = openSync(path, 'wx');
+	try {
+		try { writeFileSync(fd, bytes); }
+		finally { closeSync(fd); }
+	} catch (error) { rmSync(path, { force: true }); throw error; }
+}
+
 export function copyImage(relativePath: string, targetCategory?: ImageCategory): string | null {
 	if (!relativePath) return null;
+	if (targetCategory && !IMAGE_CATEGORIES.includes(targetCategory)) throw new Error('Invalid image category.');
 	const sourcePath = absFromRelative(relativePath);
 	if (!existsSync(sourcePath)) return null;
 
 	// Copy within the source's own category (images/<category>/...) unless the caller
 	// names another one: a chat attachment adopted as character art moves folders, so
 	// it outlives the chat it arrived in.
-	const dirRel = targetCategory ? `images/${targetCategory}` : relativePath.slice(0, relativePath.lastIndexOf('/'));
+	const dirRel = `images/${targetCategory ?? relativePath.split('/')[1]}`;
 	const dirAbs = absFromRelative(dirRel);
 	const thumbsAbs = join(dirAbs, 'thumbnails');
 
@@ -216,9 +239,13 @@ export function copyImage(relativePath: string, targetCategory?: ImageCategory):
 	mkdirSync(thumbsAbs, { recursive: true });
 	copyFileSync(sourcePath, join(dirAbs, newFilename));
 
-	const sourceThumb = absFromRelative(thumbnailFor(relativePath));
-	if (existsSync(sourceThumb)) {
-		copyFileSync(sourceThumb, join(thumbsAbs, `${newId}${THUMBNAIL_EXTENSION}`));
+	try {
+		const sourceThumb = relativePath.includes('/thumbnails/') ? sourcePath : absFromRelative(thumbnailFor(relativePath));
+		if (existsSync(sourceThumb)) copyFileSync(sourceThumb, join(thumbsAbs, `${newId}${THUMBNAIL_EXTENSION}`));
+	} catch (error) {
+		rmSync(join(dirAbs, newFilename), { force: true });
+		rmSync(join(thumbsAbs, `${newId}${THUMBNAIL_EXTENSION}`), { force: true });
+		throw error;
 	}
 
 	return `${dirRel}/${newFilename}`;
@@ -226,9 +253,10 @@ export function copyImage(relativePath: string, targetCategory?: ImageCategory):
 
 export function deleteImage(relativePath: string): void {
 	if (!relativePath) return;
+	if (!imageContentType(relativePath)) throw new Error('Only stored pictures can be deleted.');
 	const original = absFromRelative(relativePath);
 	if (existsSync(original)) rmSync(original);
-	removeThumbnails(relativePath);
+	if (!relativePath.includes('/thumbnails/')) removeThumbnails(relativePath);
 }
 
 /**
@@ -262,8 +290,10 @@ export async function saveThumbnail(relativePath: string, thumb: Blob): Promise<
 	if (!existsSync(absFromRelative(relativePath))) {
 		throw new Error(`No stored picture at ${relativePath}`);
 	}
-	removeThumbnails(relativePath);
-	writeFileSync(absFromRelative(thumbnailFor(relativePath)), Buffer.from(await thumb.arrayBuffer()));
+	const bytes = Buffer.from(await thumb.arrayBuffer());
+	const destination = absFromRelative(thumbnailFor(relativePath));
+	writeFileSync(destination, bytes);
+	removeThumbnails(relativePath, destination);
 }
 
 // ===== BACKGROUNDS =====

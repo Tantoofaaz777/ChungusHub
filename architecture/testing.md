@@ -45,7 +45,7 @@ Most of the suite is not integration testing at all. It works because subsystems
 | Pure module | Test | Wrapped by |
 | --- | --- | --- |
 | `tokenizer/count.ts`, `encodings.ts`, `calibration-core.ts` | `tokenizer/tokenizer.test.ts` | `tokenizer/calibration.svelte.ts` |
-| `memory/engine.ts`, `branching.ts`, `recall.ts`, `config.ts`, `prompts.ts` | `memory/memory.test.ts` (fake `MemoryDb` + scripted `LlmFn`) | `memory/store.svelte.ts` |
+| `memory/scene-store.svelte.ts`, `shared/memory-scenes.ts` | `memory/scene-store.test.ts`, `shared/memory-scenes.test.ts`, `server/memoryScenes.test.ts` | Manual chapter/arc/volume flow and historical-row conversion; `server/memory-retirement.test.ts` guards closed automatic RPCs. |
 | `lorebook/engine.ts` (injectable RNG) | `lorebook/engine.test.ts` | `lorebook/store.svelte.ts` |
 | `lorebook/sillytavern.ts` | `lorebook/sillytavern.test.ts` | none (consumed by `lorebook/io.ts`) |
 | `utils/prompt-assembly.ts` (+ `macros.ts`) | `utils/prompt-assembly.test.ts`, `utils/prompt-pruning.test.ts` | none |

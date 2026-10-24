@@ -12,18 +12,11 @@
 		 *  subtree delete behind a Save button. Cancel in branch mode costs nothing, because
 		 *  the new chat is only created on save. */
 		mode?: EditAction;
-		/** The caller has taken this draft and is asking the user to confirm it (the memory
-		 *  confirmation in Message.svelte). The text stays on screen and readable (that is the
-		 *  whole point of confirming under it), but it stops being editable and Save stops
-		 *  answering, because the caller is holding a SNAPSHOT: a keystroke landing here after
-		 *  the snapshot would be silently discarded by the commit, and a second live Save button
-		 *  under the first is a choice the flow doesn't have. */
-		locked?: boolean;
 		onSave: (content: string, action: EditAction) => void;
 		onCancel: () => void;
 	}
 
-	let { initialContent, role, mode = 'save_only', locked = false, onSave, onCancel }: Props = $props();
+	let { initialContent, role, mode = 'save_only', onSave, onCancel }: Props = $props();
 
 	let content = $state('');
 	let textareaElement: HTMLTextAreaElement;
@@ -92,9 +85,7 @@
 		bind:this={textareaElement}
 		bind:value={content}
 		oninput={autoResize}
-		readonly={locked}
 		class="w-full font-body text-text-primary resize-none overflow-hidden border border-text-muted/30 outline-none placeholder:text-text-muted"
-		class:opacity-70={locked}
 		style="font-size: inherit; line-height: 1.55; padding: 0.5rem; background: rgb(0 0 0 / 0.3);"
 		placeholder="Enter your message…"
 	></textarea>
@@ -113,7 +104,7 @@
 			<button
 				class="px-3 py-1.5 text-sm font-ui font-medium text-accent hover:bg-accent/10 rounded-[var(--radius-md)] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
 				onclick={handleSaveClick}
-				disabled={content.trim() === '' || locked}
+				disabled={content.trim() === ''}
 			>
 				{isBranch ? 'Create branch' : 'Save'}
 			</button>

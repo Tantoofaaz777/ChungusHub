@@ -1,3 +1,4 @@
+import { seedLegacyMemoryState, seedLegacyEpisode, readLegacyMemoryState, readLegacyEpisodes } from './test-fixtures';
 /**
  * Chat-list aggregates + chat duplication, against the REAL server database
  * (bun:sqlite). These are the pieces of the chats panel that can't be checked by
@@ -323,40 +324,34 @@ describe('duplicateChat', () => {
 
 	test('skips memory unless asked', () => {
 		const { chatId, ids } = seedBranchedChat('No memory wanted');
-		serverDb.memSetState(chatId, { enabled: true });
-		serverDb.memApplyBatch(chatId, {
-			supersedeEpisodeIds: [],
-			episode: { content: 'They knocked.', sourceMessageIds: [ids.user, ids.reply], anchorMessageId: ids.reply }
-		});
+		seedLegacyMemoryState(serverDb, chatId, { enabled: true });
+		seedLegacyEpisode(serverDb, chatId, { content: 'They knocked.', sourceMessageIds: [ids.user, ids.reply], anchorMessageId: ids.reply });
 
 		const copyId = serverDb.duplicateChat({ chatId, title: 'copy', includeMemory: false });
-		expect(serverDb.memGetState(copyId)).toBeNull();
-		expect((serverDb.memListEpisodes(copyId) as any[]).length).toBe(0);
+		expect(readLegacyMemoryState(serverDb, copyId)).toBeNull();
+		expect((readLegacyEpisodes(serverDb, copyId) as any[]).length).toBe(0);
 	});
 
 	test('carries memory over with every message reference remapped', () => {
 		const { chatId, ids } = seedBranchedChat('With memory');
-		serverDb.memSetState(chatId, { enabled: true });
-		serverDb.memApplyBatch(chatId, {
-			supersedeEpisodeIds: [],
-			episode: {
+		seedLegacyMemoryState(serverDb, chatId, { enabled: true });
+		seedLegacyEpisode(serverDb, chatId, {
 				content: 'They knocked and the door opened.',
 				sourceMessageIds: [ids.user, ids.reply],
 				anchorMessageId: ids.reply
-			}
-		});
+			});
 
 		const copyId = serverDb.duplicateChat({ chatId, title: 'copy', includeMemory: true });
 		const copiedIds = new Set((serverDb.getMessagesByChat(copyId) as any[]).map((m) => m.id));
 		const sourceIds = new Set(Object.values(ids));
 
-		const state = serverDb.memGetState(copyId) as any;
+		const state = readLegacyMemoryState(serverDb, copyId) as any;
 		expect(state.enabled).toBe(true);
 		// No cursor to remap any more: the archive boundary is derived from the copied
 		// episodes' own coverage, so remapping their message ids is the whole job.
 		expect(state.cursorMessageId).toBeUndefined();
 
-		const episodes = serverDb.memListEpisodes(copyId) as any[];
+		const episodes = readLegacyEpisodes(serverDb, copyId) as any[];
 		expect(episodes.length).toBe(1);
 		expect(episodes[0].sourceMessageIds.length).toBe(2);
 		expect(episodes[0].sourceMessageIds.every((id: string) => copiedIds.has(id))).toBe(true);
@@ -364,7 +359,7 @@ describe('duplicateChat', () => {
 		expect(copiedIds.has(episodes[0].anchorMessageId)).toBe(true);
 
 		// The source keeps its own memory, pointing at its own rows.
-		expect((serverDb.memListEpisodes(chatId) as any[]).length).toBe(1);
+		expect((readLegacyEpisodes(serverDb, chatId) as any[]).length).toBe(1);
 	});
 
 	test('carries a merged ladder over, not only layer-0 summaries', () => {
@@ -374,29 +369,13 @@ describe('duplicateChat', () => {
 		// have promoted once could not be duplicated at all: the throw rolled the whole copy
 		// back, story included, behind a toast advising a repair that could never happen.
 		const { chatId, ids } = seedBranchedChat('Promoted');
-		serverDb.memSetState(chatId, { enabled: true });
-		serverDb.memApplyBatch(chatId, {
-			supersedeEpisodeIds: [],
-			episode: { content: 'They knocked.', sourceMessageIds: [ids.user], anchorMessageId: ids.user }
-		});
-		serverDb.memApplyBatch(chatId, {
-			supersedeEpisodeIds: [],
-			episode: { content: 'The door opened.', sourceMessageIds: [ids.reply], anchorMessageId: ids.reply }
-		});
-		const merged = (serverDb.memListEpisodes(chatId) as any[]).map((e) => e.id);
-		serverDb.memApplyPromotion(chatId, {
-			insert: {
-				layer: 1,
-				content: 'They knocked and it opened.',
-				sourceMessageIds: [ids.user, ids.reply],
-				anchorMessageId: ids.reply
-			},
-			deleteEpisodeIds: merged
-		});
+		seedLegacyMemoryState(serverDb, chatId, { enabled: true });
+		seedLegacyEpisode(serverDb, chatId, { layer: 1, content: 'They knocked and it opened.',
+			sourceMessageIds: [ids.user, ids.reply], anchorMessageId: ids.reply });
 
 		const copyId = serverDb.duplicateChat({ chatId, title: 'Promoted (copy)', includeMemory: true });
 		const copiedIds = new Set((serverDb.getMessagesByChat(copyId) as any[]).map((m) => m.id));
-		const episodes = serverDb.memListEpisodes(copyId) as any[];
+		const episodes = readLegacyEpisodes(serverDb, copyId) as any[];
 
 		expect(episodes.length).toBe(1);
 		expect(episodes[0].layer).toBe(1);
@@ -410,10 +389,10 @@ describe('duplicateChat', () => {
 
 	test('carries stale legacy memory as a reviewable scene without losing its text', () => {
 		const { chatId, ids } = seedBranchedChat('Stale memory');
-		serverDb.memSetState(chatId, { enabled: true });
-		serverDb.memApplyBatch(chatId, { supersedeEpisodeIds: [], episode: {
+		seedLegacyMemoryState(serverDb, chatId, { enabled: true });
+		seedLegacyEpisode(serverDb, chatId, {
 			content: 'They knocked.', sourceMessageIds: [ids.reply], anchorMessageId: ids.reply
-		} });
+		});
 		serverDb.deleteMessageAndDescendants(ids.reply);
 		const copyId = serverDb.duplicateChat({ chatId, title: 'Stale copy', includeMemory: true });
 		const scenes = serverDb.getMemoryScenes(copyId);
@@ -489,11 +468,8 @@ describe('getChatMemoryFootprint', () => {
 		const { chatId, ids } = seedBranchedChat('Footprint');
 		expect(serverDb.getChatMemoryFootprint(chatId)).toEqual({ enabled: false, episodes: 0 });
 
-		serverDb.memSetState(chatId, { enabled: true });
-		serverDb.memApplyBatch(chatId, {
-			supersedeEpisodeIds: [],
-			episode: { content: 'They knocked.', sourceMessageIds: [ids.user, ids.reply], anchorMessageId: ids.reply }
-		});
+		seedLegacyMemoryState(serverDb, chatId, { enabled: true });
+		seedLegacyEpisode(serverDb, chatId, { content: 'They knocked.', sourceMessageIds: [ids.user, ids.reply], anchorMessageId: ids.reply });
 
 		expect(serverDb.getChatMemoryFootprint(chatId)).toEqual({ enabled: true, episodes: 1 });
 	});

@@ -11,7 +11,7 @@ import type { PromptPreset, PromptItem, PromptControl } from '$lib/types/databas
 import { apiGet, apiSend, getClientId } from '$lib/services/transport';
 import { db } from '$lib/services/database';
 import { imageService } from '$lib/services/imageService';
-import { registerSettingsReload } from '$lib/services/syncedSetting';
+import { registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 import { parsePresetJson, promptItemBody, serializePresetJson, type ImportedPreset } from '$lib/services/preset-io';
 import type { RegexRule } from '$lib/utils/regex-rules';
 import { SvelteMap } from 'svelte/reactivity';
@@ -151,7 +151,7 @@ export class PresetService {
 	}
 
 	private async syncActivePresetId(): Promise<void> {
-		this.activePresetId = (await db.getSetting('activePresetId')) || null;
+		await reloadSettings(['activePresetId'], () => db.getSetting('activePresetId'), id => { this.activePresetId = id || null; });
 		await this.ensureActivePreset();
 	}
 

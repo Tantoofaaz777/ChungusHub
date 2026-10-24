@@ -10,19 +10,12 @@ import { promptHoldStore } from './promptHold.svelte';
 import type { HoldGate } from '$lib/config/prompt-hold';
 import { joinContinuation } from '$lib/utils/continuation';
 import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-import {
-	chatLorebookClaim,
-	chatMutedLorebookClaim,
-	chatPersonaClaim,
-	chatPersonaEntry,
-	chatPresetClaim
-} from '$lib/utils/chat-setup';
+import { chatPersonaEntry } from '$lib/utils/chat-setup';
 import { chatCastStore } from './chatCast.svelte';
 import { resolveMacroValues, substitute } from '$lib/macros';
 import { buildLiveMacroContext } from '$lib/utils/live-macro-context';
 import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { steeringStore } from './steering.svelte';
-import { steeringTargetForChat } from '$lib/types/steering';
 import { countMessages, tokenCalibration, withTokenizers } from '$lib/tokenizer';
 import { resolveScenes, type MemoryScene } from '../../../shared/memory-scenes';
 
@@ -228,9 +221,6 @@ class MessageStore {
 			// guidance armed to apply itself twice. What is left is the chat's own reuse
 			// list, which is per-chat state the server deliberately does not author.
 			await chatStore.pushSteeringHistory(chatId, spentSteeringTexts(oneShotSteering, result));
-
-			// Fire the memory sidecar in background (don't await).
-			this.triggerMemoryMaintenance(chatId);
 			return result.committedMessageId;
 		} catch (error) {
 			if (error instanceof Error && error.name === 'AbortError') {
@@ -289,24 +279,12 @@ class MessageStore {
 		const message = state.allMessages.find((m) => m.id === messageId);
 		if (!message) throw new Error('Message not found');
 
-		// An in-place rewrite keeps the id, so the summary covering it now describes text that
-		// is gone. Coverage resolution catches that on its own (the row's `edited_at` outdates
-		// the episode), but the toast has to be truthful in the same tick, so the rewrite is
-		// handed over explicitly. Gated on the per-chat flag alone (not the app-wide engine
-		// switch), so stored memory never goes stale during an off period. create_branch is
-		// exempt: the original chat and its summaries stay untouched. So is a
-		// MINOR edit: the user has asserted the turn still says the same thing, so the write
-		// leaves `edited_at` alone and nothing here may drop the summary either. It is their
-		// assertion, not ours: a typo and a retcon are the same two strings to us.
-		const rewritesArchived = action !== 'create_branch' && !opts.minor && memoryStore.enabled;
-
 		this.isProcessing = true;
 		try {
 			switch (action) {
 				case 'save_only':
 					await db.updateMessageContent(messageId, newContent, { minor: opts.minor });
 					await db.touchChatActivity(state.chat.id);
-					if (rewritesArchived) await this.invalidateMemoryFor(state.chat.id, messageId);
 					break;
 
 				case 'create_branch': {
@@ -326,45 +304,35 @@ class MessageStore {
 		}
 	}
 
-	/** Drop the summary covering a rewritten turn, before this call returns, so the toast is
-	 *  truthful. Failures are surfaced but never block the edit: the content is saved. */
-	private async invalidateMemoryFor(chatId: string, messageId: string): Promise<void> {
-		try {
-			const dropped = await memoryStore.invalidateMessage(chatId, messageId);
-			if (dropped) toastStore.info("This turn's summary was discarded. It will be re-read on the next pass.");
-		} catch (e) {
-			console.error('[memory] invalidate after archived edit failed:', e);
-			toastStore.failed('update memory for this edit', e);
-		}
-	}
-
 	async deleteMessage(messageId: string, action: DeleteAction): Promise<void> {
 		if (this.warnIfBusy()) return;
 		const state = chatStore.currentChatState;
 		if (!state) throw new Error('No active chat');
 
-		// Tree-wide lookup preserves support for legacy off-path ids. Navigation below only
-		// changes if the deletion touches the branch currently being viewed.
-		const message = state.allMessages.find((m) => m.id === messageId);
-		if (!message) throw new Error('Message not found');
-
 		this.isProcessing = true;
 		try {
+			// Read the row, its ancestry and the selected leaf from the same server moment.
+			// Another device may have spliced its parent or selected another swipe since paint.
+			const { chat, messages: allMessages } = await chatStore.freshSnapshot(state.chat.id);
+			const message = allMessages.find((m) => m.id === messageId);
+			if (!message) {
+				await chatStore.refreshChat(state.chat.id);
+				return;
+			}
 			if (action === 'this_only') {
 				// Splice: only this row goes; its children re-parent to its parent and every
 				// subtree below survives.
-				const allMessages = await chatStore.freshMessages(state.chat.id);
 				const children = allMessages
 					.filter((m) => m.parentId === messageId)
 					.sort((a, b) => a.siblingIndex - b.siblingIndex);
-				const isActiveLeaf = state.chat.activeLeafId === messageId;
+				const isActiveLeaf = chat.activeLeafId === messageId;
 
 				// Re-parent children to this message's parent, then delete just this message
 				await db.deleteMessageOnly(messageId);
 				const after = await chatStore.freshMessages(state.chat.id);
 
 				// If we deleted the root, update to new root (first surviving parentless row)
-				if (state.chat.rootMessageId === messageId) {
+				if (chat.rootMessageId === messageId) {
 					const newRoot = after
 						.filter((m) => m.parentId === null)
 						.sort((a, b) => a.siblingIndex - b.siblingIndex)[0];
@@ -378,7 +346,7 @@ class MessageStore {
 				// mid-path splice leaves the leaf alive (the path simply re-forms around the
 				// removed turn) and an off-path prune never touches the view, so in both
 				// cases the user stays exactly where they were reading.
-				let newLeafId = state.chat.activeLeafId;
+				let newLeafId = chat.activeLeafId;
 				if (isActiveLeaf) {
 					// Land on the nearest sibling branch, preferring a same-role variant when
 					// one exists (continuity) and taking any fork otherwise; else follow the
@@ -422,7 +390,6 @@ class MessageStore {
 
 				// Remaining sibling branches before deletion: prefer a same-role variant
 				// for continuity, else any fork (all branches are navigable now).
-				const allMessages = await chatStore.freshMessages(state.chat.id);
 				const pool = allMessages
 					.filter((m) => m.parentId === parentId && m.id !== messageId)
 					.sort((a, b) => a.siblingIndex - b.siblingIndex);
@@ -431,8 +398,8 @@ class MessageStore {
 
 				// Only re-home the active leaf if the branch we're deleting is the one we're viewing.
 				// An off-path prune leaves the current view untouched.
-				const isInActivePath = state.chat.activeLeafId
-					? findActivePath(allMessages, state.chat.activeLeafId).some((m) => m.id === messageId)
+				const isInActivePath = chat.activeLeafId
+					? findActivePath(allMessages, chat.activeLeafId).some((m) => m.id === messageId)
 					: false;
 
 				// The confirm dialog already stated the blast radius. This is final: rows
@@ -467,7 +434,7 @@ class MessageStore {
 				}
 
 				// If we deleted the root, find a surviving root sibling
-				if (state.chat.rootMessageId === messageId) {
+				if (chat.rootMessageId === messageId) {
 					const remaining = await chatStore.freshMessages(state.chat.id);
 					const newRoot = remaining
 						.filter((m) => m.parentId === null)
@@ -480,7 +447,7 @@ class MessageStore {
 			}
 
 			// A canon marker inside the removed subtree would dangle silently, so retreat it.
-			await this.repairCanon(state.chat.id, state.allMessages);
+			await this.repairCanon(state.chat.id, allMessages);
 			await chatStore.refreshCurrentChat();
 		} finally {
 			this.isProcessing = false;
@@ -774,10 +741,6 @@ class MessageStore {
 			});
 			await db.touchChatActivity(state.chat.id);
 
-			// In-place rewrite contract (same as editMessage): archived turns hand the
-			// rewrite to memory. No-op for live turns, and the leaf is virtually always live.
-			if (memoryStore.enabled) await this.invalidateMemoryFor(state.chat.id, target.id);
-
 			await chatStore.refreshChat(state.chat.id);
 
 			// Steering rode this continuation. It is spent only here, after the persisted write,
@@ -786,9 +749,6 @@ class MessageStore {
 			// server commits: spending whatever happens to be active at this moment would burn
 			// a note the reader armed for the NEXT turn while this one was still running.
 			await this.spendOneShotSteering(state.chat.id, oneShotSteering);
-
-			// Fire the memory sidecar in background (don't await).
-			this.triggerMemoryMaintenance(state.chat.id);
 		} catch (error) {
 			// A stop the server never answered: nothing streamed back, so the stored turn
 			// stays untouched (the kept-tail case resolves normally above).
@@ -845,7 +805,7 @@ class MessageStore {
 			// that macro belongs to the character card's scenario field, which resolves
 			// normally here alongside this direction.
 			const openingSceneDirection = await withTokenizers(() => substitute(openingSceneTemplate, {
-				...resolveMacroValues(openingSceneTemplate, buildLiveMacroContext({ memory: memoryStore.recall, templates: [openingSceneTemplate] })),
+				...resolveMacroValues(openingSceneTemplate, buildLiveMacroContext({ templates: [openingSceneTemplate] })),
 				idea: sceneIdea
 			}));
 
@@ -932,9 +892,6 @@ class MessageStore {
 			// Steering rode this opening scene too: the notes were spent inside the commit,
 			// and this is the reuse list they leave behind.
 			await chatStore.pushSteeringHistory(state.chat.id, spentSteeringTexts(oneShotSteering, result));
-
-			// Fire the memory sidecar in background (don't await).
-			this.triggerMemoryMaintenance(state.chat.id);
 		} catch (error) {
 			if (error instanceof Error && error.name === 'AbortError') {
 				// User cancelled
@@ -986,28 +943,6 @@ class MessageStore {
 		}
 
 		await chatStore.refreshCurrentChat();
-	}
-
-	/**
-	 * Fire-and-forget chat-memory upkeep after a turn: extract any newly-eligible batches and
-	 * promote, both capped per turn. Nothing is rolled back: the archive boundary is derived
-	 * from the episodes' own coverage, so a path change re-answers it without a write. No-op
-	 * when memory is off for this chat. Never blocks generation.
-	 */
-	private triggerMemoryMaintenance(chatId: string): void {
-		const state = chatStore.currentChatState;
-		if (!state || state.chat.id !== chatId) return;
-		memoryStore.maintainAfterTurn({
-			chatId,
-			allMessages: state.allMessages,
-			leafId: state.chat.activeLeafId,
-			characterId: state.chat.characterId,
-			characterVersionId: state.chat.characterVersionId,
-			personaId: chatPersonaClaim(state.chat),
-			presetId: chatPresetClaim(state.chat),
-			lorebookIds: chatLorebookClaim(state.chat),
-			mutedLorebookIds: chatMutedLorebookClaim(state.chat)
-		});
 	}
 
 	private async createMessage(

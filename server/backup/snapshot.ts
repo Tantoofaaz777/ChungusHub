@@ -16,7 +16,7 @@
  */
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { copyFile, link, mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import { copyFile, link, lstat, mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { resolveBackupDir, resolveDataDir, resolveDbPath } from '../config';
 import { ensurePrivacyMarkers } from '../privacy-notice';
@@ -30,6 +30,7 @@ import {
 import { thumbnailFor } from '../files';
 import { type SnapshotIndex, listSnapshots, writeIndex, writeManifest, readIndex } from './manifest';
 import { BUILDING_MARKER, SNAPSHOT_DATA_DIR, SNAPSHOT_ENTRIES, uniqueSnapshotId } from './paths';
+import { mapLimit } from './copy-batch';
 
 const DB_FILE = 'chungushub.db';
 /** Enough parallel file operations to keep the disk busy without drowning it in handles. */
@@ -47,32 +48,23 @@ export interface SnapshotOptions {
 	onProgress?: (p: SnapshotProgress) => void;
 }
 
-async function mapLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
-	let next = 0;
-	const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-		for (;;) {
-			const i = next++;
-			if (i >= items.length) return;
-			await fn(items[i]);
-		}
-	});
-	await Promise.all(workers);
-}
-
 /** Every file under `root`, as paths relative to it, with forward slashes throughout so an
  *  index written on Windows still matches on the machine that reads it. */
 async function walk(root: string, base = root): Promise<string[]> {
 	let entries;
 	try {
+		if ((await lstat(root)).isSymbolicLink()) throw new Error(`The data folder contains a symbolic link: ${root}.`);
 		entries = await readdir(root, { withFileTypes: true });
-	} catch {
-		return [];
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+		throw error;
 	}
 	const out: string[] = [];
 	for (const entry of entries) {
 		const abs = join(root, entry.name);
 		if (entry.isDirectory()) out.push(...(await walk(abs, base)));
 		else if (entry.isFile()) out.push(relative(base, abs).split(sep).join('/'));
+		else throw new Error(`The data folder contains an unsupported file: ${abs}.`);
 	}
 	return out;
 }

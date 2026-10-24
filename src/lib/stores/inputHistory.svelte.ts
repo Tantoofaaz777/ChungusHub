@@ -22,8 +22,11 @@ class InputHistoryStore {
 	}
 
 	async reload(): Promise<void> {
-		this.entries = await db.getInputHistory(generalSettingsStore.inputHistoryLimit);
+		const ticket = ++this.readTicket, before = this.entries;
+		const rows = await db.getInputHistory(generalSettingsStore.inputHistoryLimit);
+		if (ticket === this.readTicket && before === this.entries) this.entries = rows;
 	}
+	private readTicket = 0;
 
 	/** Log a sent message. Echoed locally so recall works before the write lands. */
 	record(chatId: string | null, content: string): void {

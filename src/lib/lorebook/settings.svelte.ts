@@ -4,7 +4,7 @@
  * the lorebook page). Books override individual values; `null` on a book = inherit these.
  */
 import { db } from '$lib/services/database';
-import { registerSettingsReload } from '$lib/services/syncedSetting';
+import { registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 import {
 	DEFAULT_LOREBOOK_GLOBAL_SETTINGS,
 	type LorebookGlobalSettings
@@ -30,11 +30,10 @@ class LorebookSettingsStore {
 	}
 
 	async syncReload(): Promise<void> {
-		const raw = await db.getSetting(SETTINGS_KEY);
-		if (raw) {
+		await reloadSettings([SETTINGS_KEY], () => db.getSetting(SETTINGS_KEY), raw => {
 			// Merge over the defaults so a settings row from an older version stays complete.
-			this._settings = { ...DEFAULT_LOREBOOK_GLOBAL_SETTINGS, ...JSON.parse(raw) };
-		}
+			this._settings = { ...DEFAULT_LOREBOOK_GLOBAL_SETTINGS, ...(raw ? JSON.parse(raw) : {}) };
+		});
 	}
 
 	async update(patch: Partial<LorebookGlobalSettings>): Promise<void> {

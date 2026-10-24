@@ -10,9 +10,10 @@ The newest assistant response always shows its swipe pager. The left arrow is di
 at the first version. The right arrow visits the next existing version, or generates a
 new alternative at the end. Root greetings use the Opening Scene engine for generation,
 so creating a root alternative still respects that engine's switch and connection.
-Older messages show a pager when they already have alternatives; it navigates their
-existing continuations without generating new ones. All navigation and generation
-controls are disabled while the message store is busy.
+Only the last assistant turn exposes the pager, provided it is included in the prompt
+and not covered by an active chapter. Older alternatives remain stored; branching from
+an earlier turn creates an independent chat. All navigation and generation controls
+are disabled while the message store is busy.
 
 Switching existing swipes uses the loaded message tree and paints immediately. Leaf
 writes are serialized in click order; reads used by generation wait for those writes,
@@ -36,5 +37,13 @@ A canceled or empty replacement commits nothing, including when partial tokens h
 arrived. A failed generation cannot remove old swipes. Replacement also completes if
 the originating browser disappears; no client-side cleanup is needed.
 
-The existing Chat Memory engine is unchanged in this phase. Manual scene summaries
-inserted in place of source messages are planned separately.
+Manual chapter, arc and volume summaries now replace source ranges in prompts. See
+[manual-memory.md](manual-memory.md) for the active flow; [memory.md](memory.md) documents
+the compatibility boundary for data from the retired automatic pipeline.
+
+Deletion reads the target row, ancestry and selected leaf from one fresh server snapshot.
+A parent spliced on another device must not leave the client navigating to its old ID,
+and pruning a previously viewed swipe must preserve a newer remote selection. A target
+already removed remotely only refreshes the transcript. Splicing a branch head with
+descendants is refused; deleting its subtree leaves neighboring alternatives intact.
+Generation commits also require their parent to belong to the destination chat.

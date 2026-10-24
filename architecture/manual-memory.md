@@ -2,8 +2,10 @@
 
 The live Chat Memory flow uses `scene-store.svelte.ts` and `shared/memory-scenes.ts`.
 It no longer runs extraction/compaction after turns, and does not depend on lorebooks,
-keywords, a verbatim tail or the `{{memory}}` macro. The old pipeline and its stored tables
-remain for compatibility; its panel is unmounted and its store is no longer used by runtime consumers.
+keywords, a verbatim tail or the `{{memory}}` macro. The old automatic pipeline, configuration,
+prompt templates, UI hooks and RPCs have been removed. Only historical table storage,
+duplication and one-time conversion to reviewable chapters remain for compatibility;
+see [memory.md](memory.md). `SceneChatContext` belongs to the manual scene store itself.
 
 1. Use ↓ (start) and ↑ (end) directly in each message’s actions. Either endpoint can be marked first.
 2. Mark both boundaries on the same message for a single turn. Adjust either arrow to change the range;

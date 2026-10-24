@@ -10,6 +10,7 @@
  */
 import { db } from '$lib/services/database';
 import { DebouncedWriter } from '$lib/utils/debounced-write';
+import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
 import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 import {
 	activeSteeringNotes,
@@ -51,11 +52,15 @@ class SteeringStore {
 	}
 
 	async refresh(): Promise<void> {
+		const ticket = ++this.refreshTicket;
+		const before = captureEditorRows(this._notes);
 		// Commit local keystrokes first: a sync-triggered reload must not discard them,
 		// and no leftover timer may re-save a note over the refetched copy.
 		await this.flush();
-		this._notes = await db.getAllSteeringNotes();
+		const rows = await db.getAllSteeringNotes();
+		if (ticket === this.refreshTicket) this._notes = retainEditorChanges(rows, before, this._notes);
 	}
+	private refreshTicket = 0;
 
 	syncReload(): Promise<void> {
 		return this.refresh();
@@ -119,7 +124,7 @@ class SteeringStore {
 		const note = this.getNote(id);
 		if (!note) return;
 		this.writer.cancel(id);
-		Object.assign(note, patch, { updatedAt: Date.now() });
+		Object.assign(note, patch, { updatedAt: Math.max(Date.now(), note.updatedAt + 1) });
 		this._notes = [...this._notes];
 		await db.updateSteeringNote(note);
 	}
@@ -142,7 +147,7 @@ class SteeringStore {
 	scheduleEdit(id: string, patch: Partial<Pick<SteeringNote, 'title' | 'text'>>): void {
 		const note = this.getNote(id);
 		if (!note) return;
-		Object.assign(note, patch, { updatedAt: Date.now() });
+		Object.assign(note, patch, { updatedAt: Math.max(Date.now(), note.updatedAt + 1) });
 		this._notes = [...this._notes];
 		this.writer.schedule(id);
 	}

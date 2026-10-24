@@ -8,7 +8,7 @@ import { memoryStore } from '$lib/memory/scene-store.svelte';
  * mirroring the same character/persona/lorebook resolution the token meters use.
  *
  * Deliberately NOT imported by the memory store (it builds its context from its
- * own ChatCtx). This module imports chatStore, which imports memoryStore,
+ * own manual-summary context). This module imports chatStore, which imports memoryStore,
  * and that would close an import cycle.
  */
 

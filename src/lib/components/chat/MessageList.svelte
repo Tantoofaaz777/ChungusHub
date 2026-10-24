@@ -18,6 +18,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { reducedMotion } from '$lib/components/ui/surface-motion';
+	import { groupSiblings } from '$lib/utils/message-tree';
 
 	interface Props {
 		messages: Message[];
@@ -57,16 +58,7 @@
 	}: Props = $props();
 
 	// Index once per tree update, rather than scanning the whole chat for every visible row.
-	const siblingGroups = $derived.by(() => {
-		const groups = new Map<string | null, Message[]>();
-		for (const message of allMessages) {
-			const group = groups.get(message.parentId);
-			if (group) group.push(message);
-			else groups.set(message.parentId, [message]);
-		}
-		for (const group of groups.values()) group.sort((a, b) => a.siblingIndex - b.siblingIndex);
-		return groups;
-	});
+	const siblingGroups = $derived(groupSiblings(allMessages));
 
 	// Scene summaries can cover any range; their original messages keep the dim treatment.
 	let archivedIds = $derived(memoryStore.archivedMessageIds);

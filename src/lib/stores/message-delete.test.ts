@@ -182,6 +182,59 @@ describe('deleting from the transcript', () => {
 		frame();
 		expect(frames).toEqual(['greeting>user>reply', 'greeting>other>other-reply']);
 	});
+
+	for (const action of ['this_only', 'with_descendants'] as const) {
+		test(`${action} reconciles a swipe already deleted on another device`, async () => {
+			add('survivor', 'user', 'assistant', 1);
+			await open('reply');
+			serverDb.deleteMessageAndDescendants(idOf.get('reply')!);
+			serverDb.updateChatActiveLeaf(chatId, idOf.get('survivor')!);
+			await messageStore.deleteMessage(idOf.get('reply')!, action);
+			expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('survivor'));
+			expect(serverDb.getMessagesByChat(chatId)).toHaveLength(3);
+		});
+
+		test(`${action} uses the current parent after a remote splice`, async () => {
+			await open('reply');
+			// Another device removes the intervening user turn before this device refreshes.
+			serverDb.deleteMessageOnly(idOf.get('user')!);
+			await messageStore.deleteMessage(idOf.get('reply')!, action);
+			expect(serverDb.getChat(chatId).activeLeafId).toBe(idOf.get('greeting'));
+			expect(chatStore.currentChatState?.activePath.map(m => m.id)).toEqual([idOf.get('greeting')!]);
+		});
+
+		test(`${action} preserves a remote selection when deleting the previously viewed swipe`, async () => {
+			add('middle', 'user', 'assistant', 1);
+			add('selected-elsewhere', 'user', 'assistant', 2);
+			await open('reply');
+			serverDb.updateChatActiveLeaf(chatId, idOf.get('selected-elsewhere')!);
+			await messageStore.deleteMessage(idOf.get('reply')!, action);
+			expect(serverDb.getChat(chatId).activeLeafId).toBe(idOf.get('selected-elsewhere'));
+			expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('selected-elsewhere'));
+		});
+	}
+
+	test('deleting an off-path swipe removes only its subtree and bookmarks', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		add('swipe-child', 'swipe', 'user');
+		await open('reply');
+		serverDb.setMessageBookmarked(idOf.get('swipe')!, true);
+		serverDb.setMessageBookmarked(idOf.get('reply')!, true);
+		await messageStore.deleteMessage(idOf.get('swipe')!, 'with_descendants');
+		expect(chatStore.currentChatState?.activePath.map(m => labelOf.get(m.id))).toEqual(['greeting', 'user', 'reply']);
+		expect(serverDb.getMessage(idOf.get('swipe-child')!)).toBeNull();
+		expect(serverDb.getMessagesByChat(chatId).filter((m: { isBookmarked: boolean }) => m.isBookmarked).map((m: { id: string }) => m.id)).toEqual([idOf.get('reply')!]);
+	});
+
+	test('refuses splicing a swipe with descendants and keeps both alternatives intact', async () => {
+		add('swipe', 'user', 'assistant', 1);
+		add('later-user', 'reply', 'user');
+		await open('later-user');
+		const before = serverDb.getMessagesByChat(chatId);
+		await expect(messageStore.deleteMessage(idOf.get('reply')!, 'this_only')).rejects.toThrow(/heads a branch/);
+		expect(serverDb.getMessagesByChat(chatId)).toEqual(before);
+		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('later-user'));
+	});
 });
 
 /** Exercise all swipe entry points against real rows; blocked actions never reach an LLM. */

@@ -119,7 +119,7 @@ export function chatPresetId(chat: Chat | null): string | null {
 /**
  * The preset a story's prompt is built from, by claim: the claimed one while it resolves, else
  * the app's active one. Effective on both branches, so an unsaved draft is what a chat runs
- * either way. Surfaces holding only the id ask here (the memory store's ChatCtx carries the
+ * either way. Surfaces holding only the id ask here (the manual-memory context carries the
  * claim the way it carries the persona).
  *
  * A preset is one document, so this answers for all of it at once: the items assembled, the
@@ -158,7 +158,7 @@ export function resolvePersonaId(
 }
 
 /** Store-sourced twin of `resolvePersonaId`, by claim: what a surface holding only the id
- *  speaks as (the memory store's ChatCtx carries the claim the way it carries the version pin). */
+ *  speaks as (the manual-memory context carries the claim the way it carries the version pin). */
 export function personaEntryFor(claimed: string | null): LibraryEntry | null {
 	const entries = characterLibraryStore.entries;
 	const id = resolvePersonaId(claimed, entries, personaStore.activeId);

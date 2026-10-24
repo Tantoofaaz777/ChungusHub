@@ -15,7 +15,7 @@
  * Display only: `lorebookStore.books` is never reordered, because link resolution reads that
  * order to decide what reaches the prompt first (`sortLorebooks` in lorebook/types.ts).
  */
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 import { PER_PAGE_OPTIONS, type ViewMode } from '$lib/components/library/browse';
 import type { LorebookSortOrder } from '$lib/lorebook/types';
 
@@ -85,12 +85,14 @@ class LorebookViewPrefs {
 	}
 
 	async syncReload(): Promise<void> {
-		const state = normalizeLorebookViewState(await readSetting<unknown>(SETTINGS_KEY, null));
-		this.order = state.order;
-		this.viewMode = state.viewMode;
-		this.cardSize = state.cardSize;
-		this.perPage = state.perPage;
-		this.listCovers = state.listCovers;
+		await reloadSettings([SETTINGS_KEY], () => readSetting<unknown>(SETTINGS_KEY, null), raw => {
+			const state = normalizeLorebookViewState(raw);
+			this.order = state.order;
+			this.viewMode = state.viewMode;
+			this.cardSize = state.cardSize;
+			this.perPage = state.perPage;
+			this.listCovers = state.listCovers;
+		});
 	}
 
 	setOrder(order: LorebookSortOrder): void {

@@ -5,14 +5,22 @@ import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
 import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
 import { personaEntryFor, toPromptCharacter } from '$lib/utils/chat-setup';
 import { expandSelfRefs } from '$lib/macros';
-import { EMPTY_IMPACT } from './branching';
 import { markSceneBoundary } from './scene-selection';
 import { parseChapterResponse } from './chapter-response';
 import { generationSourcePrompt, previousGenerationSummaries } from './generation-context';
 import { retainLocalChanges } from '$lib/utils/retain-local-changes';
-import type { ChatCtx } from './store.svelte';
 import type { Message } from '$lib/types/chat';
 import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, sceneLevel, memoryLabel, prepareCompaction, type MemoryScene, type SceneSource, type MemoryLevel, type CompactionLevel, type MemoryChild } from '../../../shared/memory-scenes';
+
+/** Only the current transcript and cast needed to resolve/generate manual summaries. */
+export interface SceneChatContext {
+	chatId: string;
+	allMessages: Message[];
+	leafId: string | null;
+	characterId: string | null;
+	characterVersionId: string | null;
+	personaId: string | null;
+}
 
 interface Draft {
 	chatId: string; sceneId?: string; expectedRevision?: number; level: MemoryLevel; children: MemoryChild[];
@@ -25,12 +33,9 @@ export class SceneMemoryStore {
 	refreshing = $state(false);
 	loadError = $state('');
 	scenes = $state<MemoryScene[]>([]);
-	private ctx = $state.raw<ChatCtx | null>(null);
+	private ctx = $state.raw<SceneChatContext | null>(null);
 	private ticket = 0;
 	private abort: AbortController | null = null;
-	enabled = true;
-	autoExtract = false;
-	recall = '';
 	selection = $state<{ chatId: string; startId: string | null; endId: string | null; sceneId?: string; seed?: Pick<Draft, 'title' | 'content' | 'expectedRevision'> } | null>(null);
 	compaction = $state<{ level: CompactionLevel; ids: string[]; sceneId?: string; seed?: Pick<Draft, 'title' | 'content' | 'expectedRevision'> } | null>(null);
 	draft = $state<Draft | null>(null);
@@ -84,17 +89,11 @@ export class SceneMemoryStore {
 		} finally { if (ticket === this.ticket) this.refreshing = false; }
 	}
 	clear() { ++this.ticket; this.cancelDraft(); this.compaction = null; this.activeChatId = null; this.ctx = null; this.scenes = []; this.selection = null; this.loaded = false; this.refreshing = false; this.loadError = ''; }
-	async syncForPath(ctx: ChatCtx) {
+	async syncForPath(ctx: SceneChatContext) {
 		if (this.activeChatId !== ctx.chatId) await this.loadForChat(ctx.chatId);
 		if (this.activeChatId === ctx.chatId) this.ctx = ctx;
 	}
 	async syncReload() { const id = this.activeChatId; if (id) await this.loadForChat(id); }
-	async getRecall(chatId: string, _path?: unknown) {
-		return { text: null, archivedIds: new Set<string>(), scenes: await database.getMemoryScenes(chatId) };
-	}
-	async maintainAfterTurn(_ctx: ChatCtx) { /* Deliberately manual: no model calls after a turn. */ }
-	async invalidateMessage(_chatId: string, _id: string) { return 0; }
-	impactOf(..._args: unknown[]) { return EMPTY_IMPACT; }
 	startSelection(sceneId?: string) {
 		if (!this.activeChatId) return;
 		this.cancelDraft(); this.compaction = null;

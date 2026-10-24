@@ -18,7 +18,6 @@ import type { MemoryScene } from '$shared/memory-scenes';
 import { db } from '$lib/services/database';
 import { presetService } from '$lib/services/presets.svelte';
 import { readPresetControlValues } from '$lib/stores/presetControls.svelte';
-import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
 import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
 import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
@@ -92,7 +91,8 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 	const preset: PromptPreset | null = chatPreset(chat);
 	const recallRead: Promise<PromptRecall> = context.snapshot
 		? Promise.resolve({ text: null, archivedIds: new Set<string>(), scenes: context.snapshot.scenes })
-		: chatId ? memoryStore.getRecall(chatId, chatMessages) : Promise.resolve({ text: null, archivedIds: new Set<string>() });
+		: chatId ? db.getMemoryScenes(chatId).then(scenes => ({ text: null, archivedIds: new Set<string>(), scenes }))
+			: Promise.resolve({ text: null, archivedIds: new Set<string>() });
 	// These sources are independent once the chat/preset is known. Keep each read fresh
 	// while paying one network round instead of waiting on them one after another.
 	const [libraryEntries, activePersona, allLorebooks, recall, steeringNotes, customFields, version] = await Promise.all([

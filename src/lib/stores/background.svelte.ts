@@ -10,6 +10,7 @@
 import {
 	BurstSettingWriter,
 	readSetting,
+	reloadSettings,
 	registerSettingsReload
 } from '$lib/services/syncedSetting';
 import { fileUrl } from '$lib/services/transport';
@@ -42,10 +43,12 @@ class BackgroundStore {
 	}
 
 	async syncReload(): Promise<void> {
-		const next = normalizeBackgroundConfig(await readSetting<unknown>(SETTINGS_KEY, null));
-		// A write still owed is newer than anything the server can hand back.
-		if (this.writer.busy) return;
-		this.appConfig = next;
+		await reloadSettings([SETTINGS_KEY], () => readSetting<unknown>(SETTINGS_KEY, null), raw => {
+			const next = normalizeBackgroundConfig(raw);
+			// A write still owed is newer than anything the server can hand back.
+			if (this.writer.busy) return;
+			this.appConfig = next;
+		});
 	}
 
 	/** Land a whole background on whichever scene is in force. */

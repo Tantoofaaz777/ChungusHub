@@ -4,7 +4,7 @@
  * one into base64 + media type at request-build time, so raw bytes never ride
  * the WebSocket and a deleted file fails the generation loudly.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { IMAGES_ROOT } from '../config';
 
@@ -50,13 +50,4 @@ export function loadImage(relativePath: string): LoadedImage {
 export function imageDataUrl(relativePath: string): string {
 	const { mediaType, base64 } = loadImage(relativePath);
 	return `data:${mediaType};base64,${base64}`;
-}
-
-/** Whether an attachment path still resolves to a real file (same jail as loadImage).
- *  Lets generation fail clearly on references to files deleted since assembly instead of letting
- *  one dead path fail every future request of a long-lived conversation. */
-export function imageFileExists(relativePath: string): boolean {
-	const safe = normalize(relativePath.replace(/^images\//, '')).replace(/^([/\\]|\.\.([/\\]|$))+/g, '');
-	const abs = join(IMAGES_ROOT, safe);
-	return abs.startsWith(IMAGES_ROOT + sep) && existsSync(abs);
 }

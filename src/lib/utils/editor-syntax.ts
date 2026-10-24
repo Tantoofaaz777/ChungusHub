@@ -6,7 +6,7 @@ export interface EditorSyntaxSegment {
 }
 
 // One byte per UTF-16 code unit. Literal protects escaped characters without painting them.
-const PLAIN = 0, LITERAL = 1, TAG = 2, CODE = 3, MACRO = 4, BRACKET = 5,
+const LITERAL = 1, TAG = 2, CODE = 3, MACRO = 4, BRACKET = 5,
 	SEPARATOR = 6, DELIMITER = 7, HEADING = 8, LINK = 9;
 const KINDS: EditorSyntaxKind[] = ['plain', 'plain', 'tag', 'code', 'macro', 'bracket', 'separator', 'delimiter', 'heading', 'link'];
 const ESCAPABLE = /[!-/:-@[-`{-~]/;

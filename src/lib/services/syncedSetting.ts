@@ -9,6 +9,13 @@
  */
 import { db } from '$lib/services/database';
 import { toastStore } from '$lib/stores/toast.svelte';
+import { settingsSync } from './settings-sync';
+import { flushOnHide } from '$lib/utils/flush-on-hide';
+
+/** Publish related settings together only while this read still owns their state. */
+export function reloadSettings<T>(keys: string[], read: () => Promise<T>, apply: (value: T) => void): Promise<void> {
+	return settingsSync.reload(keys, read, apply);
+}
 
 const reloaders = new Set<() => Promise<void>>();
 
@@ -24,7 +31,9 @@ export function registerSettingsReload(fn: () => Promise<void>): () => void {
 
 /** Re-read every registered synced setting. Called from sync.ts on `settings` scope. */
 export async function reloadAllSyncedSettings(): Promise<void> {
-	await Promise.all([...reloaders].map((fn) => fn()));
+	const results = await Promise.allSettled([...reloaders].map((fn) => Promise.resolve().then(fn)));
+	const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
+	if (errors.length) throw new AggregateError(errors, 'Some settings could not be refreshed');
 }
 
 /** Read a JSON-encoded setting, falling back on missing or corrupt values. */
@@ -66,7 +75,9 @@ export class BurstSettingWriter<T> {
 	constructor(
 		private readonly key: string,
 		private readonly delayMs = 250
-	) {}
+	) {
+		flushOnHide(() => { void this.flush(); });
+	}
 
 	/** True while a write is still owed. A reload landing now would hand the reader back
 	 *  a value older than the one they are looking at. */
@@ -75,12 +86,14 @@ export class BurstSettingWriter<T> {
 	}
 
 	write(value: T): void {
+		settingsSync.changed(this.key);
 		this.pending = { value };
 		if (this.timer !== null) clearTimeout(this.timer);
 		this.timer = setTimeout(() => void this.flush(), this.delayMs);
 	}
 
 	private async flush(): Promise<void> {
+		if (this.timer !== null) clearTimeout(this.timer);
 		this.timer = null;
 		const write = this.pending;
 		if (!write) return;

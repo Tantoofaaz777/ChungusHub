@@ -49,7 +49,7 @@ import { apiGet, apiSend, getClientId } from '$lib/services/transport';
 import { customFontStack, type CustomFont } from '../../../shared/fonts';
 import { ensureFontLoaded } from '$lib/services/fonts';
 import { db } from '$lib/services/database';
-import { readSetting, writeSetting, registerSettingsReload } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 
 /**
  * Two keys, deliberately not one blob.
@@ -441,18 +441,17 @@ class ThemeStore {
 	 */
 	async syncReload(): Promise<void> {
 		await this.reloadFonts();
-		this.customPalettes = normalizePalettes(await readSetting<unknown>(PALETTES_KEY, null));
-
-		const raw = await readSetting<Partial<AppearanceState> | null>(SETTINGS_KEY, null);
-		if (raw) {
-			this.appearance = normalize(raw, this.palettes, this.customFonts);
-		} else {
-			// Fresh blob from the pre-overhaul theme id, if one was ever saved.
-			const legacy = await db.getSetting('activeTheme');
+		await reloadSettings([PALETTES_KEY, SETTINGS_KEY], async () => {
+			const palettes = normalizePalettes(await readSetting<unknown>(PALETTES_KEY, null));
+			const raw = await readSetting<Partial<AppearanceState> | null>(SETTINGS_KEY, null);
+			const legacy = raw ? null : await db.getSetting('activeTheme');
 			const mapped = legacy ? LEGACY_THEME_MAP[legacy] : undefined;
-			this.appearance = normalize(mapped ? { ...mapped } : null, this.palettes, this.customFonts);
-		}
-		this.applyTheme();
+			return { palettes, raw: raw ?? (mapped ? { ...mapped } : null) };
+		}, ({ palettes, raw }) => {
+			this.customPalettes = palettes;
+			this.appearance = normalize(raw, [...shippedPalettes, ...palettes], this.customFonts);
+			this.applyTheme();
+		});
 	}
 
 	/** Change any subset of knobs; persists and applies immediately. */

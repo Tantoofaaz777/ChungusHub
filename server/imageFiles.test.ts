@@ -12,7 +12,7 @@
  * IMAGES_ROOT once per process and an earlier test file may already have bound it elsewhere.
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -148,4 +148,42 @@ test('JFIF without a thumbnail remains readable by the app and model providers',
 	expect(resolveImageFile(thumbnailFor(result.path))).toBe(join(imagesRoot, result.path.replace(/^images\//, '')));
 	expect(loadImage(result.path)).toEqual({ mediaType: 'image/jpeg', base64: 'AA==' });
 	expect(imageDataUrl(result.path)).toBe('data:image/jpeg;base64,AA==');
+});
+
+class UnreadableBlob extends Blob {
+	arrayBuffer(): Promise<ArrayBuffer> { return Promise.reject(new Error('Cannot read payload')); }
+}
+
+test('an unreadable thumbnail leaves no half-uploaded original', async () => {
+	const dir = join(imagesRoot, 'characters'), before = readdirSync(dir).sort();
+	await expect(saveImage(new Blob(['ORIGINAL']), new UnreadableBlob(), '.png')).rejects.toThrow('Cannot read payload');
+	expect(readdirSync(dir).sort()).toEqual(before);
+});
+
+test('a failed thumbnail rebuild preserves the previous thumbnail', async () => {
+	const path = await saveImage(new Blob(['ORIGINAL']), new Blob(['OLD THUMB']), '.png'); written.push(path);
+	const { saveThumbnail, thumbnailFor } = await import('./files');
+	const thumbnail = join(imagesRoot, thumbnailFor(path).slice('images/'.length)); written.push(thumbnailFor(path));
+	await expect(saveThumbnail(path, new UnreadableBlob())).rejects.toThrow('Cannot read payload');
+	expect(readFileSync(thumbnail, 'utf8')).toBe('OLD THUMB');
+});
+
+test('concurrent preferred-name uploads with different extensions do not share thumbnails', async () => {
+	const name = `attachment-audit-${crypto.randomUUID()}`;
+	const paths = await Promise.all(['.png', '.jpg'].map(ext => saveImage(new Blob([ext]), new Blob([ext]), ext, 'backgrounds', `${name}.png`)));
+	const { thumbnailFor } = await import('./files');
+	for (const path of paths) { written.push(path, thumbnailFor(path)); }
+	expect(thumbnailFor(paths[0])).not.toBe(thumbnailFor(paths[1]));
+	expect(readFileSync(join(imagesRoot, thumbnailFor(paths[0]).slice(7)), 'utf8')).toBe('.png');
+	expect(readFileSync(join(imagesRoot, thumbnailFor(paths[1]).slice(7)), 'utf8')).toBe('.jpg');
+});
+
+test('invalid image paths are refused rather than rewritten into another stored path', async () => {
+	const path = await saveImage(new Blob(['KEEP']), null, '.png'); written.push(path);
+	const { deleteImage, copyImage } = await import('./files');
+	const name = path.slice(path.lastIndexOf('/') + 1);
+	expect(() => deleteImage(`images/characters/../${name}`)).toThrow();
+	expect(() => deleteImage(`images/characters/${name}/`)).toThrow();
+	expect(() => copyImage(path, '../elsewhere' as any)).toThrow();
+	expect(readFileSync(join(imagesRoot, path.slice(7)), 'utf8')).toBe('KEEP');
 });

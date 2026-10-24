@@ -5,13 +5,11 @@ description: "Download a build, or run ChungusHub from source."
 
 ## Download
 
-Builds for Windows, macOS (Apple Silicon) and Linux are on the
-[releases page](https://github.com/patcireamo/ChungusHub/releases/latest). Unpack one and run
-it: nothing is installed, and your data stays in the folder beside it. That is the whole
-install, and everything below is only for running from source.
+The [fork's releases page](https://github.com/Tantoofaaz777/ChungusHub/releases) provides Android
+test APKs. Install the APK over the previous version, and run the server from this repository
+using the instructions below. The Android shell connects to your server; it does not bundle it.
 
-The executable is not signed by a developer certificate, so Windows and macOS both stop it the
-first time. The `README.txt` in the folder says how to get past each.
+To produce a portable desktop server build locally, use `bun run package` as described below.
 
 ## Prerequisites
 
@@ -35,7 +33,7 @@ curl -fsSL https://bun.sh/install | bash
 <Steps>
   <Step title="Clone and install">
     ```bash
-    git clone https://github.com/patcireamo/ChungusHub.git
+    git clone https://github.com/Tantoofaaz777/ChungusHub.git
     cd ChungusHub
     bun install --frozen-lockfile
     ```

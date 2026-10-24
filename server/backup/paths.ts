@@ -52,15 +52,17 @@ export const MANIFEST_FILE = 'manifest.json';
  */
 export const BUILDING_MARKER = '.building';
 
-export function buildingMarkerPath(id: string): string {
-	return join(snapshotPath(id), BUILDING_MARKER);
-}
-
 /** Claims the next launch for a restore. Written once the safety snapshot has landed and
  *  removed once the swap has finished, so its presence always means "not done yet". */
 export const RESTORE_JOURNAL = 'restore.json';
 
+/** A snapshot is one folder directly inside the store, never an arbitrary path. */
+export function validSnapshotId(id: string): boolean {
+	return !!id && id !== '.' && id !== '..' && !/[\\/:\0]/.test(id) && !/[. ]$/.test(id);
+}
+
 export function snapshotPath(id: string): string {
+	if (!validSnapshotId(id)) throw new Error('Invalid snapshot folder name.');
 	return join(resolveBackupDir(), id);
 }
 

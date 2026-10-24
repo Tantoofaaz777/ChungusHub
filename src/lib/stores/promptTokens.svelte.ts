@@ -63,7 +63,7 @@ class PromptTokensStore {
 		controls: this.currentPreset!.controls ?? [],
 		customFields: presetControlsStore.valuesFor(this.currentPreset!.id),
 		chatMessages: this.pricedPath,
-		recall: { text: memoryStore.recall || null, archivedIds: memoryStore.archivedMessageIds, scenes: memoryStore.scenes },
+		recall: { text: null, archivedIds: memoryStore.archivedMessageIds, scenes: memoryStore.scenes },
 		model: this.target.model, postProcessing: this.target.postProcessing,
 		contextBudget: this.target.contextBudget,
 		regexRules: regexRulesStore.effectiveFor(this.currentPreset), steering: this.steering

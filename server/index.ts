@@ -44,7 +44,6 @@ import {
 	deleteDraft,
 	deleteImage,
 	deletePreset,
-	ensureDefaultPresets,
 	imageContentType,
 	listBackgrounds,
 	listDrafts,
@@ -906,7 +905,9 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 	}
 	if (path === '/api/images/delete' && req.method === 'POST') {
 		const { path: rel } = (await req.json()) as { path: string };
-		deleteImage(rel);
+		// Background removal is an explicit library action; other calls release old assets.
+		if (rel.startsWith('images/backgrounds/')) deleteImage(rel);
+		else serverDb.deleteUnusedImage(rel);
 		backupService.markChanged();
 		return json({ ok: true });
 	}

@@ -12,12 +12,14 @@ import type { Lorebook } from '$lib/lorebook/types';
 import type { SteeringNote } from '$lib/types/steering';
 import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '$shared/threads/types';
 import type { MemoryScene, SaveMemoryScene } from '../../../shared/memory-scenes';
-import type { BatchResult, Episode, MemoryState, PromotionResult } from '$lib/memory/types';
 import { connectWs, dbRpc, onSync, onReconnect } from '$lib/services/transport';
 import { SettingsSnapshot } from '$lib/services/settings-snapshot';
+import { settingsSync } from './settings-sync';
+import { EditorRpc } from './editor-rpc';
 
 class DatabaseService {
 	private settingsSnapshot = new SettingsSnapshot();
+	private editorRpc = new EditorRpc((method, args) => dbRpc(method, args));
 
 	/** Reuse one settings read while stores initialize in their existing dependency order.
 	 * All later reads (including sync and prompt assembly) go straight to the server. */
@@ -41,7 +43,7 @@ class DatabaseService {
 	}
 
 	private call<T>(method: string, ...args: unknown[]): Promise<T> {
-		return dbRpc(method, args) as Promise<T>;
+		return this.editorRpc.call<T>(method, args);
 	}
 
 	// ===== CHATS =====
@@ -139,15 +141,15 @@ class DatabaseService {
 	// ===== SETTINGS =====
 	getAllSettings(): Promise<Record<string, string>> { return this.call('getAllSettings'); }
 	getSetting(key: string): Promise<string | null> {
-		return this.settingsSnapshot.read(key, () => this.call('getSetting', key));
+		return settingsSync.read(key, () => this.settingsSnapshot.read(key, () => this.call('getSetting', key)));
 	}
 	setSetting(key: string, value: string): Promise<void> {
 		this.settingsSnapshot.invalidate(key);
-		return this.call<void>('setSetting', key, value).finally(() => this.settingsSnapshot.invalidate(key));
+		return settingsSync.write(key, () => this.call<void>('setSetting', key, value).finally(() => this.settingsSnapshot.invalidate(key)));
 	}
 	deleteSetting(key: string): Promise<void> {
 		this.settingsSnapshot.invalidate(key);
-		return this.call<void>('deleteSetting', key).finally(() => this.settingsSnapshot.invalidate(key));
+		return settingsSync.write(key, () => this.call<void>('deleteSetting', key).finally(() => this.settingsSnapshot.invalidate(key)));
 	}
 
 	// ===== CHAT DRAFTS =====
@@ -221,7 +223,7 @@ class DatabaseService {
 	consumeSteeringNotes(ids: string[]): Promise<string[]> { return this.call('consumeSteeringNotes', ids); }
 	reorderSteeringNotes(ids: string[]): Promise<string[]> { return this.call('reorderSteeringNotes', ids); }
 
-	// ===== SESSION MEMORY =====
+	// ===== THREADS & MANUAL MEMORY =====
 	getThreadsData(chatId: string): Promise<ThreadsData> { return this.call('getThreadsData', chatId); }
 	updateThreadsNotes(chatId: string, patch: ThreadsNotesPatch): Promise<void> { return this.call('updateThreadsNotes', chatId, patch); }
 	saveThreadsRound(input: SaveThreadsRound): Promise<ThreadsRound> { return this.call('saveThreadsRound', input); }
@@ -232,18 +234,6 @@ class DatabaseService {
 	getMemoryScenes(chatId: string): Promise<MemoryScene[]> { return this.call('getMemoryScenes', chatId); }
 	saveMemoryScene(input: SaveMemoryScene): Promise<MemoryScene> { return this.call('saveMemoryScene', input); }
 	deleteMemoryScene(chatId: string, id: string, expectedRevision: number): Promise<void> { return this.call('deleteMemoryScene', chatId, id, expectedRevision); }
-	memGetState(chatId: string): Promise<MemoryState | null> { return this.call('memGetState', chatId); }
-	memListEpisodes(chatId: string): Promise<Episode[]> { return this.call('memListEpisodes', chatId); }
-	memSetState(chatId: string, patch: Partial<Pick<MemoryState, 'enabled' | 'autoExtract' | 'config'>>): Promise<void> {
-		return this.call('memSetState', chatId, patch);
-	}
-	memApplyBatch(chatId: string, result: BatchResult): Promise<void> { return this.call('memApplyBatch', chatId, result); }
-	memApplyPromotion(chatId: string, result: PromotionResult): Promise<void> { return this.call('memApplyPromotion', chatId, result); }
-	memReapEpisodes(chatId: string, episodeIds: string[]): Promise<void> { return this.call('memReapEpisodes', chatId, episodeIds); }
-	memUpdateEpisodeContent(chatId: string, episodeId: string, content: string): Promise<void> {
-		return this.call('memUpdateEpisodeContent', chatId, episodeId, content);
-	}
-	memReset(chatId: string): Promise<void> { return this.call('memReset', chatId); }
 }
 
 export const db = new DatabaseService();
