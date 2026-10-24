@@ -22,17 +22,30 @@ unit_value() {
     value=${value//\\/\\\\}; value=${value//\"/\\\"}; value=${value//%/%%}
     printf '%s' "$value"
 }
-unit_repo=$(unit_value "$repo")
+# WorkingDirectory takes one path, not a command-line word: its parser does not
+# remove quotes or C escapes. Internal spaces are literal; only % specifiers expand.
+[[ "$repo" != *$'\n'* && "$repo" != *$'\r'* ]] || { echo '[ChungusHub] Service directory cannot contain line breaks.' >&2; exit 1; }
+unit_repo=${repo//%/%%}
 unit_bun=$(unit_value "$chungus_bun")
 unit_bun=${unit_bun//\$/\$\$}
 unit_bin=$(unit_value "$(dirname "$chungus_bun")")
 cat > "$staging/runtime.conf" <<EOF
 [Service]
-WorkingDirectory="$unit_repo"
+WorkingDirectory=$unit_repo
 ExecStart=
 ExecStart="$unit_bun" server/index.ts
 Environment="PATH=$unit_bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EOF
+if command -v systemd-analyze >/dev/null 2>&1; then
+    {
+        printf '[Unit]\nDescription=ChungusHub runtime configuration check\nDefaultDependencies=no\n'
+        cat "$staging/runtime.conf"
+    } > "$staging/chungus-runtime-check.service"
+    if ! systemd-analyze verify --man=no "$staging/chungus-runtime-check.service"; then
+        echo '[ChungusHub] Generated service configuration failed validation; existing service configuration was kept.' >&2
+        exit 1
+    fi
+fi
 {
     printf '#!/usr/bin/env bash\n'
     printf 'export CHUNGUS_SERVICE_NAME=%q\n' "$service"
@@ -49,6 +62,6 @@ sudo install -m 0644 "$staging/runtime.conf" "$dropin"
 sudo install -m 0755 "$staging/chungus-update" "$updater"
 sudo systemctl daemon-reload
 configured=$(systemctl show "$service" --property=ExecStart --value --no-pager)
-[[ "$configured" == *"path=$chungus_bun ;"* ]] || { echo '[ChungusHub] Another systemd override takes precedence. Inspect systemctl cat before restarting.' >&2; exit 1; }
+[[ "$configured" == *"path=$chungus_bun ;"* ]] || { echo '[ChungusHub] systemd did not accept the managed executable. Inspect systemctl status and systemctl cat before restarting.' >&2; exit 1; }
 echo '[ChungusHub] Managed runtime and chungus-update configured. The running service was not restarted.'
 echo '[ChungusHub] Run chungus-update to build and restart with the managed runtime.'

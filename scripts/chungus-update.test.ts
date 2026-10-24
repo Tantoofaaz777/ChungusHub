@@ -40,6 +40,8 @@ esac`);
 [[ "$CHUNGUS_TEST_MODE" != health-failure ]]`);
 	put('fakebin/uname', 'echo Linux');
 	put('fakebin/id', 'echo test-owner');
+	put('fakebin/systemd-analyze', `echo "verify:$*" >> "$CHUNGUS_TEST_FIXTURE/trace"
+[[ "$CHUNGUS_TEST_MODE" != invalid-unit ]]`);
 	// Never let a setup test write to the host's /etc or /usr/local.
 	put('fakebin/sudo', `echo "sudo:$*" >> "$CHUNGUS_TEST_FIXTURE/trace"
 case "$1" in
@@ -103,7 +105,9 @@ test('one-time setup preserves original files, writes quoted stable paths and do
 	const dropin = readFileSync(base, 'utf8');
 	expect(dropin).toContain('ExecStart=\nExecStart="');
 	expect(dropin).toContain('runtime/bin/bun" server/index.ts');
-	expect(dropin).toContain('repo with spaces"');
+	expect(dropin).toMatch(/^WorkingDirectory=\/.*\/repo with spaces$/m);
+	expect(dropin).not.toContain('WorkingDirectory="');
+	expect(result.trace.indexOf('verify:')).toBeLessThan(result.trace.indexOf('sudo:install'));
 	expect(result.trace).toContain('systemctl:daemon-reload');
 	expect(result.trace).not.toContain('systemctl:restart');
 	expect(existsSync(join(root, 'host/usr/local/bin/chungus-update'))).toBe(true);
@@ -111,3 +115,33 @@ test('one-time setup preserves original files, writes quoted stable paths and do
 	expect(repeated.code).toBe(0);
 	expect(readFileSync(`${base}.before-managed-runtime`, 'utf8')).toBe('original override');
 }, 30000);
+
+test('native systemd validation failure leaves configuration and updater untouched', async () => {
+	const root = fixture();
+	const result = await run(root, 'invalid-unit', true);
+	expect(result.code).not.toBe(0);
+	expect(result.stderr).toContain('failed validation');
+	expect(result.trace).not.toContain('sudo:install');
+	expect(result.trace).not.toContain('systemctl:daemon-reload');
+	expect(readFileSync(join(root, 'host/usr/local/bin/chungus-update'), 'utf8')).toBe('original updater');
+	expect(readFileSync(join(root, 'host/etc/systemd/system/chungushub.service.d/zz-chungus-runtime.conf'), 'utf8')).toBe('original override');
+}, 30000);
+
+// Mocks check orchestration above; Linux CI also asks the real unit parser to
+// accept the generated drop-in and reject the exact quoting regression.
+if (process.platform === 'linux' && Bun.which('systemd-analyze')) {
+	test('real systemd accepts generated paths with spaces and rejects quoted WorkingDirectory', async () => {
+		const root = fixture();
+		expect(await run(root, 'normal', true)).toMatchObject({ code: 0 });
+		const dropin = readFileSync(join(root, 'host/etc/systemd/system/chungushub.service.d/zz-chungus-runtime.conf'), 'utf8');
+		const unit = join(root, 'syntax-check.service');
+		const prefix = '[Unit]\nDefaultDependencies=no\n';
+		writeFileSync(unit, prefix + dropin);
+		const good = Bun.spawnSync(['systemd-analyze', 'verify', '--man=no', unit]);
+		expect({ code: good.exitCode, stderr: good.stderr.toString() }).toMatchObject({ code: 0 });
+		writeFileSync(unit, prefix + dropin.replace(/^WorkingDirectory=(.*)$/m, 'WorkingDirectory="$1"'));
+		const bad = Bun.spawnSync(['systemd-analyze', 'verify', '--man=no', unit]);
+		expect(bad.exitCode).not.toBe(0);
+		expect(bad.stderr.toString()).toMatch(/WorkingDirectory|working directory/i);
+	}, 30000);
+}
