@@ -9,7 +9,7 @@ export interface SpeechRule {
 }
 export interface SpeechRuleResult { text: string; errors: Record<string, string> }
 
-/** Run only inside the disposable worker: user regex must never block the UI. */
+/** Run only inside the terminable worker: user regex must never block the UI. */
 export function applySpeechRules(text: string, rules: SpeechRule[]): SpeechRuleResult {
  if (text.length > 80000 || rules.length > 30) throw new Error('Text or rule limit exceeded.');
  const errors: Record<string, string> = Object.create(null);

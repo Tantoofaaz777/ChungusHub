@@ -26,6 +26,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.util.Log
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.content.ContextCompat
@@ -48,6 +49,8 @@ class ReadAloudService : Service() {
     private var defaultVoice: android.speech.tts.Voice? = null
     private var options = SpeechOptions()
     private var initialization = 0
+    private val speechOwner = Any()
+    private var startup: JSONObject? = null
     private var closed = false
     private var origin = ""
     private var title = "Chungus"
@@ -68,7 +71,6 @@ class ReadAloudService : Service() {
     private val artwork by lazy { BitmapFactory.decodeResource(resources, R.mipmap.chungus) }
     private val idleTimeout = Runnable { finishReading() }
     private val synthesisTimeout = Runnable { fail("The speech engine took too long. Try reading the message again.") }
-    private val initTimeout = Runnable { fail("The speech engine did not start. Check your Android text-to-speech settings.") }
     private val noisy = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) { if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) pause() }
     }
@@ -79,22 +81,7 @@ class ReadAloudService : Service() {
         cache.listFiles()?.forEach { it.delete() }
         preparingLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:tts-preparation")
         audio = getSystemService(AudioManager::class.java)
-        focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes)
-            .setWillPauseWhenDucked(true).setOnAudioFocusChangeListener({ change ->
-                when (change) {
-                    AudioManager.AUDIOFOCUS_GAIN -> {
-                        hasFocus = true
-                        if (resumeAfterFocus) { resumeAfterFocus = false; play() }
-                    }
-                    AudioManager.AUDIOFOCUS_LOSS -> { hasFocus = false; pause(); abandonFocus() }
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                        val resume = wantsPlay
-                        hasFocus = false
-                        pause(releaseFocus = false)
-                        resumeAfterFocus = resume
-                    }
-                }
-            }, main).build()
+        focus = createAudioFocus(mixAudio = false)
         session = MediaSession(this, "ChungusReadAloud").apply {
             setSessionActivity(PendingIntent.getActivity(this@ReadAloudService, 0,
                 Intent(this@ReadAloudService, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
@@ -115,6 +102,30 @@ class ReadAloudService : Service() {
         instance = this
     }
 
+    private fun createAudioFocus(mixAudio: Boolean): AudioFocusRequest {
+        val gain = if (mixAudio) AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK else AudioManager.AUDIOFOCUS_GAIN
+        lateinit var request: AudioFocusRequest
+        request = AudioFocusRequest.Builder(gain).setAudioAttributes(attributes)
+            .setWillPauseWhenDucked(true).setOnAudioFocusChangeListener({ change ->
+                // A delayed callback from a previous reading cannot pause the new one.
+                if (closed || focus !== request) return@setOnAudioFocusChangeListener
+                when (change) {
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        hasFocus = true
+                        if (resumeAfterFocus) { resumeAfterFocus = false; play() }
+                    }
+                    AudioManager.AUDIOFOCUS_LOSS -> { hasFocus = false; pause(); abandonFocus() }
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                        val resume = wantsPlay
+                        hasFocus = false
+                        pause(releaseFocus = false)
+                        resumeAfterFocus = resume
+                    }
+                }
+            }, main).build()
+        return request
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action != START) { finishReading(); return START_NOT_STICKY }
         // Foreground before requesting audio focus (required on Android 15+) or TTS IO.
@@ -131,14 +142,12 @@ class ReadAloudService : Service() {
             error = null
             session.isActive = true
             options = SpeechPreferences.load(this)
-            // A changed Android default engine must not keep using the old connection.
-            if (tts != null && boundEngine.isNotEmpty() && boundEngine != tts?.defaultEngine) {
-                initialization++
-                main.removeCallbacks(initTimeout)
-                tts?.shutdown(); tts = null; ttsReady = false
-            }
-            if (tts == null) initializeSpeech()
-            else if (ttsReady) configureSpeech()
+            // resetAudio abandoned the previous request. Keep this policy for the whole reading.
+            focus = createAudioFocus(options.mixAudio)
+            startup = null
+            // The pool checks the current default engine and measures warm/cold acquisition.
+            ttsReady = false
+            initializeSpeech()
             play()
         } catch (e: Exception) { fail(e.message ?: "Could not start reading.") }
         return START_NOT_STICKY
@@ -147,15 +156,17 @@ class ReadAloudService : Service() {
     private fun initializeSpeech() {
         val attempt = ++initialization
         preparingLock.acquire(45000)
-        main.postDelayed(initTimeout, 45000)
-        tts = TextToSpeech(applicationContext) { status -> main.post {
-            if (closed || attempt != initialization) return@post
-            main.removeCallbacks(initTimeout)
+        SpeechEnginePool.acquire(applicationContext, speechOwner) { result ->
+            if (closed || attempt != initialization) return@acquire
             releasePreparationLock()
-            if (status != TextToSpeech.SUCCESS) { fail("No speech engine is available. Check Android text-to-speech settings."); return@post }
-            val engine = tts ?: return@post
-            boundEngine = engine.defaultEngine.orEmpty()
-            defaultVoice = engine.voice
+            val acquired = result.getOrElse { fail(it.message ?: "Could not start the speech engine."); return@acquire }
+            val engine = acquired.value.tts
+            tts = engine
+            boundEngine = acquired.value.id
+            defaultVoice = acquired.value.defaultVoice
+            startup = JSONObject().put("engineInitializationMs", acquired.initializationMs)
+                .put("engineWaitMs", acquired.waitMs).put("engineReused", acquired.reused)
+            Log.d("ChungusTTS", "engine_wait_ms=${acquired.waitMs} engine_initialization_ms=${acquired.initializationMs} reused=${acquired.reused}")
             engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) { main.post { synthesized(utteranceId) } }
@@ -164,9 +175,9 @@ class ReadAloudService : Service() {
                 override fun onError(utteranceId: String?, errorCode: Int) { main.post { synthesisFailed(utteranceId) } }
             })
             ttsReady = true
-            try { configureSpeech() } catch (e: Exception) { fail(e.message ?: "Could not configure the voice."); return@post }
-            if (wantsPlay) ensureAudio()
-        } }
+            try { configureSpeech() } catch (e: Exception) { fail(e.message ?: "Could not configure the voice."); return@acquire }
+            if (wantsPlay && hasFocus) ensureAudio()
+        }
     }
 
     private fun configureSpeech() {
@@ -289,6 +300,12 @@ class ReadAloudService : Service() {
         releasePreparationLock()
     }
     private fun releasePlayer() { player?.release(); player = null; playerReady = false }
+    private fun releaseSpeech(invalid: Boolean = false) {
+        tts?.setOnUtteranceProgressListener(null)
+        tts = null; ttsReady = false
+        SpeechEnginePool.release(speechOwner)
+        if (invalid) SpeechEnginePool.invalidate()
+    }
     private fun abandonFocus() { audio.abandonAudioFocusRequest(focus); hasFocus = false; resumeAfterFocus = false }
     private fun resetAudio() {
         wantsPlay = false
@@ -302,8 +319,7 @@ class ReadAloudService : Service() {
         if (closed) return
         resetAudio()
         initialization++
-        main.removeCallbacks(initTimeout)
-        tts?.shutdown(); tts = null; ttsReady = false
+        releaseSpeech(invalid = true)
         phase = "error"; error = message
         publish()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -322,6 +338,7 @@ class ReadAloudService : Service() {
     }
     private fun status(): JSONObject = JSONObject().put("phase", phase).put("title", title)
         .put("sentence", index + 1).put("total", parts.size).put("error", error ?: JSONObject.NULL)
+        .put("startup", startup ?: JSONObject.NULL)
 
     // Only a MediaStyle notification with an active session token is posted here.
     // Media-session notifications are exempt from POST_NOTIFICATIONS (Android docs).
@@ -370,7 +387,8 @@ class ReadAloudService : Service() {
         closed = true
         resetAudio()
         main.removeCallbacksAndMessages(null)
-        tts?.shutdown(); tts = null
+        initialization++
+        releaseSpeech()
         session.release()
         unregisterReceiver(noisy)
         cache.listFiles()?.forEach { it.delete() }

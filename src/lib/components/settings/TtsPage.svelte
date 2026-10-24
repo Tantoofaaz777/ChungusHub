@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import { rangeReset } from '$lib/actions/rangeReset';
 	import { isAndroidClient } from '$lib/services/android-client';
 	import { speechSettingsStore as speech } from '$lib/stores/speech-settings.svelte';
@@ -48,6 +49,14 @@
 				<p class="help">1.00× is normal speed. Double-click the slider to reset.</p>
 			</div>
 		</section>
+		<section class="card">
+			<div class="card-head"><span class="card-title">Audio playback</span><span class="scope">This device</span></div>
+			<div class="card-body">
+				<div class="audio-option"><span>Play alongside other audio</span><Toggle checked={speech.data.mixAudio ?? false} label="Play alongside other audio" disabled={!speech.canMixAudio || !speech.data.selectionAvailable} onchange={mixAudio => speech.update({ mixAudio })} /></div>
+				<p class="help">Allow music to keep playing at reduced volume when supported by the other app. Applies to the next reading.</p>
+				{#if !speech.canMixAudio}<p class="help">Update the Android app to 0.1.11 or newer to use this option.</p>{/if}
+			</div>
+		</section>
 		<SpeechRulesEditor />
 		<div class="footer"><Button variant="ghost" size="sm" disabled={speech.saving || (speech.unsaved && !speech.error)} onclick={() => speech.load(true)}>Refresh voices</Button><span class="save-status" role="status">{speech.saving || (speech.unsaved && !speech.error) ? 'Saving…' : ''}</span></div>
 	{/if}
@@ -59,6 +68,7 @@
 	.card-body { display:flex; flex-direction:column; gap:.85rem; }
 	.field { display:flex; flex-direction:column; gap:.5rem; min-width:0; }
 	.slider-top,.footer { display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+	.audio-option { display:flex; align-items:center; justify-content:space-between; gap:1rem; font-size:.8rem; }
 	.scope,.save-status { font-size:.7rem; color:var(--color-text-muted); }
 	.help { margin:0; font-size:.75rem; line-height:1.6; color:var(--color-text-muted); }
 	.error { display:flex; align-items:center; gap:.75rem; font-size:.8rem; color:var(--color-error); }

@@ -21,4 +21,15 @@ class SpeechOptionsTest {
         assertThrows(IllegalArgumentException::class.java) { SpeechOptions.checked("x".repeat(513), "voice", 1f) }
         assertThrows(IllegalArgumentException::class.java) { SpeechOptions.checked("engine", "x".repeat(513), 1f) }
     }
+    @Test fun legacyChoicesDefaultToStandardAudioFocus() {
+        assertFalse(SpeechOptions().mixAudio)
+        assertFalse(SpeechOptions.checked("google", "voice", 1f).mixAudio)
+    }
+    @Test fun mixingSurvivesRateRoundingAndDefaultVoiceSelection() {
+        val selected = SpeechOptions.checked("google", "voice", 1.249f, mixAudio = true)
+        assertTrue(selected.mixAudio); assertEquals(1.25f, selected.rate)
+        val defaults = SpeechOptions.checked("old-engine", "", 1f, mixAudio = true)
+        assertTrue(defaults.mixAudio); assertEquals("", defaults.engine)
+        assertFalse(SpeechOptions.checked("google", "voice", 1f, mixAudio = false).mixAudio)
+    }
 }

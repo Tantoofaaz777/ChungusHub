@@ -191,11 +191,15 @@
       await request('speech.rules.save', { rules: clean }, 5000);
     },
     readingSettings: async () => (await request('speech.settings', {}, 25000)).settings,
+    readingMixAudio: true,
     saveReadingSettings: async settings => {
       if (!settings || typeof settings.engine !== 'string' || typeof settings.voice !== 'string' ||
           settings.engine.length > 512 || settings.voice.length > 512 ||
-          !Number.isFinite(settings.rate) || settings.rate < 0.5 || settings.rate > 2) throw Error('Invalid voice or reading speed.');
-      return (await request('speech.settings.save', { engine: settings.engine, voice: settings.voice, rate: settings.rate }, 5000)).settings;
+          !Number.isFinite(settings.rate) || settings.rate < 0.5 || settings.rate > 2 ||
+          (settings.mixAudio !== undefined && typeof settings.mixAudio !== 'boolean')) throw Error('Invalid voice, reading speed or audio playback setting.');
+      const choice = { engine: settings.engine, voice: settings.voice, rate: settings.rate };
+      if (settings.mixAudio !== undefined) choice.mixAudio = settings.mixAudio;
+      return (await request('speech.settings.save', choice, 5000)).settings;
     },
     notifyReading: () => window.dispatchEvent(new Event('chungus-android-reading')),
     readingCommand: async command => {

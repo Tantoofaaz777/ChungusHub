@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private var imeVisible = false
     private var backPending = false
     private var activityResumed = false
+    private val speechWarmOwner = Any()
     private var stopReadingObserver: (() -> Unit)? = null
     private val speechSettings by lazy { SpeechSettings(applicationContext) }
     private val clipboard = ClipboardTransfer { text ->
@@ -486,6 +487,9 @@ class MainActivity : AppCompatActivity() {
         try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) { toast("No app is available to open this link.") }
     }
     private fun updatePageLifecycle(view: WebView? = browser) {
+        val warm = activityResumed && !appLock.locked && view != null && browser === view &&
+            server?.trusts(view.url.orEmpty()) == true && setup.visibility != View.VISIBLE
+        SpeechEnginePool.foreground(applicationContext, speechWarmOwner, warm)
         if (view == null || browser !== view || server?.trusts(view.url.orEmpty()) != true) return
         val active = activityResumed && !appLock.locked
         view.evaluateJavascript("window.ChungusAndroidClient?.setForeground?.($active)", null)
@@ -517,6 +521,7 @@ class MainActivity : AppCompatActivity() {
         if (::appLock.isInitialized) appLock.windowFocusChanged(hasFocus)
     }
     override fun onDestroy() {
+        SpeechEnginePool.release(speechWarmOwner)
         speechSettings.close()
         stopReadingObserver?.invoke(); stopReadingObserver = null
         appLock.close()

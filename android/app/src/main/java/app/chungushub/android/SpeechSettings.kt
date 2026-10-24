@@ -41,7 +41,7 @@ class SpeechSettings(private val context: Context) {
                     val options = SpeechPreferences.load(context)
                     val payload = JSONObject().put("engine", engineId)
                         .put("engineLabel", tts.engines.find { it.name == engineId }?.label ?: engineId)
-                        .put("voice", options.voice).put("rate", options.rate)
+                        .put("voice", options.voice).put("rate", options.rate).put("mixAudio", options.mixAudio)
                         .put("defaultVoice", tts.defaultVoice?.name.orEmpty())
                         .put("selectionAvailable", options.voice.isBlank() || (options.engine == engineId && options.voice in voiceNames))
                         .put("voices", JSONArray().apply { voices.forEach { voice -> put(JSONObject()
@@ -60,9 +60,12 @@ class SpeechSettings(private val context: Context) {
         val voice = message.getString("voice")
         check(catalogEngine != null && selectedEngine == catalogEngine) { "Reload the voice list before saving." }
         require(voice.isBlank() || voice in voiceNames) { "This voice is no longer available. Reload the voice list." }
-        val options = SpeechOptions.checked(selectedEngine, voice, message.getDouble("rate").toFloat())
+        require(!message.has("mixAudio") || message.get("mixAudio") is Boolean) { "Invalid audio playback setting." }
+        // Older server interfaces omit this field; changing a voice must preserve the saved mode.
+        val mixAudio = if (message.has("mixAudio")) message.getBoolean("mixAudio") else SpeechPreferences.load(context).mixAudio
+        val options = SpeechOptions.checked(selectedEngine, voice, message.getDouble("rate").toFloat(), mixAudio)
         SpeechPreferences.save(context, options)
-        return JSONObject().put("voice", options.voice).put("rate", options.rate).put("engine", selectedEngine)
+        return JSONObject().put("voice", options.voice).put("rate", options.rate).put("engine", selectedEngine).put("mixAudio", options.mixAudio)
     }
 
     private fun complete(result: JSONObject) {

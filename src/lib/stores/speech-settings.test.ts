@@ -8,9 +8,10 @@ const catalog: AndroidSpeechSettings = {
 	engine: 'google', engineLabel: 'Google', voice: '', rate: 1, defaultVoice: 'en', selectionAvailable: true,
 	voices: [{ id: 'en', language: 'en-US', languageLabel: 'English (United States)', network: false }]
 };
-function client(save: (options: AndroidSpeechChoice) => Promise<AndroidSpeechChoice> = async value => value) {
+function client(save: (options: AndroidSpeechChoice) => Promise<AndroidSpeechChoice> = async value => value, mixAudio?: boolean) {
 	globalThis.window = { ChungusAndroidClient: { version: 1, settings: async () => {}, back: () => false,
-		readingSettings: async () => ({ ...catalog }), saveReadingSettings: save } } as Window & typeof globalThis;
+		readingMixAudio: mixAudio !== undefined,
+		readingSettings: async () => ({ ...catalog, ...(mixAudio !== undefined ? { mixAudio } : {}) }), saveReadingSettings: save } } as Window & typeof globalThis;
 }
 
 test('catalog and choices stay device-local and successful writes clear pending state', async () => {
@@ -57,4 +58,30 @@ test('failure of an older write does not leave an error after a newer choice sav
 	store.update({ rate: 1.5 });
 	rejectFirst(new Error('Old request failed')); await pending;
 	expect(store.error).toBe(''); expect(store.unsaved).toBe(false); expect(store.data!.rate).toBe(1.5);
+});
+
+test('mixing survives later voice and speed changes and is unavailable on old APKs', async () => {
+	const writes: AndroidSpeechChoice[] = [];
+	client(async value => { writes.push(value); return value; }, true);
+	const store = new SpeechSettingsStore(); await store.load();
+	expect(store.canMixAudio).toBe(true); expect(store.data!.mixAudio).toBe(true);
+	store.update({ rate: 1.25, voice: 'en' }); await store.save();
+	expect(writes[0]).toEqual({ engine: 'google', voice: 'en', rate: 1.25, mixAudio: true });
+	store.update({ mixAudio: false }); await store.save();
+	expect(writes[1].mixAudio).toBe(false); expect(store.unsaved).toBe(false);
+	client();
+	expect(store.canMixAudio).toBe(false);
+});
+
+test('a slow mixing save cannot overwrite a newer switch position or speed', async () => {
+	let finish!: (value: AndroidSpeechChoice) => void;
+	const writes: AndroidSpeechChoice[] = [];
+	client(value => { writes.push(value); return writes.length === 1 ? new Promise(resolve => finish = resolve) : Promise.resolve(value); }, false);
+	const store = new SpeechSettingsStore(); await store.load();
+	store.update({ mixAudio: true }); const pending = store.save();
+	store.update({ mixAudio: false, rate: 1.5 });
+	finish(writes[0]); await pending;
+	expect(writes.map(value => value.mixAudio)).toEqual([true, false]);
+	expect(store.data!.mixAudio).toBe(false); expect(store.data!.rate).toBe(1.5);
+	expect(store.unsaved).toBe(false);
 });

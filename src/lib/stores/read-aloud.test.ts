@@ -5,7 +5,7 @@ import type { AndroidReadingState } from '$lib/services/android-client';
 (globalThis as unknown as { $state: <T>(v: T) => T }).$state = value => value;
 const { readAloudStore: reader } = await import('./read-aloud.svelte');
 const previousWindow = globalThis.window;
-afterEach(() => { globalThis.window = previousWindow; reader.state = { phase: 'idle' }; reader.busy = false; reader.available = false; });
+afterEach(() => { reader.suspend(); globalThis.window = previousWindow; reader.state = { phase: 'idle' }; reader.busy = false; reader.available = false; });
 
 function client(overrides: Partial<NonNullable<Window['ChungusAndroidClient']>> = {}) {
 	globalThis.window = { ChungusAndroidClient: {
@@ -60,8 +60,11 @@ test('the player sends only filtered text, preserving the title, and refuses emp
  const spoken: string[] = [];
  client({ readingRules: async () => [{ id: 'one', pattern: 'OOC', regex: false, caseSensitive: false, enabled: true }],
   readAloud: async (text, title) => { spoken.push(text); expect(title).toBe('Chat'); } });
+ await reader.refresh();
  await reader.start('OOC Hello', 'Chat');
  expect(spoken).toEqual(['Hello']);
- await expect(reader.start('OOC', 'Chat')).rejects.toThrow('Nothing remains');
+ const emptyError = await reader.start('OOC', 'Chat').then(() => null, error => error);
+ expect(emptyError?.message).toContain('Nothing remains');
+ expect(reader.lastProcessingTiming?.reusedWorker).toBe(true);
  expect(spoken).toEqual(['Hello']); expect(reader.busy).toBe(false);
 });

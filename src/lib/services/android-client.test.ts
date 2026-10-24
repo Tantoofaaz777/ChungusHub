@@ -43,7 +43,7 @@ function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boole
 			if (message.type === 'speech.state' || message.type === 'speech.command') response.state = { phase: 'paused', sentence: 2, total: 5 };
 			if (message.type === 'speech.rules') response.rules = [];
 			if (message.type === 'speech.settings') response.settings = { engine: 'google', voice: '', rate: 1, voices: [] };
-			if (message.type === 'speech.settings.save') response.settings = { engine: message.engine, voice: message.voice, rate: message.rate };
+			if (message.type === 'speech.settings.save') response.settings = { engine: message.engine, voice: message.voice, rate: message.rate, ...(message.mixAudio !== undefined ? { mixAudio: message.mixAudio } : {}) };
 			if (message.type === 'share.text.begin') { shareBuffer = ''; response.transfer = 'text-share'; }
 			if (message.type === 'share.text.chunk') {
 				expect(message.offset).toBe(shareBuffer.length);
@@ -169,6 +169,20 @@ test('native shortcuts send chat metadata and acknowledge the exact launch reque
 		await h.window.ChungusAndroidClient.acknowledgeChatShortcut('launch-1');
 		expect(h.messages.at(-1)).toMatchObject({ type: 'shortcut.acknowledge', request: 'launch-1' });
 	} finally { if (previous === undefined) delete (globalThis as any).window; else globalThis.window = previous; }
+});
+
+test('audio mixing capability carries real booleans and legacy voice saves omit the new field', async () => {
+	const h = harness(), client = h.window.ChungusAndroidClient;
+	expect(client.readingMixAudio).toBe(true);
+	for (const mixAudio of [true, false]) {
+		expect(await client.saveReadingSettings({ engine: 'google', voice: '', rate: 1, mixAudio })).toMatchObject({ mixAudio });
+		expect(h.messages.at(-1).mixAudio).toBe(mixAudio);
+	}
+	await client.saveReadingSettings({ engine: 'google', voice: '', rate: 1.25 });
+	expect('mixAudio' in h.messages.at(-1)).toBe(false);
+	const count = h.messages.length;
+	for (const mixAudio of [null, 'true', 1, {}]) await expect(client.saveReadingSettings({ engine: 'google', voice: '', rate: 1, mixAudio })).rejects.toThrow();
+	expect(h.messages).toHaveLength(count);
 });
 
 test('native copy preserves long Unicode and escaped text and waits for the final acknowledgement', async () => {

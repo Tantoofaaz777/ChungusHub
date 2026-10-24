@@ -11,6 +11,7 @@ export class SpeechSettingsStore {
 	private revision = 0;
 	private dirty = false;
 	get available() { return canConfigureReadAloud(); }
+	get canMixAudio() { return typeof window !== 'undefined' && window.ChungusAndroidClient?.readingMixAudio === true; }
 
 	async load(refresh = false) {
 		if (!this.available || this.loading || this.saving || (this.unsaved && (!refresh || !this.error)) || (this.data && !refresh)) return;
@@ -19,7 +20,7 @@ export class SpeechSettingsStore {
 		catch (error) { this.error = error instanceof Error ? error.message : 'Could not load voices.'; }
 		finally { this.loading = false; }
 	}
-	update(change: Partial<Pick<AndroidSpeechChoice, 'voice' | 'rate'>>) {
+	update(change: Partial<Pick<AndroidSpeechChoice, 'voice' | 'rate' | 'mixAudio'>>) {
 		if (!this.data || this.loading) return;
 		this.data = { ...this.data, ...change, selectionAvailable: change.voice !== undefined ? true : this.data.selectionAvailable };
 		this.revision++; this.dirty = true; this.unsaved = true; this.error = '';
@@ -32,9 +33,9 @@ export class SpeechSettingsStore {
 		this.dirty = false;
 		this.saving = true;
 		const revision = this.revision;
-		const { engine, voice, rate } = this.data;
+		const { engine, voice, rate, mixAudio } = this.data;
 		try {
-			const saved = await window.ChungusAndroidClient!.saveReadingSettings!({ engine, voice, rate });
+			const saved = await window.ChungusAndroidClient!.saveReadingSettings!({ engine, voice, rate, ...(mixAudio !== undefined ? { mixAudio } : {}) });
 			if (revision === this.revision) { this.data = { ...this.data!, ...saved }; this.unsaved = false; this.error = ''; }
 		} catch (error) { if (revision === this.revision) this.error = error instanceof Error ? error.message : 'Could not save speech settings.'; }
 		finally {

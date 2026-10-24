@@ -22,7 +22,7 @@
 		let dirty = false;
 		const visible = () => document.visibilityState !== 'hidden' && window.ChungusAndroidClient?.foreground !== false;
 		async function poll() {
-			if (stopped || !visible()) return;
+			if (stopped || !visible()) { reader.suspend(); return; }
 			if (polling) { dirty = true; return; }
 			polling = true;
 			try {
@@ -39,6 +39,7 @@
 		document.addEventListener('visibilitychange', poll);
 		return () => {
 			stopped = true;
+			reader.suspend();
 			window.removeEventListener('chungus-android-ready', poll);
 			window.removeEventListener('chungus-android-lifecycle', poll);
 			window.removeEventListener('chungus-android-reading', poll);

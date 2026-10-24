@@ -226,3 +226,17 @@ As regras de **Text processing** começam recolhidas. Toque no nome para abrir o
 No editor, **Name** define um nome opcional de até 120 caracteres. Sem nome, a lista mostra `Rule 1`, `Rule 2` etc. O nome acompanha a regra ao reordenar e é salvo com **Save rules**, no mesmo armazenamento privado do aparelho. Ele não altera a correspondência nem entra no texto falado. As regras antigas continuam válidas e não perdem seus padrões, ordem ou switches.
 
 Instale o APK 0.1.10 e atualize a interface na VPS para salvar nomes. Em APKs anteriores, a lista compacta funciona, mas o campo de nome fica desabilitado com um aviso de atualização para evitar que a versão antiga descarte os nomes ao salvar.
+
+### Leitura mais rápida (0.1.11)
+
+- A conexão com o motor de voz é preparada enquanto o app está visível e desbloqueado e reutilizada pelo player. Isso não inicia áudio, notificação de reprodução nem bloqueio de suspensão.
+- Ao sair do app ou bloqueá-lo, a conexão é liberada se não houver leitura ativa. A leitura em segundo plano mantém a própria conexão e os controles da Now Bar.
+- As regras usam um worker reutilizável, preparado antecipadamente. Os limites contra regex travado continuam ativos; as regras salvas são recarregadas a cada nova leitura.
+- Os tempos reais ficam nos logs locais: `adb logcat -s ChungusTTS:D` mostra inicialização e espera pelo motor. `readingState().startup` também retorna esses tempos, sem conteúdo do chat. O console web registra `[TTS startup] rules` para carregamento das regras, espera pelo worker e processamento.
+- Não houve mudança na divisão das sentenças nem no áudio gerado. A medição do motor de voz precisa ser feita no celular; o benchmark em `bun scripts/benchmark-speech-rules.ts` mede somente o processamento no computador.
+
+### Leitura junto com música (0.1.11)
+
+Em **Settings → TTS → Audio playback**, o switch **Play alongside other audio** permite pedir ao Android que a música continue em volume reduzido durante a leitura. Ele começa desligado, é salvo somente neste aparelho e passa a valer na próxima leitura. Outros players podem optar por pausar; o resultado depende do app de música e do Android. Ao pausar ou encerrar a leitura, o Chungus libera o foco para a música recuperar o volume.
+
+Instale o APK 0.1.11 e atualize a VPS. APKs anteriores mostram o switch desabilitado com o aviso de atualização. As escolhas de voz, velocidade e as regras existentes são preservadas.

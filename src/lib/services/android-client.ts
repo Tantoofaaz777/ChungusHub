@@ -9,10 +9,12 @@ export interface AndroidReadingState {
 	sentence?: number;
 	total?: number;
 	error?: string | null;
+	/** APK 0.1.11: monotonic native startup durations, retained for this reading. */
+	startup?: { engineInitializationMs: number; engineWaitMs: number; engineReused: boolean } | null;
 }
 export type ReadingCommand = 'play' | 'pause' | 'previous' | 'next' | 'stop';
 
-export interface AndroidSpeechChoice { engine: string; voice: string; rate: number }
+export interface AndroidSpeechChoice { engine: string; voice: string; rate: number; mixAudio?: boolean }
 export interface AndroidSpeechVoice { id: string; language: string; languageLabel: string; network: boolean }
 export interface AndroidSpeechSettings extends AndroidSpeechChoice {
 	engineLabel: string;
@@ -47,6 +49,8 @@ declare global {
 			readingRules?(): Promise<SpeechRule[]>;
 			saveReadingRules?(rules: SpeechRule[]): Promise<void>;
 			readingSettings?(): Promise<AndroidSpeechSettings>;
+			/** APK 0.1.11 preserves the device-local option to play alongside other audio. */
+			readonly readingMixAudio?: boolean;
 			saveReadingSettings?(settings: AndroidSpeechChoice): Promise<AndroidSpeechChoice>;
 			shareFile?(filename: string, mime: string, build: () => Promise<Blob>): Promise<void>;
 			incomingFiles?(): Promise<AndroidSharedFile[]>;
