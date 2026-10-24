@@ -6,7 +6,20 @@ test('the disposable worker returns the same processed text and validation error
  const invalid = await processSpeechText('', [{ ...rule, regex: true, pattern: '[' }]);
  expect(invalid.errors.one).toBe('Invalid regular expression.');
 });
-test('pathological regex is terminated and subsequent processing still works', async () => {
- await expect(processSpeechText('a'.repeat(200) + '!', [{ ...rule, regex: true, pattern: '(a+)+$' }])).rejects.toThrow('took too long');
+test('an unresponsive processing worker is terminated and subsequent processing still works', async () => {
+ const original = globalThis.Worker;
+ let terminated = false;
+ class UnresponsiveWorker {
+  onmessage: ((event: { data: { ready: boolean } }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor() { queueMicrotask(() => this.onmessage?.({ data: { ready: true } })); }
+  postMessage() { /* Simulate a regex that never returns, independently of engine optimizations. */ }
+  terminate() { terminated = true; }
+ }
+ try {
+  globalThis.Worker = UnresponsiveWorker as unknown as typeof Worker;
+  await expect(processSpeechText('Any input', [rule])).rejects.toThrow('took too long');
+  expect(terminated).toBe(true);
+ } finally { globalThis.Worker = original; }
  expect((await processSpeechText('OOC Safe', [rule])).text).toBe('Safe');
 });
