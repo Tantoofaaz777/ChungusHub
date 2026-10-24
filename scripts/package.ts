@@ -12,6 +12,8 @@
  *
  * Run: bun run package
  */
+// Refuse to embed an unsupported runtime before building or touching the output directory.
+import '../server/require-runtime';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 // The DEFAULT and not this machine's `PORT`: the zip ships without a settings file, so what

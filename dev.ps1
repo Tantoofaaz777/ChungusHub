@@ -12,6 +12,14 @@
 Set-Location -Path $PSScriptRoot
 $Host.UI.RawUI.WindowTitle = 'ChungusHub (dev)'
 
+. (Join-Path $PSScriptRoot 'scripts/ensure-bun.ps1')
+try { $chungusBun = Get-ChungusBun }
+catch { Write-Error $_; exit 1 }
+$env:PATH = "$(Split-Path -Parent $chungusBun);$env:PATH"
+# A fresh clone can launch without a separate dependency-install command.
+& $chungusBun install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 $script:server = $null
 $script:vite = $null
 
@@ -34,10 +42,10 @@ function Stop-All {
 
 Write-Host ''
 Write-Host '[ChungusHub] Starting backend (bun --watch)...' -ForegroundColor Cyan
-$script:server = Start-Process -FilePath 'bun' -ArgumentList '--watch', 'server/index.ts' -NoNewWindow -PassThru -RedirectStandardInput $stdinSink
+$script:server = Start-Process -FilePath $chungusBun -ArgumentList '--watch', 'server/index.ts' -NoNewWindow -PassThru -RedirectStandardInput $stdinSink
 
 Write-Host '[ChungusHub] Starting frontend (vite dev, hot reload)...' -ForegroundColor Cyan
-$script:vite = Start-Process -FilePath 'bun' -ArgumentList 'run', 'dev' -NoNewWindow -PassThru -RedirectStandardInput $stdinSink
+$script:vite = Start-Process -FilePath $chungusBun -ArgumentList 'run', 'dev' -NoNewWindow -PassThru -RedirectStandardInput $stdinSink
 
 Write-Host ''
 Write-Host '  This PC   ->  http://localhost:1420   (hot reload, no rebuild)' -ForegroundColor Green
@@ -57,7 +65,7 @@ try {
         elseif ($ch -eq 'b') {
             Write-Host ''
             Write-Host '[ChungusHub] Building client (build/ for the :4242 server)...' -ForegroundColor Cyan
-            & bun run build
+            & $chungusBun run build
             if ($LASTEXITCODE -eq 0) {
                 Write-Host '[ChungusHub] Build done. Hard-refresh the phone to pick it up.' -ForegroundColor Green
             } else {

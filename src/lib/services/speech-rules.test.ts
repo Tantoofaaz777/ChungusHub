@@ -16,7 +16,10 @@ test('preview and playback share replacements, with safe source offsets and reco
  const playback = await processSpeechText('A cat.', rules, undefined, true);
  expect(playback.text).toBe('A cats.');
  expect(playback.offsets).toEqual([0, 1, -1, -1, -1, -1, 5]);
- await expect(processSpeechText('x'.repeat(81), [{ ...rule, pattern: 'x', replacement: 'x'.repeat(1000) }])).rejects.toThrow('80,000');
+ // Await the worker reply before asserting: Bun's rejects matcher can delay worker messages.
+ const expansionError = await processSpeechText('x'.repeat(81), [{ ...rule, pattern: 'x', replacement: 'x'.repeat(1000) }]).then(() => null, error => error);
+ expect(expansionError).toBeInstanceOf(Error);
+ expect(expansionError.message).toContain('80,000');
  expect((await processSpeechText('OOC Safe', [rule])).text).toBe('Safe');
 });
 test('warm requests reuse one worker, keep previews isolated and report startup versus execution time', async () => {

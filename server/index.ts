@@ -4,6 +4,8 @@
  * One process: serves the built PWA, exposes the DB/files/LLM API over HTTP,
  * and runs a WebSocket for live cross-device sync and LLM token streaming.
  */
+// Must run before imports that open the database or create the data directory.
+import './require-runtime';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { serveStaticAsset } from './static';
 import { FontLibrary } from './fonts';

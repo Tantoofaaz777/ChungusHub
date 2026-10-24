@@ -1,0 +1,11 @@
+# Approved official Bun release. SHA-256 values come from GitHub release asset digests.
+minimum 1.4.4
+version 1.4.4
+linux-x64 bun-linux-x64.zip bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
+linux-aarch64 bun-linux-aarch64.zip baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e
+linux-x64-musl bun-linux-x64-musl.zip a5a8ccc5e74dcb883fe974f125a7bdb3b41e5195ed1b870e73f17effd3eb2b2d
+linux-aarch64-musl bun-linux-aarch64-musl.zip 57f01b02ac7113c61c935f28f38c2eab849e3c970dab21f8b640a87b1ef65009
+darwin-x64 bun-darwin-x64.zip 50a3491f73abc2fe81673171a85762d3bc2cc1680ccecadd983de99adf77977e
+darwin-aarch64 bun-darwin-aarch64.zip c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510
+windows-x64 bun-windows-x64.zip cd2c0fccc78f3ede1f50ca827a15f063eda13d4d150a3d0674f4f6e323d864a5
+windows-aarch64 bun-windows-aarch64.zip 2d57a0eec0cb44d95c918c3f9734f60455a1306ae5085d76fc68f44e3ee30d09

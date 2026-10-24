@@ -13,8 +13,25 @@ To produce a portable desktop server build locally, use `bun run package` as des
 
 ## Prerequisites
 
-[Bun](https://bun.sh), and nothing else: the server runs on Bun's standard library alone and
-the database is SQLite.
+[Bun](https://bun.sh) **1.4.4 or newer**. CI and release builds use 1.4.4. The database is SQLite.
+Earlier Bun versions are affected by [CVE-2026-111497](https://github.com/oven-sh/bun/security/advisories/GHSA-663w-cv8g-jj2p).
+The server and portable packaging refuse unsupported or prerelease runtimes before writing files.
+
+When upgrading, check the executable configured in your service and update script, not just
+the `bun` on your shell's `PATH`, then restart the server. Portable desktop builds embed Bun
+and need to be rebuilt with the corrected runtime.
+
+The source launchers can do this automatically: `start.bat` / `dev.ps1` on Windows,
+`start.command` on macOS, or `bash dev.sh` on Linux. They reuse a compatible Bun or
+download the approved official release into a private ChungusHub runtime directory,
+verify SHA-256 and the executable version, then install locked dependencies and start.
+They never replace an old global Bun or continue with an unsupported runtime.
+Unix bootstrapping requires `curl`, `unzip` and `sha256sum` or `shasum`.
+
+The private directory is `%LOCALAPPDATA%/ChungusHub/runtime` on Windows,
+`~/Library/Application Support/ChungusHub/runtime` on macOS, or
+`~/.local/share/chungushub/runtime` on Linux (`XDG_DATA_HOME` is respected).
+Set `CHUNGUS_RUNTIME_DIR` to use another absolute directory.
 
 <CodeGroup>
 
@@ -46,6 +63,18 @@ curl -fsSL https://bun.sh/install | bash
     rebuilds the client into `build/`, which is what port 4242 serves.
   </Step>
 </Steps>
+
+## Existing systemd service
+
+As the service's configured user, run `bash scripts/setup-updater.sh` from the repository
+once. It backs up existing updater/override files, installs `chungus-update`, and points
+the existing service to a stable private Bun path without restarting it. For a different
+service name, set `CHUNGUS_SERVICE_NAME` during setup.
+
+Then `chungus-update` pulls the repository, installs or upgrades the private Bun when
+required, installs locked dependencies, builds, restarts and checks local `/api/health`.
+A failed runtime download or build does not restart the service. There is no download
+on ordinary systemd restarts. Custom health endpoints can use `CHUNGUS_HEALTH_URL`.
 
 ## Build a portable copy
 

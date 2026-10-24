@@ -112,7 +112,30 @@ This project is **not** a fork of SillyTavern and shares none of its code.
 
 ### Requirements
 
-[Bun](https://bun.sh/) 1.3.9 or newer. That is the version the release builds are made with; older ones are untested.
+[Bun](https://bun.sh/) 1.4.4 or newer. CI and release builds use 1.4.4. Earlier versions are affected by [CVE-2026-111497](https://github.com/oven-sh/bun/security/advisories/GHSA-663w-cv8g-jj2p).
+The server and portable packaging refuse unsupported or prerelease runtimes before creating files or opening the database.
+
+For an existing installation, update the Bun executable used to start the server and restart it.
+Services and update scripts can point to a different executable from the `bun` on your shell's
+`PATH`. Portable desktop servers embed Bun and must be rebuilt with the corrected runtime;
+upgrading a separate Bun installation does not update them.
+
+The source launchers (`start.bat` / `dev.ps1` on Windows, `start.command` on macOS and
+`bash dev.sh` on Linux) handle Bun automatically. They reuse a compatible installation,
+or download the approved version from the official Bun release and verify its SHA-256
+before running it. They also install the locked project dependencies before starting.
+An old global Bun is left untouched. Once provisioned, Bun needs no new download on
+later launches unless the required version changes (installing project dependencies
+may still need internet).
+
+Private runtimes live under `%LOCALAPPDATA%/ChungusHub/runtime` on Windows,
+`~/Library/Application Support/ChungusHub/runtime` on macOS, or
+`${XDG_DATA_HOME:-~/.local/share}/chungushub/runtime` on Linux. `CHUNGUS_RUNTIME_DIR`
+can select another absolute directory. Unix installers need `curl`, `unzip` and either
+`sha256sum` or `shasum`. Downloads and version failures stop startup with an error;
+they never fall back to an unsupported Bun.
+
+For manual terminal commands, Bun can also be installed globally:
 
 ```sh
 # Windows (PowerShell)
@@ -133,6 +156,9 @@ bun run start
 
 Then open <http://localhost:4242>. Your data lives in `user-data/` next to the repo.
 
+Alternatively, use the source launchers above without a manual Bun install. They start
+the development frontend on <http://localhost:1420> and the backend on port 4242.
+
 By default the app listens on loopback only. Turn on network access from Settings → Security when you want to reach it from other devices.
 
 For an existing Cloudflare Tunnel running directly on the same VPS, stop ChungusHub and run:
@@ -149,6 +175,39 @@ In your existing tunnel, route the hostname to `http://127.0.0.1:4242` (or the l
 Cloudflare Access is optional. To use it instead of setting a ChungusHub password, run setup with `--access`, create an Access self-hosted application that allows only your email, and enable Protect with Access on the tunnel route before publishing. This mode preserves existing password settings and sessions.
 
 This command configures ChungusHub only; it does not change your Cloudflare account or install a service to keep the app running after SSH disconnects. If `cloudflared` runs in a container, its origin address must reach the host instead of the container's own loopback.
+
+### Automatic Bun updates for an existing systemd service
+
+From this repository, as the user named in the existing service's `User=` setting, run:
+
+```sh
+bash scripts/setup-updater.sh
+```
+
+Setup installs a `chungus-update` wrapper and a systemd drop-in pointing to the private,
+stable `runtime/bin/bun` path. Existing files get a `.before-managed-runtime` backup
+once; the base service and other overrides remain in place. Setup uses `sudo` only
+for the service configuration and wrapper, and does not restart the running server.
+
+Then run:
+
+```sh
+chungus-update
+```
+
+The updater pulls `main` with `--ff-only`, provisions the approved Bun if necessary,
+installs locked dependencies, builds, and restarts only after those steps succeed.
+It checks `/api/health` on loopback, without a public Host header or stored password.
+The health port follows the service's `CHUNGUS_PORT` override or the repository's
+configuration. `CHUNGUS_HEALTH_URL` can override the check for unusual setups.
+For a service with another name, set `CHUNGUS_SERVICE_NAME` when running setup;
+the installed wrapper remembers the service and runtime paths.
+
+Future runtime updates happen during `chungus-update`, not during an unattended
+systemd restart. A failed download leaves the previous executable in place and does
+not restart the running service. This setup is for an existing service, not a new
+systemd service installer. Portable server executables still need a new build because
+their Bun runtime is embedded.
 
 ### Develop
 

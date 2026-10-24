@@ -14,16 +14,9 @@
 set -u
 cd "$(dirname "$0")"
 
-# Finder runs a double-clicked start.command through a non-interactive shell, so
-# ~/.zshrc (where the Bun installer puts its PATH line) never runs. Look in the
-# install directory before giving up.
-if ! command -v bun >/dev/null 2>&1; then
-    PATH="$HOME/.bun/bin:$PATH"
-fi
-if ! command -v bun >/dev/null 2>&1; then
-    echo "[ChungusHub] bun is not on PATH. Install it from https://bun.sh and run this again."
-    exit 1
-fi
+chungus_bun=$(bash scripts/ensure-bun.sh) || exit 1
+export PATH="$(dirname "$chungus_bun"):$PATH"
+"$chungus_bun" install --frozen-lockfile || exit $?
 
 if [ -t 1 ]; then
     cyan=$'\033[36m'; green=$'\033[32m'; red=$'\033[31m'; gray=$'\033[90m'; reset=$'\033[0m'
@@ -49,13 +42,13 @@ trap stop_all EXIT
 trap 'exit 130' INT TERM
 
 printf '\n%s[ChungusHub] Starting backend (bun --watch)...%s\n' "$cyan" "$reset"
-bun --watch server/index.ts </dev/null &
+"$chungus_bun" --watch server/index.ts </dev/null &
 server_pid=$!
 
 printf '%s[ChungusHub] Starting frontend (vite dev, hot reload)...%s\n' "$cyan" "$reset"
 # Empty stdin for the children. Without it Vite grabs this terminal's keyboard for
 # its own shortcuts and our [B]/[Q] keys never arrive.
-bun run dev </dev/null &
+"$chungus_bun" run dev </dev/null &
 vite_pid=$!
 
 printf '\n'
@@ -81,7 +74,7 @@ while true; do
         q | Q) break ;;
         b | B)
             printf '\n%s[ChungusHub] Building client (build/ for the :4242 server)...%s\n' "$cyan" "$reset"
-            if bun run build; then
+            if "$chungus_bun" run build; then
                 printf '%s[ChungusHub] Build done. Hard-refresh the phone to pick it up.%s\n' "$green" "$reset"
             else
                 printf '%s[ChungusHub] Build failed.%s\n' "$red" "$reset"
