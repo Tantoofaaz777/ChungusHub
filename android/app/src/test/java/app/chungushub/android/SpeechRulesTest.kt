@@ -32,4 +32,15 @@ class SpeechRulesTest {
         assertThrows(IllegalArgumentException::class.java) { SpeechRule.checked(listOf(rule().copy(name = "x".repeat(121)))) }
         assertEquals("", SpeechRule.checked(listOf(rule())).single().name)
     }
+    @Test fun replacementsDefaultToRemovalAndPreserveTemplatesInOrder() {
+        val replace = rule("replace").copy(replacement = "\$1 \$<name> \$\$")
+        assertEquals("", rule().replacement)
+        assertEquals(listOf(replace, rule()), SpeechRule.checked(listOf(replace, rule())))
+        assertEquals("\$1 \$<name> \$\$", replace.replacement)
+    }
+    @Test fun boundsReplacementLengthWithoutRejectingEmptyReplacement() {
+        assertEquals(1000, SpeechRule.checked(listOf(rule().copy(replacement = "x".repeat(1000)))).single().replacement.length)
+        assertThrows(IllegalArgumentException::class.java) { SpeechRule.checked(listOf(rule().copy(replacement = "x".repeat(1001)))) }
+        assertEquals("", SpeechRule.checked(listOf(rule().copy(replacement = ""))).single().replacement)
+    }
 }

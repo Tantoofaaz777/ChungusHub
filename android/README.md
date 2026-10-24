@@ -241,6 +241,22 @@ Em **Settings → TTS → Audio playback**, o switch **Play alongside other audi
 
 Instale o APK 0.1.11 e atualize a VPS. APKs anteriores mostram o switch desabilitado com o aviso de atualização. As escolhas de voz, velocidade e as regras existentes são preservadas.
 
+### Substituições no processamento de texto (0.1.13)
+
+No editor de cada regra, **Match text** define o texto ou padrão procurado e **Replace to** define o que será lido no lugar. Deixe **Replace to** vazio para remover o trecho, como nas regras anteriores. Em **Text**, a substituição é literal. Em **Regex**, ela aceita grupos como `$1`, `$2` e `$<nome>`, além de `$&` para a correspondência inteira e `$$` para um cifrão literal.
+
+As regras continuam aplicadas de cima para baixo, sem alterar a mensagem original. Use **Preview text** para testar e **Save rules** para salvar. As regras antigas continuam removendo texto sem precisar de mudanças. Cada substituição aceita até 1.000 caracteres; o resultado de cada etapa fica limitado a 80.000 caracteres. Texto novo criado por substituição é falado, mas fica sem destaque quando não tem uma posição exata na mensagem original; o restante mantém a sincronização.
+
+Atualize a VPS e instale o APK 0.1.13 por cima do atual para salvar substituições. APKs anteriores mostram o campo desabilitado com um aviso de atualização.
+
+### Exportar e importar regras de leitura
+
+Em **Settings → TTS → Text processing**, **Export** salva o rascunho atual em `chungus-speech-rules.json` pelo seletor de arquivos do Android. O arquivo preserva nomes, ordem, padrões, substituições, maiúsculas/minúsculas e switches. Ele não inclui mensagens, voz, senha ou dados do servidor.
+
+Use **Import** para escolher esse JSON em outro aparelho. Depois da validação, **Add to rules** adiciona ao fim da lista e **Replace rules** substitui o rascunho pela lista do arquivo. **Cancel import** mantém o rascunho atual. Confira as regras e toque em **Save rules** para aplicar ao aparelho; importar por si só não altera as regras salvas nem a leitura. Exportar também inclui edições válidas ainda não salvas.
+
+Arquivos inválidos, versões desconhecidas, regex inválida e listas acima dos limites são recusados sem alterar as regras atuais. Ao adicionar, cada regra recebe um ID novo, então importar o mesmo arquivo não sobrescreve regras existentes. As regras continuam armazenadas apenas no aparelho.
+
 ### Destaque da frase em leitura (0.1.12)
 
 O switch **Settings → TTS → Audio playback → Highlight current sentence** começa ligado e vale na próxima leitura. O chat e o feed de Threads destacam o trecho que está tocando com o accent do tema, usando texto preto ou branco conforme o contraste. Ao pausar, o destaque permanece na frase atual; ao parar ou terminar, ele desaparece. A tela não rola automaticamente.

@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** Regex execution belongs to a disposable Web worker, never the Android main thread. */
-data class SpeechRule(val id: String, val pattern: String, val regex: Boolean, val caseSensitive: Boolean, val enabled: Boolean, val name: String = "") {
+data class SpeechRule(val id: String, val pattern: String, val regex: Boolean, val caseSensitive: Boolean, val enabled: Boolean, val name: String = "", val replacement: String = "") {
     companion object {
         fun checked(rules: List<SpeechRule>): List<SpeechRule> {
             require(rules.size <= 30) { "Use at most 30 speech rules." }
@@ -14,6 +14,7 @@ data class SpeechRule(val id: String, val pattern: String, val regex: Boolean, v
                 require(it.id.isNotBlank() && it.id.length <= 80) { "Invalid speech rule ID." }
                 require(it.name.length <= 120) { "Speech rule names must have at most 120 characters." }
                 require(it.pattern.isNotBlank() && it.pattern.length <= 1000) { "Each speech rule needs 1 to 1,000 characters." }
+                require(it.replacement.length <= 1000) { "Speech replacements must have at most 1,000 characters." }
             }
             return rules
         }
@@ -27,7 +28,8 @@ object SpeechRules {
         return SpeechRule.checked((0 until array.length()).map { index ->
             val rule = array.getJSONObject(index)
             require(!rule.has("name") || rule.get("name") is String) { "Invalid speech rule name." }
-            SpeechRule(rule.getString("id"), rule.getString("pattern"), rule.getBoolean("regex"), rule.getBoolean("caseSensitive"), rule.getBoolean("enabled"), rule.optString("name", ""))
+            require(!rule.has("replacement") || rule.get("replacement") is String) { "Invalid speech replacement." }
+            SpeechRule(rule.getString("id"), rule.getString("pattern"), rule.getBoolean("regex"), rule.getBoolean("caseSensitive"), rule.getBoolean("enabled"), rule.optString("name", ""), rule.optString("replacement", ""))
         })
     }
     fun load(context: Context): JSONArray {
@@ -37,7 +39,7 @@ object SpeechRules {
     }
     fun save(context: Context, array: JSONArray) {
         val clean = JSONArray().apply { parse(array).forEach { rule -> put(JSONObject()
-            .put("id", rule.id).put("name", rule.name).put("pattern", rule.pattern).put("regex", rule.regex)
+            .put("id", rule.id).put("name", rule.name).put("pattern", rule.pattern).put("replacement", rule.replacement).put("regex", rule.regex)
             .put("caseSensitive", rule.caseSensitive).put("enabled", rule.enabled)) } }
         store(context).edit().putString("rules", clean.toString()).apply()
     }

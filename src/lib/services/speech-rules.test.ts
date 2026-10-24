@@ -9,6 +9,16 @@ test('the reusable worker returns the same processed text and validation errors 
  const invalid = await processSpeechText('', [{ ...rule, regex: true, pattern: '[' }]);
  expect(invalid.errors.one).toBe('Invalid regular expression.');
 });
+
+test('preview and playback share replacements, with safe source offsets and recoverable expansion limits', async () => {
+ const rules = [{ ...rule, pattern: '(?<word>cat)', regex: true, replacement: '$<word>s' }];
+ expect((await processSpeechText('A cat.', rules)).text).toBe('A cats.');
+ const playback = await processSpeechText('A cat.', rules, undefined, true);
+ expect(playback.text).toBe('A cats.');
+ expect(playback.offsets).toEqual([0, 1, -1, -1, -1, -1, 5]);
+ await expect(processSpeechText('x'.repeat(81), [{ ...rule, pattern: 'x', replacement: 'x'.repeat(1000) }])).rejects.toThrow('80,000');
+ expect((await processSpeechText('OOC Safe', [rule])).text).toBe('Safe');
+});
 test('warm requests reuse one worker, keep previews isolated and report startup versus execution time', async () => {
  const timings: SpeechProcessingTiming[] = [];
  const measure = (timing: SpeechProcessingTiming) => timings.push(timing);

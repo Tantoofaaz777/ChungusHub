@@ -7,8 +7,8 @@ android {
         applicationId = "app.chungushub.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.1.12"
+        versionCode = 14
+        versionName = "0.1.13"
     }
     buildFeatures { buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

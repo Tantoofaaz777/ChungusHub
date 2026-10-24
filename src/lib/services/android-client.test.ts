@@ -8,6 +8,7 @@ import { importSillyTavernCard } from './sillyTavernImport';
 import type { LibraryEntry } from '$lib/types/library';
 import { saveGeneratedDownload } from './libraryExport';
 import { copyText } from '$lib/utils/clipboard';
+import { parseSpeechRulesImport, serializeSpeechRules } from '$lib/utils/speech-rules-io';
 
 const script = readFileSync(new URL('../../../android/app/src/main/assets/client.js', import.meta.url), 'utf8');
 function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean; holdPicker?: boolean; failCopy?: boolean; holdCopy?: boolean; dropCopy?: boolean;
@@ -422,6 +423,23 @@ test('cancelling a generated export never runs its producer', async () => {
 		expect(h.saved).toHaveLength(0);
 });
 
+test('speech rule backups round-trip UTF-8 and regex through native file export without changing device rules', async () => {
+ const h = harness({ holdPicker: true }), previousWindow = globalThis.window;
+ globalThis.window = h.window;
+ const rules = [{ id: 'pronunciation', name: 'Pronúncia 🌙', pattern: '(?<word>cat)', replacement: '$<word>s', regex: true, caseSensitive: true, enabled: false }];
+ try {
+  const json = serializeSpeechRules(rules);
+  const saving = saveGeneratedDownload('chungus-speech-rules.json', 'application/json', async () => new Blob([json], { type: 'application/json' }));
+  expect(h.messages[0]).toMatchObject({ type: 'export.begin', filename: 'chungus-speech-rules.json', mime: 'application/json' });
+  expect(h.saved).toHaveLength(0);
+  h.chooseDestination(); await saving;
+  expect(parseSpeechRulesImport(h.saved[0].toString('utf8'))).toEqual(rules);
+  expect(h.messages.every(message => message.type.startsWith('export.'))).toBe(true);
+ } finally {
+  if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
+ }
+});
+
 test('generation failure aborts the chosen file and reaches the export UI', async () => {
 	const h = harness();
 	await expect(h.window.ChungusAndroidClient.save('character.png', 'image/png', async () => { throw new Error('Image fetch failed'); })).rejects.toThrow('Image fetch failed');
@@ -481,9 +499,21 @@ test('rule-name capability preserves labels and legacy unnamed rules, and bounds
  const named = { id: 'named', name: 'Hide emojis', pattern: '[a-z]', regex: true, caseSensitive: false, enabled: true };
  const legacy = { id: 'old', pattern: 'OOC', regex: false, caseSensitive: false, enabled: false };
  await h.window.ChungusAndroidClient.saveReadingRules([named, legacy]);
- expect(h.messages.at(-1).rules).toEqual([named, { ...legacy, name: '' }]);
+ expect(h.messages.at(-1).rules).toEqual([{ ...named, replacement: '' }, { ...legacy, name: '', replacement: '' }]);
  const count = h.messages.length;
  for (const name of [null, 42, 'x'.repeat(121)])
   await expect(h.window.ChungusAndroidClient.saveReadingRules([{ ...named, name }])).rejects.toThrow('Invalid speech rules');
+ expect(h.messages).toHaveLength(count);
+});
+
+test('replacement capability preserves regex templates and defaults old removal rules to empty', async () => {
+ const h = harness();
+ expect(h.window.ChungusAndroidClient.readingRuleReplacements).toBe(true);
+ const rule = { id: 'replace', pattern: '(?<word>cat)', regex: true, caseSensitive: true, enabled: true, replacement: '$<word>s $1 $$' };
+ await h.window.ChungusAndroidClient.saveReadingRules([rule, { ...rule, id: 'legacy', replacement: undefined }]);
+ expect(h.messages.at(-1).rules).toEqual([{ ...rule, name: '' }, { ...rule, id: 'legacy', name: '', replacement: '' }]);
+ const count = h.messages.length;
+ for (const replacement of [null, 42, 'x'.repeat(1001)])
+  await expect(h.window.ChungusAndroidClient.saveReadingRules([{ ...rule, replacement }])).rejects.toThrow('Invalid speech rules');
  expect(h.messages).toHaveLength(count);
 });

@@ -49,3 +49,47 @@ test('rule labels do not become spoken text or affect filtering', () => {
  expect(applySpeechRules('OOC Hello', [named]).text).toBe('Hello');
  expect(applySpeechRules('OOC Hello', [rule('OOC')]).text).toBe('Hello');
 });
+
+test('empty and legacy replacements remove, literal replacements keep dollar signs and honor case', () => {
+ expect(applySpeechRules('OOC Hello OOC', [rule('OOC', { replacement: '' })]).text).toBe('Hello');
+ expect(applySpeechRules('cat Cat CAT', [rule('cat', { replacement: '$1 $& $$' })]).text).toBe('$1 $& $$ $1 $& $$ $1 $& $$');
+ expect(applySpeechRules('cat Cat', [rule('cat', { replacement: 'dog', caseSensitive: true })]).text).toBe('dog Cat');
+ expect(applySpeechRules('cat', [rule('cat', { replacement: 'dog', enabled: false })]).text).toBe('cat');
+});
+
+test('regex replacements match JavaScript capture, dollar and surrounding-context semantics', () => {
+ const cases = [
+  ['(?<first>a)(b)?', 'ab a', '$<first>-$2-$&-$$-$<missing>'],
+  ['(a)(b)?', 'ab a', '$1:$2:$3:$01:$00:$10:$20:$99:$<first>'],
+  ['(a)', 'cat', "$`|$&|$'"],
+  ['(?=a)|$', 'a🌙a', '[$&]'],
+  ['🌙', '🌙🌙', 'moon'],
+ ];
+ for (const [pattern, source, replacement] of cases) {
+  const expected = source.replace(new RegExp(pattern, 'giu'), replacement).trim();
+  const rules = [rule(pattern, { regex: true, replacement })];
+  expect(applySpeechRules(source, rules).text).toBe(expected);
+  expect(applySpeechRules(source, rules, true).text).toBe(expected);
+ }
+});
+
+test('replacements feed subsequent rules and preserve exact offsets outside generated text', () => {
+ const source = '  Hi cat. Same. cat Same. 🌙  ';
+ const rules = [rule('cat', { replacement: 'kitten' }), rule('kitten', { replacement: 'dog' })];
+ const result = applySpeechRules(source, rules, true);
+ expect(result.text).toBe('Hi dog. Same. dog Same. 🌙');
+ expect(result.offsets).toHaveLength(result.text.length);
+ for (let i = 0; i < result.text.length; i++) {
+  if (result.offsets![i] >= 0) expect(source[result.offsets![i]]).toBe(result.text[i]);
+ }
+ expect(result.offsets!.slice(3, 6)).toEqual([-1, -1, -1]);
+ expect(result.offsets![result.text.lastIndexOf('Same')]).toBe(source.lastIndexOf('Same'));
+ expect(applySpeechRules('cat', [...rules].reverse()).text).toBe('kitten');
+});
+
+test('replacement bounds fail closed before expansion can create an oversized reading', () => {
+ expect(applySpeechRules('x', [rule('x', { replacement: 'y'.repeat(1001) })]).errors.x).toContain('1,000');
+ expect(applySpeechRules('x', [rule('x', { replacement: 'y'.repeat(1000) })]).text).toHaveLength(1000);
+ expect(() => applySpeechRules('x'.repeat(81), [rule('x', { replacement: 'y'.repeat(1000) })])).toThrow('80,000');
+ expect(() => applySpeechRules('a'.repeat(1000), [rule('a', { regex: true, replacement: "$'$'" })], true)).toThrow('80,000');
+});

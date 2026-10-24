@@ -6,6 +6,8 @@
  import Toggle from '$lib/components/ui/Toggle.svelte';
  import Icon from '$lib/components/ui/Icon.svelte';
  import { processSpeechText } from '$lib/services/speech-rules';
+ import { saveGeneratedDownload } from '$lib/services/libraryExport';
+ import { appendSpeechRules, parseSpeechRulesImport, serializeSpeechRules, SPEECH_RULE_FILE_LIMIT } from '$lib/utils/speech-rules-io';
  import type { SpeechRule } from '$lib/utils/speech-rules';
 
  let rules = $state<SpeechRule[]>([]);
@@ -19,10 +21,13 @@
  let source = $state('');
  let preview = $state<string | null>(null);
  let expandedId = $state<string | null>(null);
+ let fileInput = $state<HTMLInputElement>();
+ let pendingImport = $state<SpeechRule[] | null>(null);
  const canNameRules = typeof window !== 'undefined' && window.ChungusAndroidClient?.readingRuleNames === true;
+ const canReplace = typeof window !== 'undefined' && window.ChungusAndroidClient?.readingRuleReplacements === true;
  const label = (rule: SpeechRule, index: number) => rule.name?.trim() || `Rule ${index + 1}`;
  function add() {
-  const rule: SpeechRule = { id: crypto.randomUUID(), name: '', pattern: '', regex: false, caseSensitive: false, enabled: true };
+  const rule: SpeechRule = { id: crypto.randomUUID(), name: '', pattern: '', replacement: '', regex: false, caseSensitive: false, enabled: true };
   rules = [...rules, rule]; expandedId = rule.id; changed();
  }
  const available = typeof window !== 'undefined' && !!window.ChungusAndroidClient?.readingRules && !!window.ChungusAndroidClient?.saveReadingRules;
@@ -35,6 +40,43 @@
  }
  onMount(() => { if (available) void load(); else loading = false; });
  function reorder(event: CustomEvent<DndEvent<SpeechRule>>) { rules = event.detail.items; changed(); }
+ async function importFile(event: Event) {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0]; input.value = '';
+  if (!file || busy) return;
+  busy = true; error = ''; pendingImport = null;
+  try {
+   if (file.size > SPEECH_RULE_FILE_LIMIT) throw new Error('Rule files must be smaller than 512 KB.');
+   const imported = parseSpeechRulesImport(await file.text());
+   if (!canNameRules && imported.some(rule => rule.name)) throw new Error('Update the Android app to import rule names.');
+   if (!canReplace && imported.some(rule => rule.replacement)) throw new Error('Update the Android app to import replacements.');
+   const result = await processSpeechText('', imported);
+   const invalid = imported.find(rule => result.errors[rule.id]);
+   if (invalid) throw new Error(`${invalid.name?.trim() || `Rule ${imported.indexOf(invalid) + 1}`}: ${result.errors[invalid.id]}`);
+   pendingImport = imported;
+  } catch (e) { error = e instanceof Error ? e.message : 'Could not import speech rules.'; }
+  finally { busy = false; }
+ }
+ function applyImport(append: boolean) {
+  if (!pendingImport || busy) return;
+  try {
+   rules = append ? appendSpeechRules($state.snapshot(rules), $state.snapshot(pendingImport)) : $state.snapshot(pendingImport);
+   pendingImport = null; expandedId = null; changed();
+  } catch (e) { error = e instanceof Error ? e.message : 'Could not import speech rules.'; }
+ }
+ async function exportRules() {
+  if (busy) return;
+  busy = true; error = ''; errors = {};
+  try {
+   const snapshot = $state.snapshot(rules);
+   const result = await processSpeechText('', snapshot);
+   errors = result.errors;
+   if (Object.keys(errors).length) { expandedId = snapshot.find(rule => errors[rule.id])?.id ?? null; throw new Error('Fix the highlighted rules before exporting.'); }
+   const json = serializeSpeechRules(snapshot);
+   await saveGeneratedDownload('chungus-speech-rules.json', 'application/json', async () => new Blob([json], { type: 'application/json' }));
+  } catch (e) { error = e instanceof Error ? e.message : 'Could not export speech rules.'; }
+  finally { busy = false; }
+ }
  async function run(save: boolean) {
   if (busy) return;
   busy = true; error = ''; errors = {}; preview = null;
@@ -52,12 +94,30 @@
 <section class="card" aria-label="Text processing">
  <div class="card-head"><span class="card-title">Text processing</span><span class="scope">This device</span></div>
  <div class="card-body">
-  <p class="help">Remove words or patterns from speech only. Rules run from top to bottom, each using the previous result. Saved changes apply to the next reading.</p>
+  <p class="help">Replace or remove words and patterns from speech only. Rules run from top to bottom, each using the previous result. Saved changes apply to the next reading.</p>
   {#if !available}<p class="help">Update the Android app to use text processing.</p>
   {:else if loading}<p class="help" role="status">Loading rules…</p>
   {:else if !loaded}<Button variant="ghost" size="sm" onclick={load}>Retry loading</Button>
   {:else}
+   <input bind:this={fileInput} type="file" accept=".json,application/json" hidden onchange={importFile} aria-label="Import speech rules file" />
+   <div class="transfer-actions">
+    <Button variant="ghost" size="sm" disabled={busy} onclick={() => fileInput?.click()}><Icon name="upload" class="w-3.5 h-3.5" />Import</Button>
+    <Button variant="ghost" size="sm" disabled={busy} onclick={exportRules}><Icon name="download" class="w-3.5 h-3.5" />Export</Button>
+   </div>
+   <p class="help">Export the current draft as JSON. Imported rules stay in the draft until you save them.</p>
+   {#if pendingImport}
+    <div class="import-choice" role="region" aria-label="Imported speech rules">
+     <p class="help">{pendingImport.length} rule{pendingImport.length === 1 ? '' : 's'} ready to import. Add to the end of this draft or replace it.</p>
+     <div class="transfer-actions">
+      <Button variant="secondary" size="sm" disabled={busy || rules.length + pendingImport.length > 30 || !pendingImport.length} onclick={() => applyImport(true)}>Add to rules</Button>
+      <Button variant="secondary" size="sm" disabled={busy} onclick={() => applyImport(false)}>Replace rules</Button>
+      <Button variant="ghost" size="sm" disabled={busy} onclick={() => { pendingImport = null; error = ''; }}>Cancel import</Button>
+     </div>
+     {#if rules.length + pendingImport.length > 30}<p class="help">Adding would exceed the limit of 30 rules. Replace the draft or import fewer rules.</p>{/if}
+    </div>
+   {/if}
    {#if !canNameRules}<p class="help">Update the Android app to 0.1.10 or newer to save rule names.</p>{/if}
+   {#if !canReplace}<p class="help">Update the Android app to 0.1.13 or newer to save replacements.</p>{/if}
    <div class="rules" use:dragHandleZone={{ items: rules, type: 'speech-rules', flipDurationMs: 160, dropTargetStyle: {}, delayTouchStart: 180, dragDisabled: busy }} onconsider={event => rules = event.detail.items} onfinalize={reorder}>
     {#each rules as rule, index (rule.id)}
      <div class="rule" class:off={!rule.enabled} class:has-error={!!errors[rule.id]}>
@@ -78,8 +138,11 @@
          <Select value={rule.regex ? 'regex' : 'text'} disabled={busy} aria-label="Rule {index + 1} type" onchange={event => { rule.regex = event.currentTarget.value === 'regex'; changed(); }}><option value="text">Text</option><option value="regex">Regex</option></Select>
          <label class="case"><input type="checkbox" disabled={busy} bind:checked={rule.caseSensitive} onchange={changed} />Match case</label>
         </div>
-        <label class="sr-only" for="speech-rule-{rule.id}">Rule {index + 1} pattern</label>
-        <textarea id="speech-rule-{rule.id}" class="pattern" rows="2" maxlength="1000" disabled={busy} bind:value={rule.pattern} oninput={changed} spellcheck="false" aria-invalid={!!errors[rule.id]} placeholder={rule.regex ? 'Regex pattern, without / delimiters' : 'Word or phrase to skip'}></textarea>
+        <label class="slider-label" for="speech-rule-{rule.id}">Match text</label>
+        <textarea id="speech-rule-{rule.id}" class="pattern" rows="2" maxlength="1000" disabled={busy} bind:value={rule.pattern} oninput={changed} spellcheck="false" aria-invalid={!!errors[rule.id]} placeholder={rule.regex ? 'Regex pattern, without / delimiters' : 'Word or phrase to match'}></textarea>
+        <label class="slider-label" for="speech-rule-replacement-{rule.id}">Replace to</label>
+        <textarea id="speech-rule-replacement-{rule.id}" class="pattern" rows="2" maxlength="1000" disabled={busy || !canReplace} value={rule.replacement ?? ''} oninput={event => { rule.replacement = event.currentTarget.value; changed(); }} spellcheck="false" aria-describedby="speech-rule-replacement-help-{rule.id}" placeholder="Leave empty to remove matched text"></textarea>
+        <p class="help" id="speech-rule-replacement-help-{rule.id}">Leave empty to remove matches.{rule.regex ? ' Use $1, $2 or $<name> to insert captured groups.' : ''}</p>
        </div>
       {/if}
       {#if errors[rule.id]}<p class="rule-error">{errors[rule.id]}</p>{/if}
@@ -107,6 +170,8 @@
 
 <style>
  .card-body,.rules,.preview { display:flex; flex-direction:column; gap:.75rem; }
+ .transfer-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
+ .import-choice { display:flex; flex-direction:column; gap:.5rem; padding:.75rem; border:1px solid var(--color-border); border-radius:var(--radius-md); }
  .rules { min-height:.5rem; }
  .rule { padding:.75rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); background:var(--color-bg-secondary); min-width:0; }
  .rule.off .pattern { opacity:.5; }

@@ -52,6 +52,7 @@ declare global {
 			/** Available since APK 0.1.9. Settings are stored only on this Android device. */
 			/** APK 0.1.10 preserves optional rule names; older bridges discard them. */
 			readonly readingRuleNames?: boolean;
+			readonly readingRuleReplacements?: boolean;
 			readingRules?(): Promise<SpeechRule[]>;
 			saveReadingRules?(rules: SpeechRule[]): Promise<void>;
 			readingSettings?(): Promise<AndroidSpeechSettings>;
