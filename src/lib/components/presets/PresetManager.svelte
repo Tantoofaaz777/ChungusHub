@@ -20,6 +20,8 @@
 		showCreate?: boolean;
 		showSave?: boolean;
 		onSave?: () => void | Promise<void>;
+		/** Editing a name uses the builder's existing draft and Save/Discard ownership. */
+		onRename?: (name: string) => void | Promise<void>;
 		showEdit?: boolean;
 		onEdit?: () => void;
 		/** Shrinks the menu trigger to sit inline beside small text (the Preset
@@ -33,6 +35,7 @@
 		showCreate = false,
 		showSave = false,
 		onSave,
+		onRename,
 		showEdit = false,
 		onEdit,
 		compact = false
@@ -89,8 +92,11 @@
 		confirmState = null;
 	}
 
-	function rejectTakenName(name: string): boolean {
-		if (!presetService.isNameTaken(name)) return false;
+	function rejectTakenName(name: string, exceptId?: string): boolean {
+		const target = name.trim().toLowerCase();
+		const draftNameTaken = allPresets.some(preset => preset.id !== exceptId &&
+			presetService.getEffective(preset.id)?.name.trim().toLowerCase() === target);
+		if (!presetService.isNameTaken(name, exceptId) && !draftNameTaken) return false;
 		toastStore.error(`A preset named "${name.trim()}" already exists`);
 		return true;
 	}
@@ -142,6 +148,18 @@
 		await run(`duplicate "${source.name}"`, async () => {
 			const preset = await presetService.duplicatePreset(source.id, name.trim());
 			await presetService.activatePreset(preset.id);
+		});
+	}
+
+	async function renamePreset(): Promise<void> {
+		const source = activePreset;
+		if (!source || !onRename) return;
+		const name = (await askName('Rename preset', 'Preset name', source.name, 'Rename'))?.trim();
+		if (!name || name === source.name || rejectTakenName(name, source.id)) return;
+		await run(`rename "${source.name}"`, async () => {
+			// A remote selection change while the dialog was open cannot rename another preset.
+			if (activeId !== source.id) throw new Error('The selected preset changed. Try again.');
+			await onRename?.(name);
 		});
 	}
 
@@ -275,7 +293,7 @@
 				     and this list is where you'd go back for it. Same rule as the switcher in
 				     Preset Controls, which is the other picker over the same set. -->
 				{#each allPresets as preset (preset.id)}
-					<option value={preset.id}>{preset.name}{presetService.hasDraft(preset.id) ? ' • Draft' : ''}</option>
+					<option value={preset.id}>{presetService.getEffective(preset.id)?.name ?? preset.name}{presetService.hasDraft(preset.id) ? ' • Draft' : ''}</option>
 				{/each}
 			</Select>
 		</div>
@@ -328,6 +346,12 @@
 			<Icon name="copy" class="w-4 h-4" strokeWidth={1.5} />
 			<span>Duplicate</span>
 		</button>
+		{#if onRename}
+			<button type="button" role="menuitem" class="brw-menu-item" disabled={!activePreset} onclick={() => closeAnd(renamePreset)}>
+				<Icon name="pencil" class="w-4 h-4" strokeWidth={1.5} />
+				<span>Rename</span>
+			</button>
+		{/if}
 		<button type="button" role="menuitem" class="brw-menu-item" onclick={() => closeAnd(() => fileInput?.click())}>
 			<Icon name="upload" class="w-4 h-4" strokeWidth={1.5} />
 			<span>Import card or JSON…</span>

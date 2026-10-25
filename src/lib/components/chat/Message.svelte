@@ -1148,6 +1148,7 @@
 			width: 100%;
 		}
 
+		.message-thinking,
 		.message-content {
 			padding-inline: min(0.86rem, var(--msg-pad-x, 0.98rem));
 		}

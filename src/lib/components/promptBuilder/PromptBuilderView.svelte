@@ -289,6 +289,12 @@
 		await presetService.saveDraft(currentPreset);
 	}
 
+	async function renamePreset(name: string): Promise<void> {
+		if (!currentPreset) return;
+		currentPreset.name = name;
+		await persistDraft();
+	}
+
 	// In-app replacement for native confirm(), which renders browser chrome.
 	let confirmState = $state<{ title: string; message: string; confirmLabel: string; variant: 'danger' | 'default'; resolve: (ok: boolean) => void } | null>(null);
 
@@ -578,7 +584,7 @@
 <div class="pb">
 	<!-- Preset selection, actions, and save state in normal document flow. -->
 	<header class="pb-spine">
-		<PresetManager id="preset-select" showCreate showSave={isDirty} onSave={saveChanges} />
+		<PresetManager id="preset-select" showCreate showSave={isDirty} onSave={saveChanges} onRename={renamePreset} />
 
 		{#if isDirty || justSaved}
 			<div class="pb-spine-status" aria-live="polite">

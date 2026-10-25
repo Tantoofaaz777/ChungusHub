@@ -267,6 +267,7 @@
 			gap: 0.42rem;
 		}
 
+		.stream-thinking,
 		.stream-content {
 			padding-inline: min(0.86rem, var(--msg-pad-x, 0.98rem));
 		}

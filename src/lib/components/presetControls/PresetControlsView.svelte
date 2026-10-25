@@ -410,9 +410,7 @@
 <div class="pcv">
 	<header class="overlay-header overlay-header--stacked">
 		<h2 class="overlay-title">Preset Controls</h2>
-		<div class="overlay-crumb">
-			<!-- The switcher and the actions menu sit together on the subject line: the
-			     menu acts on the preset the switcher names. -->
+		<div class="overlay-crumb pcv-preset-row">
 			{#if activePreset}
 				<div class="pcv-switcher" bind:this={presetMenuRef}>
 					<button
@@ -424,7 +422,7 @@
 						title="Switch preset"
 					>
 						<span class="overlay-subject">{activePreset.name}</span>
-						<Icon name="chevronDown" class="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+						<span class="pcv-switch-chevron"><Icon name="chevronDown" class="w-3.5 h-3.5 text-text-muted" /></span>
 					</button>
 					{#if presetMenuOpen}
 						<div class="pcv-switch-pop" role="menu">
@@ -437,7 +435,7 @@
 									class:is-open={preset.id === activeId}
 									onclick={() => pickPreset(preset.id)}
 								>
-									<span class="pcv-switch-item-name">{preset.name}</span>
+									<span class="pcv-switch-item-name">{presetService.getEffective(preset.id)?.name ?? preset.name}</span>
 									{#if presetService.hasDraft(preset.id)}<span class="pcv-switch-draft">Draft</span>{/if}
 									{#if preset.id === activeId}<Icon name="check" class="w-3.5 h-3.5 flex-shrink-0" />{/if}
 								</button>
@@ -446,15 +444,17 @@
 					{/if}
 				</div>
 			{:else}
-				<span class="overlay-facts">No preset active</span>
+				<span class="overlay-facts pcv-empty-subject">No preset active</span>
 			{/if}
-			<PresetManager
-				id="controls-preset-select"
-				compact
-				showSelect={false}
-				showEdit
-				onEdit={openPromptBuilder}
-			/>
+			<div class="pcv-actions">
+				<PresetManager
+					id="controls-preset-select"
+					compact
+					showSelect={false}
+					showEdit
+					onEdit={openPromptBuilder}
+				/>
+			</div>
 		</div>
 	</header>
 
@@ -673,18 +673,47 @@
 		overflow: hidden;
 	}
 
-	/* Preset switcher: the subject dropdown. The button itself is the shared
-	   .overlay-switch recipe. */
+	/* Equal side slots keep the name on the title's axis, independent of actions. */
+	.pcv-preset-row {
+		display: grid;
+		grid-template-columns: 1.75rem minmax(0, 1fr) 1.75rem;
+		width: 100%;
+	}
+
+	.pcv-switcher,
+	.pcv-empty-subject {
+		grid-column: 2;
+		justify-self: center;
+		max-width: 100%;
+	}
+
+	.pcv-actions {
+		grid-column: 3;
+		justify-self: end;
+	}
+
 	.pcv-switcher {
 		position: relative;
 		min-width: 0;
 	}
 
-	/* Anchored to the switch's own left edge. */
+	.pcv-switcher .overlay-switch {
+		position: relative;
+		padding-inline: 1.675rem;
+	}
+
+	.pcv-switch-chevron {
+		position: absolute;
+		right: 0.5rem;
+		display: flex;
+		align-items: center;
+	}
+
 	.pcv-switch-pop {
 		position: absolute;
 		top: calc(100% + 0.375rem);
-		left: 0;
+		left: 50%;
+		transform: translateX(-50%);
 		z-index: 45;
 		width: min(17rem, calc(100cqw - 1.5rem));
 		max-height: 18rem;

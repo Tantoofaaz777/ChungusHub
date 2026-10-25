@@ -1,5 +1,10 @@
 # Prompt assembly pipeline: architecture & maintenance
 
+Prompt Builder's preset menu offers **Rename**, using the existing name dialog and the
+builder-owned draft. The name changes through Save/Discard without replacing the preset ID
+or committing other edits. Both preset pickers show the effective draft name. Name checks
+reserve committed and draft names on other presets, case-insensitively.
+
 Maintenance invariants (2026-10-24):
 
 - Structural history detection and example trimming use substitution's built-in case and
