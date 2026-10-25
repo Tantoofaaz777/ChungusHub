@@ -3,6 +3,7 @@
 import type { LorebookTrace } from '$lib/lorebook/types';
 import type { BackgroundConfig } from '$lib/types/background';
 import { normalizeBackgroundConfig } from '$lib/types/background';
+import { normalizeReminderProgress } from '$lib/memory/reminders';
 
 export interface Chat {
 	id: string;
@@ -98,6 +99,8 @@ export interface ChatScene {
  *  so that key is simply not parsed: the blob still reads fine and drops it on the chat's
  *  next write. */
 export interface ChatFeatureState {
+	/** Notification checkpoints, anchored to message paths rather than the changing leaf. */
+	memoryReminder?: import('$lib/memory/reminders').MemoryReminderProgress;
 	/** Persistent, chat-scoped text exposed only through {{authorsNote}}. */
 	authorsNote: { text: string };
 	/** The last 10 consumed one-shot steering texts, most-recent first, for quick reuse
@@ -215,7 +218,9 @@ export function normalizeChatFeatureState(raw: unknown): ChatFeatureState {
 		return defaultChatFeatureState();
 	}
 	const obj = value as Record<string, unknown>;
+	const memoryReminder = normalizeReminderProgress(obj.memoryReminder);
 	return {
+		...(memoryReminder ? { memoryReminder } : {}),
 		authorsNote: normalizeAuthorsNote(obj.authorsNote),
 		steeringHistory: normalizeSteeringHistory(obj.steeringHistory),
 		scene: normalizeChatScene(obj.scene),

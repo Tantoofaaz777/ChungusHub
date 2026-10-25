@@ -1,6 +1,7 @@
 <script lang="ts">
 	import MessageList from './MessageList.svelte';
 	import SceneDraftDialog from '$lib/components/memory/SceneDraftDialog.svelte';
+	import MemoryReminder from '$lib/components/memory/MemoryReminder.svelte';
 	import InputArea from './InputArea.svelte';
 	import PortraitViewer from './PortraitViewer.svelte';
 	import { chatStore } from '$lib/stores/chat.svelte';
@@ -145,6 +146,8 @@
 		if (wheelTarget !== null) wheelTarget += delta;
 	}
 </script>
+
+<MemoryReminder />
 
 <div class="chat-shell">
 	{#if opening}

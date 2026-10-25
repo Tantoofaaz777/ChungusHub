@@ -12,6 +12,7 @@ import { normalizeThreadsPrompts, activeThreadsPrompt, addThreadsPrompt, renameT
 import { DEFAULT_THREADS_INSTRUCTIONS } from '$shared/threads/model';
 import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 import { DEFAULT_PREVIOUS_SUMMARIES, normalizePreviousSummaries } from '$lib/memory/generation-context';
+import { DEFAULT_MEMORY_REMINDER_INTERVAL, normalizeReminderInterval } from '$lib/memory/reminders';
 import { clampSteeringDepth, STEERING_ROLES, type SteeringDefaults, type SteeringRole } from '$lib/types/steering';
 
 const SETTINGS_KEY = 'featurePrompts';
@@ -97,6 +98,8 @@ interface FeaturePromptsState {
 	memoryEnabled: boolean;
 	/** App-wide count of earlier active summaries supplied as generation context; 0 disables. */
 	memoryPreviousSummaries: number;
+	memoryReminderEnabled: boolean;
+	memoryReminderInterval: number;
 	openingSceneEnabled: boolean;
 	steeringEnabled: boolean;
 	spellcheckEnabled: boolean;
@@ -114,6 +117,8 @@ export function normalizeFeaturePrompts(raw: Partial<FeaturePromptsState> | null
 		threadsEnabled: raw?.threadsEnabled ?? true,
 		memoryEnabled: raw?.memoryEnabled ?? true,
 		memoryPreviousSummaries: normalizePreviousSummaries(raw?.memoryPreviousSummaries),
+		memoryReminderEnabled: raw?.memoryReminderEnabled === true,
+		memoryReminderInterval: normalizeReminderInterval(raw?.memoryReminderInterval),
 		openingSceneEnabled: raw?.openingSceneEnabled ?? true,
 		steeringEnabled: raw?.steeringEnabled ?? true,
 		spellcheckEnabled: raw?.spellcheckEnabled ?? true,
@@ -132,6 +137,8 @@ class FeaturePromptsStore {
 		threadsEnabled: true,
 		memoryEnabled: true,
 		memoryPreviousSummaries: DEFAULT_PREVIOUS_SUMMARIES,
+		memoryReminderEnabled: false,
+		memoryReminderInterval: DEFAULT_MEMORY_REMINDER_INTERVAL,
 		openingSceneEnabled: true,
 		steeringEnabled: true,
 		spellcheckEnabled: true,
@@ -201,6 +208,17 @@ class FeaturePromptsStore {
 
 	get openingSceneEnabled(): boolean {
 		return this.state.openingSceneEnabled;
+	}
+
+	get memoryReminderEnabled(): boolean { return this.state.memoryReminderEnabled; }
+	setMemoryReminderEnabled(value: boolean): void {
+		this.state = { ...this.state, memoryReminderEnabled: value };
+		this.persist();
+	}
+	get memoryReminderInterval(): number { return normalizeReminderInterval(this.state.memoryReminderInterval); }
+	setMemoryReminderInterval(value: number): void {
+		this.state = { ...this.state, memoryReminderInterval: normalizeReminderInterval(value) };
+		this.persist();
 	}
 
 	get steeringEnabled(): boolean {

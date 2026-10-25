@@ -229,6 +229,13 @@ test('retired automatic-memory settings are ignored while current memory prompts
  expect(Object.hasOwn(FEATURE_PROMPT_DEFAULTS, 'memoryPromote')).toBe(false);
 });
 
+test('memory reminders are opt-in and retain their interval independently of the engine switch', () => {
+	expect(normalizeFeaturePrompts(null)).toMatchObject({ memoryReminderEnabled: false, memoryReminderInterval: 20_000 });
+	expect(normalizeFeaturePrompts({ memoryEnabled: false, memoryReminderEnabled: true, memoryReminderInterval: 12_500 }))
+		.toMatchObject({ memoryEnabled: false, memoryReminderEnabled: true, memoryReminderInterval: 12_500 });
+	expect(normalizeFeaturePrompts({ memoryReminderInterval: NaN }).memoryReminderInterval).toBe(20_000);
+});
+
 test('loading a chat and refreshing its path never starts automatic model work', async () => {
  await open();
  const ctx = { chatId: 'a', allMessages: [], leafId: null, characterId: null, characterVersionId: null, personaId: null };

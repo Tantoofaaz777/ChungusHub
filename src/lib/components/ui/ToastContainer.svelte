@@ -46,7 +46,15 @@
 				class="w-5 h-5 flex-shrink-0"
 				style="color: {toneColors[toast.tone]}"
 			/>
-			<span class="flex-1">{toast.message}</span>
+			<div class="flex-1 min-w-0">
+				<span>{toast.message}</span>
+				{#if toast.link}
+					<button type="button" class="block mt-1 text-accent underline underline-offset-2"
+						onclick={() => { toast.link?.open(); toastStore.remove(toast.id); }}>
+						{toast.link.label}
+					</button>
+				{/if}
+			</div>
 
 			{#if toast.count > 1}
 				<span class="toast-count">{toast.count}</span>

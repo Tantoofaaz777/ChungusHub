@@ -21,6 +21,8 @@ import { uiStore } from '$lib/stores/ui.svelte';
 import { memoryStore } from '$lib/memory/scene-store.svelte';
 import { trackReasoning } from '$lib/utils/reasoning-time';
 import { CoalescedTask } from '$lib/utils/coalesced-task';
+import { nextMemoryReminder, type ReminderCount } from '$lib/memory/reminders';
+import type { SceneMessage } from '$shared/memory-scenes';
 
 /** A reply being written for a chat by someone other than this page. */
 type ForeignGeneration = { chatId: string; requestId: string; startedAt: number };
@@ -989,6 +991,22 @@ class ChatStore {
 			const current = await this.freshFeatureState(chatId);
 			await this.writeFeatureState(chatId, { ...current, ...patch });
 		});
+	}
+
+	/** Serialize the checkpoint with other feature writes and recheck it after waiting.
+	 *  Merely navigating or acknowledging a reminder never changes chat recency. */
+	async claimMemoryReminder(chatId: string, path: readonly SceneMessage[], count: ReminderCount,
+		interval: number, isCurrent: () => boolean): Promise<boolean> {
+		let claimed = false;
+		await this.queueFeatureStateWrite(chatId, async () => {
+			const current = await this.freshFeatureState(chatId);
+			if (!isCurrent()) return;
+			const next = nextMemoryReminder(chatId, path, count, interval, current.memoryReminder);
+			if (!next) return;
+			await this.writeFeatureState(chatId, { ...current, memoryReminder: next.progress });
+			claimed = true;
+		});
+		return claimed;
 	}
 
 	/** Record the texts of one-shot steering notes that were just spent, newest last, so

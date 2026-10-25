@@ -24,12 +24,19 @@
  *   - No em dash, ever. Two clauses are two sentences, or a colon.
  *   - One sentence carries no trailing period; two or more keep theirs.
  *   - Durations are a property of the tone, not of the sentence, so they are not a parameter.
- *   - A toast carries no buttons. Anything that needs an answer is asked BEFORE the act
+ *   - A toast may offer an optional navigation shortcut. Anything that needs an answer is asked BEFORE the act
  *     (the destructive-act ladder in architecture/ui-shell-settings.md), never offered as
  *     an undo afterwards: a decision on a 5 second timer is a bug generator, not a safety.
  */
 
 export type ToastTone = 'success' | 'info' | 'warning' | 'error';
+
+export interface ToastLink {
+	/** Identifies the destination when folding otherwise identical notifications. */
+	key: string;
+	label: string;
+	open: () => void;
+}
 
 export interface Toast {
 	id: string;
@@ -37,6 +44,7 @@ export interface Toast {
 	tone: ToastTone;
 	/** Repeats of an identical line fold into the live one instead of stacking twins. */
 	count: number;
+	link?: ToastLink;
 }
 
 /** How long each tone is worth reading. Held here rather than at the call sites so a sentence
@@ -81,21 +89,22 @@ class ToastStore {
 	toasts = $state<Toast[]>([]);
 	private timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-	private show(message: string, tone: ToastTone): void {
+	private show(message: string, tone: ToastTone, link?: ToastLink): void {
 		const text = message.trim();
 		if (!text) return;
 
 		// A loop that fails ten times has one thing to say, not ten. Only identical lines fold,
 		// so two different files failing an import still name themselves separately.
-		const twin = this.toasts.find((t) => t.message === text && t.tone === tone);
+		const twin = this.toasts.find((t) => t.message === text && t.tone === tone && t.link?.key === link?.key);
 		if (twin) {
 			twin.count += 1;
+			twin.link = link;
 			this.arm(twin.id, tone);
 			return;
 		}
 
 		const id = crypto.randomUUID();
-		this.toasts = [...this.toasts, { id, message: text, tone, count: 1 }];
+		this.toasts = [...this.toasts, { id, message: text, tone, count: 1, ...(link ? { link } : {}) }];
 		while (this.toasts.length > MAX_VISIBLE) this.remove(this.toasts[0].id);
 		this.arm(id, tone);
 	}
@@ -122,8 +131,8 @@ class ToastStore {
 		this.show(message, 'success');
 	}
 
-	info(message: string): void {
-		this.show(message, 'info');
+	info(message: string, link?: ToastLink): void {
+		this.show(message, 'info', link);
 	}
 
 	warning(message: string): void {

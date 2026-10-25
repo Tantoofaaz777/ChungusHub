@@ -218,6 +218,23 @@
 				<p class="placement-note">Include up to this many earlier summaries when generating chapters, arcs or volumes, oldest to newest. Compacted memories use their highest active summary. Default: 6. Set to 0 to omit previous summaries.</p>
 			</div>
 		</section>
+		<section class="card">
+			<div class="card-head" use:toggleRow>
+				<span class="card-title">Memory reminders</span>
+				<Toggle checked={featurePromptsStore.memoryReminderEnabled}
+					onchange={(value) => featurePromptsStore.setMemoryReminderEnabled(value)} label="Enable memory reminders" />
+			</div>
+			<div class="card-body">
+				<label class="threads-limit" for="memory-reminder-interval">
+					Remind every (tokens)
+					<input id="memory-reminder-interval" class="input-base" type="number" min="1" max="2000000" step="1"
+						disabled={!featurePromptsStore.memoryReminderEnabled}
+						value={featurePromptsStore.memoryReminderInterval}
+						onchange={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) featurePromptsStore.setMemoryReminderInterval(e.currentTarget.valueAsNumber); }} />
+				</label>
+				<p class="placement-note">Show an in-app reminder after each interval of message text since the latest valid saved memory on this branch. Token counts are estimates; prompts, lorebooks, reasoning and hidden messages are excluded. Saving a memory moves the starting point to the end of its source range.</p>
+			</div>
+		</section>
 	{/if}
 
 	<!-- Steering's one extra card: the placement every note inherits. A note overrides either

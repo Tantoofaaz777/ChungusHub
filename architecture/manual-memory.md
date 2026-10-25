@@ -31,6 +31,21 @@ are not duplicated. Other chats/branches, summaries needing review, overlapping 
 the summary being regenerated and later memories are excluded. Regeneration uses the
 same source boundary. This setting syncs app-wide and takes effect on the next generation.
 
+Settings → Engines → Chat Memory also offers opt-in **Memory reminders** (default interval:
+20,000 tokens). A local text-token estimate counts visible message content after the latest
+valid active memory's source boundary on the current branch. It excludes reasoning, images,
+prompt framing, lorebooks and summary text. Saving a memory advances that boundary even when
+newer messages remain uncovered; compacting the same sources does not reset it again.
+
+The observer runs outside the Memory panel, only for an open, foreground chat after streaming
+and memory refreshes settle. Message/encoding counts are cached and long walks yield to the UI.
+Each interval produces one ordinary info toast with an optional **Open Chat Memory** shortcut.
+Checkpoint anchors live in the chat's `featureState.memoryReminder`, serialized alongside other
+feature writes without touching chat activity. They survive reopening/reloading and shared
+prefixes of swipes; divergent paths track their own thresholds. A copied chat starts fresh.
+Settings and checkpoints use the existing server sync and backup paths; no model calls or OS
+notifications are involved. Concurrent devices can each observe a crossing before sync arrives.
+
 The editable instructions remain the first `system` message. The second, `user` message
 contains the request, a delimited previous-context block (when nonempty), then the selected
 messages/child summaries in a separate source block. Reference instructions explicitly
