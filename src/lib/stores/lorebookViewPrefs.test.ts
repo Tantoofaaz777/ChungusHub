@@ -43,6 +43,19 @@ describe('normalizeLorebookViewState: the bare string every old install holds', 
 });
 
 describe('normalizeLorebookViewState: everything else the key can hold', () => {
+	test('grid columns replace legacy card sizes with a two-column default', () => {
+		for (const cardSize of [1, 2, 3, 4, 5]) {
+			expect(normalizeLorebookViewState({ cardSize, order: 'updated', viewMode: 'grid' }))
+				.toEqual({ ...LOREBOOK_VIEW_DEFAULTS, order: 'updated', viewMode: 'grid', gridColumns: 2 });
+		}
+		for (const gridColumns of [1, 2, 3]) {
+			expect(normalizeLorebookViewState({ gridColumns }).gridColumns).toBe(gridColumns);
+		}
+		for (const gridColumns of [0, 4, 1.5, '3', NaN, Infinity, null]) {
+			expect(normalizeLorebookViewState({ gridColumns }).gridColumns).toBe(2);
+		}
+	});
+
 	test('nothing stored, and every shape that is not a blob, reads as the defaults', () => {
 		for (const raw of [null, undefined, 7, true, ['a-z'], 'not an order']) {
 			expect(normalizeLorebookViewState(raw)).toEqual(LOREBOOK_VIEW_DEFAULTS);
@@ -54,7 +67,7 @@ describe('normalizeLorebookViewState: everything else the key can hold', () => {
 			normalizeLorebookViewState({
 				order: 'z-a',
 				viewMode: 'carousel',
-				cardSize: 99,
+				gridColumns: 99,
 				perPage: 7,
 				listCovers: 'yes'
 			})
@@ -71,7 +84,7 @@ describe('normalizeLorebookViewState: everything else the key can hold', () => {
 		const stored = {
 			order: 'oldest',
 			viewMode: 'gallery',
-			cardSize: 5,
+			gridColumns: 3,
 			perPage: 25,
 			listCovers: false
 		} as const;

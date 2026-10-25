@@ -1,8 +1,7 @@
 <script lang="ts">
 	/**
-	 * One book as a grid tile: the cover over a name, the Library's dense card to the geometry.
-	 * Name-only under the picture is the whole reason this mode exists, so the entry and link
-	 * counts the other two shapes carry are deliberately left to them.
+	 * One book as a compact grid tile: the name overlays the cover with Gallery's fade.
+	 * Entry and link counts belong to the larger Gallery cards and list rows.
 	 */
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import LibraryEntryMenu from '$lib/components/library/LibraryEntryMenu.svelte';
@@ -77,6 +76,9 @@
 			</div>
 		{/if}
 
+		<!-- Match Gallery's fade while keeping the grid's compact identity. -->
+		<div class="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/55 to-transparent pointer-events-none"></div>
+
 		{#if !selectionMode}
 			<div
 				class="absolute top-2 right-2 flex items-center [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-within:opacity-100 transition-opacity"
@@ -90,19 +92,19 @@
 				/>
 			</div>
 		{/if}
-	</div>
-
-	<div class="px-2.5 py-2 flex items-center gap-1.5">
-		<span
-			class="min-w-0 font-ui text-[13px] truncate {book.name
-				? 'font-medium text-text-primary'
-				: 'italic text-text-muted'}"
-		>
-			{name}
-		</span>
-		{#if book.global}
-			<LorebookGlobalBadge />
-		{/if}
+		<div class="absolute inset-x-0 bottom-0 px-2.5 py-2.5 flex flex-col items-start gap-1">
+			<span
+				class="w-full min-w-0 font-ui text-[13px] truncate {book.name
+					? 'font-semibold text-white'
+					: 'italic text-white/70'}"
+				style="text-shadow: 0 1px 4px rgb(0 0 0 / 0.85), 0 0 2px rgb(0 0 0 / 0.5);"
+			>
+				{name}
+			</span>
+			{#if book.global}
+				<LorebookGlobalBadge />
+			{/if}
+		</div>
 	</div>
 </div>
 

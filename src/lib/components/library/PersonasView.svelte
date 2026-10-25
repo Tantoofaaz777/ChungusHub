@@ -20,7 +20,6 @@
 	import {
 		SORT_OPTIONS,
 		PER_PAGE_OPTIONS,
-		CARD_SIZE_MAP,
 		sortEntries,
 		matchesSearch,
 		rankSearchResults,
@@ -97,12 +96,10 @@
 		personasViewPrefs.setViewMode(mode);
 	}
 
-	let cardSize = $derived(personasViewPrefs.cardSize);
+	let gridColumns = $derived(personasViewPrefs.gridColumns);
 
-	let cardMinWidth = $derived(CARD_SIZE_MAP[cardSize] ?? 160);
-
-	function handleCardSizeChange(e: Event) {
-		personasViewPrefs.setCardSize(parseInt((e.target as HTMLInputElement).value, 10));
+	function handleGridColumnsChange(e: Event) {
+		personasViewPrefs.setGridColumns(parseInt((e.target as HTMLInputElement).value, 10));
 	}
 
 	// ---- Search, sort & pagination. Sort + per-page persist via the synced spine. ----
@@ -379,20 +376,23 @@
 			{#if viewMode === 'grid'}
 				<div class="brw-sec">
 					<div class="brw-sec-head">
-						<span class="brw-sec-title">Card size</span>
+						<span class="brw-sec-title">Columns</span>
 					</div>
 					<div class="flex items-center gap-2.5">
-						<Icon name="image" class="w-4 h-4 text-text-muted shrink-0" />
+						<Icon name="grid" class="w-4 h-4 text-text-muted shrink-0" />
 						<input
 							type="range"
 							min="1"
-							max="5"
-							value={cardSize}
-							oninput={handleCardSizeChange}
-							use:rangeReset={{ defaultValue: BROWSE_DEFAULTS.cardSize, apply: (v) => personasViewPrefs.setCardSize(v) }}
+							max="3"
+							step="1"
+							value={gridColumns}
+							oninput={handleGridColumnsChange}
+							use:rangeReset={{ defaultValue: BROWSE_DEFAULTS.gridColumns, apply: (v) => personasViewPrefs.setGridColumns(v) }}
 							class="brw-range"
-							aria-label="Card size"
+							aria-label="Grid columns"
+							aria-valuetext={`${gridColumns} ${gridColumns === 1 ? 'column' : 'columns'}`}
 						/>
+						<span class="text-xs text-text-secondary tabular-nums">{gridColumns}</span>
 					</div>
 				</div>
 			{/if}
@@ -465,7 +465,7 @@
 			{#if viewMode === 'grid'}
 				<div
 					class="brw-grid"
-					style="grid-template-columns: repeat(auto-fill, minmax({cardMinWidth}px, 1fr));"
+					style="grid-template-columns: repeat({gridColumns}, minmax(0, 1fr));"
 				>
 					{#each paginatedEntries as entry (entry.id)}
 						<LibraryCompactCard

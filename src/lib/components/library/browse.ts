@@ -44,14 +44,12 @@ export const CHARACTER_SORT_OPTIONS: { id: SortOption; label: string }[] = [
 
 export const PER_PAGE_OPTIONS = [25, 50, 100, 200, 500, 1000];
 
-/** Grid card size preference (1-5, where 3 is default) → min column width in px. */
-export const CARD_SIZE_MAP: Record<number, number> = {
-	1: 100, // Extra small - most columns
-	2: 130, // Small
-	3: 160, // Medium (default)
-	4: 200, // Large
-	5: 250 // Extra large - fewest columns
-};
+export const DEFAULT_GRID_COLUMNS = 2;
+
+/** The grid uses an explicit column count, independent of the available shelf width. */
+export function normalizeGridColumns(value: unknown): number {
+	return value === 1 || value === 2 || value === 3 ? value : DEFAULT_GRID_COLUMNS;
+}
 
 export function entryContentSize(entry: LibraryEntry): number {
 	let total = (entry.identity.name || '').length;

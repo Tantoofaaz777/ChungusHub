@@ -19,7 +19,7 @@
 	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
 	import BrowsePopover from '$lib/components/library/BrowsePopover.svelte';
 	import LibraryPager from '$lib/components/library/LibraryPager.svelte';
-	import { foldForSearch, CARD_SIZE_MAP, PER_PAGE_OPTIONS } from '$lib/components/library/browse';
+	import { foldForSearch, PER_PAGE_OPTIONS } from '$lib/components/library/browse';
 	import LorebookShelfRow from './LorebookShelfRow.svelte';
 	import LorebookGalleryCard from './LorebookGalleryCard.svelte';
 	import LorebookGridCard from './LorebookGridCard.svelte';
@@ -109,7 +109,6 @@
 	// The app-wide lorebook display order, shared with both pickers over this shelf; layout,
 	// card size and per-page are this shelf's alone (architecture/lorebook.md coupling 10).
 	let ordered = $derived(sortLorebooks(books, lorebookViewPrefs.order));
-	let cardMinWidth = $derived(CARD_SIZE_MAP[lorebookViewPrefs.cardSize] ?? 160);
 
 	/** The search reads names, entry titles and keywords, never entry content (architecture/
 	 *  lorebook.md), folded once per book and kept until that book is edited: folding on every
@@ -486,25 +485,28 @@
 
 				{#if lorebookViewPrefs.viewMode === 'grid'}
 					<div class="brw-sec">
-						<div class="brw-sec-head"><span class="brw-sec-title">Card size</span></div>
+						<div class="brw-sec-head"><span class="brw-sec-title">Columns</span></div>
 						<div class="flex items-center gap-2.5">
-							<Icon name="image" class="w-4 h-4 text-text-muted shrink-0" />
+							<Icon name="grid" class="w-4 h-4 text-text-muted shrink-0" />
 							<input
 								type="range"
 								min="1"
-								max="5"
-								value={lorebookViewPrefs.cardSize}
+								max="3"
+								step="1"
+								value={lorebookViewPrefs.gridColumns}
 								oninput={(e) =>
-									lorebookViewPrefs.setCardSize(
+									lorebookViewPrefs.setGridColumns(
 										parseInt((e.target as HTMLInputElement).value, 10)
 									)}
 								use:rangeReset={{
-									defaultValue: LOREBOOK_VIEW_DEFAULTS.cardSize,
-									apply: (v) => lorebookViewPrefs.setCardSize(v)
+									defaultValue: LOREBOOK_VIEW_DEFAULTS.gridColumns,
+									apply: (v) => lorebookViewPrefs.setGridColumns(v)
 								}}
 								class="brw-range"
-								aria-label="Card size"
+								aria-label="Grid columns"
+								aria-valuetext={`${lorebookViewPrefs.gridColumns} ${lorebookViewPrefs.gridColumns === 1 ? 'column' : 'columns'}`}
 							/>
+							<span class="text-xs text-text-secondary tabular-nums">{lorebookViewPrefs.gridColumns}</span>
 						</div>
 					</div>
 				{/if}
@@ -759,7 +761,7 @@
 		{:else if lorebookViewPrefs.viewMode === 'grid'}
 			<div
 				class="brw-grid"
-				style="grid-template-columns: repeat(auto-fill, minmax({cardMinWidth}px, 1fr));"
+				style="grid-template-columns: repeat({lorebookViewPrefs.gridColumns}, minmax(0, 1fr));"
 			>
 				{#each paged as book (book.id)}
 					<LorebookGridCard

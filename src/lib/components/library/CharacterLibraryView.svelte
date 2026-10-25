@@ -29,7 +29,6 @@
 	import {
 		CHARACTER_SORT_OPTIONS,
 		PER_PAGE_OPTIONS,
-		CARD_SIZE_MAP,
 		sortEntries,
 		matchesSearch,
 		rankSearchResults,
@@ -99,14 +98,11 @@
 		pendingWithBooks.length > 0 && pendingWithBooks.every((p) => p.importBook)
 	);
 
-	// Card size preference (1-5, where 3 is default). Persisted via the synced spine.
-	let cardSize = $derived(libraryViewPrefs.cardSize);
+	// Explicit column count, synced independently for this shelf. Default: two.
+	let gridColumns = $derived(libraryViewPrefs.gridColumns);
 
-	// Computed min-width for grid
-	let cardMinWidth = $derived(CARD_SIZE_MAP[cardSize] ?? 160);
-
-	function handleCardSizeChange(e: Event) {
-		libraryViewPrefs.setCardSize(parseInt((e.target as HTMLInputElement).value, 10));
+	function handleGridColumnsChange(e: Event) {
+		libraryViewPrefs.setGridColumns(parseInt((e.target as HTMLInputElement).value, 10));
 	}
 
 	// Load library on mount
@@ -863,20 +859,23 @@
 				{#if viewMode === 'grid'}
 					<div class="brw-sec">
 						<div class="brw-sec-head">
-							<span class="brw-sec-title">Card size</span>
+							<span class="brw-sec-title">Columns</span>
 						</div>
 						<div class="flex items-center gap-2.5">
-							<Icon name="image" class="w-4 h-4 text-text-muted shrink-0" />
+							<Icon name="grid" class="w-4 h-4 text-text-muted shrink-0" />
 							<input
 								type="range"
 								min="1"
-								max="5"
-								value={cardSize}
-								oninput={handleCardSizeChange}
-								use:rangeReset={{ defaultValue: BROWSE_DEFAULTS.cardSize, apply: (v) => libraryViewPrefs.setCardSize(v) }}
+								max="3"
+								step="1"
+								value={gridColumns}
+								oninput={handleGridColumnsChange}
+								use:rangeReset={{ defaultValue: BROWSE_DEFAULTS.gridColumns, apply: (v) => libraryViewPrefs.setGridColumns(v) }}
 								class="brw-range"
-								aria-label="Card size"
+								aria-label="Grid columns"
+								aria-valuetext={`${gridColumns} ${gridColumns === 1 ? 'column' : 'columns'}`}
 							/>
+							<span class="text-xs text-text-secondary tabular-nums">{gridColumns}</span>
 						</div>
 					</div>
 				{/if}
@@ -1184,7 +1183,7 @@
 			{#if viewMode === 'grid'}
 				<div
 					class="brw-grid"
-					style="grid-template-columns: repeat(auto-fill, minmax({cardMinWidth}px, 1fr));"
+					style="grid-template-columns: repeat({gridColumns}, minmax(0, 1fr));"
 				>
 					{#each paginatedEntries as entry (entry.id)}
 						<LibraryCompactCard

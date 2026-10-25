@@ -1,5 +1,5 @@
 /**
- * How the lorebook shelf is drawn and ordered: layout, card size, results per page, whether a
+ * How the lorebook shelf is drawn and ordered: layout, grid columns, results per page, whether a
  * shelf row draws its cover, and the display order.
  *
  * The ORDER is one choice for the whole app, not one per list: the Library's Lorebooks shelf
@@ -16,7 +16,7 @@
  * order to decide what reaches the prompt first (`sortLorebooks` in lorebook/types.ts).
  */
 import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
-import { PER_PAGE_OPTIONS, type ViewMode } from '$lib/components/library/browse';
+import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, type ViewMode } from '$lib/components/library/browse';
 import type { LorebookSortOrder } from '$lib/lorebook/types';
 
 const SETTINGS_KEY = 'lorebookSort';
@@ -38,7 +38,7 @@ const VIEW_MODES: ViewMode[] = ['grid', 'list', 'gallery'];
 interface LorebookViewState {
 	order: LorebookSortOrder;
 	viewMode: ViewMode;
-	cardSize: number;
+	gridColumns: number;
 	perPage: number;
 	/** Shelf rows draw the book's cover. On by default: hiding art nobody asked to hide reads
 	 *  as a picture that failed to load, and the reader who wants the density can say so. */
@@ -50,7 +50,7 @@ interface LorebookViewState {
 const DEFAULTS: LorebookViewState = {
 	order: 'a-z',
 	viewMode: 'list',
-	cardSize: 3,
+	gridColumns: DEFAULT_GRID_COLUMNS,
 	perPage: 50,
 	listCovers: true
 };
@@ -63,10 +63,7 @@ export function normalizeLorebookViewState(raw: unknown): LorebookViewState {
 		viewMode: VIEW_MODES.includes(blob.viewMode as ViewMode)
 			? (blob.viewMode as ViewMode)
 			: DEFAULTS.viewMode,
-		cardSize:
-			typeof blob.cardSize === 'number' && blob.cardSize >= 1 && blob.cardSize <= 5
-				? blob.cardSize
-				: DEFAULTS.cardSize,
+		gridColumns: normalizeGridColumns(blob.gridColumns),
 		perPage: PER_PAGE_OPTIONS.includes(blob.perPage as number) ? (blob.perPage as number) : DEFAULTS.perPage,
 		listCovers: typeof blob.listCovers === 'boolean' ? blob.listCovers : DEFAULTS.listCovers
 	};
@@ -75,7 +72,7 @@ export function normalizeLorebookViewState(raw: unknown): LorebookViewState {
 class LorebookViewPrefs {
 	order = $state<LorebookSortOrder>(DEFAULTS.order);
 	viewMode = $state<ViewMode>(DEFAULTS.viewMode);
-	cardSize = $state<number>(DEFAULTS.cardSize);
+	gridColumns = $state<number>(DEFAULTS.gridColumns);
 	perPage = $state<number>(DEFAULTS.perPage);
 	listCovers = $state<boolean>(DEFAULTS.listCovers);
 
@@ -89,7 +86,7 @@ class LorebookViewPrefs {
 			const state = normalizeLorebookViewState(raw);
 			this.order = state.order;
 			this.viewMode = state.viewMode;
-			this.cardSize = state.cardSize;
+			this.gridColumns = state.gridColumns;
 			this.perPage = state.perPage;
 			this.listCovers = state.listCovers;
 		});
@@ -105,8 +102,8 @@ class LorebookViewPrefs {
 		this.persist();
 	}
 
-	setCardSize(cardSize: number): void {
-		this.cardSize = cardSize;
+	setGridColumns(columns: number): void {
+		this.gridColumns = normalizeGridColumns(columns);
 		this.persist();
 	}
 
@@ -124,7 +121,7 @@ class LorebookViewPrefs {
 		writeSetting(SETTINGS_KEY, {
 			order: this.order,
 			viewMode: this.viewMode,
-			cardSize: this.cardSize,
+			gridColumns: this.gridColumns,
 			perPage: this.perPage,
 			listCovers: this.listCovers
 		} satisfies LorebookViewState);
@@ -133,5 +130,5 @@ class LorebookViewPrefs {
 
 export const lorebookViewPrefs = new LorebookViewPrefs();
 
-/** The default card size, for the range control's own reset gesture. */
+/** The default view choices, including the column slider's reset value. */
 export const LOREBOOK_VIEW_DEFAULTS = DEFAULTS;

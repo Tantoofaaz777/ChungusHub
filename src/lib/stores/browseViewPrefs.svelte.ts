@@ -1,17 +1,17 @@
 /**
  * Browse-view preferences for the Library's Characters and Personas lists.
  *
- * View mode, card size, sort order, and results-per-page: the toolbar choices the
+ * View mode, grid columns, sort order, and results-per-page: the toolbar choices the
  * user makes while browsing. Formerly stored per-device in localStorage; now they
  * ride the settings spine so a choice on one device follows the user to the others.
  * One packed settings key per surface.
  */
-import { PER_PAGE_OPTIONS, CHARACTER_SORT_OPTIONS, type SortOption, type ViewMode } from '$lib/components/library/browse';
+import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, CHARACTER_SORT_OPTIONS, type SortOption, type ViewMode } from '$lib/components/library/browse';
 import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
 
 interface BrowseViewState {
 	viewMode: ViewMode;
-	cardSize: number;
+	gridColumns: number;
 	sort: SortOption;
 	perPage: number;
 	/** List rows draw the entry's tags. Off by default: the strip costs the preview line
@@ -25,7 +25,7 @@ interface BrowseViewState {
 
 export const DEFAULTS: BrowseViewState = {
 	viewMode: 'list',
-	cardSize: 3,
+	gridColumns: DEFAULT_GRID_COLUMNS,
 	sort: 'newest',
 	perPage: 50,
 	listTags: false,
@@ -37,22 +37,21 @@ const VIEW_MODES: ViewMode[] = ['grid', 'list', 'gallery'];
 /** Coerce a raw settings blob into a valid state, dropping anything out of range. */
 function normalize(raw: Partial<BrowseViewState> | null): BrowseViewState {
 	const viewMode = VIEW_MODES.includes(raw?.viewMode as ViewMode) ? (raw!.viewMode as ViewMode) : DEFAULTS.viewMode;
-	const cardSize =
-		typeof raw?.cardSize === 'number' && raw.cardSize >= 1 && raw.cardSize <= 5 ? raw.cardSize : DEFAULTS.cardSize;
+	const gridColumns = normalizeGridColumns(raw?.gridColumns);
 	// Validate against the characters superset: personas simply never offer the extras.
 	const sort = CHARACTER_SORT_OPTIONS.some((o) => o.id === raw?.sort) ? (raw!.sort as SortOption) : DEFAULTS.sort;
 	const perPage = PER_PAGE_OPTIONS.includes(raw?.perPage as number) ? (raw!.perPage as number) : DEFAULTS.perPage;
 	const listTags = typeof raw?.listTags === 'boolean' ? raw.listTags : DEFAULTS.listTags;
 	const listPortraits =
 		typeof raw?.listPortraits === 'boolean' ? raw.listPortraits : DEFAULTS.listPortraits;
-	return { viewMode, cardSize, sort, perPage, listTags, listPortraits };
+	return { viewMode, gridColumns, sort, perPage, listTags, listPortraits };
 }
 
 class BrowseViewPrefs {
 	#key: string;
 
 	viewMode = $state<ViewMode>(DEFAULTS.viewMode);
-	cardSize = $state<number>(DEFAULTS.cardSize);
+	gridColumns = $state<number>(DEFAULTS.gridColumns);
 	sort = $state<SortOption>(DEFAULTS.sort);
 	perPage = $state<number>(DEFAULTS.perPage);
 	listTags = $state<boolean>(DEFAULTS.listTags);
@@ -73,7 +72,7 @@ class BrowseViewPrefs {
 
 	private apply(state: BrowseViewState): void {
 		this.viewMode = state.viewMode;
-		this.cardSize = state.cardSize;
+		this.gridColumns = state.gridColumns;
 		this.sort = state.sort;
 		this.perPage = state.perPage;
 		this.listTags = state.listTags;
@@ -85,8 +84,8 @@ class BrowseViewPrefs {
 		this.persist();
 	}
 
-	setCardSize(size: number): void {
-		this.cardSize = size;
+	setGridColumns(columns: number): void {
+		this.gridColumns = normalizeGridColumns(columns);
 		this.persist();
 	}
 
@@ -113,7 +112,7 @@ class BrowseViewPrefs {
 	private persist(): void {
 		writeSetting(this.#key, {
 			viewMode: this.viewMode,
-			cardSize: this.cardSize,
+			gridColumns: this.gridColumns,
 			sort: this.sort,
 			perPage: this.perPage,
 			listTags: this.listTags,

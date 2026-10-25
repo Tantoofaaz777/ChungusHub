@@ -14,9 +14,27 @@ mock.module('$lib/services/transport', () => ({ ...realTransport, dbRpc: async (
 const { generalSettingsStore } = await import('./general-settings.svelte');
 const { personaStore } = await import('./persona.svelte');
 const { connectionStore } = await import('./connections.svelte');
+const { libraryViewPrefs, personasViewPrefs } = await import('./browseViewPrefs.svelte');
 const instantiate = <T extends object>(store: T): T => new (store.constructor as { new(): T })();
 const settle = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
 beforeEach(() => { reads = []; writes = []; });
+
+test('character and persona preferences use two columns for old settings and restore saved column choices', async () => {
+	for (const template of [libraryViewPrefs, personasViewPrefs]) {
+		const store = Reflect.construct(template.constructor, ['grid-columns-test']) as typeof template;
+		const legacy = store.syncReload();
+		reads.shift()!.resolve(JSON.stringify({ viewMode: 'grid', cardSize: 5, sort: 'oldest', perPage: 25 }));
+		await legacy;
+		expect(store.gridColumns).toBe(2);
+		expect(store.viewMode).toBe('grid');
+		expect(store.sort).toBe('oldest');
+		expect(store.perPage).toBe(25);
+		const saved = store.syncReload();
+		reads.shift()!.resolve(JSON.stringify({ viewMode: 'grid', gridColumns: 3 }));
+		await saved;
+		expect(store.gridColumns).toBe(3);
+	}
+});
 
 test('a general-settings reload cannot undo a newly saved chat preference', async () => {
 	const store = instantiate(generalSettingsStore), stale = JSON.stringify(store.settings);

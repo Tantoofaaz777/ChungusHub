@@ -93,6 +93,9 @@
 			</div>
 		{/if}
 
+		<!-- The same fade as Gallery keeps the name legible over any portrait. -->
+		<div class="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/55 to-transparent pointer-events-none"></div>
+
 		{#if !selectionMode}
 			<!-- Read-only favorited indicator; the toggle now lives in the ⋮ menu -->
 			{#if entry.isFavorite}
@@ -126,15 +129,14 @@
 			</div>
 		{/if}
 
-	</div>
-
-	<!-- Content Section: name only (the dense "tiles" view) -->
-	<div class="px-2.5 py-2 flex items-center gap-1.5">
-		<span class="font-ui font-medium text-[13px] text-text-primary truncate">{getName()}</span>
-		{#if active}
-			<span class="shrink-0 ml-auto text-[10px] font-ui px-1.5 py-0.5 rounded-full bg-accent/14 text-accent border border-accent/30">
-				Default
-			</span>
-		{/if}
+		<!-- Compact identity over the portrait, sized for the dense grid. -->
+		<div class="absolute inset-x-0 bottom-0 px-2.5 py-2.5 flex flex-col items-start gap-1">
+			<span class="w-full min-w-0 font-ui font-semibold text-[13px] text-white truncate" style="text-shadow: 0 1px 4px rgb(0 0 0 / 0.85), 0 0 2px rgb(0 0 0 / 0.5);">{getName()}</span>
+			{#if active}
+				<span class="shrink-0 text-[10px] font-ui px-1.5 py-0.5 rounded-full bg-accent/14 text-accent border border-accent/30 backdrop-blur-sm">
+					Default
+				</span>
+			{/if}
+		</div>
 	</div>
 </div>

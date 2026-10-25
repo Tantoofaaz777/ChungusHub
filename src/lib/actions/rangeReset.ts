@@ -1,7 +1,7 @@
 /**
  * Svelte action: double-clicking a raw <input type="range"> snaps it back to its
  * default value. ui/Slider has this built in via its `defaultValue` prop. This
- * action covers the bespoke range inputs scattered around the app (card-size,
+ * action covers the bespoke range inputs scattered around the app (grid columns,
  * sampling knobs, …).
  *
  * Usage: <input type="range" use:rangeReset={{ defaultValue: 1, apply: (v) => ... }} />
