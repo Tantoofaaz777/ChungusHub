@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import LibraryEntryMenu from './LibraryEntryMenu.svelte';
+	import TagList from './TagList.svelte';
 	import { imageService } from '$lib/services/imageService';
 	import { portraitFocusAim } from '$lib/utils/portrait-focus';
 	import type { LibraryEntry } from '$lib/types/library';
@@ -9,6 +10,7 @@
 		entry: LibraryEntry;
 		/** Marks the persona new chats start as (personas only). */
 		active?: boolean;
+		showTags?: boolean;
 		/** Bulk-selection mode: a click toggles selection instead of opening the entry. */
 		selectionMode?: boolean;
 		selected?: boolean;
@@ -30,6 +32,7 @@
 	let {
 		entry,
 		active = false,
+		showTags = false,
 		selectionMode = false,
 		selected = false,
 		onToggleSelect,
@@ -136,6 +139,9 @@
 				<span class="shrink-0 text-[10px] font-ui px-1.5 py-0.5 rounded-full bg-accent/14 text-accent border border-accent/30 backdrop-blur-sm">
 					Default
 				</span>
+			{/if}
+			{#if showTags && entry.identity.tags?.length}
+				<TagList tags={entry.identity.tags} tone="overlay" class="w-full pt-0.5" />
 			{/if}
 		</div>
 	</div>

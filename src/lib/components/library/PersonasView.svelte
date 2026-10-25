@@ -395,6 +395,13 @@
 						<span class="text-xs text-text-secondary tabular-nums">{gridColumns}</span>
 					</div>
 				</div>
+				<div class="brw-sec">
+					<div class="flex items-center justify-between gap-2">
+						<span class="brw-sec-title">Show Tags</span>
+						<Toggle size="sm" checked={personasViewPrefs.gridTags}
+							onchange={(value) => personasViewPrefs.setGridTags(value)} label="Show tags on grid cards" />
+					</div>
+				</div>
 			{/if}
 
 			<div class="brw-sec">
@@ -470,6 +477,7 @@
 					{#each paginatedEntries as entry (entry.id)}
 						<LibraryCompactCard
 							{entry}
+							showTags={personasViewPrefs.gridTags}
 							active={entry.id === activeId}
 							onSelect={handleSelectEntry}
 							onEdit={handleEditEntry}
