@@ -44,6 +44,8 @@
 	interface Props {
 		lorebookId: string;
 		entryId: string;
+		/** Known destinations in this book, normalized by the same reader as the engine. */
+		outletNames: string[];
 		/** The row's full editor is unfolded in place. */
 		expanded: boolean;
 		onToggle: () => void;
@@ -57,7 +59,7 @@
 		onSelectToggle: () => void;
 	}
 
-	let { lorebookId, entryId, expanded, onToggle, onDelete, onDuplicate, selectMode, selected, onSelectToggle }: Props =
+	let { lorebookId, entryId, outletNames, expanded, onToggle, onDelete, onDuplicate, selectMode, selected, onSelectToggle }: Props =
 		$props();
 
 	let entry = $derived(lorebookStore.getBook(lorebookId)?.entries.find((e) => e.id === entryId) ?? null);
@@ -286,6 +288,11 @@
 	let atDepth = $derived((entry?.position ?? LOREBOOK_POSITION_BLOCK) === LOREBOOK_POSITION_AT_DEPTH);
 	let atOutlet = $derived(entry?.position === LOREBOOK_POSITION_OUTLET);
 	let outletMacro = $derived(`{{outlet::${entry && lorebookOutletName(entry) || 'name'}}}`);
+	let outletSuggestions = $derived.by(() => {
+		if (!expanded || !atOutlet || !entry) return [];
+		const query = lorebookOutletName(entry);
+		return outletNames.filter((name) => name !== query && name.includes(query));
+	});
 	/** A SillyTavern position this app has no place for: named rather than quietly read as ours. */
 	let foreignPosition = $derived(
 		entry?.position == null ? '' : (ST_POSITION_NAMES[entry.position] ?? '')
@@ -917,7 +924,7 @@
 									{/if}
 								</div>
 								{#if atOutlet}
-									<div class="mt-2 min-w-0">
+									<div class="ed-outlet-field mt-2 min-w-0">
 										<label for="entry-outlet-{entryId}" class="ed-label section-label block !mb-1">Outlet name</label>
 										<input
 											id="entry-outlet-{entryId}"
@@ -933,6 +940,15 @@
 										<p id="entry-outlet-hint-{entryId}" class="mt-1 text-xs font-ui text-text-muted break-words">
 											Insert with <code class="font-mono">{outletMacro}</code>
 										</p>
+										{#if outletSuggestions.length}
+											<div class="ed-outlet-suggestions" role="group" aria-label="Existing outlets">
+												{#each outletSuggestions as name (name)}
+													<button type="button" class="ed-outlet-suggestion" onclick={() => update({ outletName: name })}>
+														{name}
+													</button>
+												{/each}
+											</div>
+										{/if}
 									</div>
 								{/if}
 								<!-- Not the knob's own help: an imported entry sitting somewhere this app has no
@@ -975,6 +991,45 @@
 {/if}
 
 <style>
+	.ed-outlet-suggestions {
+		display: none;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		max-height: 9rem;
+		overflow-y: auto;
+		padding: 0.25rem;
+		margin-top: 0.125rem;
+	}
+
+	.ed-outlet-field:focus-within .ed-outlet-suggestions {
+		display: flex;
+	}
+
+	.ed-outlet-suggestion {
+		min-width: 0;
+		max-width: 100%;
+		padding: 0.375rem 0.625rem;
+		border: 1px solid var(--color-border-subtle);
+		border-radius: var(--radius-md);
+		background: var(--color-bg-tertiary);
+		color: var(--color-text-secondary);
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		overflow-wrap: anywhere;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.ed-outlet-suggestion:hover {
+		border-color: var(--color-accent);
+		color: var(--color-accent);
+	}
+
+	.ed-outlet-suggestion:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 1px;
+	}
+
 	/* ===== the card: a flat row that unfolds in place ===== */
 
 	.lbr {

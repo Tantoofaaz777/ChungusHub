@@ -35,7 +35,9 @@
 	import { createEntryDisplayOrder } from '$lib/lorebook/entry-display-order';
 	import {
 		activationSummary,
+		LOREBOOK_POSITION_OUTLET,
 		lorebookDeleteMessage,
+		lorebookOutletName,
 		natureOf,
 		resolveBookActivation,
 		type LorebookEntry
@@ -60,6 +62,16 @@
 
 	let books = $derived(lorebookStore.books);
 	let selectedBook = $derived(books.find((b) => b.id === bookId) ?? null);
+	// Reuse destinations defined by other entries in this book, including disabled entries.
+	let outletNames = $derived.by(() => {
+		const names = new Set<string>();
+		for (const entry of selectedBook?.entries ?? []) {
+			if (entry.position !== LOREBOOK_POSITION_OUTLET) continue;
+			const name = lorebookOutletName(entry);
+			if (name) names.add(name);
+		}
+		return [...names].sort((a, b) => a.localeCompare(b));
+	});
 
 	let expandedIds = $state<Set<string>>(new Set());
 
@@ -1029,6 +1041,7 @@
 									<LorebookEntryRow
 										lorebookId={selectedBook.id}
 										entryId={entry.id}
+										{outletNames}
 										expanded={expandedIds.has(entry.id)}
 										onToggle={() => toggleExpand(entry.id)}
 										onDelete={() => (entryDeleteId = entry.id)}
