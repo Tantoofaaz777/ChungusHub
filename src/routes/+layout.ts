@@ -1,3 +1,4 @@
-// The client is a prerendered SPA served by our own Bun process, so there is no SSR pass.
+// The Bun server serves adapter-static's index.html fallback for app routes.
+// With SSR disabled, prerendering would duplicate that shell before the adapter replaces it.
 export const ssr = false;
-export const prerender = true;
+export const prerender = false;
