@@ -1,17 +1,17 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { ChatState, Message } from '$lib/types/chat';
-import { normalizeChatFeatureState } from '$lib/types/chat';
-import type { ReminderCount } from '$lib/memory/reminders';
+import type { ChatState, Message } from '#lib/types/chat.ts';
+import { normalizeChatFeatureState } from '#lib/types/chat.ts';
+import type { ReminderCount } from '#lib/memory/reminders.ts';
 
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity, snapshot: structuredClone });
 (globalThis as any).$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
-const realDatabase = { ...await import('$lib/services/database') };
-afterAll(() => { mock.module('$lib/services/database', () => realDatabase); });
+const realDatabase = { ...await import('#lib/services/database.ts') };
+afterAll(() => { mock.module('#lib/services/database.ts', () => realDatabase); });
 let writes: { row: { id: string; featureState?: string | null }; options: unknown }[] = [];
 let gate: Promise<void> | null = null;
 let failure: Error | null = null;
-mock.module('$lib/services/database', () => ({ ...realDatabase, db: { ...realDatabase.db,
+mock.module('#lib/services/database.ts', () => ({ ...realDatabase, db: { ...realDatabase.db,
 	updateChat: async (row: { id: string; featureState?: string | null }, options?: unknown) => {
 		writes.push({ row, options }); await gate; if (failure) throw failure;
 	}

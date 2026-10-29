@@ -6,10 +6,10 @@
  * bus for live changes, and backfills the stored log over REST whenever the panel is
  * enabled, so opening it on any device, any time, shows the same log.
  */
-import { apiGet, apiSend, onPromptLog, onPromptLogClear, setPromptLogEnabled, type PromptLogEvent } from '$lib/services/transport';
+import { apiGet, apiSend, onPromptLog, onPromptLogClear, setPromptLogEnabled, type PromptLogEvent } from '#lib/services/transport.ts';
 import type { PromptLogEntry } from './types';
-import { DEFAULT_PROMPT_LOG_LIMIT, validPromptLogLimit } from '$shared/prompt-log';
-import { toastStore } from '$lib/stores/toast.svelte';
+import { DEFAULT_PROMPT_LOG_LIMIT, validPromptLogLimit } from '#shared/prompt-log.ts';
+import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 interface PromptLogSnapshot { entries: PromptLogEntry[]; limit: number }
 

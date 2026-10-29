@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { embedPresetInPng, readPresetFromPng, PRESET_CHUNK_KEYWORD } from './presetCard';
 import { buildTextChunk, encodeBase64Utf8 } from './pngText';
-import type { PromptPreset } from '$lib/types/database';
+import type { PromptPreset } from '#lib/types/database.ts';
 
 /** Minimal structurally-valid PNG (bogus CRCs, since neither writer nor reader validates them). */
 function minimalPng(extraChunks: Uint8Array[] = []): Uint8Array {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import { untrack } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import {
@@ -14,15 +14,15 @@
 		setSessionIdleMinutes,
 		type AccessInfo,
 		type DeniedAttempt
-	} from '$lib/services/transport';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { formatRelativeTime } from '$lib/utils/date';
-	import MockupTip from '$lib/components/mockups/MockupTip.svelte';
-	import IpAllowlistMockup from '$lib/components/mockups/IpAllowlistMockup.svelte';
-	import { toggleRow } from '$lib/actions/toggleRow';
+	} from '#lib/services/transport.ts';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { formatRelativeTime } from '#lib/utils/date.ts';
+	import MockupTip from '#lib/components/mockups/MockupTip.svelte';
+	import IpAllowlistMockup from '#lib/components/mockups/IpAllowlistMockup.svelte';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
 
 	const panelActive = panelActivity();
 	const MIN_PASSWORD_LENGTH = 4;

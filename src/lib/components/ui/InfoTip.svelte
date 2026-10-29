@@ -11,11 +11,11 @@
   button of your own.
 -->
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import type { Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Icon from './Icon.svelte';
-	import { anchorTo } from '$lib/actions/anchorTo';
+	import { anchorTo } from '#lib/actions/anchorTo.ts';
 
 	const panelActive = panelActivity();
 	let { text, trigger }: { text: string; trigger?: Snippet } = $props();

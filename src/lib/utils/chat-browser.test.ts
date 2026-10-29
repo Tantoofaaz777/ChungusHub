@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { Chat, ChatListStats } from '$lib/types/chat';
+import type { Chat, ChatListStats } from '#lib/types/chat.ts';
 import { chatTwinCounts, filterAndSortChats } from './chat-browser';
 
 function chat(id: string, overrides: Partial<Chat> = {}): Chat {

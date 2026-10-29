@@ -7,13 +7,13 @@
 	 * single field a persona has, and the reader edits the result here rather than finding
 	 * out afterwards what was dropped.
 	 */
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { personaDescriptionFromCharacter } from '$lib/utils/entry-conversion';
-	import type { LibraryEntry } from '$lib/types/library';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { personaDescriptionFromCharacter } from '#lib/utils/entry-conversion.ts';
+	import type { LibraryEntry } from '#lib/types/library.ts';
 
 	interface Props {
 		open: boolean;

@@ -1,18 +1,18 @@
 <script lang="ts">
 	import MessageList from './MessageList.svelte';
-	import SceneDraftDialog from '$lib/components/memory/SceneDraftDialog.svelte';
-	import MemoryReminder from '$lib/components/memory/MemoryReminder.svelte';
+	import SceneDraftDialog from '#lib/components/memory/SceneDraftDialog.svelte';
+	import MemoryReminder from '#lib/components/memory/MemoryReminder.svelte';
 	import InputArea from './InputArea.svelte';
 	import PortraitViewer from './PortraitViewer.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import GenerationDots from '$lib/components/ui/GenerationDots.svelte';
-	import type { MessageAttachment } from '$lib/types/chat';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import GenerationDots from '#lib/components/ui/GenerationDots.svelte';
+	import type { MessageAttachment } from '#lib/types/chat.ts';
 
 	let chatState = $derived(chatStore.currentChatState);
 	// A background refresh keeps its loaded chat. Only navigation gets a loading screen.

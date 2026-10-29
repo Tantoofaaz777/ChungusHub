@@ -7,8 +7,8 @@
 	 * A blocked clipboard is SHOWN, never swallowed: an unresponsive button is the worst
 	 * outcome for a control whose whole job is getting the payload out of the panel.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { copyText } from '$lib/utils/clipboard';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { copyText } from '#lib/utils/clipboard.ts';
 
 	interface Props {
 		text: () => string;

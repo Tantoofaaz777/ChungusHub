@@ -3,13 +3,13 @@
 		generalSettingsStore,
 		type InputHistoryScope,
 		type TranscriptLoadMode
-	} from '$lib/stores/general-settings.svelte';
-	import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import { toggleRow } from '$lib/actions/toggleRow';
+	} from '#lib/stores/general-settings.svelte.ts';
+	import { inputHistoryStore } from '#lib/stores/inputHistory.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import PillRow from '#lib/components/ui/PillRow.svelte';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
 
 	const SCOPE_OPTIONS: { value: InputHistoryScope; label: string }[] = [
 		{ value: 'global', label: 'All chats' },

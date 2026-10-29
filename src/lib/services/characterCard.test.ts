@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { deflateRawSync } from 'node:zlib';
-import type { CharacterCardV3 } from '$lib/types/character-card';
-import type { LibraryEntry } from '$lib/types/library';
+import type { CharacterCardV3 } from '#lib/types/character-card.ts';
+import type { LibraryEntry } from '#lib/types/library.ts';
 import { buildCharacterCardV3, buildCharx, embedCardInPng } from './sillyTavernExport';
 import { importSillyTavernCard } from './sillyTavernImport';
 import { buildTextChunk, insertTextChunk, encodeBase64Utf8, readTextChunk } from './pngText';

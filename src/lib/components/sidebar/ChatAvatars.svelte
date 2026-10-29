@@ -1,8 +1,8 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import type { ChatCastMember } from '$lib/stores/chatCast.svelte';
-	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { imageService } from '#lib/services/imageService.ts';
+	import type { ChatCastMember } from '#lib/stores/chatCast.svelte.ts';
+	import { portraitFocusStyle } from '#lib/utils/portrait-focus.ts';
 
 	interface Props {
 		members: ChatCastMember[];

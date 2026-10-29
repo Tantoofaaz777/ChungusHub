@@ -1,5 +1,5 @@
 import { sceneHistory } from '../../../shared/memory-scenes';
-import { memoryStore } from '$lib/memory/scene-store.svelte';
+import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 /**
  * Live MacroContext from the current stores: how the substitute-level surfaces
  * (the opening scene, Continue, the composer transforms) resolve the global engine
@@ -12,16 +12,16 @@ import { memoryStore } from '$lib/memory/scene-store.svelte';
  * and that would close an import cycle.
  */
 
-import type { Message } from '$lib/types/chat';
-import { chatAuthorsNote } from '$lib/types/chat';
-import { expandMacros, cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields, type MacroContext } from '$lib/macros';
-import { resolveLorebooks } from '$lib/lorebook/engine';
-import { lorebookHistory, lorebookScanFields, type LorebookTrigger } from '$lib/lorebook/types';
-import { chatStore } from '$lib/stores/chat.svelte';
-import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-import { lorebookStore } from '$lib/lorebook/store.svelte';
-import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
-import { presetControlsStore } from '$lib/stores/presetControls.svelte';
+import type { Message } from '#lib/types/chat.ts';
+import { chatAuthorsNote } from '#lib/types/chat.ts';
+import { expandMacros, cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields, type MacroContext } from '#lib/macros.ts';
+import { resolveLorebooks } from '#lib/lorebook/engine.ts';
+import { lorebookHistory, lorebookScanFields, type LorebookTrigger } from '#lib/lorebook/types.ts';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
+import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
+import { presetControlsStore } from '#lib/stores/presetControls.svelte.ts';
 import {
 	chatLorebookClaim,
 	chatMutedLorebookClaim,
@@ -30,7 +30,7 @@ import {
 	resolvePromptTarget,
 	toPromptCharacter
 } from './chat-setup';
-import { countTokens } from '$lib/tokenizer/count';
+import { countTokens } from '#lib/tokenizer/count.ts';
 
 export interface LiveMacroContextOptions {
 	/** The message path macros read chat state from; defaults to the active path. */

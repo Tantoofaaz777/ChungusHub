@@ -2,8 +2,8 @@
 	/** The brain pulses during a requested summary generation. A quiet corner mark
 	 *  identifies saved summaries needing review; the tooltip names the same state. */
 	import type { ComponentProps } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { memoryStore } from '$lib/memory/scene-store.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 
 	/** Handed down rather than hardcoded, so the nav table stays the one place that says which
 	 *  glyph this button wears. */

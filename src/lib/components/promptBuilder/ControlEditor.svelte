@@ -4,17 +4,17 @@
   room and stack in a tight dock, so nothing ever cramps at 360px.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { autoResize } from '#lib/actions/autoResize.ts';
 	import type {
 		PromptControl,
 		PromptControlAdvice,
 		PromptControlType,
 		PromptControlOption,
 		PromptSection
-	} from '$lib/types/database';
+	} from '#lib/types/database.ts';
 
 	interface Props {
 		control: PromptControl;

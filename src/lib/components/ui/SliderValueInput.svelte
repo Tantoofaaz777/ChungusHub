@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { parseSliderValue } from '$lib/utils/slider-value';
+	import { parseSliderValue } from '#lib/utils/slider-value.ts';
 
 	let { id, value, min, max, step = 1, groupedInteger = false, label, onchange }: {
 		id?: string;

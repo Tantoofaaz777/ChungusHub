@@ -5,7 +5,7 @@
  * thumbnails are now uploaded to and served from the server so every device
  * shares the same character art. Same public API as before.
  */
-import { apiGet, apiSend, apiUpload, fileUrl, getClientId } from '$lib/services/transport';
+import { apiGet, apiSend, apiUpload, fileUrl, getClientId } from '#lib/services/transport.ts';
 
 /** Which entity an image belongs to. Decides its images/<category>/ folder server-side. */
 export type ImageCategory =

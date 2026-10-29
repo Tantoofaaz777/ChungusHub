@@ -1,29 +1,29 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { captureScene, type MemoryScene } from '$shared/memory-scenes';
-import type { Message } from '$lib/types/chat';
+import { captureScene, type MemoryScene } from '#shared/memory-scenes.ts';
+import type { Message } from '#lib/types/chat.ts';
 
 // Test read ordering and retained data; Svelte compiles runes in the app build.
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity, snapshot: structuredClone });
 (globalThis as any).$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
-const realDatabase = { ...await import('$lib/services/database') };
-const realLlm = { ...await import('$lib/services/llm/provider') };
-const { featurePromptsStore, normalizeFeaturePrompts, FEATURE_PROMPT_DEFAULTS } = await import('$lib/stores/featurePrompts.svelte');
+const realDatabase = { ...await import('#lib/services/database.ts') };
+const realLlm = { ...await import('#lib/services/llm/provider.ts') };
+const { featurePromptsStore, normalizeFeaturePrompts, FEATURE_PROMPT_DEFAULTS } = await import('#lib/stores/featurePrompts.svelte.ts');
 const initialFeatures = structuredClone(featurePromptsStore.state);
 afterAll(() => {
-	mock.module('$lib/services/database', () => realDatabase);
-	mock.module('$lib/services/llm/provider', () => realLlm);
+	mock.module('#lib/services/database.ts', () => realDatabase);
+	mock.module('#lib/services/llm/provider.ts', () => realLlm);
 	featurePromptsStore.state = initialFeatures;
 });
 
 let reads: { chatId: string; resolve: (scenes: MemoryScene[]) => void; reject: (error: Error) => void }[] = [];
 let calls: { signal: AbortSignal; messages: { role: string; content: string }[]; onToken: (text: string) => void; onThinkingToken: (text: string) => void;
 	resolve: (result: { content: string; thinking?: string }) => void; reject: (error: Error) => void }[] = [];
-mock.module('$lib/services/llm/provider', () => ({ ...realLlm, llmService: {
+mock.module('#lib/services/llm/provider.ts', () => ({ ...realLlm, llmService: {
 	modelFor: () => 'memory-test-model',
 	complete: (_target: unknown, options: any) => new Promise((resolve, reject) => calls.push({ ...options, resolve, reject }))
 } }));
-mock.module('$lib/services/database', () => ({ ...realDatabase, db: {
+mock.module('#lib/services/database.ts', () => ({ ...realDatabase, db: {
 	...realDatabase.db,
 	getMemoryScenes: (chatId: string) => new Promise<MemoryScene[]>((resolve, reject) => reads.push({ chatId, resolve, reject })),
 	deleteMemoryScene: async () => {},

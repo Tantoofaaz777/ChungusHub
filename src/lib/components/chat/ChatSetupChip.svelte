@@ -22,22 +22,22 @@
 	 * only once something is odd is a control nobody knows exists.
 	 */
 	import { tick } from 'svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import OverrideMark from '$lib/components/ui/OverrideMark.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { connectionStore } from '$lib/stores/connections.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
-	import { foldForSearch } from '$lib/components/library/browse';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { sortLorebooks } from '$lib/lorebook/types';
-	import { storyRoleName } from '$lib/types/library';
-	import { lorebookViewPrefs } from '$lib/stores/lorebookViewPrefs.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import OverrideMark from '#lib/components/ui/OverrideMark.svelte';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { connectionStore } from '#lib/stores/connections.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { portraitFocusStyle } from '#lib/utils/portrait-focus.ts';
+	import { foldForSearch } from '#lib/components/library/browse.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { sortLorebooks } from '#lib/lorebook/types.ts';
+	import { storyRoleName } from '#lib/types/library.ts';
+	import { lorebookViewPrefs } from '#lib/stores/lorebookViewPrefs.svelte.ts';
 	import {
 		chatConnectionClaim,
 		chatConnectionId,
@@ -48,7 +48,7 @@
 		chatPreset,
 		chatPresetClaim,
 		chatPresetId
-	} from '$lib/utils/chat-setup';
+	} from '#lib/utils/chat-setup.ts';
 
 	/** Past this a portrait+name list is mostly scrolling, so the persona list flips to a
 	 *  three-across face grid: same rows of pixels, roughly twice the personas in them.

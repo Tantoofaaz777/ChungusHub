@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
 	import {
 		DEFAULT_GROUP_WEIGHT,
 		DEFAULT_LOREBOOK_DEPTH,
@@ -28,16 +28,16 @@
 		type LorebookTrigger,
 		type LorebookWokenBy,
 		type ResolvedRecursion
-	} from '$lib/lorebook/types';
-	import { countTokens } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
+	} from '#lib/lorebook/types.ts';
+	import { countTokens } from '#lib/tokenizer/index.ts';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
 	import KeyChipInput from './KeyChipInput.svelte';
-	import OverrideMark from '$lib/components/ui/OverrideMark.svelte';
+	import OverrideMark from '#lib/components/ui/OverrideMark.svelte';
 
 	type Nature = LorebookEntryNature;
 

@@ -31,7 +31,7 @@
 		SHORTCUT_GROUPS,
 		shortcutsSheet,
 		type ShortcutDef
-	} from '$lib/commands/shortcuts.svelte';
+	} from '#lib/commands/shortcuts.svelte.ts';
 
 	/** Keys that read as something other than their own name. */
 	const KEY_NAMES: Record<string, string> = {

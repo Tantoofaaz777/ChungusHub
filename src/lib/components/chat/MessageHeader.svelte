@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import MessageAvatar from './MessageAvatar.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import type { PortraitFocus } from '$lib/utils/portrait-focus';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
 
 	interface Props {
 		role: 'user' | 'assistant' | 'system';

@@ -15,11 +15,11 @@
 	 * Folding is CONTROLLED by the panel, so its expand-all control and this chevron can never
 	 * disagree about whether a card is open.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
-	import { imageService } from '$lib/services/imageService';
-	import { roleColor } from '$lib/debug/format';
-	import type { LLMMessage } from '$lib/types/llm';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { roleColor } from '#lib/debug/format.ts';
+	import type { LLMMessage } from '#lib/types/llm.ts';
 
 	interface Props {
 		message: LLMMessage;

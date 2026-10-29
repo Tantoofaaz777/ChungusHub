@@ -4,10 +4,10 @@
 	 * memory too? Only raised when there IS memory to carry: a chat with none is copied
 	 * without asking anything (see ChatsView.handleDuplicate).
 	 */
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import type { ChatMemoryFootprint } from '$lib/types/chat';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import type { ChatMemoryFootprint } from '#lib/types/chat.ts';
 
 	interface Props {
 		open: boolean;

@@ -16,9 +16,9 @@
   and why "Current" also demands full coverage: a recapture must change nothing.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { getControlValue } from '$lib/utils/prompt-controls';
-	import type { PromptControl, PromptPresetBundle } from '$lib/types/database';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { getControlValue } from '#lib/utils/prompt-controls.ts';
+	import type { PromptControl, PromptPresetBundle } from '#lib/types/database.ts';
 
 	interface Props {
 		bundles: PromptPresetBundle[];

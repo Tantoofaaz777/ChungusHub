@@ -15,9 +15,9 @@
  *
  * Which gates are armed rides the settings sync spine, so a device agrees with the rest.
  */
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
-import { HOLD_GATES, holdGateById, type HoldGate, type HoldGateDef } from '$lib/config/prompt-hold';
-import type { CallTarget, LLMMessage } from '$lib/types/llm';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
+import { HOLD_GATES, holdGateById, type HoldGate, type HoldGateDef } from '#lib/config/prompt-hold.ts';
+import type { CallTarget, LLMMessage } from '#lib/types/llm.ts';
 
 const SETTINGS_KEY = 'promptHold';
 

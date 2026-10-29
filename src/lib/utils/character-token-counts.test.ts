@@ -1,10 +1,10 @@
 import { beforeAll } from 'bun:test';
-import { prepareTokenizer } from '$lib/tokenizer/encodings';
+import { prepareTokenizer } from '#lib/tokenizer/encodings.ts';
 beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
 
 import { describe, expect, test } from 'bun:test';
-import { countTokens } from '$lib/tokenizer/count';
-import type { CharacterTraits } from '$lib/types/library';
+import { countTokens } from '#lib/tokenizer/count.ts';
+import type { CharacterTraits } from '#lib/types/library.ts';
 import { countCharacterTokens } from './character-token-counts';
 
 const empty: CharacterTraits = { description: '', personality: '', background: '' };

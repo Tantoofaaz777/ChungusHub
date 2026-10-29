@@ -14,8 +14,8 @@
 	 * a reasonable thing to tell a warning, "never again" is not.
 	 */
 	import { slide } from 'svelte/transition';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { deleteGuard } from '#lib/stores/delete-guard.svelte.ts';
 
 	let open = $derived(deleteGuard.barOpen);
 

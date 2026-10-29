@@ -1,4 +1,4 @@
-import type { ResolvedScene, SceneMessage } from '$shared/memory-scenes';
+import type { ResolvedScene, SceneMessage } from '#shared/memory-scenes.ts';
 
 export const DEFAULT_MEMORY_REMINDER_INTERVAL = 20_000;
 

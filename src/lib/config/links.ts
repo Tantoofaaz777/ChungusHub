@@ -1,4 +1,4 @@
-import { PROJECT_URL } from '$shared/project';
+import { PROJECT_URL } from '#shared/project.ts';
 
 /** Outbound links used by About. Retired community and bug-report surfaces have no links. */
 export const LINKS = {

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Slider from '$lib/components/ui/Slider.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Slider from '#lib/components/ui/Slider.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import {
 		DEFAULT_PORTRAIT_FOCUS,
 		MAX_PORTRAIT_ZOOM,
@@ -15,7 +15,7 @@
 		portraitFocusFromDrawOffset,
 		portraitFocusStyle,
 		type PortraitFocus
-	} from '$lib/utils/portrait-focus';
+	} from '#lib/utils/portrait-focus.ts';
 
 	interface Props {
 		open: boolean;

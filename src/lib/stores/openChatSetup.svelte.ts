@@ -11,9 +11,9 @@
  * `chatStore` from there would close the import cycle live-macro-context.ts documents.
  */
 
-import { chatStore } from '$lib/stores/chat.svelte';
-import { normalizeChatFeatureState } from '$lib/types/chat';
-import { personaEntryFor, presetForClaim } from '$lib/utils/chat-setup';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
+import { normalizeChatFeatureState } from '#lib/types/chat.ts';
+import { personaEntryFor, presetForClaim } from '#lib/utils/chat-setup.ts';
 
 class OpenChatSetup {
 	/** The one parse. Both fields below read their claim off this rather than off the blob. */

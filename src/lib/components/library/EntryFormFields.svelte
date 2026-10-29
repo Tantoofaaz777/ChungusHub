@@ -1,24 +1,24 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import { imageService, imageRejectionReason } from '$lib/services/imageService';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import { imageService, imageRejectionReason } from '#lib/services/imageService.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
 	import AlternateGreetingsModal from './AlternateGreetingsModal.svelte';
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
-	import { portraitFocusStyle, type PortraitFocus } from '$lib/utils/portrait-focus';
-	import { autoResize } from '$lib/actions/autoResize';
+	import { portraitFocusStyle, type PortraitFocus } from '#lib/utils/portrait-focus.ts';
+	import { autoResize } from '#lib/actions/autoResize.ts';
 	import {
 		PERMANENT_TRAITS,
 		BLOB_MACRO,
 		type CharacterTraits,
 		type TraitKey
-	} from '$lib/types/library';
-	import { presetService } from '$lib/services/presets.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
+	} from '#lib/types/library.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
 	import FieldTokenCount from './FieldTokenCount.svelte';
-	import { extractMacroNames } from '$lib/macros';
+	import { extractMacroNames } from '#lib/macros.ts';
 
 	interface Props {
 		// Data

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { toastStore, type ToastTone } from '$lib/stores/toast.svelte';
+	import { toastStore, type ToastTone } from '#lib/stores/toast.svelte.ts';
 	import Icon from './Icon.svelte';
 
 	let toasts = $derived(toastStore.toasts);

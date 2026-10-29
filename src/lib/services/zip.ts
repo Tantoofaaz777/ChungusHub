@@ -6,7 +6,7 @@
  * buy almost nothing here, so entries are stored verbatim. UTF-8 filenames (flag bit 11).
  */
 
-import { crc32 } from '$lib/services/crc32';
+import { crc32 } from '#lib/services/crc32.ts';
 
 export interface ZipEntry {
 	name: string;

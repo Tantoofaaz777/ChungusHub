@@ -1,27 +1,27 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { personaStore, LAST_PERSONA_REASON } from '$lib/stores/persona.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { imageService, imageRejectionReason } from '$lib/services/imageService';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { personaStore, LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { imageService, imageRejectionReason } from '#lib/services/imageService.ts';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
 	import FieldTokenCount from './FieldTokenCount.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
-	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import { BLOB_MACRO, type PersonaPronouns } from '$lib/types/library';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { extractMacroNames } from '$lib/macros';
+	import { portraitFocusStyle } from '#lib/utils/portrait-focus.ts';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
+	import { BLOB_MACRO, type PersonaPronouns } from '#lib/types/library.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { extractMacroNames } from '#lib/macros.ts';
 	import {
 		PERSONA_PRONOUN_PRESETS,
 		personaPronouns,
 		personaPronounPreset,
 		personaPronounPresetId
-	} from '$lib/utils/persona-pronouns';
+	} from '#lib/utils/persona-pronouns.ts';
 
 	interface Props {
 		entryId: string;

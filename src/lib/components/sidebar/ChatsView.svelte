@@ -11,27 +11,27 @@
 	 * roving keyboard selection, and their menus remain reachable with Shift+F10.
 	 */
 	import ChatBrowserControls from './ChatBrowserControls.svelte';
-	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '$lib/utils/chat-browser';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
+	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '#lib/utils/chat-browser.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
 	import ChatAvatars from './ChatAvatars.svelte';
 	import ChatListRow from './ChatListRow.svelte';
 	import DuplicateChatDialog from './DuplicateChatDialog.svelte';
-	import { duplicateAsksAboutMemory } from '$lib/types/chat';
-	import type { Chat, ChatListStats, ChatMemoryFootprint } from '$lib/types/chat';
-	import { db } from '$lib/services/database';
-	import { displaySelfRefs } from '$lib/macros';
-	import { storyRoleName } from '$lib/types/library';
-	import { dayBucket } from '$lib/utils/date';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { uiStore, type ChatsScope } from '$lib/stores/ui.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { chatCastStore, type ChatCastMember } from '$lib/stores/chatCast.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
+	import { duplicateAsksAboutMemory } from '#lib/types/chat.ts';
+	import type { Chat, ChatListStats, ChatMemoryFootprint } from '#lib/types/chat.ts';
+	import { db } from '#lib/services/database.ts';
+	import { displaySelfRefs } from '#lib/macros.ts';
+	import { storyRoleName } from '#lib/types/library.ts';
+	import { dayBucket } from '#lib/utils/date.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { uiStore, type ChatsScope } from '#lib/stores/ui.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { chatCastStore, type ChatCastMember } from '#lib/stores/chatCast.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
 
 	const BUCKET_LABELS: Record<string, string> = {
 		today: 'Today',

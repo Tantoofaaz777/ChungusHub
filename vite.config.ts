@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { sveltekit } from '@sveltejs/kit/vite';
+import adapter from '@sveltejs/adapter-static';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type Plugin } from 'vite';
-import { normalizeIp } from './server/access';
-import { ALLOWLIST_ENV, ALLOWLIST_PATH, OPEN_BROWSER, PORT, SECURITY_PATH } from './server/config';
-import { bootAssetManifest } from './scripts/boot-assets';
-import { chunkSizeWarnings } from './scripts/chunk-size-warnings';
+import { normalizeIp } from './server/access.ts';
+import { ALLOWLIST_ENV, ALLOWLIST_PATH, OPEN_BROWSER, PORT, SECURITY_PATH } from './server/config.ts';
+import { bootAssetManifest } from './scripts/boot-assets.ts';
+import { chunkSizeWarnings } from './scripts/chunk-size-warnings.ts';
 
 // Read from the server's own config, so the proxy cannot drift off the port it serves.
 const BACKEND = `http://localhost:${PORT}`;
@@ -190,7 +192,10 @@ export default defineConfig({
 	},
 	plugins: [
 		tailwindcss(),
-		sveltekit(),
+		sveltekit({
+			preprocess: vitePreprocess(),
+			adapter: adapter({ fallback: 'index.html', precompress: true })
+		}),
 		bootAssetManifest(),
 		chunkSizeWarnings(),
 		allowlistGate()
@@ -198,7 +203,7 @@ export default defineConfig({
 	clearScreen: false,
 	// Every runtime dependency, so the prebundle happens at server startup. Left to be
 	// discovered, a bare import is found mid page load: Vite holds those requests until
-	// esbuild is done and then force-reloads the page under whatever was already running.
+	// the dependency optimizer is done and then force-reloads the page under whatever was already running.
 	optimizeDeps: {
 		include: [
 			'dompurify',

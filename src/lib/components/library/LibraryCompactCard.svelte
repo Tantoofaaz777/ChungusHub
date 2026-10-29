@@ -1,10 +1,10 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import LibraryEntryMenu from './LibraryEntryMenu.svelte';
 	import TagList from './TagList.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { portraitFocusAim } from '$lib/utils/portrait-focus';
-	import type { LibraryEntry } from '$lib/types/library';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { portraitFocusAim } from '#lib/utils/portrait-focus.ts';
+	import type { LibraryEntry } from '#lib/types/library.ts';
 
 	interface Props {
 		entry: LibraryEntry;

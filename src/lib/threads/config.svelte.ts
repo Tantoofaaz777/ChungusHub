@@ -1,5 +1,5 @@
-import { readSetting, registerSettingsReload, BurstSettingWriter, reloadSettings } from '$lib/services/syncedSetting';
-import { DEFAULT_THREADS_CONFIG, normalizeThreadsConfig, type ThreadsConfig } from '$shared/threads/model';
+import { readSetting, registerSettingsReload, BurstSettingWriter, reloadSettings } from '#lib/services/syncedSetting.ts';
+import { DEFAULT_THREADS_CONFIG, normalizeThreadsConfig, type ThreadsConfig } from '#shared/threads/model.ts';
 class ThreadsConfigStore {
 	value = $state<ThreadsConfig>({ ...DEFAULT_THREADS_CONFIG });
 	private writer = new BurstSettingWriter<ThreadsConfig>('threadsConfig');

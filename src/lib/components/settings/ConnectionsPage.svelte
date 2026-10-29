@@ -14,21 +14,21 @@
 	 * app: the Engines page shows resolution read-only (architecture/engines.md), and a chat
 	 * that has claimed its own connection is announced here and changes nothing.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
 	import ConnectionEditor from './ConnectionEditor.svelte';
 	import { tick } from 'svelte';
-	import { connectionStore, ASSIGNMENT_IDS } from '$lib/stores/connections.svelte';
-	import ChatOverrideNotice from '$lib/components/ui/ChatOverrideNotice.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { chatConnectionId } from '$lib/utils/chat-setup';
-	import { llmService } from '$lib/services/llm/provider';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { type Connection, type ProviderName } from '$lib/types/llm';
-	import { flashTarget } from '$lib/utils/flash-target';
-	import { ENGINES } from '$lib/engines/registry';
+	import { connectionStore, ASSIGNMENT_IDS } from '#lib/stores/connections.svelte.ts';
+	import ChatOverrideNotice from '#lib/components/ui/ChatOverrideNotice.svelte';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { chatConnectionId } from '#lib/utils/chat-setup.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { type Connection, type ProviderName } from '#lib/types/llm.ts';
+	import { flashTarget } from '#lib/utils/flash-target.ts';
+	import { ENGINES } from '#lib/engines/registry.ts';
 
 	const connections = $derived(connectionStore.connections);
 	const editorId = $derived(uiStore.settingsConnectionId);

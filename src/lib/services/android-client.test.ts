@@ -2,13 +2,13 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { isAndroidClient, installAndroidBack, shareNativeText, canPinChatShortcut, pinChatShortcut } from './android-client';
-import { serializeFeedAsPlainText } from '$shared/threads/feed';
+import { serializeFeedAsPlainText } from '#shared/threads/feed.ts';
 import { exportEntryAsSillyTavern, buildSillyTavernCard } from './sillyTavernExport';
 import { importSillyTavernCard } from './sillyTavernImport';
-import type { LibraryEntry } from '$lib/types/library';
+import type { LibraryEntry } from '#lib/types/library.ts';
 import { saveGeneratedDownload } from './libraryExport';
-import { copyText } from '$lib/utils/clipboard';
-import { parseSpeechRulesImport, serializeSpeechRules } from '$lib/utils/speech-rules-io';
+import { copyText } from '#lib/utils/clipboard.ts';
+import { parseSpeechRulesImport, serializeSpeechRules } from '#lib/utils/speech-rules-io.ts';
 
 const script = readFileSync(new URL('../../../android/app/src/main/assets/client.js', import.meta.url), 'utf8');
 function harness(options: { cancel?: boolean; failChunk?: boolean; frame?: boolean; holdPicker?: boolean; failCopy?: boolean; holdCopy?: boolean; dropCopy?: boolean;

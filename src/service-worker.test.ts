@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 
 // Run the real worker's handlers with isolated caches and an offline-switchable network.
 const source = new Bun.Transpiler({ loader: 'ts' }).transformSync(
-	readFileSync(new URL('./service-worker.ts', import.meta.url), 'utf8').replace("import { build, files, version } from '$service-worker';", '')
+	readFileSync(new URL('./service-worker.ts', import.meta.url), 'utf8')
+		.replace(/^import .* from '\$app\/(?:env|manifest|service-worker)';\r?$/gm, '')
 );
 function worker(manifest: unknown = ['/_app/immutable/home.js']) {
 	const handlers: Record<string, (event: any) => void> = {};
@@ -21,7 +22,7 @@ function worker(manifest: unknown = ['/_app/immutable/home.js']) {
 		async put(request: string | Request, response: Response) { storage.set(key(request), response); }
 	};
 	const removed: string[] = [];
-	new Function('self', 'caches', 'fetch', 'build', 'files', 'version', source)(
+	new Function('sw', 'caches', 'fetch', 'immutable', 'assets', 'version', source)(
 		{ location: { origin: 'http://localhost' }, addEventListener: (name: string, handler: any) => { handlers[name] = handler; },
 			skipWaiting: async () => { skipped = true; }, clients: { claim: async () => { claimed = true; } } },
 		{ open: async () => cache, keys: async () => ['chungushub-old', 'chungushub-new'], delete: async (name: string) => { removed.push(name); } },
@@ -29,8 +30,8 @@ function worker(manifest: unknown = ['/_app/immutable/home.js']) {
 			const path = key(request); calls.push(path);
 			if (offline) throw new Error('Offline');
 			return path === '/_app/boot-assets.json' ? Response.json(manifest) : new Response('network:' + path, { status });
-		}, ['/_app/immutable/home.js', '/_app/immutable/panel.js', '/_app/boot-assets.json'],
-		['/icon.svg', '/fonts/manrope.css', '/fonts/manrope-latin-400.woff2', '/fonts/poppins.css', '/fonts/poppins-latin-400.woff2'], 'new'
+		}, ['_app/immutable/home.js', '_app/immutable/panel.js'].map(path => ({ path })),
+		['icon.svg', 'fonts/manrope.css', 'fonts/manrope-latin-400.woff2', 'fonts/poppins.css', 'fonts/poppins-latin-400.woff2'].map(path => ({ path })), 'new'
 	);
 	async function dispatch(name: string, request?: Request, data?: unknown) {
 		const waits: Promise<unknown>[] = [];
@@ -49,6 +50,7 @@ test('worker precaches the offline shell, leaves unopened panels out and retires
 	await sw.dispatch('install');
 	expect(sw.precached).toContain('/');
 	expect(sw.precached).toContain('/_app/immutable/home.js');
+	expect(sw.precached).toContain('/icon.svg');
 	expect(sw.precached).not.toContain('/_app/immutable/panel.js');
 	expect(sw.precached.filter(path => path.startsWith('/fonts/'))).toEqual([]);
 	expect(sw.skipped).toBe(true);

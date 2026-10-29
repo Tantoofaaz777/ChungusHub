@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { prepareTokenizer } from '$lib/tokenizer/encodings';
-import { expandMacros, isBuiltinMacro, referencedLorebookOutlets } from '$lib/macros';
-import { assemblePrompt, buildMacroContext, type AssembleInput } from '$lib/utils/prompt-assembly';
+import { prepareTokenizer } from '#lib/tokenizer/encodings.ts';
+import { expandMacros, isBuiltinMacro, referencedLorebookOutlets } from '#lib/macros.ts';
+import { assemblePrompt, buildMacroContext, type AssembleInput } from '#lib/utils/prompt-assembly.ts';
 import { resolveLorebooks } from './engine';
 import { bookFingerprint } from './identity';
 import { parseLorebook, toCharacterBook, toNativeWorldInfo } from './sillytavern';

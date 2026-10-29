@@ -1,6 +1,6 @@
 <script lang="ts">
 	/** Display-only audience reactions, as in Threadverse. They never change scores. */
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	let { score, commentCount }: { score: number; commentCount?: number } = $props();
 </script>
 

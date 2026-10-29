@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import MockupTip from '$lib/components/mockups/MockupTip.svelte';
-	import MergeRolesMockup from '$lib/components/mockups/MergeRolesMockup.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import PillRow from '#lib/components/ui/PillRow.svelte';
+	import MockupTip from '#lib/components/mockups/MockupTip.svelte';
+	import MergeRolesMockup from '#lib/components/mockups/MergeRolesMockup.svelte';
 	import ModelPicker from './ModelPicker.svelte';
 	import ProviderRoutingPanel from './ProviderRoutingPanel.svelte';
 	import ConnectionHero from './ConnectionHero.svelte';
-	import { llmService, computePromptBudget } from '$lib/services/llm/provider';
-	import { connectionStore } from '$lib/stores/connections.svelte';
-	import { db } from '$lib/services/database';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { llmService, computePromptBudget } from '#lib/services/llm/provider.ts';
+	import { connectionStore } from '#lib/stores/connections.svelte.ts';
+	import { db } from '#lib/services/database.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
 	import {
 		DEFAULT_CONTEXT_SIZE,
 		DEFAULT_GENERATION_SETTINGS,
@@ -26,10 +26,10 @@
 		type ReasoningDialect,
 		type ServiceTier,
 		type PromptPostProcessingMode
-	} from '$lib/types/llm';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import SliderValueInput from '$lib/components/ui/SliderValueInput.svelte';
-	import { formatPricePerMillion, formatContext, formatMonthYear } from '$lib/utils/modelFormat';
+	} from '#lib/types/llm.ts';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import SliderValueInput from '#lib/components/ui/SliderValueInput.svelte';
+	import { formatPricePerMillion, formatContext, formatMonthYear } from '#lib/utils/modelFormat.ts';
 	import {
 		SAMPLING_SLIDERS,
 		SERVICE_TIERS,
@@ -48,9 +48,9 @@
 		imagesEnabled,
 		imageDetailVisible,
 		cachingControl
-	} from '$lib/config/sampling';
-	import { toggleRow } from '$lib/actions/toggleRow';
-	import { parseCustomBody } from '$shared/custom-body';
+	} from '#lib/config/sampling.ts';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
+	import { parseCustomBody } from '#shared/custom-body.ts';
 
 	type Status = 'idle' | 'binding' | 'valid' | 'invalid';
 

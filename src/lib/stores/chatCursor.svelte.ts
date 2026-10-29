@@ -17,7 +17,7 @@
  *
  * See architecture/chat-sessions.md, "The message cursor".
  */
-import { chatStore } from '$lib/stores/chat.svelte';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
 
 class ChatCursorStore {
 	/** The chat the cursor was set in. A position in one story means nothing in another. */

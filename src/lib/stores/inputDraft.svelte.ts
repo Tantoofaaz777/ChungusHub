@@ -7,9 +7,9 @@
  * goes away so the last half-second of typing survives a close or a backgrounding rather
  * than replaying on wake.
  */
-import { db } from '$lib/services/database';
-import { DebouncedWriter } from '$lib/utils/debounced-write';
-import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
+import { db } from '#lib/services/database.ts';
+import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
+import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
 
 const SAVE_DEBOUNCE_MS = 500;
 

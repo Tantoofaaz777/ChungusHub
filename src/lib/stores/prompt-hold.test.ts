@@ -26,7 +26,7 @@ afterAll(() => {
 });
 
 const { promptHoldStore } = await import('./promptHold.svelte');
-const { HOLD_GATES } = await import('$lib/config/prompt-hold');
+const { HOLD_GATES } = await import('#lib/config/prompt-hold.ts');
 
 const MESSAGES = [
 	{ role: 'system' as const, content: 'You are a narrator.' },

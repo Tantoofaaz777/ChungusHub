@@ -7,11 +7,11 @@
 	 * Swipes and alternate greetings aren't additional turns in that conversation.
 	 */
 	import { untrack } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import ChatAvatars from './ChatAvatars.svelte';
-	import type { Chat, ChatListStats } from '$lib/types/chat';
-	import type { ChatCastMember } from '$lib/stores/chatCast.svelte';
-	import { formatRelativeTime } from '$lib/utils/date';
+	import type { Chat, ChatListStats } from '#lib/types/chat.ts';
+	import type { ChatCastMember } from '#lib/stores/chatCast.svelte.ts';
+	import { formatRelativeTime } from '#lib/utils/date.ts';
 
 	interface Props {
 		chat: Chat;

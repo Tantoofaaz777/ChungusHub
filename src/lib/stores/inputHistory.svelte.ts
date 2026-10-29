@@ -4,8 +4,8 @@
  * chat) being deleted. Storage is always global with the chat id alongside;
  * the chat-only view is just a client-side filter over it.
  */
-import { db } from '$lib/services/database';
-import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
+import { db } from '#lib/services/database.ts';
+import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
 
 export interface InputHistoryEntry {
 	id: number;

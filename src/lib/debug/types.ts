@@ -5,8 +5,8 @@
  * transport chokepoint, plus the real result envelope once it returns. It is the unit
  * the panel lists, inspects, and compares.
  */
-import type { PromptLogMessage } from '$lib/services/transport';
-import type { GenerationTuning, RoutingConfig } from '$lib/types/llm';
+import type { PromptLogMessage } from '#lib/services/transport.ts';
+import type { GenerationTuning, RoutingConfig } from '#lib/types/llm.ts';
 
 export type { PromptLogMessage };
 
@@ -22,7 +22,7 @@ export interface PromptLogEntry {
 	model: string;
 	messages: PromptLogMessage[];
 	params?: Record<string, string | number>;
-	customBody?: import('$shared/custom-body').CustomBody;
+	customBody?: import('#shared/custom-body.ts').CustomBody;
 	maxTokens?: number;
 	temperature?: number;
 	stream: boolean;

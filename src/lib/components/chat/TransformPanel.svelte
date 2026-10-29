@@ -21,19 +21,19 @@
 	 * untouched.
 	 */
 	import { onMount, untrack } from 'svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import GenerationProgress from '$lib/components/ui/GenerationProgress.svelte';
-	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
-	import { engineById } from '$lib/engines/registry';
-	import { failureText } from '$lib/stores/toast.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { buildComposerTransformPrompt, runComposerTransform } from '$lib/services/composerTransformService';
-	import { countMessages, tokenCalibration } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { diffWords } from '$lib/utils/text-diff';
-	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
-	import type { Message } from '$lib/types/chat';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import GenerationProgress from '#lib/components/ui/GenerationProgress.svelte';
+	import { promptHoldStore } from '#lib/stores/promptHold.svelte.ts';
+	import { engineById } from '#lib/engines/registry.ts';
+	import { failureText } from '#lib/stores/toast.svelte.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { buildComposerTransformPrompt, runComposerTransform } from '#lib/services/composerTransformService.ts';
+	import { countMessages, tokenCalibration } from '#lib/tokenizer/index.ts';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+	import { diffWords } from '#lib/utils/text-diff.ts';
+	import { liveTokenCount } from '#lib/utils/live-token-count.svelte.ts';
+	import type { Message } from '#lib/types/chat.ts';
 
 	interface Props {
 		kind: 'spellcheck' | 'impersonate';

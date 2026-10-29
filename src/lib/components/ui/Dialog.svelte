@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import type { Snippet } from 'svelte';
 	import { scrimMotion, surfaceMotion } from './surface-motion';
 	import Icon from './Icon.svelte';

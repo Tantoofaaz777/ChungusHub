@@ -17,16 +17,16 @@
 	 * A scope that cannot offer a row simply does not draw it: a section that exists only to say
 	 * where a setting is NOT is a heading over an apology.
 	 */
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import OverrideMark from '$lib/components/ui/OverrideMark.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import OverrideMark from '#lib/components/ui/OverrideMark.svelte';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
 	import {
 		resolveBookActivation,
 		type Lorebook,
 		type LorebookGlobalSettings
-	} from '$lib/lorebook/types';
-	import { toggleRow } from '$lib/actions/toggleRow';
+	} from '#lib/lorebook/types.ts';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
 
 	interface Props {
 		/** The open book, whose own overrides these rows edit. Omitted on the shelf's defaults

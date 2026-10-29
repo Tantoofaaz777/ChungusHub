@@ -12,7 +12,7 @@
  * icons), so a row here reads the same as the control it stands in for. No two gates may share
  * a glyph: the names tell the rows apart, but the glyph is what the eye lands on first.
  */
-import { engineById, type EngineDef } from '$lib/engines/registry';
+import { engineById, type EngineDef } from '#lib/engines/registry.ts';
 
 /** An engine's glyph, or one of the three the non-engine gates wear. */
 export type HoldGateIcon = EngineDef['icon'] | 'arrowRight' | 'refresh' | 'feather';

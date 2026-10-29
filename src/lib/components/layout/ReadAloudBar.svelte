@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { readAloudStore as reader } from '$lib/stores/read-aloud.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import type { ReadingCommand } from '$lib/services/android-client';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { readAloudStore as reader } from '#lib/stores/read-aloud.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import type { ReadingCommand } from '#lib/services/android-client.ts';
 	function settings() {
 		if (uiStore.guardBlocksNav()) return;
 		uiStore.gotoSettingsPage('tts');

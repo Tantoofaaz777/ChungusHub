@@ -36,15 +36,15 @@
 	 * items, so every shortlist reads as arbitrary. The import note below is the one place
 	 * another product is named, because there it names something the reader can act on.
 	 */
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Alert from '$lib/components/ui/Alert.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { personaStore } from '$lib/stores/persona.svelte';
-	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
-	import { failureText } from '$lib/stores/toast.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { personaStore } from '#lib/stores/persona.svelte.ts';
+	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
+	import { failureText } from '#lib/stores/toast.svelte.ts';
 
 	const TITLES: Record<Step, string> = {
 		hello: 'Welcome to ChungusHub',

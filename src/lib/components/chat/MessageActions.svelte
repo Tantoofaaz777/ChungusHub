@@ -1,7 +1,7 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import { onDestroy } from 'svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 	interface Props {
 		onEdit: () => void;

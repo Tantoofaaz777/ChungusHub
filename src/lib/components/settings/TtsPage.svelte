@@ -1,12 +1,12 @@
 <script lang="ts">
 	import SpeechRulesEditor from './SpeechRulesEditor.svelte';
 	import { onMount } from 'svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { rangeReset } from '$lib/actions/rangeReset';
-	import { isAndroidClient } from '$lib/services/android-client';
-	import { speechSettingsStore as speech } from '$lib/stores/speech-settings.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { rangeReset } from '#lib/actions/rangeReset.ts';
+	import { isAndroidClient } from '#lib/services/android-client.ts';
+	import { speechSettingsStore as speech } from '#lib/stores/speech-settings.svelte.ts';
 	let language = $state('');
 	const languages = $derived([...new Map((speech.data?.voices ?? []).map(voice => [voice.language, voice.languageLabel])).entries()].sort((a, b) => a[1].localeCompare(b[1])));
 	const voices = $derived((speech.data?.voices ?? []).filter(voice => !language || voice.language === language));

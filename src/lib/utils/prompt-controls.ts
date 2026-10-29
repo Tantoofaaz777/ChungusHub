@@ -4,7 +4,7 @@
  * control's effective value is and how it turns into prompt text.
  */
 
-import type { PromptControl } from '$lib/types/database';
+import type { PromptControl } from '#lib/types/database.ts';
 
 /** A range's two ends, low first. */
 export type RangeValue = [number, number];

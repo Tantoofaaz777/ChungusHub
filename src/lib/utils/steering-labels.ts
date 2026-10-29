@@ -11,9 +11,9 @@
  * whatever the library and chat list currently hold, and a MISSING row is labeled, never
  * hidden: a note bound to a deleted character is inert but must still be findable.
  */
-import { chatStore } from '$lib/stores/chat.svelte';
-import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-import type { SteeringNote, SteeringScope, SteeringTarget } from '$lib/types/steering';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
+import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+import type { SteeringNote, SteeringScope, SteeringTarget } from '#lib/types/steering.ts';
 
 /** One option in a note's scope picker. `available` false = there is nothing here to
  *  bind to (no character, no version pin, no chat); the option is shown disabled rather

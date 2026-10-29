@@ -8,10 +8,10 @@
  * lives in the pure `types/steering.ts`, because the generation path resolves the same
  * question against fresh db rows and the two must agree exactly.
  */
-import { db } from '$lib/services/database';
-import { DebouncedWriter } from '$lib/utils/debounced-write';
-import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
-import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
+import { db } from '#lib/services/database.ts';
+import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
+import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
+import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 import {
 	activeSteeringNotes,
 	createSteeringNote,
@@ -24,7 +24,7 @@ import {
 	type SteeringRole,
 	type SteeringScope,
 	type SteeringTarget
-} from '$lib/types/steering';
+} from '#lib/types/steering.ts';
 
 /** Text typing debounce: collapse keystrokes into one write, but keep the window short
  *  enough that a build can never read a stale note. */

@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import Alert from '$lib/components/ui/Alert.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import { LINKS } from '$lib/config/links';
-	import { checkLatestRelease, getInstallInfo, type InstallInfo } from '$lib/services/transport';
-	import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { bytes } from '$lib/utils/bytes';
-	import { copyText } from '$lib/utils/clipboard';
-	import { APP_VERSION } from '$lib/version';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import { LINKS } from '#lib/config/links.ts';
+	import { checkLatestRelease, getInstallInfo, type InstallInfo } from '#lib/services/transport.ts';
+	import { advancedSettingsStore } from '#lib/stores/advanced-settings.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { bytes } from '#lib/utils/bytes.ts';
+	import { copyText } from '#lib/utils/clipboard.ts';
+	import { APP_VERSION } from '#lib/version.ts';
 
 	// The Developer page's only switch: a streak of taps on the version, which is why nothing
 	// anywhere else offers it. The streak has to be continuous, or a control someone pokes at

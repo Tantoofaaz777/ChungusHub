@@ -1,14 +1,15 @@
 {
 	// The Bun server's own type-check. It is deliberately NOT the root tsconfig: that one
-	// extends SvelteKit's generated config, whose `include` covers src/ only. Without this
+	// extends SvelteKit's $app/tsconfig and includes the frontend only. Without this
 	// one nothing under server/ is checked at all, and every "mirrors the client type"
-	// comment in there is worth exactly nothing. `bun run check` runs both.
+	// comment in there is worth exactly nothing. `bun run check` checks this project too.
 	//
 	// shared/ is picked up through the server's imports; it is listed so a shared module with
 	// no server consumer yet is still checked.
 	"compilerOptions": {
 		"strict": true,
 		"noEmit": true,
+		"allowImportingTsExtensions": true,
 		"skipLibCheck": true,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,

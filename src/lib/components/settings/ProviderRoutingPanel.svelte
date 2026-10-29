@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { connectionStore } from '$lib/stores/connections.svelte';
-	import { failureText } from '$lib/stores/toast.svelte';
-	import { QUANTIZATION_LEVELS, isRoutingEmpty, type ModelEndpoint, type RoutingConfig } from '$lib/types/llm';
-	import { formatPricePerMillion, formatContext } from '$lib/utils/modelFormat';
-	import { toggleRow } from '$lib/actions/toggleRow';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { connectionStore } from '#lib/stores/connections.svelte.ts';
+	import { failureText } from '#lib/stores/toast.svelte.ts';
+	import { QUANTIZATION_LEVELS, isRoutingEmpty, type ModelEndpoint, type RoutingConfig } from '#lib/types/llm.ts';
+	import { formatPricePerMillion, formatContext } from '#lib/utils/modelFormat.ts';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
 
 	interface Props {
 		/** The connection whose OpenRouter routing (for its single model) is being edited. */

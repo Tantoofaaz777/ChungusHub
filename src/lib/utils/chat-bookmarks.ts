@@ -1,4 +1,4 @@
-import type { Message } from '$lib/types/chat';
+import type { Message } from '#lib/types/chat.ts';
 
 type BookmarkSource = Pick<Message, 'id' | 'parentId' | 'createdAt' | 'isBookmarked'>;
 

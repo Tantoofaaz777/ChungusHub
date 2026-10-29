@@ -4,8 +4,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { ensurePrivacyMarkers } from './privacy-notice';
-import { hostnameEntry } from './same-origin';
+import { ensurePrivacyMarkers } from './privacy-notice.ts';
+import { hostnameEntry } from './same-origin.ts';
 
 // True inside a `bun build --compile` binary: bundled modules live on the
 // virtual bunfs mount (/$bunfs, B:\~BUN on Windows), not on disk. Uses the

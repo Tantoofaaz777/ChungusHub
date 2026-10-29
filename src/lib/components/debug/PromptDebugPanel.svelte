@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
 	import { onMount } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
-	import ImageLightbox from '$lib/components/ui/ImageLightbox.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { promptLogStore } from '$lib/debug/promptLog.svelte';
-	import { MAX_PROMPT_LOG_LIMIT, validPromptLogLimit } from '$shared/prompt-log';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { advancedSettingsStore } from '#lib/stores/advanced-settings.svelte.ts';
+	import ImageLightbox from '#lib/components/ui/ImageLightbox.svelte';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { promptLogStore } from '#lib/debug/promptLog.svelte.ts';
+	import { MAX_PROMPT_LOG_LIMIT, validPromptLogLimit } from '#shared/prompt-log.ts';
 	import {
 		entryImages,
 		formatDuration,
@@ -21,8 +21,8 @@
 		sourceColor,
 		statusColor,
 		statusLabel
-	} from '$lib/debug/format';
-	import type { PromptLogEntry } from '$lib/debug/types';
+	} from '#lib/debug/format.ts';
+	import type { PromptLogEntry } from '#lib/debug/types.ts';
 	import CopyButton from './CopyButton.svelte';
 	import PromptMessageCard from './PromptMessageCard.svelte';
 	import PromptCompareView from './PromptCompareView.svelte';

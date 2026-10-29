@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import MemoryCompactionDialog from './MemoryCompactionDialog.svelte';
 	import MemoryChapter from './MemoryChapter.svelte';
-	import { memoryStore } from '$lib/memory/scene-store.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { resolvePromptTarget } from '$lib/utils/chat-setup';
+	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { resolvePromptTarget } from '#lib/utils/chat-setup.ts';
 	import { MEMORY_LEVELS, sceneLevel, memoryLabel, type MemoryScene, type MemoryLevel } from '../../../../shared/memory-scenes';
 	const panelActive = panelActivity();
 	const BATCH_SIZE = 50;

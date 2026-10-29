@@ -13,8 +13,8 @@
  * reactive `$state` + db persistence around it.
  */
 
-import { db } from '$lib/services/database';
-import { registerSettingsReload } from '$lib/services/syncedSetting';
+import { db } from '#lib/services/database.ts';
+import { registerSettingsReload } from '#lib/services/syncedSetting.ts';
 import { blendRatio, sampleRatio } from './calibration-core';
 
 interface ModelFactor {

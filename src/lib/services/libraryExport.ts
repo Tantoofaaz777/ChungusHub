@@ -11,9 +11,9 @@
  * a second place for a file to come out unreadable.
  */
 
-import type { LibraryEntry } from '$lib/types/library';
-import { imageService } from '$lib/services/imageService';
-import { isAndroidClient } from '$lib/services/android-client';
+import type { LibraryEntry } from '#lib/types/library.ts';
+import { imageService } from '#lib/services/imageService.ts';
+import { isAndroidClient } from '#lib/services/android-client.ts';
 
 /** A character version as it travels in an export: content + name, ids kept only to
  *  mark which one was active (importers mint fresh ids). */

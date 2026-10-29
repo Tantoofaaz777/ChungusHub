@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Alert from '$lib/components/ui/Alert.svelte';
-	import { failureText } from '$lib/stores/toast.svelte';
-	import { apiGet, fileUrl } from '$lib/services/transport';
-	import { imageService } from '$lib/services/imageService';
-	import { backgroundStore } from '$lib/stores/background.svelte';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import { failureText } from '#lib/stores/toast.svelte.ts';
+	import { apiGet, fileUrl } from '#lib/services/transport.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { backgroundStore } from '#lib/stores/background.svelte.ts';
 
 	const panelActive = panelActivity();
 	interface BackgroundEntry {

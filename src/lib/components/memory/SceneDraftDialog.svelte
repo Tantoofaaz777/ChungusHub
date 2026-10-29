@@ -1,16 +1,16 @@
 <script lang="ts">
- import Dialog from '$lib/components/ui/Dialog.svelte';
- import Button from '$lib/components/ui/Button.svelte';
- import Icon from '$lib/components/ui/Icon.svelte';
- import GenerationProgress from '$lib/components/ui/GenerationProgress.svelte';
- import { memoryStore } from '$lib/memory/scene-store.svelte';
+ import Dialog from '#lib/components/ui/Dialog.svelte';
+ import Button from '#lib/components/ui/Button.svelte';
+ import Icon from '#lib/components/ui/Icon.svelte';
+ import GenerationProgress from '#lib/components/ui/GenerationProgress.svelte';
+ import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
  import { memoryLabel } from '../../../../shared/memory-scenes';
- import { uiStore } from '$lib/stores/ui.svelte';
- import { chatStore } from '$lib/stores/chat.svelte';
- import { resolvePromptTarget } from '$lib/utils/chat-setup';
- import { countMessages } from '$lib/tokenizer';
- import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
- import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
+ import { uiStore } from '#lib/stores/ui.svelte.ts';
+ import { chatStore } from '#lib/stores/chat.svelte.ts';
+ import { resolvePromptTarget } from '#lib/utils/chat-setup.ts';
+ import { countMessages } from '#lib/tokenizer/index.ts';
+ import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+ import { liveTokenCount } from '#lib/utils/live-token-count.svelte.ts';
  let draft = $derived(memoryStore.draft);
  const model = $derived(resolvePromptTarget(chatStore.activeChat).model);
  // Read only source text/model, so typing a title or content and stream progress do not recount it.

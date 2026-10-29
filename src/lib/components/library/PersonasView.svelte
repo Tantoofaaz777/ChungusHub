@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { personaStore, LAST_PERSONA_REASON } from '$lib/stores/persona.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { personaStore, LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
 	import BrowsePopover from './BrowsePopover.svelte';
 	import LibraryCompactCard from './LibraryCompactCard.svelte';
 	import LibraryGalleryCard from './LibraryGalleryCard.svelte';
@@ -26,8 +26,8 @@
 		type SortOption,
 		type ViewMode
 	} from './browse';
-	import { personasViewPrefs, DEFAULTS as BROWSE_DEFAULTS } from '$lib/stores/browseViewPrefs.svelte';
-	import { rangeReset } from '$lib/actions/rangeReset';
+	import { personasViewPrefs, DEFAULTS as BROWSE_DEFAULTS } from '#lib/stores/browseViewPrefs.svelte.ts';
+	import { rangeReset } from '#lib/actions/rangeReset.ts';
 
 	const panelActive = panelActivity();
 	// Personas half of the merged Library (see LibraryView): the browse list, speaking

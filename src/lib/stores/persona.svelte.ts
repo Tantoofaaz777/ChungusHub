@@ -5,11 +5,11 @@
  * persona, chosen from the library, used as the protagonist in every chat's
  * generation. Persisted to the settings table so it survives restarts and syncs.
  */
-import { db } from '$lib/services/database';
-import { reloadSettings } from '$lib/services/syncedSetting';
+import { db } from '#lib/services/database.ts';
+import { reloadSettings } from '#lib/services/syncedSetting.ts';
 import { characterLibraryStore } from './characterLibrary.svelte';
-import { storyRoleName, type LibraryEntry } from '$lib/types/library';
-import type { PromptCharacter } from '$lib/macros';
+import { storyRoleName, type LibraryEntry } from '#lib/types/library.ts';
+import type { PromptCharacter } from '#lib/macros.ts';
 
 const ACTIVE_PERSONA_KEY = 'activePersonaId';
 

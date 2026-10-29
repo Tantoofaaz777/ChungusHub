@@ -6,9 +6,13 @@
  * static assets load offline. API/WS/file requests stay outside the app-shell cache;
  * their own response headers decide whether the browser may reuse them.
  */
-import { build, files, version } from '$service-worker';
+import { version } from '$app/env';
+import { assets, immutable } from '$app/manifest';
+import { self as sw } from '$app/service-worker';
 
-const sw = self as unknown as ServiceWorkerGlobalScope;
+// Manifest paths are relative to the app root; cache and request keys are absolute paths.
+const build = immutable.map(({ path }) => `/${path}`);
+const files = assets.map(({ path }) => `/${path}`);
 const CACHE = `chungushub-${version}`;
 const BOOT_MANIFEST = '/_app/boot-assets.json';
 const BUILD_ASSETS = new Set(build);

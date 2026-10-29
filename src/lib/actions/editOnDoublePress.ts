@@ -1,4 +1,4 @@
-import { DoubleTapGesture, TAP_HOLD_MS, DOUBLE_TAP_GAP_MS } from '$lib/utils/double-tap';
+import { DoubleTapGesture, TAP_HOLD_MS, DOUBLE_TAP_GAP_MS } from '#lib/utils/double-tap.ts';
 
 interface Options { enabled: boolean; onEdit: () => void }
 const CONTROLS = 'a, button, input, textarea, select, label, summary, img, video, audio, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])';

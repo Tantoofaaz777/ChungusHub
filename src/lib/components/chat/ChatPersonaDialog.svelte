@@ -1,11 +1,11 @@
 <script lang="ts">
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { portraitFocusStyle } from '#lib/utils/portrait-focus.ts';
 
 	interface Props {
 		open: boolean;

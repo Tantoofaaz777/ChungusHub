@@ -3,12 +3,12 @@
 	 * One book as a compact grid tile: the name overlays the cover with Gallery's fade.
 	 * Entry and link counts belong to the larger Gallery cards and list rows.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import LibraryEntryMenu from '$lib/components/library/LibraryEntryMenu.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import LibraryEntryMenu from '#lib/components/library/LibraryEntryMenu.svelte';
 	import LorebookGlobalBadge from './LorebookGlobalBadge.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { portraitFocusAim } from '$lib/utils/portrait-focus';
-	import type { Lorebook } from '$lib/lorebook/types';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { portraitFocusAim } from '#lib/utils/portrait-focus.ts';
+	import type { Lorebook } from '#lib/lorebook/types.ts';
 
 	interface Props {
 		book: Lorebook;

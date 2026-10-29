@@ -1,17 +1,17 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
-	import RegexRuleEditor from '$lib/components/regex/RegexRuleEditor.svelte';
-	import RegexRoutingIcons from '$lib/components/regex/RegexRoutingIcons.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
+	import RegexRuleEditor from '#lib/components/regex/RegexRuleEditor.svelte';
+	import RegexRoutingIcons from '#lib/components/regex/RegexRoutingIcons.svelte';
 	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
-	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import {
 		isRuleInert,
 		parseRegexRulesImport,
@@ -20,7 +20,7 @@
 		serializeRegexRules,
 		REGEX_TESTER_SEED,
 		type RegexRule
-	} from '$lib/utils/regex-rules';
+	} from '#lib/utils/regex-rules.ts';
 
 	const flipDurationMs = 160;
 

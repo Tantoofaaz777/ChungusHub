@@ -1,15 +1,15 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { DebouncedWriter } from '$lib/utils/debounced-write';
+import type { DebouncedWriter } from '#lib/utils/debounced-write.ts';
 
 // Exercise asynchronous ordering with the real store and debounce, without Svelte's compiler.
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity, snapshot: structuredClone });
 (globalThis as any).$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
-const realDatabase = { ...await import('$lib/services/database') };
+const realDatabase = { ...await import('#lib/services/database.ts') };
 const realSettings = { ...await import('./general-settings.svelte') };
 afterAll(() => {
-	mock.module('$lib/services/database', () => realDatabase);
-	mock.module('$lib/stores/general-settings.svelte', () => realSettings);
+	mock.module('#lib/services/database.ts', () => realDatabase);
+	mock.module('#lib/stores/general-settings.svelte.ts', () => realSettings);
 });
 
 function deferred<T = void>() {
@@ -28,7 +28,7 @@ let delayReads = false;
 let saveGate: ReturnType<typeof deferred> | null = null;
 let deleteGate: ReturnType<typeof deferred> | null = null;
 const settings = { saveDrafts: true };
-mock.module('$lib/services/database', () => ({
+mock.module('#lib/services/database.ts', () => ({
 	...realDatabase,
 	db: {
 		...realDatabase.db,
@@ -53,7 +53,7 @@ mock.module('$lib/services/database', () => ({
 		}
 	}
 }));
-mock.module('$lib/stores/general-settings.svelte', () => ({ ...realSettings, generalSettingsStore: settings }));
+mock.module('#lib/stores/general-settings.svelte.ts', () => ({ ...realSettings, generalSettingsStore: settings }));
 const { InputDraftStore } = await import('./inputDraft.svelte');
 let store: InstanceType<typeof InputDraftStore>;
 // Flush the real debounce explicitly so network ordering is deterministic, without sleeps.

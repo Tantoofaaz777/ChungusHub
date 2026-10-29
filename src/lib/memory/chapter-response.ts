@@ -1,4 +1,4 @@
-import { parseJsonObject } from '$lib/utils/json-extract';
+import { parseJsonObject } from '#lib/utils/json-extract.ts';
 
 /** Structured chapter output, with plain-text compatibility for custom memory prompts. */
 export function parseChapterResponse(raw: string, label = 'Chapter'): { title?: string; content: string } {

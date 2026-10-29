@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { ChatState, Message } from '$lib/types/chat';
-import type { BuiltPrompt, PromptBuildContext } from '$lib/utils/prompt-builder';
-import type { MemoryScene } from '$shared/memory-scenes';
-import { captureScene } from '$shared/memory-scenes';
+import type { ChatState, Message } from '#lib/types/chat.ts';
+import type { BuiltPrompt, PromptBuildContext } from '#lib/utils/prompt-builder.ts';
+import type { MemoryScene } from '#shared/memory-scenes.ts';
+import { captureScene } from '#shared/memory-scenes.ts';
 
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity });
@@ -12,20 +12,20 @@ function deferred<T>() {
 	const promise = new Promise<T>(yes => { resolve = yes; });
 	return { promise, resolve };
 }
-const realDb = { ...await import('$lib/services/database') };
+const realDb = { ...await import('#lib/services/database.ts') };
 const realChat = { ...await import('./chat.svelte') };
-const realMemory = { ...await import('$lib/memory/scene-store.svelte') };
-const realBuilder = { ...await import('$lib/utils/prompt-builder') };
+const realMemory = { ...await import('#lib/memory/scene-store.svelte.ts') };
+const realBuilder = { ...await import('#lib/utils/prompt-builder.ts') };
 const realHold = { ...await import('./promptHold.svelte') };
 const realSteering = { ...await import('./steering.svelte') };
 afterAll(() => {
 	messageStore.generateResponse = originalGenerate;
-	mock.module('$lib/services/database', () => realDb);
-	mock.module('$lib/stores/chat.svelte', () => realChat);
-	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
-	mock.module('$lib/utils/prompt-builder', () => realBuilder);
-	mock.module('$lib/stores/promptHold.svelte', () => realHold);
-	mock.module('$lib/stores/steering.svelte', () => realSteering);
+	mock.module('#lib/services/database.ts', () => realDb);
+	mock.module('#lib/stores/chat.svelte.ts', () => realChat);
+	mock.module('#lib/memory/scene-store.svelte.ts', () => realMemory);
+	mock.module('#lib/utils/prompt-builder.ts', () => realBuilder);
+	mock.module('#lib/stores/promptHold.svelte.ts', () => realHold);
+	mock.module('#lib/stores/steering.svelte.ts', () => realSteering);
 });
 
 const messages = [
@@ -44,20 +44,20 @@ const chat = {
 	freshSnapshot: () => { const d = deferred<Snapshot>(); history.push(d); return d.promise; }
 };
 const built = { messages: [{ role: 'user', content: 'Reviewed prompt' }], target: {}, oneShotSteering: [] } as unknown as BuiltPrompt;
-mock.module('$lib/services/database', () => ({ ...realDb, db: {
+mock.module('#lib/services/database.ts', () => ({ ...realDb, db: {
 	getMemoryScenes: () => { const d = deferred<MemoryScene[]>(); memory.push(d); return d.promise; }
 } }));
-mock.module('$lib/stores/chat.svelte', () => ({ ...realChat, chatStore: chat }));
-mock.module('$lib/memory/scene-store.svelte', () => ({ ...realMemory, memoryStore: {
+mock.module('#lib/stores/chat.svelte.ts', () => ({ ...realChat, chatStore: chat }));
+mock.module('#lib/memory/scene-store.svelte.ts', () => ({ ...realMemory, memoryStore: {
 	loaded: true, activeChatId: 'chat', archivedMessageIds: new Set<string>()
 } }));
-mock.module('$lib/utils/prompt-builder', () => ({ ...realBuilder,
+mock.module('#lib/utils/prompt-builder.ts', () => ({ ...realBuilder,
 	buildPromptMessages: async (context: PromptBuildContext) => { contexts.push(context); return built; }
 }));
-mock.module('$lib/stores/promptHold.svelte', () => ({ ...realHold, promptHoldStore: {
+mock.module('#lib/stores/promptHold.svelte.ts', () => ({ ...realHold, promptHoldStore: {
 	holding: false, review: () => review.promise
 } }));
-mock.module('$lib/stores/steering.svelte', () => ({ ...realSteering, steeringStore: { flush: async () => {} } }));
+mock.module('#lib/stores/steering.svelte.ts', () => ({ ...realSteering, steeringStore: { flush: async () => {} } }));
 const { messageStore } = await import('./messages.svelte');
 const originalGenerate = messageStore.generateResponse;
 messageStore.generateResponse = async (...args) => { generated.push(args); return 'generated'; };

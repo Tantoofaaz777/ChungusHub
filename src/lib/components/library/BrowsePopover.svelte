@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { menuMotion } from '$lib/components/ui/menu-motion';
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { menuMotion } from '#lib/components/ui/menu-motion.ts';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import type { Snippet } from 'svelte';
 
 	const panelActive = panelActivity();

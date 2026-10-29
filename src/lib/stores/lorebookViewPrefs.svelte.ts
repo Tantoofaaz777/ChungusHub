@@ -15,9 +15,9 @@
  * Display only: `lorebookStore.books` is never reordered, because link resolution reads that
  * order to decide what reaches the prompt first (`sortLorebooks` in lorebook/types.ts).
  */
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
-import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, type ViewMode } from '$lib/components/library/browse';
-import type { LorebookSortOrder } from '$lib/lorebook/types';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
+import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, type ViewMode } from '#lib/components/library/browse.ts';
+import type { LorebookSortOrder } from '#lib/lorebook/types.ts';
 
 const SETTINGS_KEY = 'lorebookSort';
 

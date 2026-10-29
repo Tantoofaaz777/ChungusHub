@@ -1,13 +1,13 @@
 <script lang="ts">
-	import RetainedView from '$lib/components/ui/RetainedView.svelte';
-	import Icon, { type IconName } from '$lib/components/ui/Icon.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
+	import RetainedView from '#lib/components/ui/RetainedView.svelte';
+	import Icon, { type IconName } from '#lib/components/ui/Icon.svelte';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
 	import CharacterLibraryView from './CharacterLibraryView.svelte';
 	import PersonasView from './PersonasView.svelte';
-	import LorebooksView from '$lib/components/lorebook/LorebooksView.svelte';
-	import type { LibraryTab } from '$lib/stores/ui.svelte';
+	import LorebooksView from '#lib/components/lorebook/LorebooksView.svelte';
+	import type { LibraryTab } from '#lib/stores/ui.svelte.ts';
 
 	// Visited shelves retain filters and scroll. Only the visible shelf owns panel activity.
 	let tab = $derived(uiStore.libraryTab);

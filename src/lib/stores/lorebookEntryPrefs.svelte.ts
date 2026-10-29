@@ -12,8 +12,8 @@
  * engine returns survivors in `order` sequence and the block is built from that
  * (`sortEntries` in lorebook/types.ts).
  */
-import type { LorebookEntryNature, LorebookEntrySort } from '$lib/lorebook/types';
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
+import type { LorebookEntryNature, LorebookEntrySort } from '#lib/lorebook/types.ts';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 
 const SETTINGS_KEY = 'lorebookEntryPrefs';
 

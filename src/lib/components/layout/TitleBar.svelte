@@ -1,15 +1,15 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { shortcutLabel } from '$lib/components/ui/ShortcutsSheet.svelte';
-	import MemoryNavStatus from '$lib/components/memory/MemoryNavStatus.svelte';
-	import { uiStore, type OverlayType } from '$lib/stores/ui.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { memoryStore } from '$lib/memory/scene-store.svelte';
-	import { promptTokensStore } from '$lib/stores/promptTokens.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { shortcutLabel } from '#lib/components/ui/ShortcutsSheet.svelte';
+	import MemoryNavStatus from '#lib/components/memory/MemoryNavStatus.svelte';
+	import { uiStore, type OverlayType } from '#lib/stores/ui.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+	import { promptTokensStore } from '#lib/stores/promptTokens.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 	let activeOverlay = $derived(uiStore.activeOverlay);
 	let settingsOpen = $derived(uiStore.settingsOpen);

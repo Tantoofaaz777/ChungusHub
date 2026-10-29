@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { captureScene, type CompactionLevel, type MemoryScene, type SceneMessage } from '$shared/memory-scenes';
+import { captureScene, type CompactionLevel, type MemoryScene, type SceneMessage } from '#shared/memory-scenes.ts';
 import { generationSourcePrompt, normalizePreviousSummaries, previousGenerationSummaries } from './generation-context';
 
 function fixture() {

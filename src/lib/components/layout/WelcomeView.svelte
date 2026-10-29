@@ -1,17 +1,17 @@
 <script lang="ts">
-	import ChatBrowserControls from '$lib/components/sidebar/ChatBrowserControls.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
-	import { db } from '$lib/services/database';
-	import type { ChatListStats } from '$lib/types/chat';
-	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '$lib/utils/chat-browser';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import ChatAvatars from '$lib/components/sidebar/ChatAvatars.svelte';
-	import { formatRelativeTime } from '$lib/utils/date';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { chatCastStore } from '$lib/stores/chatCast.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
+	import ChatBrowserControls from '#lib/components/sidebar/ChatBrowserControls.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
+	import { db } from '#lib/services/database.ts';
+	import type { ChatListStats } from '#lib/types/chat.ts';
+	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '#lib/utils/chat-browser.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import ChatAvatars from '#lib/components/sidebar/ChatAvatars.svelte';
+	import { formatRelativeTime } from '#lib/utils/date.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { chatCastStore } from '#lib/stores/chatCast.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
 
 	let chats = $derived(chatStore.sortedChats);
 	// Only chats that have actually been written in are worth resuming: a fresh

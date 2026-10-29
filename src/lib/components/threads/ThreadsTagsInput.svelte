@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 
 	let { id, value, onchange }: { id: string; value: string; onchange: (value: string) => void } = $props();
 	let draft = $state('');

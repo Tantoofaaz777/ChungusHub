@@ -21,13 +21,13 @@
  *
  * See architecture/ui-shell-settings.md, "Keyboard".
  */
-import { chatCursor } from '$lib/stores/chatCursor.svelte';
-import { chatSearch } from '$lib/stores/chatSearch.svelte';
-import { chatStore } from '$lib/stores/chat.svelte';
-import { lorebookStore } from '$lib/lorebook/store.svelte';
-import { moveFocus } from '$lib/services/spatial-focus';
-import { uiStore } from '$lib/stores/ui.svelte';
-import type { Direction } from '$lib/utils/spatial-nav';
+import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
+import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
+import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+import { moveFocus } from '#lib/services/spatial-focus.ts';
+import { uiStore } from '#lib/stores/ui.svelte.ts';
+import type { Direction } from '#lib/utils/spatial-nav.ts';
 
 /**
  * The two surfaces the keyboard raises that belong to no panel: the sheet listing these keys,

@@ -2,7 +2,7 @@
 
 // Type-only: a preset carries its own find & replace rules, and they are the same rules
 // the Regex settings page edits. No runtime import, so the layering stays one-way.
-import type { RegexRule } from '$lib/utils/regex-rules';
+import type { RegexRule } from '#lib/utils/regex-rules.ts';
 
 export interface DbChat {
 	id: string;
@@ -222,7 +222,7 @@ export interface PromptPreset {
 	 *  edit it, because an edited copy would no longer be the preset's. */
 	regexRules?: RegexRule[];
 	/** Opt-in: prune macro-containing tag blocks whose entire resolved content is empty
-	 *  (see pruneEmptyTagBlocks in $lib/macros). Written text survives empty macros.
+	 *  (see pruneEmptyTagBlocks in #lib/macros). Written text survives empty macros.
 	 *  Per-preset because it changes what the authored template means.
 	 *  Absent/false leaves imported and hand-rolled presets exactly as written. */
 	pruneEmptyBlocks?: boolean;

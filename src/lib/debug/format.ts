@@ -2,8 +2,8 @@
 // The rune-free counting module, like the prompt assembler uses: the panel states a BASE
 // estimate and labels it as one, so it needs no calibration layer. Importing the layer
 // would drag the store graph into a module that is otherwise pure.
-import { countTokens } from '$lib/tokenizer/count';
-import type { EngineId } from '$lib/engines/registry';
+import { countTokens } from '#lib/tokenizer/count.ts';
+import type { EngineId } from '#lib/engines/registry.ts';
 import type { PromptLogEntry, PromptLogMessage, PromptLogStatus } from './types';
 
 /**

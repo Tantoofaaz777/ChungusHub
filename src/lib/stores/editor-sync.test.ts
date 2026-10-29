@@ -1,24 +1,24 @@
 import { afterAll, beforeEach, expect, mock, spyOn, test } from 'bun:test';
-import { createEmptyLorebook } from '$lib/lorebook/types';
-import { createSteeringNote } from '$lib/types/steering';
-import { createEmptyPersona, type LibraryEntry } from '$lib/types/library';
-import { imageService } from '$lib/services/imageService';
+import { createEmptyLorebook } from '#lib/lorebook/types.ts';
+import { createSteeringNote } from '#lib/types/steering.ts';
+import { createEmptyPersona, type LibraryEntry } from '#lib/types/library.ts';
+import { imageService } from '#lib/services/imageService.ts';
 
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity, snapshot: structuredClone });
 (globalThis as any).$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
-const realDb = { ...await import('$lib/services/database') };
-afterAll(() => { mock.module('$lib/services/database', () => realDb); });
+const realDb = { ...await import('#lib/services/database.ts') };
+afterAll(() => { mock.module('#lib/services/database.ts', () => realDb); });
 let reads: { kind: string; resolve: (rows: any[]) => void }[] = [];
 let writes: string[] = [];
 let refuseDelete = false;
-mock.module('$lib/services/database', () => ({ ...realDb, db: new Proxy({}, { get: (_, method: string) => {
+mock.module('#lib/services/database.ts', () => ({ ...realDb, db: new Proxy({}, { get: (_, method: string) => {
 	if (['getAllLorebooks', 'getAllSteeringNotes', 'getAllLibraryEntries'].includes(method)) return () => new Promise(resolve => reads.push({ kind: method, resolve }));
 	if (method === 'getAllCharacterVersions') return async () => [];
 	if (method === 'getAllChats') return async () => [];
 	return async () => { writes.push(method); if (method === 'deleteLibraryEntry' && refuseDelete) throw new Error('Last persona'); };
 } }) }));
-const { lorebookStore } = await import('$lib/lorebook/store.svelte');
+const { lorebookStore } = await import('#lib/lorebook/store.svelte.ts');
 const { steeringStore } = await import('./steering.svelte');
 const { characterLibraryStore } = await import('./characterLibrary.svelte');
 const instantiate = <T extends object>(store: T): T => new (store.constructor as { new(): T })();

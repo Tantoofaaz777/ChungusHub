@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { threadsPrompt, assembleThreadsPrompt, normalizeThreadsConfig } from '$shared/threads/model';
-	import { installmentOrRoundLabel } from '$shared/threads/prompt';
-	import { countTokens, tokenCalibration, withTokenizers } from '$lib/tokenizer';
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import { threadsPrompt, assembleThreadsPrompt, normalizeThreadsConfig } from '#shared/threads/model.ts';
+	import { installmentOrRoundLabel } from '#shared/threads/prompt.ts';
+	import { countTokens, tokenCalibration, withTokenizers } from '#lib/tokenizer/index.ts';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 	let { count, input, model }: { count: number; input: Parameters<typeof threadsPrompt>[0] | null; model: string } = $props();
 	let fullTokens = $state<number | null>(null);

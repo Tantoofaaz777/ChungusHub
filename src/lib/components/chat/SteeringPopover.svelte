@@ -11,15 +11,15 @@
 	 * It renders the dialog body only; InputArea owns the shared Dialog, open state, close
 	 * commit, trigger button and its active dot.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
-	import { toggleRow } from '$lib/actions/toggleRow';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { steeringStore } from '$lib/stores/steering.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { bindingLabel } from '$lib/utils/steering-labels';
-	import { noteLabel, steeringTargetForChat, type SteeringScope } from '$lib/types/steering';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { steeringStore } from '#lib/stores/steering.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { bindingLabel } from '#lib/utils/steering-labels.ts';
+	import { noteLabel, steeringTargetForChat, type SteeringScope } from '#lib/types/steering.ts';
 
 	let { onManageLibrary }: { onManageLibrary: () => void } = $props();
 

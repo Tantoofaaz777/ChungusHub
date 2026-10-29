@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { renderMarkdown } from '$lib/utils/markdown';
-	import { renderedHtml } from '$lib/actions/renderedHtml';
-	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
-	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
-	import { liveGenerationTime } from '$lib/utils/live-generation-time.svelte';
+	import { renderMarkdown } from '#lib/utils/markdown.ts';
+	import { renderedHtml } from '#lib/actions/renderedHtml.ts';
+	import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
+	import { liveTokenCount } from '#lib/utils/live-token-count.svelte.ts';
+	import { liveGenerationTime } from '#lib/utils/live-generation-time.svelte.ts';
 	import MessageReasoning from './MessageReasoning.svelte';
 	import MessageAvatar from './MessageAvatar.svelte';
 	import MessageMeta from './MessageMeta.svelte';
 	import MessageHeader from './MessageHeader.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import { storyRoleName } from '$lib/types/library';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { openChatSetup } from '#lib/stores/openChatSetup.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import { storyRoleName } from '#lib/types/library.ts';
 
 	interface Props {
 		content: string;

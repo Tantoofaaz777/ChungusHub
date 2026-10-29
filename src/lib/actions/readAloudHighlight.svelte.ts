@@ -1,6 +1,6 @@
-import { readAloudStore as reader } from '$lib/stores/read-aloud.svelte';
-import { themeStore } from '$lib/stores/theme.svelte';
-import { mapSpeechToDisplay, speechHighlightInk } from '$lib/utils/speech-highlight';
+import { readAloudStore as reader } from '#lib/stores/read-aloud.svelte.ts';
+import { themeStore } from '#lib/stores/theme.svelte.ts';
+import { mapSpeechToDisplay, speechHighlightInk } from '#lib/utils/speech-highlight.ts';
 
 interface Options { key: string; version: string; text: () => string }
 interface Chunk { node: Text; start: number; end: number }

@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { isAndroidClient, type AndroidSharedFile } from '$lib/services/android-client';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { toastStore, failureText } from '$lib/stores/toast.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { isAndroidClient, type AndroidSharedFile } from '#lib/services/android-client.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { toastStore, failureText } from '#lib/stores/toast.svelte.ts';
 
 	let files = $state<AndroidSharedFile[]>([]);
 	let busy = $state(false);
@@ -69,7 +69,7 @@
 		try {
 			// The normal card parser and persistence pipeline, loaded only after confirmation.
 			const [{ importSillyTavernCard }, { createBookIndex }] = await Promise.all([
-				import('$lib/services/sillyTavernImport'), import('$lib/lorebook/identity')
+				import('#lib/services/sillyTavernImport.ts'), import('#lib/lorebook/identity.ts')
 			]);
 			await Promise.all([characterLibraryStore.load(), lorebookStore.load()]);
 			const bookIndex = createBookIndex(lorebookStore.books);

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { openWelcomeDialog } from '$lib/components/layout/WelcomeDialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { openWelcomeDialog } from '#lib/components/layout/WelcomeDialog.svelte';
 </script>
 
 <!-- Reached only while `advancedSettingsStore.developerMode` is on, which the About page's

@@ -1,4 +1,4 @@
-import { canConfigureReadAloud, type AndroidSpeechChoice, type AndroidSpeechSettings } from '$lib/services/android-client';
+import { canConfigureReadAloud, type AndroidSpeechChoice, type AndroidSpeechSettings } from '#lib/services/android-client.ts';
 
 /** Voice IDs belong to a particular phone/engine. These never enter server settings. */
 export class SpeechSettingsStore {

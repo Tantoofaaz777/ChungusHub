@@ -10,11 +10,11 @@
 	 * The shared centered Dialog keeps this identical to the other composer action windows:
 	 * title and X in the same places, focus trapped inside, and one Escape/backdrop contract.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
-	import { viewport } from '$lib/stores/viewport.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
 
 	interface Props {
 		open: boolean;

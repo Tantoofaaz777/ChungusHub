@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { parsePresetJson, serializePresetJson } from './preset-io';
-import { DEFAULT_EXAMPLE_SEPARATOR } from '$lib/macros';
-import { DEFAULT_CONTINUE_PROMPT } from '$lib/utils/prompt-assembly';
+import { DEFAULT_EXAMPLE_SEPARATOR } from '#lib/macros.ts';
+import { DEFAULT_CONTINUE_PROMPT } from '#lib/utils/prompt-assembly.ts';
 
 const bare = (over: Record<string, unknown> = {}) => ({
 	id: 'p',

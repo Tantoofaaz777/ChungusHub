@@ -1,50 +1,50 @@
 <script lang="ts">
-	import Workspace from '$lib/components/layout/Workspace.svelte';
-	import TitleBar from '$lib/components/layout/TitleBar.svelte';
-	import ReadAloudBar from '$lib/components/layout/ReadAloudBar.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { desktopLayoutStore } from '$lib/stores/desktop-layout.svelte';
-	import WelcomeDialog, { openWelcomeDialog } from '$lib/components/layout/WelcomeDialog.svelte';
-	import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
-	import DataAheadBar, { setDataAhead } from '$lib/components/layout/DataAheadBar.svelte';
-	import ConnectionBar from '$lib/components/layout/ConnectionBar.svelte';
-	import DeleteGuardBar from '$lib/components/layout/DeleteGuardBar.svelte';
-	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
-	import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
-	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
-	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
-	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
-	import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
-	import { backgroundStore } from '$lib/stores/background.svelte';
-	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { libraryViewPrefs, personasViewPrefs } from '$lib/stores/browseViewPrefs.svelte';
-	import { lorebookViewPrefs } from '$lib/stores/lorebookViewPrefs.svelte';
-	import { lorebookEntryPrefs } from '$lib/stores/lorebookEntryPrefs.svelte';
-	import { db } from '$lib/services/database';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { chatCastStore } from '$lib/stores/chatCast.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { connectionStore } from '$lib/stores/connections.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { steeringStore } from '$lib/stores/steering.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
-	import { personaStore } from '$lib/stores/persona.svelte';
-	import { presetControlsStore } from '$lib/stores/presetControls.svelte';
-	import { tokenCalibration } from '$lib/tokenizer';
+	import Workspace from '#lib/components/layout/Workspace.svelte';
+	import TitleBar from '#lib/components/layout/TitleBar.svelte';
+	import ReadAloudBar from '#lib/components/layout/ReadAloudBar.svelte';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { desktopLayoutStore } from '#lib/stores/desktop-layout.svelte.ts';
+	import WelcomeDialog, { openWelcomeDialog } from '#lib/components/layout/WelcomeDialog.svelte';
+	import ToastContainer from '#lib/components/ui/ToastContainer.svelte';
+	import DataAheadBar, { setDataAhead } from '#lib/components/layout/DataAheadBar.svelte';
+	import ConnectionBar from '#lib/components/layout/ConnectionBar.svelte';
+	import DeleteGuardBar from '#lib/components/layout/DeleteGuardBar.svelte';
+	import { deleteGuard } from '#lib/stores/delete-guard.svelte.ts';
+	import { advancedSettingsStore } from '#lib/stores/advanced-settings.svelte.ts';
+	import { promptHoldStore } from '#lib/stores/promptHold.svelte.ts';
+	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
+	import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
+	import { inputHistoryStore } from '#lib/stores/inputHistory.svelte.ts';
+	import { backgroundStore } from '#lib/stores/background.svelte.ts';
+	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+	import { libraryViewPrefs, personasViewPrefs } from '#lib/stores/browseViewPrefs.svelte.ts';
+	import { lorebookViewPrefs } from '#lib/stores/lorebookViewPrefs.svelte.ts';
+	import { lorebookEntryPrefs } from '#lib/stores/lorebookEntryPrefs.svelte.ts';
+	import { db } from '#lib/services/database.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { chatCastStore } from '#lib/stores/chatCast.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { connectionStore } from '#lib/stores/connections.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { steeringStore } from '#lib/stores/steering.svelte.ts';
+	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
+	import { personaStore } from '#lib/stores/persona.svelte.ts';
+	import { presetControlsStore } from '#lib/stores/presetControls.svelte.ts';
+	import { tokenCalibration } from '#lib/tokenizer/index.ts';
 	import {
 		AccessDeniedError,
 		MaintenanceError,
 		apiGet,
 		getServerConfig,
 		onReconnect
-	} from '$lib/services/transport';
-	import { backupStore } from '$lib/stores/backups.svelte';
-	import { threadsConfigStore } from '$lib/threads/config.svelte';
-	import { initSync } from '$lib/services/sync';
+	} from '#lib/services/transport.ts';
+	import { backupStore } from '#lib/stores/backups.svelte.ts';
+	import { threadsConfigStore } from '#lib/threads/config.svelte.ts';
+	import { initSync } from '#lib/services/sync.ts';
 	import { onMount } from 'svelte';
 
 	type Phase = 'loading' | 'ready' | 'error' | 'denied' | 'maintenance';

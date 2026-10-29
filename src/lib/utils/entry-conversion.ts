@@ -12,7 +12,7 @@ import {
 	type CharacterTraits,
 	type LibraryEntryType,
 	type TraitKey
-} from '$lib/types/library';
+} from '#lib/types/library.ts';
 
 /**
  * How the action reads in a menu, keyed by the kind being converted FROM. One place, so the

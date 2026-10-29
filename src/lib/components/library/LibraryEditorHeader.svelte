@@ -6,13 +6,13 @@
 	 * New entries use explicit Save/Discard. Labels drop on narrow screens.
 	 */
 	import type { Snippet } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import LorebookLinkPicker from '$lib/components/lorebook/LorebookLinkPicker.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { CONVERT_ACTION } from '$lib/utils/entry-conversion';
-	import type { LibraryEntryType } from '$lib/types/library';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import LorebookLinkPicker from '#lib/components/lorebook/LorebookLinkPicker.svelte';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { CONVERT_ACTION } from '#lib/utils/entry-conversion.ts';
+	import type { LibraryEntryType } from '#lib/types/library.ts';
 
 	interface Props {
 		name: string;

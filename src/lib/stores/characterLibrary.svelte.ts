@@ -1,5 +1,5 @@
-import { db } from '$lib/services/database';
-import { imageService } from '$lib/services/imageService';
+import { db } from '#lib/services/database.ts';
+import { imageService } from '#lib/services/imageService.ts';
 import type {
 	ChatDefaultKey,
 	CharacterSprite,
@@ -9,19 +9,19 @@ import type {
 	LibraryEntryIdentity,
 	LibraryEntryData,
 	LibrarySeed
-} from '$lib/types/library';
-import { createEmptyCharacter, createEmptyPersona } from '$lib/types/library';
-import type { ImportResult } from '$lib/services/sillyTavernImport';
-import { lorebookStore } from '$lib/lorebook/store.svelte';
-import type { BookIndex } from '$lib/lorebook/identity';
-import { toastStore } from '$lib/stores/toast.svelte';
-import { DebouncedWriter } from '$lib/utils/debounced-write';
-import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
+} from '#lib/types/library.ts';
+import { createEmptyCharacter, createEmptyPersona } from '#lib/types/library.ts';
+import type { ImportResult } from '#lib/services/sillyTavernImport.ts';
+import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+import type { BookIndex } from '#lib/lorebook/identity.ts';
+import { toastStore } from '#lib/stores/toast.svelte.ts';
+import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
+import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
 import {
 	clampPortraitFocus,
 	isDefaultPortraitFocus,
 	type PortraitFocus
-} from '$lib/utils/portrait-focus';
+} from '#lib/utils/portrait-focus.ts';
 
 /** What a caller may change about an entry's data in one go. Traits are patched field by
  *  field (the editor sends one), everything else is replaced whole. */

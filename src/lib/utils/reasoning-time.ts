@@ -1,4 +1,4 @@
-import type { ReasoningTiming } from '$lib/types/chat';
+import type { ReasoningTiming } from '#lib/types/chat.ts';
 
 /** A reply may interleave thinking and content. Keep the clock on the request, not its DOM. */
 export function trackReasoning(

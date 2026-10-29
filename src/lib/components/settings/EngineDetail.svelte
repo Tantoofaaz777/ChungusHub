@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	const panelActive = panelActivity();
 	/**
 	 * One engine's detail view, drilled into from the Engines list
@@ -16,29 +16,29 @@
 	 * shipped default.
 	 */
 	import { onDestroy, untrack } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import ThreadsPromptEditor from '$lib/components/threads/ThreadsPromptEditor.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import PillRow from '#lib/components/ui/PillRow.svelte';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
+	import ThreadsPromptEditor from '#lib/components/threads/ThreadsPromptEditor.svelte';
 	import SteeringLibrary from './SteeringLibrary.svelte';
-	import { STEERING_ROLES, type SteeringRole } from '$lib/types/steering';
-	import { engineById, type EngineId } from '$lib/engines/registry';
+	import { STEERING_ROLES, type SteeringRole } from '#lib/types/steering.ts';
+	import { engineById, type EngineId } from '#lib/engines/registry.ts';
 	import {
 		FEATURE_PROMPT_DEFAULTS,
 		featurePromptsStore,
 		type FeaturePromptKey
-	} from '$lib/stores/featurePrompts.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { connectionStore } from '$lib/stores/connections.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import type { CallTarget } from '$lib/types/llm';
-	import { threadsConfigStore } from '$lib/threads/config.svelte';
-	import { toggleRow } from '$lib/actions/toggleRow';
+	} from '#lib/stores/featurePrompts.svelte.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { connectionStore } from '#lib/stores/connections.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import type { CallTarget } from '#lib/types/llm.ts';
+	import { threadsConfigStore } from '#lib/threads/config.svelte.ts';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
 
-	import { copyText } from '$lib/utils/clipboard';
+	import { copyText } from '#lib/utils/clipboard.ts';
 
 	/** The host list keys this component on the id, so it remounts per engine. */
 	let { id }: { id: string } = $props();

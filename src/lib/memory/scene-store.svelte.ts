@@ -1,15 +1,15 @@
 /** Manual scene summaries. Saved text replaces its source range; generating is only a draft. */
-import { db as database } from '$lib/services/database';
-import { llmService } from '$lib/services/llm/provider';
-import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-import { personaEntryFor, toPromptCharacter } from '$lib/utils/chat-setup';
-import { expandSelfRefs } from '$lib/macros';
+import { db as database } from '#lib/services/database.ts';
+import { llmService } from '#lib/services/llm/provider.ts';
+import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+import { personaEntryFor, toPromptCharacter } from '#lib/utils/chat-setup.ts';
+import { expandSelfRefs } from '#lib/macros.ts';
 import { markSceneBoundary } from './scene-selection';
 import { parseChapterResponse } from './chapter-response';
 import { generationSourcePrompt, previousGenerationSummaries } from './generation-context';
-import { retainLocalChanges } from '$lib/utils/retain-local-changes';
-import type { Message } from '$lib/types/chat';
+import { retainLocalChanges } from '#lib/utils/retain-local-changes.ts';
+import type { Message } from '#lib/types/chat.ts';
 import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, sceneLevel, memoryLabel, prepareCompaction, type MemoryScene, type SceneSource, type MemoryLevel, type CompactionLevel, type MemoryChild } from '../../../shared/memory-scenes';
 
 /** Only the current transcript and cast needed to resolve/generate manual summaries. */

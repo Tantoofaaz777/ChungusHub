@@ -7,12 +7,12 @@
 	 * broadcast to every listening socket (architecture/tokenizer-debug.md), so this page
 	 * boots the socket and the theme and nothing else: no chats, no library, no presets.
 	 */
-	import PromptDebugPanel from '$lib/components/debug/PromptDebugPanel.svelte';
-	import { db } from '$lib/services/database';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import { promptLogStore } from '$lib/debug/promptLog.svelte';
-	import { reloadAllSyncedSettings } from '$lib/services/syncedSetting';
-	import { AccessDeniedError, onSync } from '$lib/services/transport';
+	import PromptDebugPanel from '#lib/components/debug/PromptDebugPanel.svelte';
+	import { db } from '#lib/services/database.ts';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import { promptLogStore } from '#lib/debug/promptLog.svelte.ts';
+	import { reloadAllSyncedSettings } from '#lib/services/syncedSetting.ts';
+	import { AccessDeniedError, onSync } from '#lib/services/transport.ts';
 	import { onMount } from 'svelte';
 
 	type Phase = 'loading' | 'ready' | 'error' | 'denied';

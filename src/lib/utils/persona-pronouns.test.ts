@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { expandMacros } from '$lib/macros';
+import { expandMacros } from '#lib/macros.ts';
 
 import {
 	DEFAULT_PERSONA_PRONOUNS,

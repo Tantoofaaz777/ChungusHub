@@ -11,21 +11,21 @@
  * for a character card by our own importer or by SillyTavern's.
  */
 
-import type { PromptPreset } from '$lib/types/database';
-import { parsePresetJson, presetDocument, type ImportedPreset } from '$lib/services/preset-io';
+import type { PromptPreset } from '#lib/types/database.ts';
+import { parsePresetJson, presetDocument, type ImportedPreset } from '#lib/services/preset-io.ts';
 import {
 	cropToPng,
 	fetchImageBlob,
 	makePlaceholderPng,
 	triggerDownload
-} from '$lib/services/libraryExport';
+} from '#lib/services/libraryExport.ts';
 import {
 	buildTextChunk,
 	decodeBase64Utf8,
 	encodeBase64Utf8,
 	insertTextChunk,
 	readTextChunk
-} from '$lib/services/pngText';
+} from '#lib/services/pngText.ts';
 
 /** The text-chunk keyword a preset card is claimed by. */
 export const PRESET_CHUNK_KEYWORD = 'chungus_preset';

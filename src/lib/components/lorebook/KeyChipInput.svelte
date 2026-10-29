@@ -12,9 +12,9 @@
 	 * that mode needs no stored rule and survives the trip there and back untouched.
 	 */
 	import { scale } from 'svelte/transition';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { anchorTo } from '$lib/actions/anchorTo';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { anchorTo } from '#lib/actions/anchorTo.ts';
 	import {
 		addLorebookKeys,
 		compileRegexKey,
@@ -24,8 +24,8 @@
 		resolveKeyMatch,
 		type LorebookKeyRule,
 		type LorebookKeyRules
-	} from '$lib/lorebook/types';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	} from '#lib/lorebook/types.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 	interface Props {
 		/** Current keys (source of truth lives in the store). */

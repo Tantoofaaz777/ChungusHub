@@ -5,22 +5,22 @@
  * Here we translate that hint into a targeted store reload so the change shows up
  * on every other open device within a moment of it happening.
  */
-import { onSync, onReconnect } from '$lib/services/transport';
-import { chatStore } from '$lib/stores/chat.svelte';
-import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-import { lorebookStore } from '$lib/lorebook/store.svelte';
-import { steeringStore } from '$lib/stores/steering.svelte';
-import { chatCastStore } from '$lib/stores/chatCast.svelte';
-import { personaStore } from '$lib/stores/persona.svelte';
-import { presetControlsStore } from '$lib/stores/presetControls.svelte';
-import { inputDraftStore } from '$lib/stores/inputDraft.svelte';
-import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
-import { presetService } from '$lib/services/presets.svelte';
-import { reloadAllSyncedSettings } from '$lib/services/syncedSetting';
-import { threadsStore } from '$lib/threads/store.svelte';
-import { memoryStore } from '$lib/memory/scene-store.svelte';
-import { backupStore } from '$lib/stores/backups.svelte';
-import type { SyncScope } from '$shared/sync';
+import { onSync, onReconnect } from '#lib/services/transport.ts';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
+import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+import { steeringStore } from '#lib/stores/steering.svelte.ts';
+import { chatCastStore } from '#lib/stores/chatCast.svelte.ts';
+import { personaStore } from '#lib/stores/persona.svelte.ts';
+import { presetControlsStore } from '#lib/stores/presetControls.svelte.ts';
+import { inputDraftStore } from '#lib/stores/inputDraft.svelte.ts';
+import { inputHistoryStore } from '#lib/stores/inputHistory.svelte.ts';
+import { presetService } from '#lib/services/presets.svelte.ts';
+import { reloadAllSyncedSettings } from '#lib/services/syncedSetting.ts';
+import { threadsStore } from '#lib/threads/store.svelte.ts';
+import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+import { backupStore } from '#lib/stores/backups.svelte.ts';
+import type { SyncScope } from '#shared/sync.ts';
 import { SyncBatch } from './sync-batch';
 
 let started = false;

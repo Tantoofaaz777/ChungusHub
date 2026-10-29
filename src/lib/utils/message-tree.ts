@@ -7,7 +7,7 @@
  * on one page load and not the next. Every walk below is an explicit loop, and any new
  * one is too.
  */
-import type { Message } from '$lib/types/chat';
+import type { Message } from '#lib/types/chat.ts';
 
 /**
  * Extract the linear path from root to a specific leaf.

@@ -15,15 +15,15 @@
 	 *
 	 * The panel stays open across presses: binding a book to three chats is a run of them.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { foldForSearch } from '$lib/components/library/browse';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
-	import { chatLorebookClaim } from '$lib/utils/chat-setup';
-	import type { LibraryEntry } from '$lib/types/library';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { foldForSearch } from '#lib/components/library/browse.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { portraitFocusStyle } from '#lib/utils/portrait-focus.ts';
+	import { chatLorebookClaim } from '#lib/utils/chat-setup.ts';
+	import type { LibraryEntry } from '#lib/types/library.ts';
 
 	interface Props {
 		/** The open book. Everything here is asked about this one id. */

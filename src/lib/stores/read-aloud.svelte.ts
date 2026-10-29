@@ -1,6 +1,6 @@
-import { canReadAloud, type AndroidReadingState, type ReadingCommand } from '$lib/services/android-client';
+import { canReadAloud, type AndroidReadingState, type ReadingCommand } from '#lib/services/android-client.ts';
 
-import { prepareSpeechProcessing, processSpeechText, suspendSpeechProcessing, type SpeechProcessingTiming } from '$lib/services/speech-rules';
+import { prepareSpeechProcessing, processSpeechText, suspendSpeechProcessing, type SpeechProcessingTiming } from '#lib/services/speech-rules.ts';
 
 /** Device-local playback state, never synced to the server or another device. */
 class ReadAloudStore {

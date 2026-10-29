@@ -8,11 +8,11 @@
   leaves it behind and says so.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
-	import { imageRejectionReason, imageService } from '$lib/services/imageService';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import type { PromptPresetMeta } from '$lib/types/database';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { imageRejectionReason, imageService } from '#lib/services/imageService.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import type { PromptPresetMeta } from '#lib/types/database.ts';
 
 	interface Props {
 		meta: PromptPresetMeta | undefined;

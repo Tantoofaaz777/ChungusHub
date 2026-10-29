@@ -6,12 +6,12 @@
 	 * Chats pin variants, so the delete/switch guards here are what keeps old
 	 * stories replayable.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { deleteGuard } from '#lib/stores/delete-guard.svelte.ts';
 
 	interface Props {
 		entryId: string;

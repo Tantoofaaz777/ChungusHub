@@ -8,26 +8,26 @@ import { join } from 'node:path';
 let source: string;
 beforeAll(async () => {
 	const mocks: Record<string, string> = {
-		'$lib/services/llm/provider': `export const llmService={getPromptPostProcessing:()=>fixture.mode,getPromptPlaceholder:()=> '[Start]',complete:async(target,request)=>{fixture.sent.push({target,request});request.onThinkingToken?.('First ');request.onThinkingToken?.('thought');request.onToken?.('A new ');request.onToken?.('draft');return {content:'A new draft'}}};`,
-		'$lib/stores/featurePrompts.svelte': `export const featurePromptsStore={promptFor:()=>fixture.template,spellcheckEnabled:true,impersonateEnabled:true};`,
-		'$lib/stores/promptHold.svelte': `export const promptHoldStore={review:async(kind,messages,target)=>{fixture.reviewed.push({kind,messages,target});return fixture.approved??messages}};`,
-		'$lib/stores/chat.svelte': `export const chatStore={get activeChat(){return fixture.chat},get currentChatState(){return {activePath:fixture.messages}}};`,
-		'$lib/stores/characterLibrary.svelte': `export const characterLibraryStore={get entries(){return [fixture.character,fixture.persona]},dataForVersion:()=>fixture.character.data};`,
-		'$lib/memory/scene-store.svelte': `export const memoryStore={scenes:[]};`,
-		'$lib/lorebook/store.svelte': `export const lorebookStore={booksForChat:()=>{fixture.access.push('lorebooks');return []}};`,
-		'$lib/lorebook/settings.svelte': `export const lorebookSettingsStore={get settings(){fixture.access.push('lorebook-settings');return {budgetPercent:0}}};`,
-		'$lib/stores/presetControls.svelte': `export const presetControlsStore={valuesFor:()=>{fixture.access.push('controls');return {roleplayOnly:'PRIVATE PRESET CONTROL'}}};`,
-		'$lib/utils/chat-setup': `export const toPromptCharacter=(entry,data)=>entry?{name:entry.identity.name,traits:(data??entry.data).traits,pronouns:entry.identity.pronouns}:null;
+		'#lib/services/llm/provider.ts': `export const llmService={getPromptPostProcessing:()=>fixture.mode,getPromptPlaceholder:()=> '[Start]',complete:async(target,request)=>{fixture.sent.push({target,request});request.onThinkingToken?.('First ');request.onThinkingToken?.('thought');request.onToken?.('A new ');request.onToken?.('draft');return {content:'A new draft'}}};`,
+		'#lib/stores/featurePrompts.svelte.ts': `export const featurePromptsStore={promptFor:()=>fixture.template,spellcheckEnabled:true,impersonateEnabled:true};`,
+		'#lib/stores/promptHold.svelte.ts': `export const promptHoldStore={review:async(kind,messages,target)=>{fixture.reviewed.push({kind,messages,target});return fixture.approved??messages}};`,
+		'#lib/stores/chat.svelte.ts': `export const chatStore={get activeChat(){return fixture.chat},get currentChatState(){return {activePath:fixture.messages}}};`,
+		'#lib/stores/characterLibrary.svelte.ts': `export const characterLibraryStore={get entries(){return [fixture.character,fixture.persona]},dataForVersion:()=>fixture.character.data};`,
+		'#lib/memory/scene-store.svelte.ts': `export const memoryStore={scenes:[]};`,
+		'#lib/lorebook/store.svelte.ts': `export const lorebookStore={booksForChat:()=>{fixture.access.push('lorebooks');return []}};`,
+		'#lib/lorebook/settings.svelte.ts': `export const lorebookSettingsStore={get settings(){fixture.access.push('lorebook-settings');return {budgetPercent:0}}};`,
+		'#lib/stores/presetControls.svelte.ts': `export const presetControlsStore={valuesFor:()=>{fixture.access.push('controls');return {roleplayOnly:'PRIVATE PRESET CONTROL'}}};`,
+		'#lib/utils/chat-setup.ts': `export const toPromptCharacter=(entry,data)=>entry?{name:entry.identity.name,traits:(data??entry.data).traits,pronouns:entry.identity.pronouns}:null;
 			export const chatPersonaEntry=()=>fixture.persona;
 			export const chatPreset=()=>{fixture.access.push('preset');return fixture.preset};
 			export const resolvePromptTarget=()=>{fixture.access.push('primary-budget');return {model:'primary-model',contextBudget:4000}};
 			export const chatLorebookClaim=()=>[];export const chatMutedLorebookClaim=()=>[];`,
-		'$lib/lorebook/engine': `export function resolveLorebooks(){fixture.access.push('lorebook-scan');return {text:'PRIVATE LOREBOOK',trace:{records:[]}}}`,
-		'$lib/tokenizer/count': `export const countTokens=()=>{throw new Error('Unexpected tokenization while building the transform')};`
+		'#lib/lorebook/engine.ts': `export function resolveLorebooks(){fixture.access.push('lorebook-scan');return {text:'PRIVATE LOREBOOK',trace:{records:[]}}}`,
+		'#lib/tokenizer/count.ts': `export const countTokens=()=>{throw new Error('Unexpected tokenization while building the transform')};`
 	};
 	const libRoot = fileURLToPath(new URL('../', import.meta.url));
 	const byPath = new Map(Object.entries(mocks).map(([key, contents]) =>
-		[join(libRoot, key.slice('$lib/'.length)).replaceAll('\\', '/') + '.ts', contents]));
+		[join(libRoot, key.slice('#lib/'.length)).replaceAll('\\', '/'), contents]));
 	const build = await Bun.build({
 		entrypoints: [fileURLToPath(new URL('./composerTransformService.ts', import.meta.url))],
 		target: 'browser', format: 'cjs', write: false,

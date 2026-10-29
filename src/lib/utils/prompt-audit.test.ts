@@ -1,8 +1,8 @@
 import { beforeAll, expect, test } from 'bun:test';
-import { prepareTokenizer } from '$lib/tokenizer/encodings';
-import { countTokens } from '$lib/tokenizer/count';
-import { expandMacros, pruneEmptyTagBlocks, substitute } from '$lib/macros';
-import { createEmptyLorebook, createEmptyLorebookEntry, LOREBOOK_POSITION_AT_DEPTH } from '$lib/lorebook/types';
+import { prepareTokenizer } from '#lib/tokenizer/encodings.ts';
+import { countTokens } from '#lib/tokenizer/count.ts';
+import { expandMacros, pruneEmptyTagBlocks, substitute } from '#lib/macros.ts';
+import { createEmptyLorebook, createEmptyLorebookEntry, LOREBOOK_POSITION_AT_DEPTH } from '#lib/lorebook/types.ts';
 import { applyPostProcessing, assemblePrompt, type AssembleInput } from './prompt-assembly';
 
 beforeAll(() => Promise.all([prepareTokenizer('gpt-4o'), prepareTokenizer('gpt-4')]));

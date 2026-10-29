@@ -1,24 +1,24 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { db } from '$lib/services/database';
-	import { chatCastStore } from '$lib/stores/chatCast.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { importSillyTavernCard } from '$lib/services/sillyTavernImport';
-	import { createBookIndex } from '$lib/lorebook/identity';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import type { ImportResult } from '$lib/services/sillyTavernImport';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { db } from '#lib/services/database.ts';
+	import { chatCastStore } from '#lib/stores/chatCast.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { importSillyTavernCard } from '#lib/services/sillyTavernImport.ts';
+	import { createBookIndex } from '#lib/lorebook/identity.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import type { ImportResult } from '#lib/services/sillyTavernImport.ts';
 	import BrowsePopover from './BrowsePopover.svelte';
 	import LibraryCompactCard from './LibraryCompactCard.svelte';
 	import LibraryGalleryCard from './LibraryGalleryCard.svelte';
@@ -36,8 +36,8 @@
 		type SortOption,
 		type ViewMode
 	} from './browse';
-	import { libraryViewPrefs, DEFAULTS as BROWSE_DEFAULTS } from '$lib/stores/browseViewPrefs.svelte';
-	import { rangeReset } from '$lib/actions/rangeReset';
+	import { libraryViewPrefs, DEFAULTS as BROWSE_DEFAULTS } from '#lib/stores/browseViewPrefs.svelte.ts';
+	import { rangeReset } from '#lib/actions/rangeReset.ts';
 
 	const panelActive = panelActivity();
 	// Characters half of the merged Library (see LibraryView): the browse list. The

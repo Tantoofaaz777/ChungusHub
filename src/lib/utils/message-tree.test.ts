@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import type { Message } from '$lib/types/chat';
+import type { Message } from '#lib/types/chat.ts';
 import {
 	canSpliceMessage,
 	collectSubtree,

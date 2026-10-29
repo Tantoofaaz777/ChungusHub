@@ -11,8 +11,8 @@
 	 */
 	import { fade, scale } from 'svelte/transition';
 	import Icon from './Icon.svelte';
-	import { focusTrap } from '$lib/actions/focusTrap';
-	import { fileUrl } from '$lib/services/transport';
+	import { focusTrap } from '#lib/actions/focusTrap.ts';
+	import { fileUrl } from '#lib/services/transport.ts';
 
 	interface Props {
 		/** Server-relative image paths (images/<category>/<file>), in the order the surface

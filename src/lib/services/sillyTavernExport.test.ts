@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { buildCharacterFiles, buildSillyTavernCard, embedCardInPng } from './sillyTavernExport';
 import { importSillyTavernCard } from './sillyTavernImport';
-import type { CharacterVersion, LibraryEntry, LibraryEntryData } from '$lib/types/library';
+import type { CharacterVersion, LibraryEntry, LibraryEntryData } from '#lib/types/library.ts';
 
 function makeData(over: Partial<LibraryEntryData['traits']> = {}): LibraryEntryData {
 	return {

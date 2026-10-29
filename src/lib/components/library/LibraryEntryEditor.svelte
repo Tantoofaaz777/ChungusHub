@@ -1,22 +1,22 @@
 <script lang="ts">
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import ChatDefaultSelect from './ChatDefaultSelect.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { connectionStore } from '$lib/stores/connections.svelte';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { chatPersonaEntry } from '$lib/utils/chat-setup';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { connectionStore } from '#lib/stores/connections.svelte.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { chatPersonaEntry } from '#lib/utils/chat-setup.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import EntryFormFields from './EntryFormFields.svelte';
 	import CharacterVersionMenu from './CharacterVersionMenu.svelte';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
 	import ExportDialog from './ExportDialog.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import CharacterTokenCountsDialog from './CharacterTokenCountsDialog.svelte';
-	import { countCharacterTokens, type CharacterTokenCounts } from '$lib/utils/character-token-counts';
-	import { llmService } from '$lib/services/llm/provider';
-	import { withTokenizers } from '$lib/tokenizer/loader';
-	import type { CharacterTraits, ChatDefaultKey } from '$lib/types/library';
+	import { countCharacterTokens, type CharacterTokenCounts } from '#lib/utils/character-token-counts.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { withTokenizers } from '#lib/tokenizer/loader.ts';
+	import type { CharacterTraits, ChatDefaultKey } from '#lib/types/library.ts';
 
 	interface Props {
 		entryId: string;

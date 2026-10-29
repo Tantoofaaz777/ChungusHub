@@ -1,16 +1,16 @@
 <script lang="ts">
-	import type { DeleteConfirmRung } from '$lib/stores/advanced-settings.svelte';
-	import { deleteGuard, WINDOW_CHOICES, QUICK_WINDOW_MS } from '$lib/stores/delete-guard.svelte';
-	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
-	import { HOLD_GATES } from '$lib/config/prompt-hold';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { toggleRow } from '$lib/actions/toggleRow';
-	import { imageService } from '$lib/services/imageService';
-	import { failureText } from '$lib/stores/toast.svelte';
+	import type { DeleteConfirmRung } from '#lib/stores/advanced-settings.svelte.ts';
+	import { deleteGuard, WINDOW_CHOICES, QUICK_WINDOW_MS } from '#lib/stores/delete-guard.svelte.ts';
+	import { promptHoldStore } from '#lib/stores/promptHold.svelte.ts';
+	import { HOLD_GATES } from '#lib/config/prompt-hold.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import PillRow from '#lib/components/ui/PillRow.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { failureText } from '#lib/stores/toast.svelte.ts';
 
 
 	const RUNGS = [

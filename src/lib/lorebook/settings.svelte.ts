@@ -3,8 +3,8 @@
  * boot and read reactively everywhere the activation engine runs (real prompt, token meters,
  * the lorebook page). Books override individual values; `null` on a book = inherit these.
  */
-import { db } from '$lib/services/database';
-import { registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
+import { db } from '#lib/services/database.ts';
+import { registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 import {
 	DEFAULT_LOREBOOK_GLOBAL_SETTINGS,
 	type LorebookGlobalSettings

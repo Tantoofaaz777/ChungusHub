@@ -19,7 +19,7 @@
  * A feature that needs bespoke UI or a bespoke pipeline is an engine. See
  * architecture/engines.md.
  */
-import { featurePromptsStore, type FeaturePromptKey } from '$lib/stores/featurePrompts.svelte';
+import { featurePromptsStore, type FeaturePromptKey } from '#lib/stores/featurePrompts.svelte.ts';
 
 export type EngineId =
 	| 'threads'

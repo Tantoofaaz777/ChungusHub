@@ -13,20 +13,20 @@
  * version and embeds only it.
  */
 
-import type { CharacterVersion, LibraryEntry, LibraryEntryData } from '$lib/types/library';
+import type { CharacterVersion, LibraryEntry, LibraryEntryData } from '#lib/types/library.ts';
 import {
 	fetchImageBlob,
 	makePlaceholderPng,
 	reencodeToPng,
 	sanitizeFilename,
 	saveGeneratedDownload
-} from '$lib/services/libraryExport';
-import type { ExportedLibraryEntry, ExportDestination } from '$lib/services/libraryExport';
-import { buildTextChunk, encodeBase64Utf8, insertTextChunk } from '$lib/services/pngText';
-import { createZip, type ZipEntry } from '$lib/services/zip';
-import type { CharacterCardV3 } from '$lib/types/character-card';
-import type { Lorebook } from '$lib/lorebook/types';
-import { toCharacterBook } from '$lib/lorebook/sillytavern';
+} from '#lib/services/libraryExport.ts';
+import type { ExportedLibraryEntry, ExportDestination } from '#lib/services/libraryExport.ts';
+import { buildTextChunk, encodeBase64Utf8, insertTextChunk } from '#lib/services/pngText.ts';
+import { createZip, type ZipEntry } from '#lib/services/zip.ts';
+import type { CharacterCardV3 } from '#lib/types/character-card.ts';
+import type { Lorebook } from '#lib/lorebook/types.ts';
+import { toCharacterBook } from '#lib/lorebook/sillytavern.ts';
 import { bytesDataUrl, dataUrlBytes } from './charx';
 import { stripCardChunks } from './pngText';
 

@@ -10,17 +10,17 @@
   otherwise), with one click back.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
-	import { rangeReset } from '$lib/actions/rangeReset';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { rangeReset } from '#lib/actions/rangeReset.ts';
 	import {
 		getControlValue,
 		type RangeValue
-	} from '$lib/utils/prompt-controls';
-	import type { PromptControl, PromptControlAdvice } from '$lib/types/database';
+	} from '#lib/utils/prompt-controls.ts';
+	import type { PromptControl, PromptControlAdvice } from '#lib/types/database.ts';
 
 	interface Props {
 		control: PromptControl;

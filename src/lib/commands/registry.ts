@@ -23,16 +23,16 @@
  * See architecture/chat-sessions.md for the composer's command mode.
  */
 import type { ComponentProps } from 'svelte';
-import type Icon from '$lib/components/ui/Icon.svelte';
-import { chatCursor } from '$lib/stores/chatCursor.svelte';
-import { chatStore } from '$lib/stores/chat.svelte';
-import { chatSearch } from '$lib/stores/chatSearch.svelte';
-import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-import { lorebookStore } from '$lib/lorebook/store.svelte';
-import { messageStore } from '$lib/stores/messages.svelte';
-import { steeringStore } from '$lib/stores/steering.svelte';
-import { toastStore } from '$lib/stores/toast.svelte';
-import { uiStore } from '$lib/stores/ui.svelte';
+import type Icon from '#lib/components/ui/Icon.svelte';
+import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
+import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
+import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+import { messageStore } from '#lib/stores/messages.svelte.ts';
+import { steeringStore } from '#lib/stores/steering.svelte.ts';
+import { toastStore } from '#lib/stores/toast.svelte.ts';
+import { uiStore } from '#lib/stores/ui.svelte.ts';
 
 /** Read off the icon component itself, so a name that does not draw is a build error. */
 type CommandIcon = ComponentProps<typeof Icon>['name'];

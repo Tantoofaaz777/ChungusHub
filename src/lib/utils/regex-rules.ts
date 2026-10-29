@@ -12,7 +12,7 @@
  * message rows. Toggling a rule off instantly restores the original text.
  */
 
-import type { Message } from '$lib/types/chat';
+import type { Message } from '#lib/types/chat.ts';
 
 export type RegexRuleRole = 'user' | 'assistant';
 export type RegexRuleScope = 'display' | 'prompt';

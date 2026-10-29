@@ -8,12 +8,12 @@
 	 * also why the meta line is drawn from the book itself and never from the picture: what a
 	 * card says is true whether or not anyone set a cover.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import LibraryEntryMenu from '$lib/components/library/LibraryEntryMenu.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import LibraryEntryMenu from '#lib/components/library/LibraryEntryMenu.svelte';
 	import LorebookGlobalBadge from './LorebookGlobalBadge.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { portraitFocusAim } from '$lib/utils/portrait-focus';
-	import type { Lorebook } from '$lib/lorebook/types';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { portraitFocusAim } from '#lib/utils/portrait-focus.ts';
+	import type { Lorebook } from '#lib/lorebook/types.ts';
 
 	interface Props {
 		book: Lorebook;

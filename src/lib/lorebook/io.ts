@@ -5,8 +5,8 @@
  */
 import type { Lorebook } from './types';
 import { parseLorebook, toNativeWorldInfo, toCharacterBook } from './sillytavern';
-import { createZip } from '$lib/services/zip';
-import { triggerDownload } from '$lib/services/libraryExport';
+import { createZip } from '#lib/services/zip.ts';
+import { triggerDownload } from '#lib/services/libraryExport.ts';
 
 function sanitizeFilename(name: string): string {
 	// Strip only what filesystems reject (reserved punctuation + control chars) so

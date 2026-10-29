@@ -16,21 +16,21 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import ChatOverrideNotice from '$lib/components/ui/ChatOverrideNotice.svelte';
-	import { isSectionIcon } from '$lib/config/section-icons';
-	import PresetManager from '$lib/components/presets/PresetManager.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import ChatOverrideNotice from '#lib/components/ui/ChatOverrideNotice.svelte';
+	import { isSectionIcon } from '#lib/config/section-icons.ts';
+	import PresetManager from '#lib/components/presets/PresetManager.svelte';
 	import CustomControlField from './CustomControlField.svelte';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { presetControlsStore } from '$lib/stores/presetControls.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { chatPreset } from '$lib/utils/chat-setup';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { getControlValue } from '$lib/utils/prompt-controls';
-	import type { PromptControl, PromptPresetBundle } from '$lib/types/database';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { presetControlsStore } from '#lib/stores/presetControls.svelte.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { chatPreset } from '#lib/utils/chat-setup.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { getControlValue } from '#lib/utils/prompt-controls.ts';
+	import type { PromptControl, PromptPresetBundle } from '#lib/types/database.ts';
 
 	// Make sure presets are loaded; the guard inside initialize() makes re-runs free.
 	$effect(() => {

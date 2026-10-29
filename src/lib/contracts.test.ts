@@ -22,15 +22,15 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { PROVIDER_NAMES } from '$lib/types/llm';
-import { REASONING_DIALECTS } from '$lib/config/sampling';
-import { PERMANENT_TRAITS } from '$lib/types/library';
-import { MACROS } from '$lib/macros';
-import { palettes } from '$lib/themes/presets';
+import { PROVIDER_NAMES } from '#lib/types/llm.ts';
+import { REASONING_DIALECTS } from '#lib/config/sampling.ts';
+import { PERMANENT_TRAITS } from '#lib/types/library.ts';
+import { MACROS } from '#lib/macros.ts';
+import { palettes } from '#lib/themes/presets.ts';
 // The app's own reading, so this contract and the palette editor's readout can never
 // drift into disagreeing about what a ratio is.
-import { contrastRatio } from '$lib/utils/contrast';
-import { SYNC_SCOPES } from '$shared/sync';
+import { contrastRatio } from '#lib/utils/contrast.ts';
+import { SYNC_SCOPES } from '#shared/sync.ts';
 import { PROVIDER_PROFILES } from '../../server/llm/providers/index';
 
 const ROOT = join(import.meta.dir, '..', '..');

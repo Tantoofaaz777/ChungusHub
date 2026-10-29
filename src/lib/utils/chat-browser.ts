@@ -1,4 +1,4 @@
-import type { Chat, ChatListStats } from '$lib/types/chat';
+import type { Chat, ChatListStats } from '#lib/types/chat.ts';
 import { buildSearchRegex } from './chat-search';
 
 export type SortKey = 'activity' | 'created' | 'messages' | 'title';

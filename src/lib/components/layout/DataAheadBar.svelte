@@ -21,7 +21,7 @@
 
 <script lang="ts">
 	import { slide } from 'svelte/transition';
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 </script>
 
 {#if ahead}

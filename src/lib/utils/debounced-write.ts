@@ -21,7 +21,7 @@
  * Construct one per store, at module scope: the `flushOnHide` listeners are never removed.
  */
 import { SvelteMap } from 'svelte/reactivity';
-import { flushOnHide } from '$lib/utils/flush-on-hide';
+import { flushOnHide } from '#lib/utils/flush-on-hide.ts';
 
 /** The key for a store with exactly one thing to write (regex rules: one settings blob). */
 const SINGLE = '';

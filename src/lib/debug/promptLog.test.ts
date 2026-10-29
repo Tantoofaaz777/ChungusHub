@@ -1,7 +1,7 @@
 /** State transitions only: rune shims do not attempt to test Svelte reactivity. */
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { PromptLogEntry } from './types';
-import type { PromptLogEvent } from '$lib/services/transport';
+import type { PromptLogEvent } from '#lib/services/transport.ts';
 
 const globals = globalThis as unknown as Record<string, unknown>;
 const previousState = globals.$state;

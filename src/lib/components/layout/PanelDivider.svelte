@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { desktopLayoutStore } from '$lib/stores/desktop-layout.svelte';
+	import { desktopLayoutStore } from '#lib/stores/desktop-layout.svelte.ts';
 	import { clampPanelWidth, DEFAULT_PANEL_WIDTH, panelBounds } from './desktop-layout';
 
 	let { workspaceWidth, width = $bindable(DEFAULT_PANEL_WIDTH), resizing = $bindable(false) }:

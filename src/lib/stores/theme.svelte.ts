@@ -31,7 +31,7 @@ import type {
 	PaletteMode,
 	ProseColorSource,
 	TimestampFormat
-} from '$lib/types/theme';
+} from '#lib/types/theme.ts';
 import {
 	palettes as shippedPalettes,
 	accents,
@@ -44,12 +44,12 @@ import {
 	OVERLAY_BY_MODE,
 	PALETTE_COLOR_KEYS,
 	proseQuoteDefault
-} from '$lib/themes/presets';
-import { apiGet, apiSend, getClientId } from '$lib/services/transport';
+} from '#lib/themes/presets.ts';
+import { apiGet, apiSend, getClientId } from '#lib/services/transport.ts';
 import { customFontStack, type CustomFont } from '../../../shared/fonts';
-import { ensureFontLoaded } from '$lib/services/fonts';
-import { db } from '$lib/services/database';
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
+import { ensureFontLoaded } from '#lib/services/fonts.ts';
+import { db } from '#lib/services/database.ts';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 
 /**
  * Two keys, deliberately not one blob.

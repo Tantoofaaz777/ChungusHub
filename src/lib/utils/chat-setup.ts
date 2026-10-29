@@ -13,17 +13,17 @@
  * a reach into `chatStore` would close the import cycle documented in live-macro-context.ts.
  */
 
-import type { Chat } from '$lib/types/chat';
-import { normalizeChatFeatureState } from '$lib/types/chat';
-import type { PromptPreset } from '$lib/types/database';
-import { storyRoleName, type LibraryEntry, type LibraryEntryData } from '$lib/types/library';
-import type { CallTarget, PromptPostProcessingMode } from '$lib/types/llm';
-import type { PromptCharacter } from '$lib/macros';
-import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-import { connectionStore } from '$lib/stores/connections.svelte';
-import { personaStore } from '$lib/stores/persona.svelte';
-import { presetService } from '$lib/services/presets.svelte';
-import { llmService } from '$lib/services/llm/provider';
+import type { Chat } from '#lib/types/chat.ts';
+import { normalizeChatFeatureState } from '#lib/types/chat.ts';
+import type { PromptPreset } from '#lib/types/database.ts';
+import { storyRoleName, type LibraryEntry, type LibraryEntryData } from '#lib/types/library.ts';
+import type { CallTarget, PromptPostProcessingMode } from '#lib/types/llm.ts';
+import type { PromptCharacter } from '#lib/macros.ts';
+import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+import { connectionStore } from '#lib/stores/connections.svelte.ts';
+import { personaStore } from '#lib/stores/persona.svelte.ts';
+import { presetService } from '#lib/services/presets.svelte.ts';
+import { llmService } from '#lib/services/llm/provider.ts';
 
 export interface PromptTarget {
 	/** The call this prompt rides. Every surface that names the model names this one's, so

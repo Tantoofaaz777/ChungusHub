@@ -18,7 +18,7 @@
 	import Dialog from './Dialog.svelte';
 	import Button from './Button.svelte';
 	import HoldToConfirmButton from './HoldToConfirmButton.svelte';
-	import { deleteGuard, QUICK_WINDOW_MS, WINDOW_CHOICES } from '$lib/stores/delete-guard.svelte';
+	import { deleteGuard, QUICK_WINDOW_MS, WINDOW_CHOICES } from '#lib/stores/delete-guard.svelte.ts';
 
 	interface Props {
 		open: boolean;

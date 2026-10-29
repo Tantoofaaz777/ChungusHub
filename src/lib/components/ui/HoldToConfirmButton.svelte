@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
+	import { deleteGuard } from '#lib/stores/delete-guard.svelte.ts';
 
 	/** Blast radii below this confirm with a plain click; at/above it the button
 	 *  requires a press-and-hold, so muscle memory alone can never fire it. */

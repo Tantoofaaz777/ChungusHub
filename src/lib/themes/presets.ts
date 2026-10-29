@@ -20,7 +20,7 @@ import type {
 	AppearanceState,
 	PaletteMode,
 	AppearanceScope
-} from '$lib/types/theme';
+} from '#lib/types/theme.ts';
 
 /**
  * Every color a palette editor may touch, in the order the editor lays them out.

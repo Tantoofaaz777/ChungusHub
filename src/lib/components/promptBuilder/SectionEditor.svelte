@@ -7,10 +7,10 @@
   is meant to be edited, and it can say anything.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { SECTION_ICONS, isSectionIcon } from '$lib/config/section-icons';
-	import type { PromptSection } from '$lib/types/database';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { SECTION_ICONS, isSectionIcon } from '#lib/config/section-icons.ts';
+	import type { PromptSection } from '#lib/types/database.ts';
 
 	interface Props {
 		section: PromptSection;

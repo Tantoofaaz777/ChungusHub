@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { portraitViewerStore } from '$lib/stores/portraitViewer.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { focusTrap } from '$lib/actions/focusTrap';
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import { portraitViewerStore } from '#lib/stores/portraitViewer.svelte.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { focusTrap } from '#lib/actions/focusTrap.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
 
 	/** The shape a portrait usually is, held for the frame before the file reports its own. */
 	const FALLBACK_ASPECT = 3 / 4;

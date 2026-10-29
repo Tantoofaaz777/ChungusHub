@@ -1,4 +1,4 @@
-import { DEFAULT_PANEL_WIDTH, normalizeDesktopLayout, type SidebarSide } from '$lib/components/layout/desktop-layout';
+import { DEFAULT_PANEL_WIDTH, normalizeDesktopLayout, type SidebarSide } from '#lib/components/layout/desktop-layout.ts';
 
 const STORAGE_KEY = 'chungushub-desktop-layout';
 

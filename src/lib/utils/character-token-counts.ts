@@ -1,5 +1,5 @@
-import { PERMANENT_TRAITS, type CharacterTraits, type TraitKey } from '$lib/types/library';
-import { countTokens } from '$lib/tokenizer/count';
+import { PERMANENT_TRAITS, type CharacterTraits, type TraitKey } from '#lib/types/library.ts';
+import { countTokens } from '#lib/tokenizer/count.ts';
 
 export interface CharacterTokenRow {
 	key: string;

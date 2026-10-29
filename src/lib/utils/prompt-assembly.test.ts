@@ -1,5 +1,5 @@
 import { beforeAll } from 'bun:test';
-import { prepareTokenizer } from '$lib/tokenizer/encodings';
+import { prepareTokenizer } from '#lib/tokenizer/encodings.ts';
 beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
 
 import { captureScene, type MemoryScene } from '../../../shared/memory-scenes';
@@ -21,8 +21,8 @@ import {
 	DEFAULT_SYSTEM_PROMPT,
 	type AssembleInput
 } from './prompt-assembly';
-import { countTokens } from '$lib/tokenizer/count';
-import type { LLMMessage } from '$lib/types/llm';
+import { countTokens } from '#lib/tokenizer/count.ts';
+import type { LLMMessage } from '#lib/types/llm.ts';
 import {
 	createEmptyLorebook,
 	createEmptyLorebookEntry,
@@ -30,7 +30,7 @@ import {
 	LOREBOOK_POSITION_AT_DEPTH,
 	type Lorebook,
 	type LorebookEntry
-} from '$lib/lorebook/types';
+} from '#lib/lorebook/types.ts';
 
 const MODEL = 'gpt-4o';
 

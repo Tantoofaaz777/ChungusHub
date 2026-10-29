@@ -1,4 +1,4 @@
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 
 /**
  * The destructive-act ladder's three rungs, in one setting rather than two switches

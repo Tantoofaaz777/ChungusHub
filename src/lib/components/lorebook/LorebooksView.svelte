@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	const panelActive = panelActivity();
 	/**
 	 * Lorebooks half of the merged Library (see library/LibraryView): the shelf, wearing the
@@ -10,33 +10,33 @@
 	 * and the same reason as the character editor: a book is a document, and the dock is a shelf.
 	 */
 	import { tick } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
-	import BrowsePopover from '$lib/components/library/BrowsePopover.svelte';
-	import LibraryPager from '$lib/components/library/LibraryPager.svelte';
-	import { foldForSearch, PER_PAGE_OPTIONS } from '$lib/components/library/browse';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
+	import BrowsePopover from '#lib/components/library/BrowsePopover.svelte';
+	import LibraryPager from '#lib/components/library/LibraryPager.svelte';
+	import { foldForSearch, PER_PAGE_OPTIONS } from '#lib/components/library/browse.ts';
 	import LorebookShelfRow from './LorebookShelfRow.svelte';
 	import LorebookGalleryCard from './LorebookGalleryCard.svelte';
 	import LorebookGridCard from './LorebookGridCard.svelte';
 	import LorebookActivationPanel from './LorebookActivationPanel.svelte';
-	import { rangeReset } from '$lib/actions/rangeReset';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
-	import { downloadLorebook, downloadLorebooks, readLorebookFile } from '$lib/lorebook/io';
-	import { activationSummary, lorebookDeleteMessage, sortLorebooks } from '$lib/lorebook/types';
+	import { rangeReset } from '#lib/actions/rangeReset.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
+	import { downloadLorebook, downloadLorebooks, readLorebookFile } from '#lib/lorebook/io.ts';
+	import { activationSummary, lorebookDeleteMessage, sortLorebooks } from '#lib/lorebook/types.ts';
 	import {
 		lorebookViewPrefs,
 		LOREBOOK_SORT_OPTIONS,
 		LOREBOOK_VIEW_DEFAULTS
-	} from '$lib/stores/lorebookViewPrefs.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	} from '#lib/stores/lorebookViewPrefs.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
 
 	let books = $derived(lorebookStore.books);
 

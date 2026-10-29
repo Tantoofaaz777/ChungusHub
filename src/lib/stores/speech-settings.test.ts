@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import type { AndroidSpeechChoice, AndroidSpeechSettings } from '$lib/services/android-client';
+import type { AndroidSpeechChoice, AndroidSpeechSettings } from '#lib/services/android-client.ts';
 (globalThis as unknown as { $state: <T>(value: T) => T }).$state = value => value;
 const { SpeechSettingsStore } = await import('./speech-settings.svelte');
 const previousWindow = globalThis.window;

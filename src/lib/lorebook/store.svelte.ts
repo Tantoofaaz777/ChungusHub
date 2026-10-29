@@ -6,11 +6,11 @@
  * pending write for one book survives editing another). `flush()` forces those writes out
  * before navigation.
  */
-import { db } from '$lib/services/database';
-import { imageService } from '$lib/services/imageService';
-import { DebouncedWriter } from '$lib/utils/debounced-write';
-import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
-import type { PortraitFocus } from '$lib/utils/portrait-focus';
+import { db } from '#lib/services/database.ts';
+import { imageService } from '#lib/services/imageService.ts';
+import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
+import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
+import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
 import type { Lorebook, LorebookEntry, LorebookLinks } from './types';
 import {
 	createEmptyLorebook,

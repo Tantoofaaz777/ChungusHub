@@ -12,8 +12,8 @@
   instead, rather than an empty cluster whose tooltip has blank halves.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { depthSentence, routingSentence, type RegexRule } from '$lib/utils/regex-rules';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { depthSentence, routingSentence, type RegexRule } from '#lib/utils/regex-rules.ts';
 
 	let { rule }: { rule: Pick<RegexRule, 'targets' | 'scopes' | 'minDepth' | 'maxDepth'> } = $props();
 

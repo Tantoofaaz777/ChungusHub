@@ -1,5 +1,5 @@
-import { DEFAULT_REASONING_RETENTION, normalizeReasoningRetention } from '$shared/reasoning-retention';
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
+import { DEFAULT_REASONING_RETENTION, normalizeReasoningRetention } from '#shared/reasoning-retention.ts';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 
 export type InputHistoryScope = 'global' | 'chat';
 

@@ -18,15 +18,15 @@ import type {
 	PermanentTraitDef,
 	PersonaPronouns,
 	TraitKey
-} from '$lib/types/library';
-import { PERMANENT_TRAITS } from '$lib/types/library';
-import type { Message } from '$lib/types/chat';
-import type { PromptControl } from '$lib/types/database';
-import type { LorebookPlacedGroup, LorebookTrace } from '$lib/lorebook/types';
-import { normalizeLorebookOutletName } from '$lib/lorebook/types';
-import { formatControlForPrompt } from '$lib/utils/prompt-controls';
-import { personaPronouns } from '$lib/utils/persona-pronouns';
-import { expandCardCbs, resolveCardCbs, type CardTextMode } from '$lib/card-cbs';
+} from '#lib/types/library.ts';
+import { PERMANENT_TRAITS } from '#lib/types/library.ts';
+import type { Message } from '#lib/types/chat.ts';
+import type { PromptControl } from '#lib/types/database.ts';
+import type { LorebookPlacedGroup, LorebookTrace } from '#lib/lorebook/types.ts';
+import { normalizeLorebookOutletName } from '#lib/lorebook/types.ts';
+import { formatControlForPrompt } from '#lib/utils/prompt-controls.ts';
+import { personaPronouns } from '#lib/utils/persona-pronouns.ts';
+import { expandCardCbs, resolveCardCbs, type CardTextMode } from '#lib/card-cbs.ts';
 
 // ============================================================================
 // Registry: definitions + the shared substitution primitive

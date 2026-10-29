@@ -1,5 +1,5 @@
 import { beforeAll } from 'bun:test';
-import { prepareTokenizer } from '$lib/tokenizer/encodings';
+import { prepareTokenizer } from '#lib/tokenizer/encodings.ts';
 beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
 
 /**
@@ -13,9 +13,9 @@ beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer(
 
 import { describe, expect, test } from 'bun:test';
 
-import { pruneEmptyTagBlocks } from '$lib/macros';
+import { pruneEmptyTagBlocks } from '#lib/macros.ts';
 import { assemblePrompt, resolveItem, buildMacroContext, type AssembleInput } from './prompt-assembly';
-import { countTokens } from '$lib/tokenizer/count';
+import { countTokens } from '#lib/tokenizer/count.ts';
 
 const MODEL = 'gpt-4o';
 

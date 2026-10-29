@@ -24,17 +24,17 @@ import type {
 	ParamPolicy,
 	PromptPostProcessingMode,
 	CallTarget
-} from '$lib/types/llm';
+} from '#lib/types/llm.ts';
 import {
 	buildGenerationParams,
 	buildGenerationTuning,
 	imagesEnabled,
 	resolveParamPolicy
-} from '$lib/config/sampling';
-import { connectionStore } from '$lib/stores/connections.svelte';
-import { db } from '$lib/services/database';
-import { apiGet, apiSend, llmComplete } from '$lib/services/transport';
-import { tokenCalibration } from '$lib/tokenizer';
+} from '#lib/config/sampling.ts';
+import { connectionStore } from '#lib/stores/connections.svelte.ts';
+import { db } from '#lib/services/database.ts';
+import { apiGet, apiSend, llmComplete } from '#lib/services/transport.ts';
+import { tokenCalibration } from '#lib/tokenizer/index.ts';
 
 /** Human-readable call target, for fail-loud messages when nothing resolves. */
 function targetLabel(target: CallTarget): string {

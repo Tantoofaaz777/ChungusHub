@@ -7,8 +7,8 @@ import {
 	prepareBackupExport,
 	startBackup,
 	startRestore
-} from '$lib/services/transport';
-import { readSetting, registerSettingsReload, writeSetting, reloadSettings } from '$lib/services/syncedSetting';
+} from '#lib/services/transport.ts';
+import { readSetting, registerSettingsReload, writeSetting, reloadSettings } from '#lib/services/syncedSetting.ts';
 import {
 	BACKUP_INTERVALS,
 	DEFAULT_BACKUP_SETTINGS,
@@ -18,7 +18,7 @@ import {
 	type BackupJobState,
 	type BackupSettings,
 	type SnapshotManifest
-} from '$shared/backups';
+} from '#shared/backups.ts';
 
 /**
  * The Backups page's state, in two halves that do not mix.

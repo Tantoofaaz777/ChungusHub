@@ -9,13 +9,13 @@
  *  - Every page has a dynamic loader in `components/settings/page-loaders.ts`;
  *    that registry is checked against SettingsPage by TypeScript.
  */
-import { llmService } from '$lib/services/llm/provider';
-import { connectionStore } from '$lib/stores/connections.svelte';
-import { ENGINES } from '$lib/engines/registry';
-import { backupStore } from '$lib/stores/backups.svelte';
-import { advancedSettingsStore } from '$lib/stores/advanced-settings.svelte';
-import { APP_VERSION } from '$lib/version';
-import { isAndroidClient } from '$lib/services/android-client';
+import { llmService } from '#lib/services/llm/provider.ts';
+import { connectionStore } from '#lib/stores/connections.svelte.ts';
+import { ENGINES } from '#lib/engines/registry.ts';
+import { backupStore } from '#lib/stores/backups.svelte.ts';
+import { advancedSettingsStore } from '#lib/stores/advanced-settings.svelte.ts';
+import { APP_VERSION } from '#lib/version.ts';
+import { isAndroidClient } from '#lib/services/android-client.ts';
 
 export type SettingsPage =
 	// Connection

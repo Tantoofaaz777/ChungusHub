@@ -4,7 +4,7 @@
  */
 import { describe, test, expect } from 'bun:test';
 import { parsePromptJson, promptToJson, samePrompt } from './prompt-review';
-import type { LLMMessage } from '$lib/types/llm';
+import type { LLMMessage } from '#lib/types/llm.ts';
 
 const SAMPLE: LLMMessage[] = [
 	{ role: 'system', content: 'You are a narrator.' },

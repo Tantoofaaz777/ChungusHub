@@ -14,11 +14,11 @@
  */
 import { describe, expect, test, beforeEach, afterAll, mock } from 'bun:test';
 
-import type { Chat } from '$lib/types/chat';
-import type { PromptPreset } from '$lib/types/database';
-import type { LibraryEntry } from '$lib/types/library';
-import { DEFAULT_GENERATION_SETTINGS, type Connection } from '$lib/types/llm';
-import { expandMacros } from '$lib/macros';
+import type { Chat } from '#lib/types/chat.ts';
+import type { PromptPreset } from '#lib/types/database.ts';
+import type { LibraryEntry } from '#lib/types/library.ts';
+import { DEFAULT_GENERATION_SETTINGS, type Connection } from '#lib/types/llm.ts';
+import { expandMacros } from '#lib/macros.ts';
 
 (globalThis as unknown as { $state: <T>(v?: T) => T | undefined }).$state = (v) => v;
 
@@ -33,13 +33,13 @@ let appPresetId: string | null = null;
  * leave one standing. Stubbed rather than seeded through the real service because the only
  * public door onto its library writes to the server.
  */
-const realPresets = { ...(await import('$lib/services/presets.svelte')) };
+const realPresets = { ...(await import('#lib/services/presets.svelte.ts')) };
 
 afterAll(() => {
-	mock.module('$lib/services/presets.svelte', () => realPresets);
+	mock.module('#lib/services/presets.svelte.ts', () => realPresets);
 });
 
-mock.module('$lib/services/presets.svelte', () => ({
+mock.module('#lib/services/presets.svelte.ts', () => ({
 	...realPresets,
 	presetService: {
 		getEffective: (id: string) => presets[id] ?? null,
@@ -47,7 +47,7 @@ mock.module('$lib/services/presets.svelte', () => ({
 	}
 }));
 
-const { connectionStore } = await import('$lib/stores/connections.svelte');
+const { connectionStore } = await import('#lib/stores/connections.svelte.ts');
 const {
 	chatConnectionId,
 	chatPersonaClaim,

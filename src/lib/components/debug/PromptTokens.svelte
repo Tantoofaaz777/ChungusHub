@@ -1,7 +1,7 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { promptTokensStore as tokens } from '$lib/stores/promptTokens.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { promptTokensStore as tokens } from '#lib/stores/promptTokens.svelte.ts';
 
 	let buckets = $derived([
 		{ label: 'Preset', value: tokens.preset, color: 'var(--color-accent)', title: 'System instructions & format from your preset' },

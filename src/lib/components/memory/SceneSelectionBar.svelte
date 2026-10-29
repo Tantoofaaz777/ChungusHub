@@ -1,6 +1,6 @@
 <script lang="ts">
- import { memoryStore } from '$lib/memory/scene-store.svelte';
- import Button from '$lib/components/ui/Button.svelte';
+ import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+ import Button from '#lib/components/ui/Button.svelte';
  let count = $derived(memoryStore.selectedMessages.length);
 </script>
 {#if memoryStore.selection}

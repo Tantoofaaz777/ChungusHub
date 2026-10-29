@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import type { CharacterTokenCounts } from '$lib/utils/character-token-counts';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import type { CharacterTokenCounts } from '#lib/utils/character-token-counts.ts';
 
 	let { counts, onClose }: {
 		counts: CharacterTokenCounts;

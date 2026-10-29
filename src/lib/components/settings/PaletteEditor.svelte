@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	const panelActive = panelActivity();
 	/**
 	 * The editor for one palette the reader built. It appends BELOW the palette grid on
@@ -25,14 +25,14 @@
 	 * of the whole interface rather than a spot check, and it is a reading rather than a
 	 * refusal: a palette is the reader's to build.
 	 */
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import { DEFAULT_APPEARANCE, type PaletteColorKey } from '$lib/themes/presets';
-	import { readContrast, type ContrastCheck } from '$lib/utils/contrast';
-	import type { PaletteMode } from '$lib/types/theme';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import ColorPicker from '#lib/components/ui/ColorPicker.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import { DEFAULT_APPEARANCE, type PaletteColorKey } from '#lib/themes/presets.ts';
+	import { readContrast, type ContrastCheck } from '#lib/utils/contrast.ts';
+	import type { PaletteMode } from '#lib/types/theme.ts';
 
 	interface Props {
 		paletteId: string;

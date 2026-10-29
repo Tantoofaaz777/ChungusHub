@@ -7,18 +7,18 @@
   secondary section below.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { chatAuthorsNote } from '$lib/types/chat';
-	import Select from '$lib/components/ui/Select.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import MockupTip from '$lib/components/mockups/MockupTip.svelte';
-	import RawExpandedMockup from '$lib/components/mockups/RawExpandedMockup.svelte';
-	import PruneEmptyBlocksMockup from '$lib/components/mockups/PruneEmptyBlocksMockup.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import PresetManager from '$lib/components/presets/PresetManager.svelte';
-	import ChatOverrideNotice from '$lib/components/ui/ChatOverrideNotice.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { chatAuthorsNote } from '#lib/types/chat.ts';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import MockupTip from '#lib/components/mockups/MockupTip.svelte';
+	import RawExpandedMockup from '#lib/components/mockups/RawExpandedMockup.svelte';
+	import PruneEmptyBlocksMockup from '#lib/components/mockups/PruneEmptyBlocksMockup.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
+	import PresetManager from '#lib/components/presets/PresetManager.svelte';
+	import ChatOverrideNotice from '#lib/components/ui/ChatOverrideNotice.svelte';
 	import {
 		chatLorebookClaim,
 		chatMutedLorebookClaim,
@@ -26,38 +26,38 @@
 		chatPreset,
 		resolvePromptTarget,
 		toPromptCharacter
-	} from '$lib/utils/chat-setup';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { presetControlsStore } from '$lib/stores/presetControls.svelte';
-	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { countTokens, tokenCalibration } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { cappedHistoryTurns, extractMacroNames, isBuiltinMacro, MACROS, SYSTEM_MACROS } from '$lib/macros';
+	} from '#lib/utils/chat-setup.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { presetControlsStore } from '#lib/stores/presetControls.svelte.ts';
+	import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { countTokens, tokenCalibration } from '#lib/tokenizer/index.ts';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+	import { cappedHistoryTurns, extractMacroNames, isBuiltinMacro, MACROS, SYSTEM_MACROS } from '#lib/macros.ts';
 	import {
 		assemblePrompt,
 		buildMacroContext,
 		resolveItem,
 		DEFAULT_CONTINUE_PROMPT,
 		type AssembleInput
-	} from '$lib/utils/prompt-assembly';
-	import { memoryStore } from '$lib/memory/scene-store.svelte';
+	} from '#lib/utils/prompt-assembly.ts';
+	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
 	import { fade } from 'svelte/transition';
 	import { untrack } from 'svelte';
-	import { autoResize } from '$lib/actions/autoResize';
+	import { autoResize } from '#lib/actions/autoResize.ts';
 	import ControlEditor from './ControlEditor.svelte';
 	import SectionEditor from './SectionEditor.svelte';
 	import PresetIdentityEditor from './PresetIdentityEditor.svelte';
 	import BundleListEditor from './BundleListEditor.svelte';
 	import CarriedRegexEditor from './CarriedRegexEditor.svelte';
-	import { isSectionIcon } from '$lib/config/section-icons';
-	import { clonePreset } from '$lib/services/presets.svelte';
+	import { isSectionIcon } from '#lib/config/section-icons.ts';
+	import { clonePreset } from '#lib/services/presets.svelte.ts';
 	import type {
 		PromptPreset,
 		PromptItem,
@@ -66,8 +66,8 @@
 		PromptPresetBundle,
 		PromptPresetMeta,
 		PromptSection
-	} from '$lib/types/database';
-	import type { RegexRule } from '$lib/utils/regex-rules';
+	} from '#lib/types/database.ts';
+	import type { RegexRule } from '#lib/utils/regex-rules.ts';
 
 	/** Names a control may not reuse: every built-in macro, engine-resolved or flow-supplied. */
 	const RESERVED_MACROS = new Set<string>(MACROS.map((m) => m.name));

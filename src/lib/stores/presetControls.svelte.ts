@@ -14,9 +14,9 @@
  * from value-matching, because a matched-derived selection collapses the moment one
  * knob moves and leaves "reset" pointing at two different configurations at once.
  */
-import { db } from '$lib/services/database';
-import { reloadSettings } from '$lib/services/syncedSetting';
-import { presetService } from '$lib/services/presets.svelte';
+import { db } from '#lib/services/database.ts';
+import { reloadSettings } from '#lib/services/syncedSetting.ts';
+import { presetService } from '#lib/services/presets.svelte.ts';
 
 /** The flat app-wide map this install carried while values were global. Read once, by the
  *  carry-over below, and never written again. */

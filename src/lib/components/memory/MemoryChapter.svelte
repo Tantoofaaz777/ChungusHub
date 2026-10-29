@@ -1,9 +1,9 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import { countTokens } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import { countTokens } from '#lib/tokenizer/index.ts';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import { chapterTitle, sceneLevel, type MemoryScene, type ResolvedScene } from '../../../../shared/memory-scenes';
 
 	let { item, model, onEdit, onRemove }: {

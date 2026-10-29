@@ -16,15 +16,15 @@
  */
 
 import { sceneHistory, type MemoryScene } from '../../../shared/memory-scenes';
-import type { LLMMessage, PromptPostProcessingMode } from '$lib/types/llm';
-import { DEFAULT_PROMPT_PLACEHOLDER } from '$lib/types/llm';
-import type { Message } from '$lib/types/chat';
-import type { ResolvedSteeringNote, SteeringRole } from '$lib/types/steering';
-import type { PromptControl, PromptItem, PromptPreset } from '$lib/types/database';
-import type { Lorebook, LorebookGlobalSettings, LorebookTrace, LorebookTrigger } from '$lib/lorebook/types';
-import { EMPTY_LOREBOOK_TRACE, lorebookHistory, lorebookScanFields } from '$lib/lorebook/types';
-import { resolveLorebooks } from '$lib/lorebook/engine';
-import { cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields } from '$lib/macros';
+import type { LLMMessage, PromptPostProcessingMode } from '#lib/types/llm.ts';
+import { DEFAULT_PROMPT_PLACEHOLDER } from '#lib/types/llm.ts';
+import type { Message } from '#lib/types/chat.ts';
+import type { ResolvedSteeringNote, SteeringRole } from '#lib/types/steering.ts';
+import type { PromptControl, PromptItem, PromptPreset } from '#lib/types/database.ts';
+import type { Lorebook, LorebookGlobalSettings, LorebookTrace, LorebookTrigger } from '#lib/lorebook/types.ts';
+import { EMPTY_LOREBOOK_TRACE, lorebookHistory, lorebookScanFields } from '#lib/lorebook/types.ts';
+import { resolveLorebooks } from '#lib/lorebook/engine.ts';
+import { cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields } from '#lib/macros.ts';
 import {
 	expandMacros,
 	expandSelfRefs,
@@ -37,8 +37,8 @@ import {
 	substitute,
 	type MacroContext,
 	type PromptCharacter
-} from '$lib/macros';
-import { countTokens } from '$lib/tokenizer/count';
+} from '#lib/macros.ts';
+import { countTokens } from '#lib/tokenizer/count.ts';
 import { applyPromptRegex, type RegexRule } from './regex-rules';
 
 export const DEFAULT_SYSTEM_PROMPT =

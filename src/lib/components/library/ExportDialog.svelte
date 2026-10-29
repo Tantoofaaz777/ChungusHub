@@ -5,13 +5,13 @@
 	 * lossless round-trip; see sillyTavernExport.ts). For several characters at once the version is
 	 * always "all" and they download bundled in one `.zip`.
 	 */
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { canShareNativeFiles } from '$lib/services/android-client';
-	import type { ExportDestination } from '$lib/services/libraryExport';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { canShareNativeFiles } from '#lib/services/android-client.ts';
+	import type { ExportDestination } from '#lib/services/libraryExport.ts';
 	import {
 		exportEntryAsSillyTavern,
 		exportEntriesAsSillyTavernZip,
@@ -19,7 +19,7 @@
 		type CardSchema,
 		type ExportTarget,
 		type VersionSelection
-	} from '$lib/services/sillyTavernExport';
+	} from '#lib/services/sillyTavernExport.ts';
 
 	interface Props {
 		open: boolean;

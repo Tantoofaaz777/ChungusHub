@@ -10,11 +10,11 @@
 	 * It runs the real engine, never a second implementation of the matching rules, and it
 	 * writes nothing: no generation, no store, no row.
 	 */
-	import { resolveLorebooks } from '$lib/lorebook/engine';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
+	import { resolveLorebooks } from '#lib/lorebook/engine.ts';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
 	import LorebookTraceList from './LorebookTraceList.svelte';
-	import type { Lorebook } from '$lib/lorebook/types';
+	import type { Lorebook } from '#lib/lorebook/types.ts';
 
 	interface Props {
 		book: Lorebook;

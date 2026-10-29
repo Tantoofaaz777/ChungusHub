@@ -49,17 +49,17 @@ const copy = <T>(value: T): T => structuredClone(value);
  * expects goes missing, and the restore is registered BEFORE the first one goes in, so a
  * throw during setup cannot leave one standing.
  */
-const realDatabase = { ...(await import('$lib/services/database')) };
-const realTransport = { ...(await import('$lib/services/transport')) };
-const realMemory = { ...(await import('$lib/memory/scene-store.svelte')) };
+const realDatabase = { ...(await import('#lib/services/database.ts')) };
+const realTransport = { ...(await import('#lib/services/transport.ts')) };
+const realMemory = { ...(await import('#lib/memory/scene-store.svelte.ts')) };
 
 afterAll(() => {
-	mock.module('$lib/services/database', () => realDatabase);
-	mock.module('$lib/services/transport', () => realTransport);
-	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
+	mock.module('#lib/services/database.ts', () => realDatabase);
+	mock.module('#lib/services/transport.ts', () => realTransport);
+	mock.module('#lib/memory/scene-store.svelte.ts', () => realMemory);
 });
 
-mock.module('$lib/services/database', () => ({
+mock.module('#lib/services/database.ts', () => ({
 	...realDatabase,
 	db: {
 		getSetting: async (key: string) => server.settings.get(key) ?? null,
@@ -133,7 +133,7 @@ mock.module('$lib/services/database', () => ({
 	}
 }));
 
-mock.module('$lib/services/transport', () => ({
+mock.module('#lib/services/transport.ts', () => ({
 	...realTransport,
 	llmStatus: async () => [],
 	stopGeneration: () => {},
@@ -142,7 +142,7 @@ mock.module('$lib/services/transport', () => ({
 	apiSend: async () => ({})
 }));
 
-mock.module('$lib/memory/scene-store.svelte', () => ({
+mock.module('#lib/memory/scene-store.svelte.ts', () => ({
 	...realMemory,
 	memoryStore: {
 		activeChatId: null,
@@ -156,9 +156,9 @@ const { chatStore } = await import('./chat.svelte');
 const { characterLibraryStore } = await import('./characterLibrary.svelte');
 const { connectionStore } = await import('./connections.svelte');
 const { personaStore } = await import('./persona.svelte');
-const { presetService } = await import('$lib/services/presets.svelte');
+const { presetService } = await import('#lib/services/presets.svelte.ts');
 const { presetControlsStore, readPresetControlValues } = await import('./presetControls.svelte');
-const { reloadAllSyncedSettings } = await import('$lib/services/syncedSetting');
+const { reloadAllSyncedSettings } = await import('#lib/services/syncedSetting.ts');
 const {
 	chatConnectionId,
 	chatPersonaClaim,
@@ -167,9 +167,9 @@ const {
 	chatPresetId,
 	chatPersonaEntry,
 	resolvePromptTarget
-} = await import('$lib/utils/chat-setup');
-const { normalizeChatFeatureState } = await import('$lib/types/chat');
-const { DEFAULT_GENERATION_SETTINGS } = await import('$lib/types/llm');
+} = await import('#lib/utils/chat-setup.ts');
+const { normalizeChatFeatureState } = await import('#lib/types/chat.ts');
+const { DEFAULT_GENERATION_SETTINGS } = await import('#lib/types/llm.ts');
 
 type Claims = ReturnType<typeof normalizeChatFeatureState>;
 

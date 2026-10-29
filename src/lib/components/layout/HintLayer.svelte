@@ -19,9 +19,9 @@
 	 * The open flag lives with the key that raises it (`commands/shortcuts.svelte.ts`).
 	 */
 	import { untrack } from 'svelte';
-	import { hintMode } from '$lib/commands/shortcuts.svelte';
-	import { HINT_ALPHABET, hintLabels } from '$lib/utils/hints';
-	import { visibleTargets } from '$lib/utils/screen-targets';
+	import { hintMode } from '#lib/commands/shortcuts.svelte.ts';
+	import { HINT_ALPHABET, hintLabels } from '#lib/utils/hints.ts';
+	import { visibleTargets } from '#lib/utils/screen-targets.ts';
 
 	interface Target {
 		el: HTMLElement;

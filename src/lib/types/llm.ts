@@ -410,7 +410,7 @@ export interface Connection {
 	reasoningDialect: ReasoningDialect;
 	generation: GenerationSettings;
 	/** Extra JSON fields merged into this connection's final request body. */
-	customBody?: import('$shared/custom-body').CustomBody;
+	customBody?: import('#shared/custom-body.ts').CustomBody;
 }
 
 export interface LLMCompletionOptions {
@@ -421,7 +421,7 @@ export interface LLMCompletionOptions {
 	stop?: string[];
 	/** Extra request-body fields (sampling knobs + service_tier) merged verbatim. */
 	params?: Record<string, string | number>;
-	customBody?: import('$shared/custom-body').CustomBody;
+	customBody?: import('#shared/custom-body.ts').CustomBody;
 	/** Reasoning/verbosity/media tuning; providers translate what they support. */
 	tuning?: GenerationTuning;
 	onToken?: (token: string) => void;
@@ -430,7 +430,7 @@ export interface LLMCompletionOptions {
 	/** Where this reply belongs in the story, for the two calls whose turn the SERVER writes
 	 *  (a reply, an opening scene). Absent everywhere else, which is what keeps every other
 	 *  call's result the client's to persist. See architecture/chat-sessions.md. */
-	commit?: import('$shared/generation').GenerationCommit;
+	commit?: import('#shared/generation.ts').GenerationCommit;
 }
 
 export interface LLMCompletionResult {

@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { menuMotion } from '$lib/components/ui/menu-motion';
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import type { ProviderMeta } from '$lib/services/llm/provider';
-	import type { ProviderAccount, ProviderName } from '$lib/types/llm';
-	import { formatUsd } from '$lib/utils/modelFormat';
+	import { menuMotion } from '#lib/components/ui/menu-motion.ts';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import type { ProviderMeta } from '#lib/services/llm/provider.ts';
+	import type { ProviderAccount, ProviderName } from '#lib/types/llm.ts';
+	import { formatUsd } from '#lib/utils/modelFormat.ts';
 
 	const panelActive = panelActivity();
 	type Status = 'idle' | 'binding' | 'valid' | 'invalid';

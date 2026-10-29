@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { dragHandleZone, dragHandle, TRIGGERS, type DndEvent } from 'svelte-dnd-action';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import SteeringNoteEditor from '$lib/components/chat/SteeringNoteEditor.svelte';
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import { steeringStore } from '$lib/stores/steering.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { bindingLabel } from '$lib/utils/steering-labels';
-	import { noteLabel, type SteeringNote } from '$lib/types/steering';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import SteeringNoteEditor from '#lib/components/chat/SteeringNoteEditor.svelte';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import { steeringStore } from '#lib/stores/steering.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { bindingLabel } from '#lib/utils/steering-labels.ts';
+	import { noteLabel, type SteeringNote } from '#lib/types/steering.ts';
 
 	const panelActive = panelActivity();
 	let section: HTMLElement | undefined;

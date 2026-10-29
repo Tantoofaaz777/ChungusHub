@@ -1,17 +1,17 @@
 import { afterAll, beforeEach, describe, test, expect, mock } from 'bun:test';
-import { emptyAo3Information } from '$shared/threads/ao3';
-import type { SaveThreadsRound, ThreadsData, ThreadsRound, ThreadsFeed } from '$shared/threads/types';
-import { DEFAULT_THREADS_CONFIG, DEFAULT_THREADS_INSTRUCTIONS } from '$shared/threads/model';
+import { emptyAo3Information } from '#shared/threads/ao3.ts';
+import type { SaveThreadsRound, ThreadsData, ThreadsRound, ThreadsFeed } from '#shared/threads/types.ts';
+import { DEFAULT_THREADS_CONFIG, DEFAULT_THREADS_INSTRUCTIONS } from '#shared/threads/model.ts';
 const identity = <T>(value:T)=>value;
 (globalThis as any).$state = Object.assign(identity,{raw:identity,snapshot:structuredClone});
 (globalThis as any).$derived = Object.assign(identity,{by:(fn:()=>unknown)=>fn()});
-const realDb={...await import('$lib/services/database')};
-const realChat={...await import('$lib/stores/chat.svelte')};
-const realLlm={...await import('$lib/services/llm/provider')};
-const realTokenizer={...await import('$lib/tokenizer')};
+const realDb={...await import('#lib/services/database.ts')};
+const realChat={...await import('#lib/stores/chat.svelte.ts')};
+const realLlm={...await import('#lib/services/llm/provider.ts')};
+const realTokenizer={...await import('#lib/tokenizer/index.ts')};
 afterAll(()=>{
-	mock.module('$lib/services/database',()=>realDb);mock.module('$lib/stores/chat.svelte',()=>realChat);
-	mock.module('$lib/services/llm/provider',()=>realLlm);mock.module('$lib/tokenizer',()=>realTokenizer);
+	mock.module('#lib/services/database.ts',()=>realDb);mock.module('#lib/stores/chat.svelte.ts',()=>realChat);
+	mock.module('#lib/services/llm/provider.ts',()=>realLlm);mock.module('#lib/tokenizer/index.ts',()=>realTokenizer);
 });
 let reads: {chatId:string; resolve:(data:ThreadsData)=>void; reject:(error:Error)=>void}[]=[];
 let calls: {messages:{content:string}[]; signal:AbortSignal; onToken:(text:string)=>void; onThinkingToken:(text:string)=>void; resolve:(result:{content:string;thinking?:string})=>void}[]=[];
@@ -24,19 +24,19 @@ const path=Array.from({length:5},(_,i)=>({id:String(i+1),parentId:i ? String(i) 
 const fakeChat:any={activeChat:{id:'a'},currentChatState:{chat:{id:'a'},activePath:path,allMessages:path}};
 const empty=():ThreadsData=>({rounds:[],notes:'',ao3:emptyAo3Information(),promptId:null});
 const feed:ThreadsFeed={title:'Discussion',post:{username:'op',body:'A question',score:1},comments:[{username:'reader',body:'A theory',score:2,replies:[{username:'other',body:'Agreed',score:1,replies:[]}]}]};
-mock.module('$lib/services/database',()=>({...realDb,db:{
+mock.module('#lib/services/database.ts',()=>({...realDb,db:{
 	resetThreadsContinuity:async(chatId:string,expected:{id:string;revision:number}[])=>{resets.push({chatId,expected});await resetGate;},
 	getThreadsData:(chatId:string)=>new Promise((resolve,reject)=>reads.push({chatId,resolve,reject})),
 	updateThreadsNotes:async()=>{ await notesGate; },
 	deleteThreadsRound:async()=>{},
 	saveThreadsRound:async(input:SaveThreadsRound):Promise<ThreadsRound>=>{saved.push(input);if(failSave)throw new Error('Disconnected');return {...input,revision:1,createdAt:1,activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed:input.feed}]};}
 }}));
-mock.module('$lib/stores/chat.svelte',()=>({...realChat,chatStore:fakeChat}));
-mock.module('$lib/services/llm/provider',()=>({...realLlm,llmService:{modelFor:()=> 'test',getPromptTokenBudget:()=>100000,complete:(_target:unknown,options:any)=>new Promise(resolve=>calls.push({...options,resolve}))}}));
-mock.module('$lib/tokenizer',()=>({...realTokenizer,countTokens:(text:string,model:string)=>{tokenCalls.push({text,model});return 100;}}));
+mock.module('#lib/stores/chat.svelte.ts',()=>({...realChat,chatStore:fakeChat}));
+mock.module('#lib/services/llm/provider.ts',()=>({...realLlm,llmService:{modelFor:()=> 'test',getPromptTokenBudget:()=>100000,complete:(_target:unknown,options:any)=>new Promise(resolve=>calls.push({...options,resolve}))}}));
+mock.module('#lib/tokenizer/index.ts',()=>({...realTokenizer,countTokens:(text:string,model:string)=>{tokenCalls.push({text,model});return 100;}}));
 const {ThreadsStore}=await import('./store.svelte');
 const {threadsConfigStore}=await import('./config.svelte');
-const {featurePromptsStore}=await import('$lib/stores/featurePrompts.svelte');
+const {featurePromptsStore}=await import('#lib/stores/featurePrompts.svelte.ts');
 const initialFeatureState=structuredClone(featurePromptsStore.state);
 let store:InstanceType<typeof ThreadsStore>;
 beforeEach(()=>{featurePromptsStore.state=structuredClone(initialFeatureState);reads=[];calls=[];saved=[];resets=[];resetGate=null;failSave=false;notesGate=null;tokenCalls=[];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG};fakeChat.activeChat={id:'a'};fakeChat.currentChatState={chat:{id:'a'},activePath:path,allMessages:path};store=new ThreadsStore();});
@@ -45,7 +45,7 @@ async function start() {store.selected=['5','2'];const p=store.generate();for(le
 function previous():ThreadsRound {return {id:'previous',chatId:'a',label:'Prior scene',revision:1,createdAt:1,messages:[{...path[0],role:'assistant',index:0,speaker:'Narrator'}],activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed}]};}
 describe('Threads generation lifecycle',()=>{
 	test('instructions resolve the chat persona in both the preview and generated prompt',async()=>{
-		const {characterLibraryStore}=await import('$lib/stores/characterLibrary.svelte');
+		const {characterLibraryStore}=await import('#lib/stores/characterLibrary.svelte.ts');
 		const entry:any={id:'threads-test-persona',type:'persona',identity:{name:'Persona card',alias:'Aster'},data:{traits:{}}};
 		characterLibraryStore.entries.push(entry);
 		try {
@@ -234,7 +234,7 @@ describe('Threads generation lifecycle',()=>{
 		expect(input.messages.map(m=>m.content)).toEqual(['Turn 2','Turn 5']);
 		expect(input.notes).toBe('A reader note');expect(input.previous).toHaveLength(1);
 		expect(calls).toHaveLength(0);expect(saved).toHaveLength(0);
-		const {threadsPrompt}=await import('$shared/threads/model');
+		const {threadsPrompt}=await import('#shared/threads/model.ts');
 		const expected=await threadsPrompt(input);const {p}=await start();
 		expect(calls[0].messages[0].content).toBe(expected);
 		expect(expected).toContain('# PREVIOUS CONTEXT\n\n## Prior scene\nTurn 1');

@@ -16,11 +16,11 @@
  * data and the routing map, riding the settings spine (cross-device synced).
  * `llmService` reads it to resolve who serves each call.
  */
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
-import { db } from '$lib/services/database';
-import { customBodyError } from '$shared/custom-body';
-import { ENGINES } from '$lib/engines/registry';
-import { DECLARABLE_PARAMS, REASONING_DIALECTS } from '$lib/config/sampling';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
+import { db } from '#lib/services/database.ts';
+import { customBodyError } from '#shared/custom-body.ts';
+import { ENGINES } from '#lib/engines/registry.ts';
+import { DECLARABLE_PARAMS, REASONING_DIALECTS } from '#lib/config/sampling.ts';
 import {
 	DEFAULT_CONTEXT_SIZE,
 	DEFAULT_GENERATION_SETTINGS,
@@ -32,7 +32,7 @@ import {
 	type ProviderName,
 	type PromptPostProcessingMode,
 	type ReasoningDialect
-} from '$lib/types/llm';
+} from '#lib/types/llm.ts';
 
 const CONNECTIONS_KEY = 'connections';
 const ASSIGNMENTS_KEY = 'connectionAssignments';

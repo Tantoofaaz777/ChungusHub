@@ -11,7 +11,7 @@
 	 * a trigger wearing the input recipe, a floating list, hover and highlight tracked
 	 * together so the pointer and the keyboard never disagree about which row is next.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 
 	interface Option {
 		id: string;

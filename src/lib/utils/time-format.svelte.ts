@@ -13,8 +13,8 @@
  * The write is unconditional; a row formatting absolutely never reads `now`, so it
  * has no subscribers there and costs nothing.
  */
-import type { ClockFormat, TimestampFormat } from '$lib/types/theme';
-import { formatDate } from '$lib/utils/date';
+import type { ClockFormat, TimestampFormat } from '#lib/types/theme.ts';
+import { formatDate } from '#lib/utils/date.ts';
 
 let tick = $state(Date.now());
 

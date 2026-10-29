@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ThreadsComment } from '$shared/threads/types';
+	import type { ThreadsComment } from '#shared/threads/types.ts';
 	import ThreadsAuthor from './ThreadsAuthor.svelte';
 	import ThreadsEngagement from './ThreadsEngagement.svelte';
 	let { comment, depth = 0 }: { comment: ThreadsComment; depth?: number } = $props();

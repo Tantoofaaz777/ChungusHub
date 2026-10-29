@@ -8,7 +8,7 @@
  * Nothing here touches the network at import time, so it is safe during
  * prerendering. The browser-only bits guard on `typeof window`.
  */
-import type { BackupsPayload, SnapshotManifest } from '$shared/backups';
+import type { BackupsPayload, SnapshotManifest } from '#shared/backups.ts';
 
 /**
  * Identifies this PAGE, not this device. It exists for exactly one job: the server skips
@@ -424,14 +424,14 @@ export interface PromptLogRequest {
 	model: string;
 	messages: PromptLogMessage[];
 	params?: Record<string, string | number>;
-	customBody?: import('$shared/custom-body').CustomBody;
+	customBody?: import('#shared/custom-body.ts').CustomBody;
 	maxTokens?: number;
 	temperature?: number;
 	stream: boolean;
 	/** Reasoning/verbosity/media/caching tuning the request carried. */
-	tuning?: import('$lib/types/llm').GenerationTuning;
+	tuning?: import('#lib/types/llm.ts').GenerationTuning;
 	/** The connection's OpenRouter routing for this request (null/absent elsewhere). */
-	routing?: import('$lib/types/llm').RoutingConfig | null;
+	routing?: import('#lib/types/llm.ts').RoutingConfig | null;
 	startedAt: number;
 }
 
@@ -1054,11 +1054,11 @@ export interface LlmRequest {
 	temperature?: number;
 	/** Extra request-body fields (sampling knobs + service_tier) merged server-side. */
 	params?: Record<string, string | number>;
-	customBody?: import('$shared/custom-body').CustomBody;
+	customBody?: import('#shared/custom-body.ts').CustomBody;
 	/** Reasoning/verbosity/media tuning; the server's providers translate what they support. */
-	tuning?: import('$lib/types/llm').GenerationTuning;
+	tuning?: import('#lib/types/llm.ts').GenerationTuning;
 	/** The connection's OpenRouter routing (openrouter only; ignored elsewhere). */
-	routing?: import('$lib/types/llm').RoutingConfig | null;
+	routing?: import('#lib/types/llm.ts').RoutingConfig | null;
 	/** Debug-panel label for what kind of query this is (e.g. 'chat', 'memory'). */
 	source?: string;
 	/** The resolved connection's Stream response setting: the request's WIRE shape, which is
@@ -1075,7 +1075,7 @@ export interface LlmRequest {
 	signal?: AbortSignal;
 	/** Present only for the two calls whose reply the SERVER writes into the story. The shape
 	 *  is shared, since the server reads it off the wire (shared/generation.ts). */
-	commit?: import('$shared/generation').GenerationCommit;
+	commit?: import('#shared/generation.ts').GenerationCommit;
 }
 
 export async function llmComplete(req: LlmRequest): Promise<LlmResult> {

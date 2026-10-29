@@ -8,12 +8,12 @@
  * opening-scene dialog, the composer menu) and surfaces its own settings button
  * on its own surface. Synced across devices via the shared `settings` spine.
  */
-import { normalizeThreadsPrompts, activeThreadsPrompt, addThreadsPrompt, renameThreadsPrompt, selectThreadsPrompt, updateThreadsPrompt, removeThreadsPrompt, type ThreadsPromptLibrary } from '$shared/threads/presets';
-import { DEFAULT_THREADS_INSTRUCTIONS } from '$shared/threads/model';
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
-import { DEFAULT_PREVIOUS_SUMMARIES, normalizePreviousSummaries } from '$lib/memory/generation-context';
-import { DEFAULT_MEMORY_REMINDER_INTERVAL, normalizeReminderInterval } from '$lib/memory/reminders';
-import { clampSteeringDepth, STEERING_ROLES, type SteeringDefaults, type SteeringRole } from '$lib/types/steering';
+import { normalizeThreadsPrompts, activeThreadsPrompt, addThreadsPrompt, renameThreadsPrompt, selectThreadsPrompt, updateThreadsPrompt, removeThreadsPrompt, type ThreadsPromptLibrary } from '#shared/threads/presets.ts';
+import { DEFAULT_THREADS_INSTRUCTIONS } from '#shared/threads/model.ts';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
+import { DEFAULT_PREVIOUS_SUMMARIES, normalizePreviousSummaries } from '#lib/memory/generation-context.ts';
+import { DEFAULT_MEMORY_REMINDER_INTERVAL, normalizeReminderInterval } from '#lib/memory/reminders.ts';
+import { clampSteeringDepth, STEERING_ROLES, type SteeringDefaults, type SteeringRole } from '#lib/types/steering.ts';
 
 const SETTINGS_KEY = 'featurePrompts';
 

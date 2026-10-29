@@ -6,8 +6,8 @@
  * ride the settings spine so a choice on one device follows the user to the others.
  * One packed settings key per surface.
  */
-import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, CHARACTER_SORT_OPTIONS, type SortOption, type ViewMode } from '$lib/components/library/browse';
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
+import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, CHARACTER_SORT_OPTIONS, type SortOption, type ViewMode } from '#lib/components/library/browse.ts';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 
 interface BrowseViewState {
 	viewMode: ViewMode;

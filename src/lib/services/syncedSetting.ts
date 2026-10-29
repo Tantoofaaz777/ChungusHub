@@ -7,10 +7,10 @@
  * to per-device localStorage: read/write a JSON value by key, and register a
  * reload that fires on every incoming `settings` broadcast.
  */
-import { db } from '$lib/services/database';
-import { toastStore } from '$lib/stores/toast.svelte';
+import { db } from '#lib/services/database.ts';
+import { toastStore } from '#lib/stores/toast.svelte.ts';
 import { settingsSync } from './settings-sync';
-import { flushOnHide } from '$lib/utils/flush-on-hide';
+import { flushOnHide } from '#lib/utils/flush-on-hide.ts';
 
 /** Publish related settings together only while this read still owns their state. */
 export function reloadSettings<T>(keys: string[], read: () => Promise<T>, apply: (value: T) => void): Promise<void> {

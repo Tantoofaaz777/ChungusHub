@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { memoryStore } from '$lib/memory/scene-store.svelte';
-	import { MemoryReminderCounter, nextMemoryReminder, reminderBoundary } from '$lib/memory/reminders';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { countTokens, prepareTokenizer } from '$lib/tokenizer';
-	import { resolveEncoding } from '$lib/tokenizer/encodings';
-	import { resolvePromptTarget } from '$lib/utils/chat-setup';
+	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+	import { MemoryReminderCounter, nextMemoryReminder, reminderBoundary } from '#lib/memory/reminders.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { countTokens, prepareTokenizer } from '#lib/tokenizer/index.ts';
+	import { resolveEncoding } from '#lib/tokenizer/encodings.ts';
+	import { resolvePromptTarget } from '#lib/utils/chat-setup.ts';
 
 	const counter = new MemoryReminderCounter();
 	let visible = $state(false);

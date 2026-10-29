@@ -44,18 +44,18 @@ let breakInsert = false;
  * standing on it is a book every test file loading afterwards would find there. So it is
  * emptied first, through the stub, and only then is the real module put back.
  */
-const realDatabase = { ...(await import('$lib/services/database')) };
+const realDatabase = { ...(await import('#lib/services/database.ts')) };
 
 afterAll(async () => {
 	try {
 		rows.clear();
 		await lorebookStore.refresh();
 	} finally {
-		mock.module('$lib/services/database', () => realDatabase);
+		mock.module('#lib/services/database.ts', () => realDatabase);
 	}
 });
 
-mock.module('$lib/services/database', () => ({
+mock.module('#lib/services/database.ts', () => ({
 	...realDatabase,
 	db: {
 		getAllLorebooks: async () => [...rows.values()].map(copy),
@@ -82,7 +82,7 @@ mock.module('$lib/services/database', () => ({
 }));
 
 const { lorebookStore } = await import('./store.svelte');
-const { imageService } = await import('$lib/services/imageService');
+const { imageService } = await import('#lib/services/imageService.ts');
 const { createEmptyLorebook, createEmptyLorebookEntry } = await import('./types');
 
 function entry(comment: string, extra: Partial<LorebookEntry> = {}): LorebookEntry {

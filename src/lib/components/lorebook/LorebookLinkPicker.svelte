@@ -5,13 +5,13 @@
 	 * toggling), each row shows what the book actually holds, and a search field
 	 * appears once the shelf is big enough to need one.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import LorebookGlobalBadge from './LorebookGlobalBadge.svelte';
-	import { foldForSearch } from '$lib/components/library/browse';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { sortLorebooks } from '$lib/lorebook/types';
-	import { lorebookViewPrefs } from '$lib/stores/lorebookViewPrefs.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { foldForSearch } from '#lib/components/library/browse.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { sortLorebooks } from '#lib/lorebook/types.ts';
+	import { lorebookViewPrefs } from '#lib/stores/lorebookViewPrefs.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
 
 	interface Props {
 		/** Currently-linked lorebook ids. */

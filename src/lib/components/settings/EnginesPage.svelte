@@ -11,11 +11,11 @@
 	 * on the Connections page, each engine's own assignment included (its Engine
 	 * models fold).
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
 	import EngineDetail from './EngineDetail.svelte';
-	import { ENGINES } from '$lib/engines/registry';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { ENGINES } from '#lib/engines/registry.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
 
 	const engineId = $derived(uiStore.settingsEngineId);
 </script>

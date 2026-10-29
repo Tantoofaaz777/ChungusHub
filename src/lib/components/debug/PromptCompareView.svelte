@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { DIFF_LINE_CAP, lineDiff } from '$lib/debug/diff';
-	import { formatTime, sourceColor } from '$lib/debug/format';
-	import type { PromptLogEntry, PromptLogMessage } from '$lib/debug/types';
+	import { DIFF_LINE_CAP, lineDiff } from '#lib/debug/diff.ts';
+	import { formatTime, sourceColor } from '#lib/debug/format.ts';
+	import type { PromptLogEntry, PromptLogMessage } from '#lib/debug/types.ts';
 
 	interface Props {
 		a: PromptLogEntry;

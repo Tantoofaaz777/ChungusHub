@@ -9,8 +9,8 @@
  */
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isIP } from 'node:net';
-import { ALLOWLIST_ENV, ALLOWLIST_PATH } from './config';
-import { watchDataFile } from './watch-file';
+import { ALLOWLIST_ENV, ALLOWLIST_PATH } from './config.ts';
+import { watchDataFile } from './watch-file.ts';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1']);
 

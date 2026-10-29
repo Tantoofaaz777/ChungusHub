@@ -15,10 +15,10 @@
  * on the story it was made for.
  */
 
-import { chatStore } from '$lib/stores/chat.svelte';
-import { fileUrl } from '$lib/services/transport';
-import { normalizeChatFeatureState, type ChatScene } from '$lib/types/chat';
-import type { BackgroundConfig } from '$lib/types/background';
+import { chatStore } from '#lib/stores/chat.svelte.ts';
+import { fileUrl } from '#lib/services/transport.ts';
+import { normalizeChatFeatureState, type ChatScene } from '#lib/types/chat.ts';
+import type { BackgroundConfig } from '#lib/types/background.ts';
 
 const PERSIST_MS = 250;
 

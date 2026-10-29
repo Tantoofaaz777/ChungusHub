@@ -6,10 +6,10 @@
  * this module owns the shape. Covered by composer-transforms.test.ts.
  */
 
-import type { LLMMessage, PromptPostProcessingMode } from '$lib/types/llm';
-import type { Message } from '$lib/types/chat';
-import type { PersonaPronouns } from '$lib/types/library';
-import { expandSelfRefs } from '$lib/macros';
+import type { LLMMessage, PromptPostProcessingMode } from '#lib/types/llm.ts';
+import type { Message } from '#lib/types/chat.ts';
+import type { PersonaPronouns } from '#lib/types/library.ts';
+import { expandSelfRefs } from '#lib/macros.ts';
 import { applyPostProcessing } from './prompt-assembly';
 
 export interface TransformShapeInput {

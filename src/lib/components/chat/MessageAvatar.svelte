@@ -1,9 +1,9 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { portraitViewerStore } from '$lib/stores/portraitViewer.svelte';
-	import { formatDuration } from '$lib/utils/time-format.svelte';
-	import { portraitFocusStyle, type PortraitFocus } from '$lib/utils/portrait-focus';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { portraitViewerStore } from '#lib/stores/portraitViewer.svelte.ts';
+	import { formatDuration } from '#lib/utils/time-format.svelte.ts';
+	import { portraitFocusStyle, type PortraitFocus } from '#lib/utils/portrait-focus.ts';
 
 	interface Props {
 		role: 'user' | 'assistant' | 'system';

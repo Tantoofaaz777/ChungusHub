@@ -1,4 +1,4 @@
-import type { PersonaPronouns } from '$lib/types/library';
+import type { PersonaPronouns } from '#lib/types/library.ts';
 
 export type PersonaPronounPresetId = 'she-her' | 'he-him' | 'they-them';
 

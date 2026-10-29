@@ -5,12 +5,12 @@
 	 * the selection or cuts it out of the book they are standing in. The open book is not in
 	 * the list, and no book can be minted here (architecture/lorebook.md).
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import LorebookGlobalBadge from './LorebookGlobalBadge.svelte';
-	import { foldForSearch } from '$lib/components/library/browse';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { sortLorebooks } from '$lib/lorebook/types';
-	import { lorebookViewPrefs, LOREBOOK_SORT_OPTIONS } from '$lib/stores/lorebookViewPrefs.svelte';
+	import { foldForSearch } from '#lib/components/library/browse.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { sortLorebooks } from '#lib/lorebook/types.ts';
+	import { lorebookViewPrefs, LOREBOOK_SORT_OPTIONS } from '#lib/stores/lorebookViewPrefs.svelte.ts';
 
 	interface Props {
 		/** The book the entries are in, kept out of the list. */

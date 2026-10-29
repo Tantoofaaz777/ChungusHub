@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import type { AndroidReadingState } from '$lib/services/android-client';
+import type { AndroidReadingState } from '#lib/services/android-client.ts';
 
 // State-transition tests, as in new-chat-flow.test.ts; reactivity is exercised in the browser.
 (globalThis as unknown as { $state: <T>(v: T) => T }).$state = value => value;

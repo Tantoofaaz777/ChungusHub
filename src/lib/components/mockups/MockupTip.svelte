@@ -26,11 +26,11 @@
   rest of the time.
 -->
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import type { Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { anchorTo } from '$lib/actions/anchorTo';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { anchorTo } from '#lib/actions/anchorTo.ts';
 
 	const panelActive = panelActivity();
 	let { text, children, trigger }: { text: string; children: Snippet; trigger?: Snippet } = $props();

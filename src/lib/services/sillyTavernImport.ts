@@ -3,12 +3,12 @@
  * Standard fields remain editable; portable metadata and asset bytes survive re-export.
  */
 
-import type { LibrarySeed, CharacterTraits, LibraryEntryData } from '$lib/types/library';
-import type { ExportedLibraryEntry } from '$lib/services/libraryExport';
-import type { Lorebook } from '$lib/lorebook/types';
-import { lorebookFromCharacterBook } from '$lib/lorebook/sillytavern';
-import { decodeBase64Utf8, readTextChunk, stripCardChunks } from '$lib/services/pngText';
-import type { CardAsset } from '$lib/types/character-card';
+import type { LibrarySeed, CharacterTraits, LibraryEntryData } from '#lib/types/library.ts';
+import type { ExportedLibraryEntry } from '#lib/services/libraryExport.ts';
+import type { Lorebook } from '#lib/lorebook/types.ts';
+import { lorebookFromCharacterBook } from '#lib/lorebook/sillytavern.ts';
+import { decodeBase64Utf8, readTextChunk, stripCardChunks } from '#lib/services/pngText.ts';
+import type { CardAsset } from '#lib/types/character-card.ts';
 import { cardMetadata, cardObject, validateCharacterCard } from './characterCard';
 import { bytesDataUrl, dataUrlBytes, MAX_CARD_BYTES, readCharx, safeAssetPath } from './charx';
 

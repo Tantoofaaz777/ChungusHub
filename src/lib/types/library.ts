@@ -1,5 +1,5 @@
-/** Domain types for the character/persona library. Lorebooks live in `$lib/lorebook`. */
-import type { PortraitFocus } from '$lib/utils/portrait-focus';
+/** Domain types for the character/persona library. Lorebooks live in `#lib/lorebook`. */
+import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
 import type { CharacterCardMetadata } from './character-card';
 
 /** Type discriminator for library entries */
@@ -39,7 +39,7 @@ export interface LibraryEntryIdentity {
 	sprites?: CharacterSprite[];
 	defaultSprite?: string;
 	/**
-	 * Where every avatar box aims inside the portrait (`$lib/utils/portrait-focus`). Absent
+	 * Where every avatar box aims inside the portrait (`#lib/utils/portrait-focus`). Absent
 	 * means the shipped centred cover. Belongs to the portrait, so it is dropped whenever the
 	 * portrait is replaced, and is NOT versioned for the same reason the portrait isn't.
 	 */
@@ -73,7 +73,7 @@ export interface LibraryEntryData {
 	/**
 	 * Ids of standalone lorebooks linked to this entry. Both characters and personas can link
 	 * books; a chat injects the books linked by its bound character + the active persona.
-	 * The books themselves live in the `lorebooks` table (see `$lib/lorebook`).
+	 * The books themselves live in the `lorebooks` table (see `#lib/lorebook`).
 	 */
 	lorebookIds?: string[];
 }

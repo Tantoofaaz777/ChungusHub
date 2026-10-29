@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 	let { chatId, onClose }: { chatId: string; onClose: () => void } = $props();
 

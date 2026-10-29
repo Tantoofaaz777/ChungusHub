@@ -1,17 +1,17 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import PromptDialog from '$lib/components/ui/PromptDialog.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
-	import BrowsePopover from '$lib/components/library/BrowsePopover.svelte';
-	import { presetService } from '$lib/services/presets.svelte';
-	import { triggerDownload } from '$lib/services/libraryExport';
-	import { exportPresetCard, readPresetFromPng } from '$lib/services/presetCard';
-	import { imageService } from '$lib/services/imageService';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { copyText } from '$lib/utils/clipboard';
-	import type { PromptPreset } from '$lib/types/database';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import PromptDialog from '#lib/components/ui/PromptDialog.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
+	import BrowsePopover from '#lib/components/library/BrowsePopover.svelte';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { triggerDownload } from '#lib/services/libraryExport.ts';
+	import { exportPresetCard, readPresetFromPng } from '#lib/services/presetCard.ts';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { copyText } from '#lib/utils/clipboard.ts';
+	import type { PromptPreset } from '#lib/types/database.ts';
 
 	interface Props {
 		id?: string;

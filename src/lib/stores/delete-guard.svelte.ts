@@ -18,7 +18,7 @@
  * about this window" rather than "never mention this again".
  */
 import { advancedSettingsStore, type DeleteConfirmRung } from './advanced-settings.svelte';
-import { onReachabilityChange } from '$lib/services/transport';
+import { onReachabilityChange } from '#lib/services/transport.ts';
 
 /** How long a temporary drop can run. Offered instead of a free-form duration because the
  *  question being answered is "how long is this cleanup", not "how many minutes". */

@@ -21,7 +21,7 @@ import type {
 	ServiceTier,
 	ParamPolicy,
 	ResolvedParamPolicy
-} from '$lib/types/llm';
+} from '#lib/types/llm.ts';
 
 /** A numeric sampling knob rendered as a slider. */
 export interface SamplingSlider {

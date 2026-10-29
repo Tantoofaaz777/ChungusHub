@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 	import LibraryEntryEditor from './LibraryEntryEditor.svelte';
 	import PersonaEditor from './PersonaEditor.svelte';
 

@@ -10,8 +10,8 @@
 	 *
 	 * See architecture/chat-sessions.md for the mode itself.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import type { CommandDef } from '$lib/commands/registry';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import type { CommandDef } from '#lib/commands/registry.ts';
 
 	interface Props {
 		/** Rows in display order, already ranked and grouped by the composer. A group with a

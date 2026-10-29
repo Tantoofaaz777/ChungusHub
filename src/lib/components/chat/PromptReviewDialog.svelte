@@ -23,19 +23,19 @@
 	 * of editing would be the app's most expensive misclick. Escape still cancels, from this
 	 * component's own listener, which is the same shape `TransformPanel` uses.
 	 */
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import CopyButton from '$lib/components/debug/CopyButton.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import CopyButton from '#lib/components/debug/CopyButton.svelte';
 	import PromptReviewCard from './PromptReviewCard.svelte';
-	import { promptHoldStore } from '$lib/stores/promptHold.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { countTokens, tokenCalibration } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { requireTokenizer } from '$lib/tokenizer/encodings';
-	import { parsePromptJson, promptToJson, sameMessage, samePrompt } from '$lib/utils/prompt-review';
-	import type { LLMMessage } from '$lib/types/llm';
+	import { promptHoldStore } from '#lib/stores/promptHold.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { countTokens, tokenCalibration } from '#lib/tokenizer/index.ts';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+	import { requireTokenizer } from '#lib/tokenizer/encodings.ts';
+	import { parsePromptJson, promptToJson, sameMessage, samePrompt } from '#lib/utils/prompt-review.ts';
+	import type { LLMMessage } from '#lib/types/llm.ts';
 
 	let pending = $derived(promptHoldStore.pending);
 

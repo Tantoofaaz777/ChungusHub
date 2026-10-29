@@ -5,12 +5,12 @@
 	 * component appears in the Prompt Builder and expanded editors.
 	 * Flow macros carry their availability in their group hint.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import Alert from './Alert.svelte';
-	import { MACROS, MACRO_GROUPS } from '$lib/macros';
+	import { MACROS, MACRO_GROUPS } from '#lib/macros.ts';
 	import { onDestroy } from 'svelte';
-	import { copyText } from '$lib/utils/clipboard';
-	import { macroToken, matchesMacro, TEMPLATE_MACROS, type ReferenceMacro } from '$lib/utils/macro-reference';
+	import { copyText } from '#lib/utils/clipboard.ts';
+	import { macroToken, matchesMacro, TEMPLATE_MACROS, type ReferenceMacro } from '#lib/utils/macro-reference.ts';
 
 	interface Props {
 		/** Dynamic per-preset control macros, rendered as their own group when provided. */

@@ -7,20 +7,20 @@
  * the generation path and the (reactive, store-sourced) meters share one assembly.
  */
 
-import type { CallTarget, LLMMessage } from '$lib/types/llm';
-import type { Chat, Message } from '$lib/types/chat';
-import { chatAuthorsNote } from '$lib/types/chat';
-import { activeSteeringNotes, resolveSteeringForPrompt, steeringTargetForChat } from '$lib/types/steering';
-import type { PromptPreset } from '$lib/types/database';
-import type { Lorebook, LorebookTrace, LorebookTrigger } from '$lib/lorebook/types';
-import { resolveLorebookLinks } from '$lib/lorebook/types';
-import type { MemoryScene } from '$shared/memory-scenes';
-import { db } from '$lib/services/database';
-import { presetService } from '$lib/services/presets.svelte';
-import { readPresetControlValues } from '$lib/stores/presetControls.svelte';
-import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
-import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
-import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
+import type { CallTarget, LLMMessage } from '#lib/types/llm.ts';
+import type { Chat, Message } from '#lib/types/chat.ts';
+import { chatAuthorsNote } from '#lib/types/chat.ts';
+import { activeSteeringNotes, resolveSteeringForPrompt, steeringTargetForChat } from '#lib/types/steering.ts';
+import type { PromptPreset } from '#lib/types/database.ts';
+import type { Lorebook, LorebookTrace, LorebookTrigger } from '#lib/lorebook/types.ts';
+import { resolveLorebookLinks } from '#lib/lorebook/types.ts';
+import type { MemoryScene } from '#shared/memory-scenes.ts';
+import { db } from '#lib/services/database.ts';
+import { presetService } from '#lib/services/presets.svelte.ts';
+import { readPresetControlValues } from '#lib/stores/presetControls.svelte.ts';
+import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
+import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
+import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 import {
 	chatLorebookClaim,
 	chatMutedLorebookClaim,
@@ -31,7 +31,7 @@ import {
 	toPromptCharacter
 } from './chat-setup';
 import { assemblePrompt, type PromptRecall } from './prompt-assembly';
-import { withTokenizers } from '$lib/tokenizer/loader';
+import { withTokenizers } from '#lib/tokenizer/loader.ts';
 
 const ACTIVE_PERSONA_KEY = 'activePersonaId';
 

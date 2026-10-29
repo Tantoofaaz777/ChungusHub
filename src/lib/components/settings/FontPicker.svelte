@@ -1,7 +1,7 @@
 <script lang="ts">
-	import Select from '$lib/components/ui/Select.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
 
 	let { id, field }: { id: string; field: 'bodyFont' | 'uiFont' } = $props();
 	let importing = $state(false);

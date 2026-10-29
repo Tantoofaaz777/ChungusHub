@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import type { ThreadsRound } from '$shared/threads/types';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import type { ThreadsRound } from '#shared/threads/types.ts';
 
 	let { rounds, value, onchange }: { rounds: ThreadsRound[]; value: string; onchange: (id: string) => void } = $props();
 	const index = $derived(rounds.findIndex(round => round.id === value));

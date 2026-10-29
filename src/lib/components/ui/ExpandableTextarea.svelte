@@ -4,10 +4,10 @@
 	import Dialog from './Dialog.svelte';
 	import Icon from './Icon.svelte';
 	import MacroReference from './MacroReference.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
-	import { tokenizeEditorSyntax } from '$lib/utils/editor-syntax';
-	import { MAX_MATCHES } from '$lib/utils/chat-search';
-	import { findEditorMatches, markEditorMatches, replaceAllEditorMatches } from '$lib/utils/editor-search';
+	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { tokenizeEditorSyntax } from '#lib/utils/editor-syntax.ts';
+	import { MAX_MATCHES } from '#lib/utils/chat-search.ts';
+	import { findEditorMatches, markEditorMatches, replaceAllEditorMatches } from '#lib/utils/editor-search.ts';
 
 	interface Props {
 		/** The one live value used by both the inline field and the expanded editor. */

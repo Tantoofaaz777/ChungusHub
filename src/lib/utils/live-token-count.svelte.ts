@@ -1,7 +1,7 @@
 import { onDestroy } from 'svelte';
-import { countTokens } from '$lib/tokenizer';
-import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-import { requireTokenizer } from '$lib/tokenizer/encodings';
+import { countTokens } from '#lib/tokenizer/index.ts';
+import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+import { requireTokenizer } from '#lib/tokenizer/encodings.ts';
 import { LiveTokenCounter } from './live-token-counter';
 
 /** Live estimates update at most five times a second; settled text counts immediately. */

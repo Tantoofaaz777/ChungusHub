@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	const panelActive = panelActivity();
 	/**
 	 * Settings → Appearance → Interface: everything the app draws that is not the story.
@@ -17,25 +17,25 @@
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
 	 * foot of the page and only there while something has actually moved.
 	 */
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import FontPicker from './FontPicker.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import PaletteEditor from '$lib/components/settings/PaletteEditor.svelte';
-	import BackgroundPickerModal from '$lib/components/settings/BackgroundPickerModal.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { desktopLayoutStore } from '$lib/stores/desktop-layout.svelte';
-	import { backgroundStore } from '$lib/stores/background.svelte';
-	import { chatSceneStore } from '$lib/stores/chatScene.svelte';
-	import { DEFAULT_BACKGROUND } from '$lib/types/background';
-	import { rangeReset } from '$lib/actions/rangeReset';
-	import { anchorTo } from '$lib/actions/anchorTo';
-	import { toggleRow } from '$lib/actions/toggleRow';
-	import type { ContrastLevel, GlassLevel, PaletteMode } from '$lib/types/theme';
+	import Select from '#lib/components/ui/Select.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import ColorPicker from '#lib/components/ui/ColorPicker.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import PaletteEditor from '#lib/components/settings/PaletteEditor.svelte';
+	import BackgroundPickerModal from '#lib/components/settings/BackgroundPickerModal.svelte';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { desktopLayoutStore } from '#lib/stores/desktop-layout.svelte.ts';
+	import { backgroundStore } from '#lib/stores/background.svelte.ts';
+	import { chatSceneStore } from '#lib/stores/chatScene.svelte.ts';
+	import { DEFAULT_BACKGROUND } from '#lib/types/background.ts';
+	import { rangeReset } from '#lib/actions/rangeReset.ts';
+	import { anchorTo } from '#lib/actions/anchorTo.ts';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
+	import type { ContrastLevel, GlassLevel, PaletteMode } from '#lib/types/theme.ts';
 
 	const CONTRAST_OPTIONS: { value: ContrastLevel; label: string }[] = [
 		{ value: 'soft', label: 'Soft' },

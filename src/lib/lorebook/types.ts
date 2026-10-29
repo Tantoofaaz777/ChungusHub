@@ -16,8 +16,8 @@
  * round-trips losslessly through SillyTavern either way.
  */
 
-import type { CharacterTraits } from '$lib/types/library';
-import type { PortraitFocus } from '$lib/utils/portrait-focus';
+import type { CharacterTraits } from '#lib/types/library.ts';
+import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
 
 /**
  * SillyTavern's selectiveLogic enum: how primary and secondary keys combine.

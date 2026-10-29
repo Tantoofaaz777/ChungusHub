@@ -1,30 +1,30 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import { untrack } from 'svelte';
 	import { slide } from 'svelte/transition';
-	import Alert from '$lib/components/ui/Alert.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
-	import { toggleRow } from '$lib/actions/toggleRow';
-	import { backupStore } from '$lib/stores/backups.svelte';
-	import { getBackupLoss } from '$lib/services/transport';
-	import { toastStore, failureText } from '$lib/stores/toast.svelte';
-	import { formatDate, formatRelativeTime } from '$lib/utils/date';
-	import { bytes } from '$lib/utils/bytes';
-	import { copyText } from '$lib/utils/clipboard';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import PillRow from '#lib/components/ui/PillRow.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
+	import { backupStore } from '#lib/stores/backups.svelte.ts';
+	import { getBackupLoss } from '#lib/services/transport.ts';
+	import { toastStore, failureText } from '#lib/stores/toast.svelte.ts';
+	import { formatDate, formatRelativeTime } from '#lib/utils/date.ts';
+	import { bytes } from '#lib/utils/bytes.ts';
+	import { copyText } from '#lib/utils/clipboard.ts';
 	import {
 		KEEP_SCHEDULED_RANGE,
 		KEEP_UPGRADE_RANGE,
 		type BackupInterval,
 		type SnapshotManifest
-	} from '$shared/backups';
+	} from '#shared/backups.ts';
 
 	const panelActive = panelActivity();
 	const INTERVALS = [

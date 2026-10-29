@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { getControlDefaultValue, getControlValue, formatControlForPrompt } from './prompt-controls';
-import type { PromptControl } from '$lib/types/database';
+import type { PromptControl } from '#lib/types/database.ts';
 
 const control = (over: Partial<PromptControl> & Pick<PromptControl, 'type'>): PromptControl => ({
 	id: 'c',

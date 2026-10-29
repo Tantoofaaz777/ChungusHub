@@ -1,14 +1,14 @@
 import { beforeAll } from 'bun:test';
-import { prepareTokenizer } from '$lib/tokenizer/encodings';
+import { prepareTokenizer } from '#lib/tokenizer/encodings.ts';
 beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
 
 import { describe, expect, test } from 'bun:test';
 import { parseLorebook, toCharacterBook, toNativeWorldInfo } from './sillytavern';
 import { resolveLorebooks } from './engine';
 import { readCardDecorators } from './card-v3';
-import { expandMacros, expandSelfRefs, displaySelfRefs, withLorebookFields } from '$lib/macros';
-import { cardChoices, cardScanText, resolveCardCbs } from '$lib/card-cbs';
-import { assemblePrompt, type AssembleInput } from '$lib/utils/prompt-assembly';
+import { expandMacros, expandSelfRefs, displaySelfRefs, withLorebookFields } from '#lib/macros.ts';
+import { cardChoices, cardScanText, resolveCardCbs } from '#lib/card-cbs.ts';
+import { assemblePrompt, type AssembleInput } from '#lib/utils/prompt-assembly.ts';
 import type { Lorebook } from './types';
 
 function book(entries: Record<string, unknown>[], extra = {}): Lorebook {

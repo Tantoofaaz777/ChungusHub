@@ -1,9 +1,9 @@
 <script lang="ts">
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import { deleteGuard } from '$lib/stores/delete-guard.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
+	import { deleteGuard } from '#lib/stores/delete-guard.svelte.ts';
 
 	interface Props {
 		open: boolean;

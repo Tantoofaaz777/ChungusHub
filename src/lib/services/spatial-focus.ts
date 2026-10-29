@@ -9,8 +9,8 @@
  *
  * See architecture/ui-shell-settings.md, "Keyboard".
  */
-import { bestInDirection, type Direction } from '$lib/utils/spatial-nav';
-import { visibleTargets } from '$lib/utils/screen-targets';
+import { bestInDirection, type Direction } from '#lib/utils/spatial-nav.ts';
+import { visibleTargets } from '#lib/utils/screen-targets.ts';
 
 /**
  * What can hold focus, read off the ATTRIBUTE rather than the computed `tabIndex`.

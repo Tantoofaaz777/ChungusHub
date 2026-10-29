@@ -1,6 +1,6 @@
-import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
-import type { PromptPreset } from '$lib/types/database';
-import { DebouncedWriter } from '$lib/utils/debounced-write';
+import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
+import type { PromptPreset } from '#lib/types/database.ts';
+import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
 import {
 	applyRegexRules,
 	carriedRuleEnabled,
@@ -10,7 +10,7 @@ import {
 	normalizeRegexRules,
 	rulesWithCarried,
 	type RegexRule
-} from '$lib/utils/regex-rules';
+} from '#lib/utils/regex-rules.ts';
 
 const SETTINGS_KEY = 'regexRules';
 const SAVE_DEBOUNCE_MS = 400;

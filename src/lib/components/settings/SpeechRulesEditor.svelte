@@ -1,14 +1,14 @@
 <script lang="ts">
  import { onMount } from 'svelte';
  import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
- import Button from '$lib/components/ui/Button.svelte';
- import Select from '$lib/components/ui/Select.svelte';
- import Toggle from '$lib/components/ui/Toggle.svelte';
- import Icon from '$lib/components/ui/Icon.svelte';
- import { processSpeechText } from '$lib/services/speech-rules';
- import { saveGeneratedDownload } from '$lib/services/libraryExport';
- import { appendSpeechRules, parseSpeechRulesImport, serializeSpeechRules, SPEECH_RULE_FILE_LIMIT } from '$lib/utils/speech-rules-io';
- import type { SpeechRule } from '$lib/utils/speech-rules';
+ import Button from '#lib/components/ui/Button.svelte';
+ import Select from '#lib/components/ui/Select.svelte';
+ import Toggle from '#lib/components/ui/Toggle.svelte';
+ import Icon from '#lib/components/ui/Icon.svelte';
+ import { processSpeechText } from '#lib/services/speech-rules.ts';
+ import { saveGeneratedDownload } from '#lib/services/libraryExport.ts';
+ import { appendSpeechRules, parseSpeechRulesImport, serializeSpeechRules, SPEECH_RULE_FILE_LIMIT } from '#lib/utils/speech-rules-io.ts';
+ import type { SpeechRule } from '#lib/utils/speech-rules.ts';
 
  let rules = $state<SpeechRule[]>([]);
  let loading = $state(true);

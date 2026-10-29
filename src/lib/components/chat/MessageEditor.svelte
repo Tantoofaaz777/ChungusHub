@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { EditAction } from '$lib/types/chat';
+	import type { EditAction } from '#lib/types/chat.ts';
 
 	interface Props {
 		initialContent: string;

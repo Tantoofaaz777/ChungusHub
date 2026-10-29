@@ -1,12 +1,12 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import GenerationDots from '$lib/components/ui/GenerationDots.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import { formatDuration, formatMessageTime, relativeClock } from '$lib/utils/time-format.svelte';
-	import { lorebookWasInjected, type LorebookTrace } from '$lib/lorebook/types';
-	import type { ProviderName } from '$lib/types/llm';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import GenerationDots from '#lib/components/ui/GenerationDots.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import { formatDuration, formatMessageTime, relativeClock } from '#lib/utils/time-format.svelte.ts';
+	import { lorebookWasInjected, type LorebookTrace } from '#lib/lorebook/types.ts';
+	import type { ProviderName } from '#lib/types/llm.ts';
 
 	interface Props {
 		name: string;

@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { CONVERT_ACTION } from '$lib/utils/entry-conversion';
-	import type { LibraryEntryType } from '$lib/types/library';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { CONVERT_ACTION } from '#lib/utils/entry-conversion.ts';
+	import type { LibraryEntryType } from '#lib/types/library.ts';
 
 	const panelActive = panelActivity();
 	interface Props {

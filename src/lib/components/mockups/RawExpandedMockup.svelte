@@ -11,7 +11,7 @@
   Pure CSS animation; it exists only while the tip is open.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 </script>
 
 <div class="demo" aria-hidden="true">

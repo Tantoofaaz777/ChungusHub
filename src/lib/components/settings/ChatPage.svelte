@@ -24,20 +24,20 @@
 	 * Restore defaults is the one way back to the shipped look for this half of it, at the
 	 * foot of the page and only there while something has actually moved.
 	 */
-	import { REASONING_DEPTH_MAX } from '$shared/reasoning-retention';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
+	import { REASONING_DEPTH_MAX } from '#shared/reasoning-retention.ts';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
 	import FontPicker from './FontPicker.svelte';
-	import Select from '$lib/components/ui/Select.svelte';
-	import PillRow from '$lib/components/ui/PillRow.svelte';
-	import ColorSwatchPicker from '$lib/components/ui/ColorSwatchPicker.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
-	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { DEFAULT_APPEARANCE, proseQuoteDefault } from '$lib/themes/presets';
-	import { rangeReset } from '$lib/actions/rangeReset';
-	import { toggleRow } from '$lib/actions/toggleRow';
+	import Select from '#lib/components/ui/Select.svelte';
+	import PillRow from '#lib/components/ui/PillRow.svelte';
+	import ColorSwatchPicker from '#lib/components/ui/ColorSwatchPicker.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
+	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { DEFAULT_APPEARANCE, proseQuoteDefault } from '#lib/themes/presets.ts';
+	import { rangeReset } from '#lib/actions/rangeReset.ts';
+	import { toggleRow } from '#lib/actions/toggleRow.ts';
 	import type {
 		AvatarShape,
 		BubbleBorder,
@@ -48,7 +48,7 @@
 		MessageSpacing,
 		ProseColorSource,
 		TimestampFormat
-	} from '$lib/types/theme';
+	} from '#lib/types/theme.ts';
 
 	let appearance = $derived(themeStore.appearance);
 	// Flat IS Bubbles plus a left-aligned user turn, so every Bubbles-only knob

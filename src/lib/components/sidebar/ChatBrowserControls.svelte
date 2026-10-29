@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { menuMotion } from '$lib/components/ui/menu-motion';
+	import { menuMotion } from '#lib/components/ui/menu-motion.ts';
 	import type { Snippet } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { SORT_OPTIONS, type SortKey, type SortDir, type FilterMode } from '$lib/utils/chat-browser';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { SORT_OPTIONS, type SortKey, type SortDir, type FilterMode } from '#lib/utils/chat-browser.ts';
 
 	let {
 		searchQuery = $bindable(''),

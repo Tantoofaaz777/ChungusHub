@@ -1,39 +1,39 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { promptTokensStore } from '$lib/stores/promptTokens.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
+	import { promptTokensStore } from '#lib/stores/promptTokens.svelte.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import ChatSetupChip from './ChatSetupChip.svelte';
 	import ChatPersonaDialog from './ChatPersonaDialog.svelte';
 	import AuthorsNotesDialog from './AuthorsNotesDialog.svelte';
 	import ChatBookmarksDialog from './ChatBookmarksDialog.svelte';
-	import { chatAuthorsNote } from '$lib/types/chat';
+	import { chatAuthorsNote } from '#lib/types/chat.ts';
 	import TransformPanel from './TransformPanel.svelte';
-	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { chatSearch } from '$lib/stores/chatSearch.svelte';
-	import { chatCursor } from '$lib/stores/chatCursor.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { canPinChatShortcut, pinChatShortcut } from '$lib/services/android-client';
-	import { inputDraftStore } from '$lib/stores/inputDraft.svelte';
-	import { inputHistoryStore } from '$lib/stores/inputHistory.svelte';
-	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { chatPersonaEntry } from '$lib/utils/chat-setup';
-	import { relativeClock } from '$lib/utils/time-format.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { imageService, imageRejectionReason, isImageFile } from '$lib/services/imageService';
-	import { duplicateAsksAboutMemory } from '$lib/types/chat';
-	import type { Chat, ChatMemoryFootprint, MessageAttachment } from '$lib/types/chat';
-	import SteeringPopover from '$lib/components/chat/SteeringPopover.svelte';
+	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
+	import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { canPinChatShortcut, pinChatShortcut } from '#lib/services/android-client.ts';
+	import { inputDraftStore } from '#lib/stores/inputDraft.svelte.ts';
+	import { inputHistoryStore } from '#lib/stores/inputHistory.svelte.ts';
+	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { chatPersonaEntry } from '#lib/utils/chat-setup.ts';
+	import { relativeClock } from '#lib/utils/time-format.svelte.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { imageService, imageRejectionReason, isImageFile } from '#lib/services/imageService.ts';
+	import { duplicateAsksAboutMemory } from '#lib/types/chat.ts';
+	import type { Chat, ChatMemoryFootprint, MessageAttachment } from '#lib/types/chat.ts';
+	import SteeringPopover from '#lib/components/chat/SteeringPopover.svelte';
 	import CommandPalette from './CommandPalette.svelte';
-	import DuplicateChatDialog from '$lib/components/sidebar/DuplicateChatDialog.svelte';
-	import { db } from '$lib/services/database';
-	import { steeringStore } from '$lib/stores/steering.svelte';
-	import { noteLabel, steeringTargetForChat } from '$lib/types/steering';
+	import DuplicateChatDialog from '#lib/components/sidebar/DuplicateChatDialog.svelte';
+	import { db } from '#lib/services/database.ts';
+	import { steeringStore } from '#lib/stores/steering.svelte.ts';
+	import { noteLabel, steeringTargetForChat } from '#lib/types/steering.ts';
 	import {
 		COMMAND_GROUPS,
 		argSatisfied,
@@ -44,7 +44,7 @@
 		type CommandContext,
 		type CommandDef,
 		type CommandHost
-	} from '$lib/commands/registry';
+	} from '#lib/commands/registry.ts';
 
 	interface Props {
 		/** `onCommit` fires once the send is certain to proceed, which is what empties the box. */

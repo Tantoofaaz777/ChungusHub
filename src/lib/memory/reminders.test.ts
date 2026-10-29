@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { captureScene, resolveScenes, type MemoryScene, type SceneMessage } from '$shared/memory-scenes';
-import { normalizeChatFeatureState } from '$lib/types/chat';
+import { captureScene, resolveScenes, type MemoryScene, type SceneMessage } from '#shared/memory-scenes.ts';
+import { normalizeChatFeatureState } from '#lib/types/chat.ts';
 import { MemoryReminderCounter, nextMemoryReminder, normalizeReminderInterval, normalizeReminderProgress,
 	reminderBoundary, type MemoryReminderProgress } from './reminders';
 

@@ -1,9 +1,9 @@
 /** Domain types for chat and messages */
 
-import type { LorebookTrace } from '$lib/lorebook/types';
-import type { BackgroundConfig } from '$lib/types/background';
-import { normalizeBackgroundConfig } from '$lib/types/background';
-import { normalizeReminderProgress } from '$lib/memory/reminders';
+import type { LorebookTrace } from '#lib/lorebook/types.ts';
+import type { BackgroundConfig } from '#lib/types/background.ts';
+import { normalizeBackgroundConfig } from '#lib/types/background.ts';
+import { normalizeReminderProgress } from '#lib/memory/reminders.ts';
 
 export interface Chat {
 	id: string;
@@ -100,7 +100,7 @@ export interface ChatScene {
  *  next write. */
 export interface ChatFeatureState {
 	/** Notification checkpoints, anchored to message paths rather than the changing leaf. */
-	memoryReminder?: import('$lib/memory/reminders').MemoryReminderProgress;
+	memoryReminder?: import('#lib/memory/reminders.ts').MemoryReminderProgress;
 	/** Persistent, chat-scoped text exposed only through {{authorsNote}}. */
 	authorsNote: { text: string };
 	/** The last 10 consumed one-shot steering texts, most-recent first, for quick reuse

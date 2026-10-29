@@ -5,10 +5,10 @@
 	 * an upper bound on purpose: what a turn injects is the scan's per-turn decision, and a
 	 * real answer is what the Test scan strip is for (architecture/lorebook.md).
 	 */
-	import { countTokens } from '$lib/tokenizer';
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
-	import { llmService } from '$lib/services/llm/provider';
-	import { partitionEntries, type Lorebook } from '$lib/lorebook/types';
+	import { countTokens } from '#lib/tokenizer/index.ts';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { partitionEntries, type Lorebook } from '#lib/lorebook/types.ts';
 
 	let { book }: { book: Lorebook } = $props();
 

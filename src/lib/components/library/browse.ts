@@ -3,7 +3,7 @@
  * sort options, search matching, and the view-mode/card-size constants. Keeps the two
  * views speaking the same language without parameterizing them into one component.
  */
-import type { LibraryEntry } from '$lib/types/library';
+import type { LibraryEntry } from '#lib/types/library.ts';
 
 export type ViewMode = 'grid' | 'list' | 'gallery';
 

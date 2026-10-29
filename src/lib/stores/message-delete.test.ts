@@ -28,9 +28,9 @@ let dataDir: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let serverDb: any;
 
-const realDatabase = { ...(await import('$lib/services/database')) };
-const realTransport = { ...(await import('$lib/services/transport')) };
-const realMemory = { ...(await import('$lib/memory/scene-store.svelte')) };
+const realDatabase = { ...(await import('#lib/services/database.ts')) };
+const realTransport = { ...(await import('#lib/services/transport.ts')) };
+const realMemory = { ...(await import('#lib/memory/scene-store.svelte.ts')) };
 
 beforeAll(async () => {
 	dataDir = mkdtempSync(join(tmpdir(), 'chungus-message-delete-'));
@@ -40,9 +40,9 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-	mock.module('$lib/services/database', () => realDatabase);
-	mock.module('$lib/services/transport', () => realTransport);
-	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
+	mock.module('#lib/services/database.ts', () => realDatabase);
+	mock.module('#lib/services/transport.ts', () => realTransport);
+	mock.module('#lib/memory/scene-store.svelte.ts', () => realMemory);
 	serverDb.closeForTests();
 	try {
 		rmSync(dataDir, { recursive: true, force: true });
@@ -60,7 +60,7 @@ const frame = () => {
 };
 
 // Every RPC lands on the real server method, through a clone, as the wire would carry it.
-mock.module('$lib/services/database', () => ({
+mock.module('#lib/services/database.ts', () => ({
 	...realDatabase,
 	db: new Proxy(
 		{},
@@ -73,7 +73,7 @@ mock.module('$lib/services/database', () => ({
 		}
 	)
 }));
-mock.module('$lib/services/transport', () => ({ ...realTransport, llmStatus: async () => [], stopGeneration: () => {} }));
+mock.module('#lib/services/transport.ts', () => ({ ...realTransport, llmStatus: async () => [], stopGeneration: () => {} }));
 const fakeMemory = {
 	activeChatId: null as string | null,
 	loaded: true,
@@ -88,7 +88,7 @@ const fakeMemory = {
 	clear: () => { fakeMemory.activeChatId = null; fakeMemory.scenes = []; },
 	invalidateMessage: async () => false
 };
-mock.module('$lib/memory/scene-store.svelte', () => ({ ...realMemory, memoryStore: fakeMemory }));
+mock.module('#lib/memory/scene-store.svelte.ts', () => ({ ...realMemory, memoryStore: fakeMemory }));
 
 const { chatStore } = await import('./chat.svelte');
 const { messageStore } = await import('./messages.svelte');

@@ -1,7 +1,7 @@
 /** V3 decorators are interpreted for each scan, leaving the authored content intact on disk. */
 import type { Lorebook, LorebookEntry, LorebookPastScan } from './types';
 import { LOREBOOK_POSITION_AT_DEPTH, LOREBOOK_ROLES } from './types';
-import { cardChoices } from '$lib/card-cbs';
+import { cardChoices } from '#lib/card-cbs.ts';
 
 export interface CardLoreContext {
 	positions?: readonly string[];

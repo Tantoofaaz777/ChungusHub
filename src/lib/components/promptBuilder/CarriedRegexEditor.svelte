@@ -19,14 +19,14 @@
   configuration (each rule sees the previous one's output), so the list drags.
 -->
 <script lang="ts">
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Toggle from '$lib/components/ui/Toggle.svelte';
-	import RegexRoutingIcons from '$lib/components/regex/RegexRoutingIcons.svelte';
-	import RegexRuleEditor from '$lib/components/regex/RegexRuleEditor.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Toggle from '#lib/components/ui/Toggle.svelte';
+	import RegexRoutingIcons from '#lib/components/regex/RegexRoutingIcons.svelte';
+	import RegexRuleEditor from '#lib/components/regex/RegexRuleEditor.svelte';
 	import { untrack } from 'svelte';
 	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
-	import { regexRulesStore } from '$lib/stores/regex-rules.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import {
 		createRegexRule,
 		isRuleInert,
@@ -35,7 +35,7 @@
 		routingSentence,
 		REGEX_TESTER_SEED,
 		type RegexRule
-	} from '$lib/utils/regex-rules';
+	} from '#lib/utils/regex-rules.ts';
 
 	interface Props {
 		rules: RegexRule[];

@@ -6,14 +6,14 @@
  * so nothing above it knows where the data comes from. Boot can reuse one short-lived
  * settings snapshot; normal reads always reach the server.
  */
-import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta } from '$lib/types/chat';
-import type { CharacterVersion, LibraryEntry } from '$lib/types/library';
-import type { Lorebook } from '$lib/lorebook/types';
-import type { SteeringNote } from '$lib/types/steering';
-import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '$shared/threads/types';
+import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta } from '#lib/types/chat.ts';
+import type { CharacterVersion, LibraryEntry } from '#lib/types/library.ts';
+import type { Lorebook } from '#lib/lorebook/types.ts';
+import type { SteeringNote } from '#lib/types/steering.ts';
+import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '#shared/threads/types.ts';
 import type { MemoryScene, SaveMemoryScene } from '../../../shared/memory-scenes';
-import { connectWs, dbRpc, onSync, onReconnect } from '$lib/services/transport';
-import { SettingsSnapshot } from '$lib/services/settings-snapshot';
+import { connectWs, dbRpc, onSync, onReconnect } from '#lib/services/transport.ts';
+import { SettingsSnapshot } from '#lib/services/settings-snapshot.ts';
 import { settingsSync } from './settings-sync';
 import { EditorRpc } from './editor-rpc';
 

@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import InfoTip from '$lib/components/ui/InfoTip.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
-	import PromptDialog from '$lib/components/ui/PromptDialog.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { featurePromptsStore, FEATURE_PROMPT_DEFAULTS } from '$lib/stores/featurePrompts.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import type { EnginePromptField } from '$lib/engines/registry';
-	import type { ThreadsPromptPreset } from '$shared/threads/presets';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import InfoTip from '#lib/components/ui/InfoTip.svelte';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
+	import PromptDialog from '#lib/components/ui/PromptDialog.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { featurePromptsStore, FEATURE_PROMPT_DEFAULTS } from '#lib/stores/featurePrompts.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import type { EnginePromptField } from '#lib/engines/registry.ts';
+	import type { ThreadsPromptPreset } from '#shared/threads/presets.ts';
 
 	let { field }: { field: EnginePromptField } = $props();
 	let draftId = $state('');

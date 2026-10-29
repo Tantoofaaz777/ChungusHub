@@ -2,11 +2,11 @@ import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity, snapshot: structuredClone });
 (globalThis as any).$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
-const realTransport = { ...await import('$lib/services/transport') };
-afterAll(() => { mock.module('$lib/services/transport', () => realTransport); });
+const realTransport = { ...await import('#lib/services/transport.ts') };
+afterAll(() => { mock.module('#lib/services/transport.ts', () => realTransport); });
 let reads: { key: string; resolve: (raw: string | null) => void; reject: (error: Error) => void }[] = [];
 let writes: string[] = [];
-mock.module('$lib/services/transport', () => ({ ...realTransport, dbRpc: async (method: string, args: unknown[]) => {
+mock.module('#lib/services/transport.ts', () => ({ ...realTransport, dbRpc: async (method: string, args: unknown[]) => {
 	if (method === 'getSetting') return new Promise((resolve, reject) => reads.push({ key: String(args[0]), resolve, reject }));
 	if (method === 'setSetting') { writes.push(String(args[0])); return; }
 	throw new Error(`Unexpected test RPC: ${method}`);

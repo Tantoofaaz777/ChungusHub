@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
+	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
 	/**
 	 * One message of a logged request, rendered whole: role, position, every image attachment
 	 * it carried, and its text. Nothing here is shortened: the panel exists to show what was
@@ -8,11 +8,11 @@
 	 * Folding is CONTROLLED by the panel so its fold-all control and this chevron can never
 	 * disagree about whether a card is open.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import CopyButton from './CopyButton.svelte';
-	import { imageService } from '$lib/services/imageService';
-	import { messageTokens, roleColor } from '$lib/debug/format';
-	import type { PromptLogMessage } from '$lib/debug/types';
+	import { imageService } from '#lib/services/imageService.ts';
+	import { messageTokens, roleColor } from '#lib/debug/format.ts';
+	import type { PromptLogMessage } from '#lib/debug/types.ts';
 
 	interface Props {
 		message: PromptLogMessage;

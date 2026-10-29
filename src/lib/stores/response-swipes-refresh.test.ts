@@ -1,19 +1,19 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { ChatState, Message } from '$lib/types/chat';
-import type { MemoryScene } from '$shared/memory-scenes';
-import { findActivePath } from '$lib/utils/message-tree';
+import type { ChatState, Message } from '#lib/types/chat.ts';
+import type { MemoryScene } from '#shared/memory-scenes.ts';
+import { findActivePath } from '#lib/utils/message-tree.ts';
 
 // Exercise the real memory lifecycle and public swipe action; Svelte compiles view runes.
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity, snapshot: structuredClone });
 (globalThis as any).$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
-const realDatabase = { ...await import('$lib/services/database') };
+const realDatabase = { ...await import('#lib/services/database.ts') };
 const realChat = { ...await import('./chat.svelte') };
-const realMemory = { ...await import('$lib/memory/scene-store.svelte') };
+const realMemory = { ...await import('#lib/memory/scene-store.svelte.ts') };
 afterAll(() => {
-	mock.module('$lib/services/database', () => realDatabase);
-	mock.module('$lib/stores/chat.svelte', () => realChat);
-	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
+	mock.module('#lib/services/database.ts', () => realDatabase);
+	mock.module('#lib/stores/chat.svelte.ts', () => realChat);
+	mock.module('#lib/memory/scene-store.svelte.ts', () => realMemory);
 });
 
 let reads: { resolve: (scenes: MemoryScene[]) => void; reject: (error: Error) => void }[] = [];
@@ -39,12 +39,12 @@ const chat = {
 		};
 	}
 };
-mock.module('$lib/services/database', () => ({ ...realDatabase, db: {
+mock.module('#lib/services/database.ts', () => ({ ...realDatabase, db: {
 	...realDatabase.db,
 	getMemoryScenes: () => new Promise<MemoryScene[]>((resolve, reject) => reads.push({ resolve, reject }))
 } }));
-mock.module('$lib/stores/chat.svelte', () => ({ ...realChat, chatStore: chat }));
-mock.module('$lib/memory/scene-store.svelte', () => ({ ...realMemory, memoryStore: memory }));
+mock.module('#lib/stores/chat.svelte.ts', () => ({ ...realChat, chatStore: chat }));
+mock.module('#lib/memory/scene-store.svelte.ts', () => ({ ...realMemory, memoryStore: memory }));
 const { messageStore } = await import('./messages.svelte');
 beforeEach(() => { memory.clear(); reads = []; chat.currentChatState = state('a'); });
 async function open() {

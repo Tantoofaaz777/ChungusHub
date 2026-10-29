@@ -53,17 +53,17 @@ let chatReadApart: typeof serverChat | null = null;
  * The restore is registered BEFORE the first stub goes in, so a throw anywhere in the setup
  * below cannot leave one standing.
  */
-const realDatabase = { ...(await import('$lib/services/database')) };
-const realTransport = { ...(await import('$lib/services/transport')) };
-const realMemory = { ...(await import('$lib/memory/scene-store.svelte')) };
+const realDatabase = { ...(await import('#lib/services/database.ts')) };
+const realTransport = { ...(await import('#lib/services/transport.ts')) };
+const realMemory = { ...(await import('#lib/memory/scene-store.svelte.ts')) };
 
 afterAll(() => {
-	mock.module('$lib/services/database', () => realDatabase);
-	mock.module('$lib/services/transport', () => realTransport);
-	mock.module('$lib/memory/scene-store.svelte', () => realMemory);
+	mock.module('#lib/services/database.ts', () => realDatabase);
+	mock.module('#lib/services/transport.ts', () => realTransport);
+	mock.module('#lib/memory/scene-store.svelte.ts', () => realMemory);
 });
 
-mock.module('$lib/services/database', () => ({
+mock.module('#lib/services/database.ts', () => ({
 	...realDatabase,
 	db: {
 		updateChatActiveLeaf: (_chatId: string, leafId: string) => new Promise<void>((resolve, reject) => {
@@ -80,12 +80,12 @@ mock.module('$lib/services/database', () => ({
 		getAllChats: async () => delayedLists ? new Promise(resolve => chatLists.push({ resolve })) : [{ ...serverChat }]
 	}
 }));
-mock.module('$lib/services/transport', () => ({
+mock.module('#lib/services/transport.ts', () => ({
 	...realTransport,
 	llmStatus: async () => [],
 	stopGeneration: () => {}
 }));
-mock.module('$lib/memory/scene-store.svelte', () => ({
+mock.module('#lib/memory/scene-store.svelte.ts', () => ({
 	...realMemory,
 	memoryStore: { activeChatId: null, loadForChat: async () => { await memoryGate; },
 		syncForPath: async (ctx: { leafId: string | null }) => { memoryLeaves.push(ctx.leafId); }, clear: () => {} }

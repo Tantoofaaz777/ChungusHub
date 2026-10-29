@@ -8,11 +8,11 @@ import type {
 	PromptPresetMeta,
 	PromptRole,
 	PromptSection
-} from '$lib/types/database';
-import { DEFAULT_EXAMPLE_SEPARATOR } from '$lib/macros';
-import { DEFAULT_CONTINUE_PROMPT } from '$lib/utils/prompt-assembly';
-import { normalizeCarriedRules } from '$lib/utils/regex-rules';
-import type { RegexRule } from '$lib/utils/regex-rules';
+} from '#lib/types/database.ts';
+import { DEFAULT_EXAMPLE_SEPARATOR } from '#lib/macros.ts';
+import { DEFAULT_CONTINUE_PROMPT } from '#lib/utils/prompt-assembly.ts';
+import { normalizeCarriedRules } from '#lib/utils/regex-rules.ts';
+import type { RegexRule } from '#lib/utils/regex-rules.ts';
 
 export interface ImportedPreset {
 	name: string;

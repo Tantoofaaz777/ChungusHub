@@ -6,33 +6,33 @@
 	 * shelf press are the same act; picking another book is the shelf's job alone.
 	 */
 	import { tick } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import { holdMsForBlast } from '$lib/components/ui/HoldToConfirmButton.svelte';
-	import BrowsePopover from '$lib/components/library/BrowsePopover.svelte';
-	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import PortraitFramingDialog from '$lib/components/library/PortraitFramingDialog.svelte';
-	import { anchorTo } from '$lib/actions/anchorTo';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
+	import BrowsePopover from '#lib/components/library/BrowsePopover.svelte';
+	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import PortraitFramingDialog from '#lib/components/library/PortraitFramingDialog.svelte';
+	import { anchorTo } from '#lib/actions/anchorTo.ts';
 	import LorebookEntryRow from './LorebookEntryRow.svelte';
 	import LorebookActivationPanel from './LorebookActivationPanel.svelte';
 	import LorebookBindPicker from './LorebookBindPicker.svelte';
 	import LorebookTransferPicker from './LorebookTransferPicker.svelte';
 	import LorebookScanTester from './LorebookScanTester.svelte';
 	import LorebookStatsBar from './LorebookStatsBar.svelte';
-	import { imageService, imageRejectionReason } from '$lib/services/imageService';
-	import { portraitFocusStyle } from '$lib/utils/portrait-focus';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { lorebookStore } from '$lib/lorebook/store.svelte';
-	import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
-	import { downloadLorebook } from '$lib/lorebook/io';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { viewport } from '$lib/stores/viewport.svelte';
-	import { chatLorebookClaim } from '$lib/utils/chat-setup';
-	import { createEntryDisplayOrder } from '$lib/lorebook/entry-display-order';
+	import { imageService, imageRejectionReason } from '#lib/services/imageService.ts';
+	import { portraitFocusStyle } from '#lib/utils/portrait-focus.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
+	import { downloadLorebook } from '#lib/lorebook/io.ts';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
+	import { chatLorebookClaim } from '#lib/utils/chat-setup.ts';
+	import { createEntryDisplayOrder } from '#lib/lorebook/entry-display-order.ts';
 	import {
 		activationSummary,
 		LOREBOOK_POSITION_OUTLET,
@@ -41,12 +41,12 @@
 		natureOf,
 		resolveBookActivation,
 		type LorebookEntry
-	} from '$lib/lorebook/types';
+	} from '#lib/lorebook/types.ts';
 	import {
 		lorebookEntryPrefs,
 		LOREBOOK_ENTRY_NATURE_OPTIONS,
 		LOREBOOK_ENTRY_SORT_OPTIONS
-	} from '$lib/stores/lorebookEntryPrefs.svelte';
+	} from '#lib/stores/lorebookEntryPrefs.svelte.ts';
 
 	interface Props {
 		/** The book being edited. Owned by uiStore, so the shelf alone reassigns it. */

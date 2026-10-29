@@ -1,14 +1,14 @@
 <script lang="ts">
-	import type { ReasoningTiming } from '$lib/types/chat';
-	import { liveGenerationTime } from '$lib/utils/live-generation-time.svelte';
-	import { reasoningDuration, reasoningLabel } from '$lib/utils/reasoning-time';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { renderMarkdown } from '$lib/utils/markdown';
-	import { renderedHtml } from '$lib/actions/renderedHtml';
-	import { liveTokenCount } from '$lib/utils/live-token-count.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
-	import { themeStore } from '$lib/stores/theme.svelte';
+	import type { ReasoningTiming } from '#lib/types/chat.ts';
+	import { liveGenerationTime } from '#lib/utils/live-generation-time.svelte.ts';
+	import { reasoningDuration, reasoningLabel } from '#lib/utils/reasoning-time.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { renderMarkdown } from '#lib/utils/markdown.ts';
+	import { renderedHtml } from '#lib/actions/renderedHtml.ts';
+	import { liveTokenCount } from '#lib/utils/live-token-count.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
+	import { themeStore } from '#lib/stores/theme.svelte.ts';
 
 	interface Props {
 		/** The reply's reasoning text. Non-empty: the caller owns the emptiness check. */

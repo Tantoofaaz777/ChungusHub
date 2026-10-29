@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { MACROS, cappedHistoryTurns, outletMacroName } from '$lib/macros';
-import { resolveCardCbs } from '$lib/card-cbs';
+import { MACROS, cappedHistoryTurns, outletMacroName } from '#lib/macros.ts';
+import { resolveCardCbs } from '#lib/card-cbs.ts';
 import { macroToken, matchesMacro, TEMPLATE_MACROS } from './macro-reference';
 
 describe('macro reference', () => {

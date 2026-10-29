@@ -8,10 +8,10 @@
  * keep a chatId → personaId map (the persona the chat's most recent message was sent
  * with) so the lists show whose persona a chat belongs to, NOT the global active one.
  */
-import { db } from '$lib/services/database';
+import { db } from '#lib/services/database.ts';
 import { characterLibraryStore } from './characterLibrary.svelte';
-import type { PortraitFocus } from '$lib/utils/portrait-focus';
-import { storyRoleName, type PersonaPronouns } from '$lib/types/library';
+import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
+import { storyRoleName, type PersonaPronouns } from '#lib/types/library.ts';
 
 export interface ChatCastMember {
 	libraryEntryId: string;

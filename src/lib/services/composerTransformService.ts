@@ -16,15 +16,15 @@
  * is the prompt hold, and that is a gate on the request rather than a surface of its own.
  */
 
-import type { LLMMessage } from '$lib/types/llm';
-import type { Message } from '$lib/types/chat';
-import { llmService } from '$lib/services/llm/provider';
-import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-import { promptHoldStore } from '$lib/stores/promptHold.svelte';
-import { resolveMacroValues, substitute } from '$lib/macros';
-import { buildLiveMacroContext } from '$lib/utils/live-macro-context';
-import { shapeComposerTransform } from '$lib/utils/composer-transforms';
-import { withTokenizers } from '$lib/tokenizer/loader';
+import type { LLMMessage } from '#lib/types/llm.ts';
+import type { Message } from '#lib/types/chat.ts';
+import { llmService } from '#lib/services/llm/provider.ts';
+import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+import { promptHoldStore } from '#lib/stores/promptHold.svelte.ts';
+import { resolveMacroValues, substitute } from '#lib/macros.ts';
+import { buildLiveMacroContext } from '#lib/utils/live-macro-context.ts';
+import { shapeComposerTransform } from '#lib/utils/composer-transforms.ts';
+import { withTokenizers } from '#lib/tokenizer/loader.ts';
 
 export interface ComposerTransformParams {
 	kind: 'spellcheck' | 'impersonate';

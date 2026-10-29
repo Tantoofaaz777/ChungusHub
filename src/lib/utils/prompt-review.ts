@@ -10,7 +10,7 @@
  *
  * Rune-free and IO-free on purpose (tested in prompt-review.test.ts).
  */
-import type { LLMMessage } from '$lib/types/llm';
+import type { LLMMessage } from '#lib/types/llm.ts';
 
 const ROLES = ['system', 'user', 'assistant'] as const;
 

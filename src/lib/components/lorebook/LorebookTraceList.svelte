@@ -7,7 +7,7 @@
 	 *
 	 * Presentation only. It never scans, and it never reaches a store.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import {
 		LOREBOOK_SCAN_FIELDS,
 		lorebookWasInjected,
@@ -15,7 +15,7 @@
 		type LorebookKeyMatch,
 		type LorebookStatus,
 		type LorebookTrace
-	} from '$lib/lorebook/types';
+	} from '#lib/lorebook/types.ts';
 
 	interface Props {
 		trace: LorebookTrace;

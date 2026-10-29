@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { SettingsPage } from '$lib/config/settings-pages';
+	import type { SettingsPage } from '#lib/config/settings-pages.ts';
 
 	interface NavEntry {
 		page: SettingsPage;
@@ -26,13 +26,13 @@
 </script>
 
 <script lang="ts">
-	import { panelActivity } from '$lib/components/ui/panelActivity';
-	import Icon from '$lib/components/ui/Icon.svelte';
+	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import SettingsPageView from './SettingsPageView.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { SETTINGS_GROUPS } from '$lib/config/settings-pages';
-	import { connectionStore } from '$lib/stores/connections.svelte';
-	import { ENGINES } from '$lib/engines/registry';
+	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { SETTINGS_GROUPS } from '#lib/config/settings-pages.ts';
+	import { connectionStore } from '#lib/stores/connections.svelte.ts';
+	import { ENGINES } from '#lib/engines/registry.ts';
 
 	const panelActive = panelActivity();
 	// The split-view page surface: the Settings dock keeps the root list while the

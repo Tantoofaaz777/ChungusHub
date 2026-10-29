@@ -39,9 +39,9 @@
  * the live token meters. Randomness is injectable (`rng`) for the same reason.
  */
 
-import { cardScanText, expandCardCbs } from '$lib/card-cbs';
+import { cardScanText, expandCardCbs } from '#lib/card-cbs.ts';
 import { prepareCardV3Book, type CardLoreContext } from './card-v3';
-import { countTokens } from '$lib/tokenizer/count';
+import { countTokens } from '#lib/tokenizer/count.ts';
 import type {
 	Lorebook,
 	LorebookEntry,

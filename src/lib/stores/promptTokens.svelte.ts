@@ -1,22 +1,22 @@
-import { tokenCalibration, countTokens } from '$lib/tokenizer';
-import { tokenEstimate } from '$lib/tokenizer/reactive.svelte';
+import { tokenCalibration, countTokens } from '#lib/tokenizer/index.ts';
+import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
 import { chatStore } from './chat.svelte';
 import { characterLibraryStore } from './characterLibrary.svelte';
 import { featurePromptsStore } from './featurePrompts.svelte';
 import { presetControlsStore } from './presetControls.svelte';
 import { regexRulesStore } from './regex-rules.svelte';
 import { steeringStore } from './steering.svelte';
-import { lorebookStore } from '$lib/lorebook/store.svelte';
-import { lorebookSettingsStore } from '$lib/lorebook/settings.svelte';
-import { memoryStore } from '$lib/memory/scene-store.svelte';
-import { assemblePrompt } from '$lib/utils/prompt-assembly';
+import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
+import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+import { assemblePrompt } from '#lib/utils/prompt-assembly.ts';
 import {
 	chatLorebookClaim, chatMutedLorebookClaim, chatPersonaEntry, chatPreset,
 	resolvePromptTarget, toPromptCharacter
-} from '$lib/utils/chat-setup';
-import { steeringTargetForChat } from '$lib/types/steering';
-import type { Message } from '$lib/types/chat';
-import { chatAuthorsNote } from '$lib/types/chat';
+} from '#lib/utils/chat-setup.ts';
+import { steeringTargetForChat } from '#lib/types/steering.ts';
+import type { Message } from '#lib/types/chat.ts';
+import { chatAuthorsNote } from '#lib/types/chat.ts';
 
 /** The composer and inspector share one estimate, assembled by the real send pipeline. */
 class PromptTokensStore {

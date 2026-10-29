@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { llmService } from '$lib/services/llm/provider';
-	import { countTokens } from '$lib/tokenizer/count';
-	import { withTokenizers } from '$lib/tokenizer/loader';
-	import { toastStore } from '$lib/stores/toast.svelte';
+	import { llmService } from '#lib/services/llm/provider.ts';
+	import { countTokens } from '#lib/tokenizer/count.ts';
+	import { withTokenizers } from '#lib/tokenizer/loader.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 	let { value, label, entityId }: { value: string; label: string; entityId: string } = $props();
 	let model = $derived(llmService.getPrimaryModel());

@@ -20,24 +20,24 @@
 	 * ("Find in chat") for the two ::highlight() rules.
 	 */
 	import { onDestroy, untrack } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { chatSearch } from '$lib/stores/chatSearch.svelte';
-	import { chatCursor } from '$lib/stores/chatCursor.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
-	import { displaySelfRefs } from '$lib/macros';
-	import { branchColorHex } from '$lib/utils/branch-labels';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
+	import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { openChatSetup } from '#lib/stores/openChatSetup.svelte.ts';
+	import { displaySelfRefs } from '#lib/macros.ts';
+	import { branchColorHex } from '#lib/utils/branch-labels.ts';
 	import {
 		buildSearchRegex,
 		findBranchHits,
 		findMatchRanges,
 		MAX_BRANCH_HITS,
 		MAX_MATCHES
-	} from '$lib/utils/chat-search';
-	import type { Message } from '$lib/types/chat';
-	import { storyRoleName } from '$lib/types/library';
+	} from '#lib/utils/chat-search.ts';
+	import type { Message } from '#lib/types/chat.ts';
+	import { storyRoleName } from '#lib/types/library.ts';
 
 	interface Props {
 		/** The message-list scroller: both the search root and what we scroll to a hit. */

@@ -1,24 +1,24 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { chapterTitle, memoryLabel, sceneLevel } from '../../../../shared/memory-scenes';
-	import SceneSelectionBar from '$lib/components/memory/SceneSelectionBar.svelte';
-	import type { Message } from '$lib/types/chat';
+	import SceneSelectionBar from '#lib/components/memory/SceneSelectionBar.svelte';
+	import type { Message } from '#lib/types/chat.ts';
 	import MessageComponent from './Message.svelte';
 	import StreamingIndicator from './StreamingIndicator.svelte';
 	import OpeningScenePopover from './OpeningScenePopover.svelte';
 	import ChatSearchBar from './ChatSearchBar.svelte';
-	import { chatSearch } from '$lib/stores/chatSearch.svelte';
-	import { chatCursor } from '$lib/stores/chatCursor.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { memoryStore } from '$lib/memory/scene-store.svelte';
-	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { generalSettingsStore } from '$lib/stores/general-settings.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import { reducedMotion } from '$lib/components/ui/surface-motion';
-	import { groupSiblings } from '$lib/utils/message-tree';
+	import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
+	import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import { reducedMotion } from '#lib/components/ui/surface-motion.ts';
+	import { groupSiblings } from '#lib/utils/message-tree.ts';
 
 	interface Props {
 		messages: Message[];

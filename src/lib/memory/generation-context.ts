@@ -1,4 +1,4 @@
-import { chapterTitle, memoryLabel, resolveScenes, sceneLevel, type MemoryLevel, type MemoryScene, type SceneMessage, type SceneSource } from '$shared/memory-scenes';
+import { chapterTitle, memoryLabel, resolveScenes, sceneLevel, type MemoryLevel, type MemoryScene, type SceneMessage, type SceneSource } from '#shared/memory-scenes.ts';
 
 export const DEFAULT_PREVIOUS_SUMMARIES = 6;
 

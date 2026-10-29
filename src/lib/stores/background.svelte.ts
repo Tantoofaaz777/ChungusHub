@@ -12,11 +12,11 @@ import {
 	readSetting,
 	reloadSettings,
 	registerSettingsReload
-} from '$lib/services/syncedSetting';
-import { fileUrl } from '$lib/services/transport';
-import type { BackgroundConfig } from '$lib/types/background';
-import { DEFAULT_BACKGROUND, normalizeBackgroundConfig } from '$lib/types/background';
-import { chatSceneStore } from '$lib/stores/chatScene.svelte';
+} from '#lib/services/syncedSetting.ts';
+import { fileUrl } from '#lib/services/transport.ts';
+import type { BackgroundConfig } from '#lib/types/background.ts';
+import { DEFAULT_BACKGROUND, normalizeBackgroundConfig } from '#lib/types/background.ts';
+import { chatSceneStore } from '#lib/stores/chatScene.svelte.ts';
 
 const SETTINGS_KEY = 'backgroundConfig';
 

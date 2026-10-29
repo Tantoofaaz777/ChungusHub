@@ -7,13 +7,13 @@
  * preset (draft if one exists, else committed) is what the editor shows AND what
  * generation uses, so you can try changes live and revert if you don't like them.
  */
-import type { PromptPreset, PromptItem, PromptControl } from '$lib/types/database';
-import { apiGet, apiSend, getClientId } from '$lib/services/transport';
-import { db } from '$lib/services/database';
-import { imageService } from '$lib/services/imageService';
-import { registerSettingsReload, reloadSettings } from '$lib/services/syncedSetting';
-import { parsePresetJson, promptItemBody, serializePresetJson, type ImportedPreset } from '$lib/services/preset-io';
-import type { RegexRule } from '$lib/utils/regex-rules';
+import type { PromptPreset, PromptItem, PromptControl } from '#lib/types/database.ts';
+import { apiGet, apiSend, getClientId } from '#lib/services/transport.ts';
+import { db } from '#lib/services/database.ts';
+import { imageService } from '#lib/services/imageService.ts';
+import { registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
+import { parsePresetJson, promptItemBody, serializePresetJson, type ImportedPreset } from '#lib/services/preset-io.ts';
+import type { RegexRule } from '#lib/utils/regex-rules.ts';
 import { SvelteMap } from 'svelte/reactivity';
 
 function slugify(name: string): string {

@@ -8,12 +8,12 @@
 	 * keystrokes must not become one write each. The store's `flush()` is what generation
 	 * calls before reading the rows, so nothing here needs a save.
 	 */
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import OverrideMark from '$lib/components/ui/OverrideMark.svelte';
-	import { autoResize } from '$lib/actions/autoResize';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-	import { steeringStore } from '$lib/stores/steering.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import OverrideMark from '#lib/components/ui/OverrideMark.svelte';
+	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+	import { steeringStore } from '#lib/stores/steering.svelte.ts';
 	import {
 		bindingIsForeign,
 		bindingLabel,
@@ -21,7 +21,7 @@
 		scopeIdFor,
 		versionChoices,
 		versionLabel
-	} from '$lib/utils/steering-labels';
+	} from '#lib/utils/steering-labels.ts';
 	import {
 		clampSteeringDepth,
 		noteLabel,
@@ -30,7 +30,7 @@
 		steeringTargetForChat,
 		type SteeringNote,
 		type SteeringScope
-	} from '$lib/types/steering';
+	} from '#lib/types/steering.ts';
 
 	interface Props {
 		note: SteeringNote;

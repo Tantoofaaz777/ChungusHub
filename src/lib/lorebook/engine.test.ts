@@ -1,5 +1,5 @@
 import { beforeAll } from 'bun:test';
-import { prepareTokenizer } from '$lib/tokenizer/encodings';
+import { prepareTokenizer } from '#lib/tokenizer/encodings.ts';
 beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
 
 /**

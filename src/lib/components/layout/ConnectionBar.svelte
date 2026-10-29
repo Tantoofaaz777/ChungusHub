@@ -18,8 +18,8 @@
 	 */
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { isReachable, onReachabilityChange } from '$lib/services/transport';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { isReachable, onReachabilityChange } from '#lib/services/transport.ts';
 
 	let reachable = $state(true);
 

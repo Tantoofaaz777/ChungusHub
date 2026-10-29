@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import Dialog from '$lib/components/ui/Dialog.svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { messageStore } from '$lib/stores/messages.svelte';
-	import { chatCursor } from '$lib/stores/chatCursor.svelte';
-	import { chatSearch } from '$lib/stores/chatSearch.svelte';
-	import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-	import { openChatSetup } from '$lib/stores/openChatSetup.svelte';
-	import { toastStore } from '$lib/stores/toast.svelte';
-	import { storyRoleName } from '$lib/types/library';
-	import type { Message } from '$lib/types/chat';
-	import { displaySelfRefs } from '$lib/macros';
-	import { stripMarkdown } from '$lib/utils/markdown';
-	import { chatBookmarks } from '$lib/utils/chat-bookmarks';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
+	import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
+	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+	import { openChatSetup } from '#lib/stores/openChatSetup.svelte.ts';
+	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { storyRoleName } from '#lib/types/library.ts';
+	import type { Message } from '#lib/types/chat.ts';
+	import { displaySelfRefs } from '#lib/macros.ts';
+	import { stripMarkdown } from '#lib/utils/markdown.ts';
+	import { chatBookmarks } from '#lib/utils/chat-bookmarks.ts';
 
 	let { chatId, open, onClose }: { chatId: string; open: boolean; onClose: () => void } = $props();
 	const chatState = $derived(chatStore.currentChatState?.chat.id === chatId ? chatStore.currentChatState : null);

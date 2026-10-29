@@ -18,8 +18,8 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import Icon from '$lib/components/ui/Icon.svelte';
-	import ExpandableTextarea from '$lib/components/ui/ExpandableTextarea.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
+	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
 	import {
 		depthInverted,
 		depthSentence,
@@ -28,7 +28,7 @@
 		type RegexRule,
 		type RegexRuleRole,
 		type RegexRuleScope
-	} from '$lib/utils/regex-rules';
+	} from '#lib/utils/regex-rules.ts';
 
 	interface Props {
 		rule: RegexRule;

@@ -1,22 +1,22 @@
-import type { Message, MessageAttachment, EditAction, DeleteAction, RegenerateAction } from '$lib/types/chat';
-import type { LLMMessage } from '$lib/types/llm';
-import { db } from '$lib/services/database';
+import type { Message, MessageAttachment, EditAction, DeleteAction, RegenerateAction } from '#lib/types/chat.ts';
+import type { LLMMessage } from '#lib/types/llm.ts';
+import { db } from '#lib/services/database.ts';
 import { chatStore } from './chat.svelte';
 import { toastStore } from './toast.svelte';
-import { llmService } from '$lib/services/llm/provider';
-import { findActivePath, findDeepestLeafFromNode } from '$lib/utils/message-tree';
-import { buildPromptMessages, type BuiltPrompt, type PromptBuildContext } from '$lib/utils/prompt-builder';
+import { llmService } from '#lib/services/llm/provider.ts';
+import { findActivePath, findDeepestLeafFromNode } from '#lib/utils/message-tree.ts';
+import { buildPromptMessages, type BuiltPrompt, type PromptBuildContext } from '#lib/utils/prompt-builder.ts';
 import { promptHoldStore } from './promptHold.svelte';
-import type { HoldGate } from '$lib/config/prompt-hold';
-import { joinContinuation } from '$lib/utils/continuation';
-import { featurePromptsStore } from '$lib/stores/featurePrompts.svelte';
-import { chatPersonaEntry } from '$lib/utils/chat-setup';
+import type { HoldGate } from '#lib/config/prompt-hold.ts';
+import { joinContinuation } from '#lib/utils/continuation.ts';
+import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
+import { chatPersonaEntry } from '#lib/utils/chat-setup.ts';
 import { chatCastStore } from './chatCast.svelte';
-import { resolveMacroValues, substitute } from '$lib/macros';
-import { buildLiveMacroContext } from '$lib/utils/live-macro-context';
-import { memoryStore } from '$lib/memory/scene-store.svelte';
+import { resolveMacroValues, substitute } from '#lib/macros.ts';
+import { buildLiveMacroContext } from '#lib/utils/live-macro-context.ts';
+import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 import { steeringStore } from './steering.svelte';
-import { countMessages, tokenCalibration, withTokenizers } from '$lib/tokenizer';
+import { countMessages, tokenCalibration, withTokenizers } from '#lib/tokenizer/index.ts';
 import { resolveScenes, type MemoryScene } from '../../../shared/memory-scenes';
 
 /**

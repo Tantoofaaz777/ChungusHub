@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { PromptItem, PromptPreset } from '$lib/types/database';
+import type { PromptItem, PromptPreset } from '#lib/types/database.ts';
 
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity, snapshot: structuredClone });
@@ -7,8 +7,8 @@ const identity = <T>(value: T) => value;
 const realTransport = { ...await import('./transport') };
 const realDatabase = { ...await import('./database') };
 afterAll(() => {
-	mock.module('$lib/services/transport', () => realTransport);
-	mock.module('$lib/services/database', () => realDatabase);
+	mock.module('#lib/services/transport.ts', () => realTransport);
+	mock.module('#lib/services/database.ts', () => realDatabase);
 });
 
 type DiskPreset = Omit<PromptPreset, 'items'> & { items: (Omit<PromptItem, 'id'> & { id?: string })[] };
@@ -29,7 +29,7 @@ let read: ReturnType<typeof deferred<Snapshot>> | null;
 let cleanup: ReturnType<typeof deferred<void>> | null;
 let saving: ReturnType<typeof deferred<void>> | null;
 let writes: { path: string; method: string; body: any }[];
-mock.module('$lib/services/transport', () => ({
+mock.module('#lib/services/transport.ts', () => ({
 	...realTransport,
 	getClientId: () => 'test-client',
 	apiGet: async () => read ? read.promise : structuredClone(snapshot),
@@ -40,7 +40,7 @@ mock.module('$lib/services/transport', () => ({
 		return {};
 	}
 }));
-mock.module('$lib/services/database', () => ({
+mock.module('#lib/services/database.ts', () => ({
 	...realDatabase, db: { ...realDatabase.db, getSetting: async () => 'p', setSetting: async () => {} }
 }));
 const { PresetService, clonePreset } = await import('./presets.svelte');

@@ -1,7 +1,7 @@
 import { createSubscriber } from 'svelte/reactivity';
 import { onEncodingReady } from './encodings';
 import { TokenizerLoading } from './loader';
-import { toastStore } from '$lib/stores/toast.svelte';
+import { toastStore } from '#lib/stores/toast.svelte.ts';
 
 const subscribe = createSubscriber(onEncodingReady);
 const observed = new WeakSet<Promise<void>>();

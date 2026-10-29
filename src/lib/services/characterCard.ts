@@ -1,4 +1,4 @@
-import type { CardAsset, CharacterCardMetadata } from '$lib/types/character-card';
+import type { CardAsset, CharacterCardMetadata } from '#lib/types/character-card.ts';
 
 export function cardObject(value: unknown, label: string): Record<string, unknown> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid character card: ${label} must be an object.`);

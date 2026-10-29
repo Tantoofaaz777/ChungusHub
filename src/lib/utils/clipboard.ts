@@ -1,4 +1,4 @@
-import { isAndroidClient } from '$lib/services/android-client';
+import { isAndroidClient } from '#lib/services/android-client.ts';
 
 /** The app's only clipboard writer. Callers must await it before showing success.
  * Android confirms a native write; browsers use their Clipboard API, with a selection

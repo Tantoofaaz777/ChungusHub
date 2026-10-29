@@ -1,4 +1,4 @@
-import type { Chat, Message, ChatState, ChatStream, MessagesDelta } from '$lib/types/chat';
+import type { Chat, Message, ChatState, ChatStream, MessagesDelta } from '#lib/types/chat.ts';
 import {
 	DEFAULT_CHAT_FEATURE_STATE,
 	normalizeChatFeatureState,
@@ -6,23 +6,23 @@ import {
 	withLorebookClaim,
 	withLorebookMute,
 	type ChatFeatureState
-} from '$lib/types/chat';
-import { db } from '$lib/services/database';
-import { captureEditorRows, retainEditorChanges } from '$lib/utils/retain-local-changes';
-import { llmStatus, stopGeneration } from '$lib/services/transport';
-import { findActivePath } from '$lib/utils/message-tree';
-import { chatPersonaClaim } from '$lib/utils/chat-setup';
-import { formatDate } from '$lib/utils/date';
-import { toastStore } from '$lib/stores/toast.svelte';
-import { characterLibraryStore } from '$lib/stores/characterLibrary.svelte';
-import { lorebookStore } from '$lib/lorebook/store.svelte';
-import { chatCastStore } from '$lib/stores/chatCast.svelte';
-import { uiStore } from '$lib/stores/ui.svelte';
-import { memoryStore } from '$lib/memory/scene-store.svelte';
-import { trackReasoning } from '$lib/utils/reasoning-time';
-import { CoalescedTask } from '$lib/utils/coalesced-task';
-import { nextMemoryReminder, type ReminderCount } from '$lib/memory/reminders';
-import type { SceneMessage } from '$shared/memory-scenes';
+} from '#lib/types/chat.ts';
+import { db } from '#lib/services/database.ts';
+import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
+import { llmStatus, stopGeneration } from '#lib/services/transport.ts';
+import { findActivePath } from '#lib/utils/message-tree.ts';
+import { chatPersonaClaim } from '#lib/utils/chat-setup.ts';
+import { formatDate } from '#lib/utils/date.ts';
+import { toastStore } from '#lib/stores/toast.svelte.ts';
+import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
+import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
+import { chatCastStore } from '#lib/stores/chatCast.svelte.ts';
+import { uiStore } from '#lib/stores/ui.svelte.ts';
+import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
+import { trackReasoning } from '#lib/utils/reasoning-time.ts';
+import { CoalescedTask } from '#lib/utils/coalesced-task.ts';
+import { nextMemoryReminder, type ReminderCount } from '#lib/memory/reminders.ts';
+import type { SceneMessage } from '#shared/memory-scenes.ts';
 
 /** A reply being written for a chat by someone other than this page. */
 type ForeignGeneration = { chatId: string; requestId: string; startedAt: number };
