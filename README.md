@@ -156,6 +156,12 @@ bun run start
 
 Then open <http://localhost:4242>. Your data lives in `user-data/` next to the repo.
 
+Build output keeps progress, warnings and errors, while omitting the generated-file
+size table and plugin timing reports. For the full diagnostic output, run
+`CHUNGUS_BUILD_VERBOSE=1 bun run build` on Linux/macOS, or
+`$env:CHUNGUS_BUILD_VERBOSE='1'; bun run build` in PowerShell. Unset the variable
+afterwards to restore compact output (`Remove-Item Env:CHUNGUS_BUILD_VERBOSE` in PowerShell).
+
 Alternatively, use the source launchers above without a manual Bun install. They start
 the development frontend on <http://localhost:1420> and the backend on port 4242.
 

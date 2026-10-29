@@ -3,11 +3,12 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig, type Plugin } from 'vite';
+import { createLogger, defineConfig, type Plugin } from 'vite';
 import { normalizeIp } from './server/access.ts';
 import { ALLOWLIST_ENV, ALLOWLIST_PATH, OPEN_BROWSER, PORT, SECURITY_PATH } from './server/config.ts';
 import { bootAssetManifest } from './scripts/boot-assets.ts';
 import { chunkSizeWarnings } from './scripts/chunk-size-warnings.ts';
+import { compactBuildLogger } from './scripts/build-output.ts';
 
 // Read from the server's own config, so the proxy cannot drift off the port it serves.
 const BACKEND = `http://localhost:${PORT}`;
@@ -182,7 +183,18 @@ function allowlistGate(): Plugin {
 const appVersion = (JSON.parse(readFileSync('package.json', 'utf8')) as { version?: string }).version;
 if (!appVersion) throw new Error('package.json has no "version"');
 
-export default defineConfig({
+const verboseBuild = process.env.CHUNGUS_BUILD_VERBOSE === '1';
+
+export default defineConfig(({ command }) => ({
+	customLogger: command === 'build' && !verboseBuild
+		? compactBuildLogger(createLogger('info', { allowClearScreen: false }))
+		: undefined,
+	build: {
+		// Avoid calculating gzip sizes solely for the terminal table. The static
+		// adapter still precompresses the files served in production.
+		reportCompressedSize: verboseBuild,
+		rolldownOptions: { checks: { bundlerTimings: verboseBuild } }
+	},
 	define: {
 		CHUNGUS_VERSION: JSON.stringify(appVersion),
 		// Dev only: the client opens its socket straight at the Bun server rather than through
@@ -249,4 +261,4 @@ export default defineConfig({
 			'/ws': { target: BACKEND, changeOrigin: true, ws: true, xfwd: true }
 		}
 	}
-});
+}));

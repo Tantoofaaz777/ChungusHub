@@ -33,7 +33,7 @@ export function oversizedChunks(bundle: Record<string, BuildFile>) {
 }
 
 /** Replace Vite's single generic chunk threshold with per-payload budgets only.
- * No logger filters: all other build warnings and errors keep their normal path. */
+ * All other build warnings and errors keep their normal path. */
 export function chunkSizeWarnings(): Plugin {
 	let minified = true;
 	return {
