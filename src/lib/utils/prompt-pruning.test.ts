@@ -3,7 +3,7 @@ import { prepareTokenizer } from '$lib/tokenizer/encodings';
 beforeAll(async () => { await Promise.all([prepareTokenizer(), prepareTokenizer('gpt-4')]); });
 
 /**
- * Tests for tag-block pruning: conditional framing without syntax. Run with `bun test`.
+ * Tests for tag-block pruning: preserve text and remove empty macro blocks. Run with `bun test`.
  *
  * The unit half locks the pruning rules on `pruneEmptyTagBlocks` directly; the integration
  * half proves the behavior through `resolveItem`/`assemblePrompt`, i.e. what generation,
@@ -64,9 +64,18 @@ describe('pruneEmptyTagBlocks: core rules', () => {
 		expect(pruneEmptyTagBlocks('<x>{{a}}</x>', { a: '  \n ' })).toBe('');
 	});
 
-	test('static framing inside the block dies with its empty macro', () => {
+	test('static text inside the block survives an empty macro', () => {
 		const text = '<memory>\nTreat this as canon:\n{{memory}}\n</memory>';
-		expect(pruneEmptyTagBlocks(text, { memory: '' })).toBe('');
+		expect(pruneEmptyTagBlocks(text, { memory: '' })).toBe(text);
+	});
+
+	test('static text survives when all surrounding macros are empty', () => {
+		const text = '<rules>{{a}}\nKeep this rule.\n{{b}}</rules>';
+		expect(pruneEmptyTagBlocks(text, { a: '', b: ' \n ' })).toBe(text);
+	});
+
+	test('a block containing only empty macros is pruned', () => {
+		expect(pruneEmptyTagBlocks('<rules>{{a}}\n{{b}}</rules>', { a: '', b: ' \n ' })).toBe('');
 	});
 
 	test('framing survives when any of the block\'s own macros is non-empty', () => {
@@ -112,6 +121,11 @@ describe('pruneEmptyTagBlocks: nesting and cascade', () => {
 		expect(out).toContain('Fixed rule one.');
 		expect(out).toContain('Fixed rule two.');
 		expect(out).not.toContain('<themes>');
+	});
+
+	test('parent static content survives empty own macros and pruned children together', () => {
+		const text = '<rules>{{a}}\nKeep this rule.\n<optional>{{b}}</optional>\n</rules>';
+		expect(pruneEmptyTagBlocks(text, { a: '', b: '' })).toBe('<rules>{{a}}\nKeep this rule.\n\n</rules>');
 	});
 
 	test('a surviving child vetoes pruning even when the parent\'s own macros are empty', () => {
@@ -246,6 +260,44 @@ describe('pruning through resolveItem', () => {
 });
 
 describe('pruning with preset controls', () => {
+	for (const erotism of [false, true]) {
+		for (const steering of [false, true]) {
+			test(`roleplay and post-history rules survive optional toggles (erotism=${erotism}, steering=${steering})`, () => {
+				const controls: any[] = [
+					{ id: 'e', macro: 'erotism', label: 'Optional rules', type: 'toggle', onText: 'Additional rules.' },
+					{ id: 's', macro: 'steering', label: 'Steering', type: 'toggle', onText: 'Advance the plot.' }
+				];
+				const items = [
+					item('Introduction.\n\n<roleplay_rules>\nKeep the fixed roleplay rules.\n{{erotism}}\n</roleplay_rules>'),
+					item('<final_rules>\nKeep the fixed final rules.\n{{steering}}\n</final_rules>')
+				];
+				const options = input(preset(items, { controls }), {
+					controls, customFields: { erotism, steering }, postProcessing: { mode: 'none' }
+				});
+				const result = assemblePrompt(options);
+				expect(result.messages.map((m) => m.content)).toEqual([
+					`Introduction.\n\n<roleplay_rules>\nKeep the fixed roleplay rules.\n${erotism ? 'Additional rules.' : ''}\n</roleplay_rules>`,
+					`<final_rules>\nKeep the fixed final rules.\n${steering ? 'Advance the plot.' : ''}\n</final_rules>`
+				]);
+				const ctx = buildMacroContext(options);
+				for (const promptItem of items) {
+					const resolved = resolveItem(promptItem, ctx, MODEL);
+					expect(resolved.preset + resolved.context + resolved.memory + resolved.chat)
+						.toBeGreaterThanOrEqual(countTokens(resolved.messages[0].content, MODEL));
+				}
+			});
+		}
+	}
+
+	test('structural history preserves fixed rules beside an empty control', () => {
+		const controls: any[] = [{ id: 'c', macro: 'optional', label: 'Optional', type: 'toggle' }];
+		const p = preset([item('<rules>Keep this rule.\n{{optional}}</rules>\n{{chatHistory}}')], { controls });
+		const result = assemblePrompt(input(p, {
+			controls, chatMessages: [msg('m', 'user', 'Latest turn.')], postProcessing: { mode: 'none' }
+		}));
+		expect(result.messages.map((m) => m.content)).toEqual(['<rules>Keep this rule.\n</rules>', 'Latest turn.']);
+	});
+
 	const RULES_CONTROL = {
 		id: 'ctrl_rules',
 		macro: 'rules',
@@ -354,9 +406,9 @@ describe('Standard Chungus end-to-end', () => {
 		const a = assemblePrompt(chungusInput());
 		const text = allText(a.messages);
 
-		// Empty-data blocks are gone entirely, wrappers and framing text included.
-		expect(text).not.toContain('<memory>');
-		expect(text).not.toContain('Compacted memory');
+		// Macro-only blocks disappear, while authored text survives missing data.
+		expect(text).toContain('<memory>');
+		expect(text).toContain('Compacted memory');
 		expect(text).not.toContain('<story_bible>');
 		expect(text).not.toContain('<world_info>');
 		expect(text).not.toContain('<house_rules>');
@@ -381,22 +433,17 @@ describe('Standard Chungus end-to-end', () => {
 		expect(text).toContain('<banned_vocabulary>');
 		expect(text).toContain('barely above a whisper');
 
-		// <absolute_rules> is NOT: its only macro is {{user}}, which is empty without a
-		// persona, so the framing-case rule takes the whole block. It used to lean on
-		// {{protagonist}} (a {{user}} twin with a never-empty fallback) purely to stay
-		// alive here. That macro is gone (ChungusHub will require a persona), and this is
-		// the shape of the gap until it does.
-		expect(text).not.toContain('<absolute_rules>');
+		// Missing persona names must not erase the fixed rules around {{user}}.
+		expect(text).toContain('<absolute_rules>');
+		expect(text).toContain('NEVER parrot.');
 	});
 
-	// The banned list is nested inside <style>, which is a block that always has static
-	// content of its own, so the pruning has to reach the inner pair without taking the
-	// outer one. This is why the framing sentence lives in the item and not in the control.
-	test('emptying the banned list takes its block and its framing, not the style block', () => {
+	test('emptying the banned list preserves its authored instructions and the style block', () => {
 		const text = allText(assemblePrompt(chungusInput({ customFields: { bannedPhrases: [] } })).messages);
 
-		expect(text).not.toContain('<banned_vocabulary>');
-		expect(text).not.toContain('Never write these words or phrases');
+		expect(text).toContain('<banned_vocabulary>');
+		expect(text).toContain('Never write these words or phrases');
+		expect(text).not.toContain('barely above a whisper');
 		expect(text).toContain('<style>');
 		expect(text).toContain('250 to 450 words');
 	});

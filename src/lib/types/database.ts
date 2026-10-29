@@ -221,8 +221,9 @@ export interface PromptPreset {
 	 *  while this preset is active and withdraw with it; the user can mute one but never
 	 *  edit it, because an edited copy would no longer be the preset's. */
 	regexRules?: RegexRule[];
-	/** Opt-in: prune tag blocks whose macros all resolve empty (see pruneEmptyTagBlocks in
-	 *  $lib/macros). Per-preset because it changes what the authored template means.
+	/** Opt-in: prune macro-containing tag blocks whose entire resolved content is empty
+	 *  (see pruneEmptyTagBlocks in $lib/macros). Written text survives empty macros.
+	 *  Per-preset because it changes what the authored template means.
 	 *  Absent/false leaves imported and hand-rolled presets exactly as written. */
 	pruneEmptyBlocks?: boolean;
 	/** Separator that replaces <START> markers between example-dialogue blocks (SillyTavern-style). Empty = no header line. */

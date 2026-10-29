@@ -5,7 +5,7 @@
   is which:
     - Off: the template ships as written. The <memory> block goes out as an
       empty shell because its only macro resolves to nothing.
-    - On: that whole block (tags and framing line included) drops out of the
+    - On: that whole macro-only block (tags included) drops out of the
       send. The static-only <style> block below never moves.
 
   Pure CSS animation; it exists only while the tip is open.
@@ -30,7 +30,6 @@
 	<div class="doc">
 		<div class="block prunable">
 			<span class="ln"><span class="tag">&lt;memory&gt;</span></span>
-			<span class="ln">Treat this as canon:</span>
 			<span class="ln"><span class="macro">{'{{memory}}'}</span><span class="mark">empty</span></span>
 			<span class="ln"><span class="tag">&lt;/memory&gt;</span></span>
 		</div>

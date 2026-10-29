@@ -248,22 +248,16 @@ export function referencesMacro(text: string, name: string): boolean {
 }
 
 // ============================================================================
-// Tag-block pruning: conditional framing without syntax
+// Tag-block pruning: remove macro blocks only when their resolved content is empty
 // ============================================================================
 //
 // A preset item can wrap a macro in a plain XML tag block (`<memory>{{memory}}</memory>`).
-// When every macro a block carries resolves to empty, the whole block goes: tags, framing
-// text and all, instead of being sent as a dangling empty shell. The rules, applied
-// bottom-up so pruning cascades outward:
-//   1. A block whose content is nothing but whitespace after pruning its children and
-//      substituting known values is dropped (this is how an outer wrapper follows its
-//      emptied children out).
-//   2. A block whose OWN text references macros, all of them known and empty, is dropped
-//      with its static framing, since the label exists for the content and dies with it,
-//      but never while a surviving child block still holds content.
-//   3. Blocks with no macros anywhere are static text and are never touched. Unknown
-//      macro names stay literal (per `substitute`), so a typo keeps its block alive and
-//      visible instead of silently vanishing.
+// After pruning children and substituting known values, a block is dropped only if its
+// content is nothing but whitespace. Authored text always keeps its block alive, even
+// when every macro is empty: it may carry independent rules, not just a framing label.
+// Pruning runs bottom-up so an outer wrapper follows its emptied children out.
+// Blocks with no macros anywhere are static text and are never touched. Unknown macro
+// names stay literal (per `substitute`), keeping their blocks alive so typos stay visible.
 // Only plain `<name>` tags (no attributes, no self-closing) form blocks; anything else,
 // including unmatched tags, is left alone. Pruning runs on the item TEMPLATE before
 // substitution, so tags arriving inside macro values can never form prunable blocks.
@@ -276,10 +270,6 @@ interface PruneLevel {
 	out: string;
 	/** True when this level or anything below references a macro or pruned a block. */
 	dynamic: boolean;
-	/** Macro names referenced in this level's own text, outside surviving child blocks. */
-	directMacros: string[];
-	/** Child blocks kept at this level. */
-	survivingChildren: number;
 }
 
 /** Index right after the close tag matching an open `<name>` whose content starts at `from`,
@@ -297,14 +287,9 @@ function findMatchingClose(text: string, name: string, from: number): number {
 }
 
 function shouldPrune(block: PruneLevel, values: Record<string, string>): boolean {
-	if (!block.dynamic) return false;
-	// Emptied out entirely. Unknown macros stay literal in `substitute`, so a typo'd name
-	// keeps the block non-empty and visible rather than silently pruned.
-	if (!substitute(block.out, values).trim()) return true;
-	// Framing case: the block's own macros all came back empty, so its static text is
-	// framing for content that isn't there and goes with it. A surviving child always vetoes.
-	if (block.survivingChildren > 0 || block.directMacros.length === 0) return false;
-	return block.directMacros.every((name) => Object.hasOwn(values, name) && !values[name].trim());
+	// Check the entire surviving content, including static text. Unknown macros stay
+	// literal in `substitute`, so a typo also keeps the block non-empty and visible.
+	return block.dynamic && !substitute(block.out, values).trim();
 }
 
 /** One nesting level: recurse into child blocks, drop the ones that prune, and report
@@ -315,7 +300,6 @@ function pruneLevel(text: string, values: Record<string, string>): PruneLevel {
 	let out = '';
 	let ownText = '';
 	let dynamic = false;
-	let survivingChildren = 0;
 	let pos = 0;
 
 	let match: RegExpExecArray | null;
@@ -335,7 +319,6 @@ function pruneLevel(text: string, values: Record<string, string>): PruneLevel {
 		} else {
 			out += `<${name}>${child.out}</${name}>`;
 			dynamic = dynamic || child.dynamic;
-			survivingChildren++;
 		}
 		pos = closeAt + name.length + 3; // past `</name>`
 		openRe.lastIndex = pos;
@@ -344,12 +327,11 @@ function pruneLevel(text: string, values: Record<string, string>): PruneLevel {
 	out += rest;
 	ownText += rest;
 
-	const directMacros = extractMacroNames(ownText);
-	return { out, dynamic: dynamic || directMacros.length > 0, directMacros, survivingChildren };
+	return { out, dynamic: dynamic || extractMacroNames(ownText).length > 0 };
 }
 
 /**
- * Remove tag blocks whose macros all resolved empty (see the rules above). Returns the
+ * Remove macro-containing tag blocks whose entire resolved content is empty. Returns the
  * template ready for `substitute`: untouched when nothing prunes, whitespace-tidied
  * (gaps collapsed, ends trimmed) when something did.
  */

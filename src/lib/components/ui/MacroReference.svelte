@@ -197,8 +197,9 @@
 			<span class="font-semibold text-text-secondary">Empty blocks can prune themselves:</span>
 			with the preset's “Prune empty blocks” toggle on, wrapping a macro in a plain tag
 			(<code class="font-mono text-accent">&lt;memory&gt;{'{{memory}}'}&lt;/memory&gt;</code>) drops the whole
-			block (tags and framing text included) from the prompt when every macro inside it comes back
-			empty. Static-only blocks and unknown macro names are never touched.
+			block from the prompt only when its resolved content is empty after pruning child blocks.
+			Written text keeps its block even when every macro is empty. Static-only blocks and unknown
+			macro names are never touched.
 		</p>
 	</div>
 </div>

@@ -1046,7 +1046,7 @@
 				<div class="pb-prune-text">
 					<span class="pb-prune-title">Prune empty blocks</span>
 					<MockupTip
-						text="Drops a plain <tag> block, framing and all, when every macro inside it resolves empty. Static-only blocks are never touched."
+						text="Drops a plain <tag> block only when nothing but whitespace remains after resolving its macros and pruning empty children. Written text and unknown macros keep their blocks. Static-only blocks are never touched."
 					>
 						<PruneEmptyBlocksMockup />
 					</MockupTip>

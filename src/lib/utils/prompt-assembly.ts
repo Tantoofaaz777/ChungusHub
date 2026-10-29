@@ -249,9 +249,9 @@ export function resolveItem(item: PromptItem, ctx: MacroContext, model?: string)
 		return resolveStructural(item, ctx, raw, model);
 	}
 
-	// Prune-then-substitute: when the preset opts in, tag blocks whose macros all resolved
-	// empty are dropped from the template before expansion, so conditional framing never
-	// dangles (see macros.ts). Off = the template is expanded exactly as written.
+	// Prune-then-substitute: when the preset opts in, macro-containing tag blocks are
+	// dropped only when their entire resolved content is empty. Static text survives
+	// empty macros (see macros.ts). Off = expand the template exactly as written.
 	const values = resolveMacroValues(item.content, ctx);
 	const template = ctx.pruneEmptyBlocks ? pruneEmptyTagBlocks(item.content, values) : item.content;
 	const expanded = substitute(template, values);
