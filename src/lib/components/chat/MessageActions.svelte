@@ -25,6 +25,8 @@
 		/** Label for the regenerate button, and its accessible name: the word labels are
 		 *  display:none on narrow screens, so a fixed one would name all three states wrong. */
 		regenerateLabel?: string;
+		onOpeningScene?: () => void;
+		openingSceneOpen?: boolean;
 		/** Extend this reply from where it stopped. Sits beside Retry because the two are the
 		 *  pair the hand reaches for after reading a reply: again, or more. */
 		onContinue?: () => void;
@@ -55,6 +57,8 @@
 		onRegenerate,
 		showRegenerate = false,
 		regenerateLabel = 'Retry',
+		onOpeningScene,
+		openingSceneOpen = false,
 		onContinue,
 		showContinue = false,
 		onBranch,
@@ -160,6 +164,22 @@
 		>
 			<Icon name="refresh" class="w-3.5 h-3.5" strokeWidth={1.75} />
 			<span class="action-label">{regenerateLabel}</span>
+		</button>
+	{/if}
+
+	{#if onOpeningScene}
+		<button
+			type="button"
+			class="action-btn"
+			onclick={onOpeningScene}
+			{disabled}
+			aria-label="Write another opening scene"
+			aria-haspopup="dialog"
+			aria-expanded={openingSceneOpen}
+			title="Write another opening scene"
+		>
+			<Icon name="sparkles" class="w-3.5 h-3.5" strokeWidth={1.75} />
+			<span class="action-label">Opening scene</span>
 		</button>
 	{/if}
 

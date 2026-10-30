@@ -632,6 +632,8 @@
 									onRegenerate={showRegenerate ? handleRegenerateClick : undefined}
 									{showRegenerate}
 									regenerateLabel={isUser ? (hasReply ? 'Regenerate response' : 'Generate Reply') : 'Regenerate response'}
+									onOpeningScene={showSwipes && canWriteOpening ? () => (openingDialogOpen = true) : undefined}
+									openingSceneOpen={openingDialogOpen}
 									disabled={messageStore.busy}
 									onContinue={showContinue ? handleContinue : undefined}
 									{showContinue}
@@ -733,27 +735,6 @@
 							{#if showSwipes}
 								<div class="message-pager-slot">
 									<BranchNavigator current={siblingIndex} total={siblingCount} canGenerate={canGenerateSwipe} disabled={messageStore.busy} onNavigate={handleBranchNavigate} />
-									{#if canWriteOpening}
-										<div class="opening-trigger">
-											<button
-												type="button"
-												class="opening-btn"
-												onclick={() => (openingDialogOpen = true)}
-												disabled={messageStore.busy}
-												aria-label="Write another opening scene"
-												aria-haspopup="dialog"
-												aria-expanded={openingDialogOpen}
-												title="Write another opening scene"
-											>
-												<Icon name="sparkles" class="w-3.5 h-3.5" strokeWidth={1.75} />
-											</button>
-											<OpeningScenePopover
-												open={openingDialogOpen}
-												onClose={() => (openingDialogOpen = false)}
-												onGenerate={handleGenerateOpening}
-											/>
-										</div>
-									{/if}
 								</div>
 							{/if}
 						</div>
@@ -763,6 +744,14 @@
 		</div>
 	</div>
 </article>
+
+{#if !isEditing && showSwipes && canWriteOpening}
+	<OpeningScenePopover
+		open={openingDialogOpen}
+		onClose={() => (openingDialogOpen = false)}
+		onGenerate={handleGenerateOpening}
+	/>
+{/if}
 
 <!-- Gated on having attachments at all, not on the viewer being open: the open/closed
      condition belongs to the component (see ImageLightbox), but a message with no
@@ -1059,50 +1048,7 @@
 		transition: filter 160ms ease;
 	}
 
-	.opening-trigger {
-		display: inline-flex;
-	}
-
-	/* Drawn as one more pill in the pager cluster rather than as a stray icon beside it, so
-	   its size tracks BranchNavigator's outer shell: that pill is a 1.6rem button inside
-	   0.16rem of padding and a 1px border, which is what these numbers add up to. */
-	.opening-btn {
-		width: 2.05rem;
-		height: 2.05rem;
-		padding: 0;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid color-mix(in srgb, var(--color-border-subtle) 92%, transparent);
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, var(--color-bg-secondary) 76%, transparent);
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
-	}
-
-	.opening-btn:hover:not(:disabled) {
-		color: var(--color-accent);
-		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-	}
-
-	.opening-btn:disabled {
-		opacity: 0.32;
-		cursor: not-allowed;
-	}
-
-	.opening-btn:focus-visible {
-		outline: 0;
-		border-color: color-mix(in srgb, var(--color-accent) 85%, white 15%);
-		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent-muted) 70%, transparent);
-	}
-
 	@media (pointer: coarse) {
-		.opening-btn {
-			width: 2.42rem;
-			height: 2.42rem;
-		}
-
 		.message-toolbar {
 			gap: 0.35rem;
 		}
