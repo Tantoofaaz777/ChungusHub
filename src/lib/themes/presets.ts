@@ -84,6 +84,30 @@ export const palettes: PaletteDef[] = [
 		}
 	},
 	{
+		id: 'amoled-dark',
+		name: 'AMOLED',
+		mode: 'dark',
+		colors: {
+			bgPrimary: '#000000',
+			bgSecondary: '#080a0b',
+			bgTertiary: '#131517',
+			bgElevated: '#161c1c',
+			textPrimary: '#e5ebe8',
+			textSecondary: '#a6b4b2',
+			textMuted: '#798b88',
+			userBubble: '#052422',
+			assistantBubble: '#090d0c',
+			border: '#223330',
+			borderSubtle: '#172320',
+			inputBg: '#101516',
+			cardBg: '#0c1011',
+			overlay: OVERLAY_BY_MODE.dark,
+			error: '#f08080',
+			success: '#6acba2',
+			warning: '#e9bc70'
+		}
+	},
+	{
 		id: 'literary-dark',
 		name: 'Literary Dark',
 		mode: 'dark',
