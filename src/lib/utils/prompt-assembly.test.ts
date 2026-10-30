@@ -35,8 +35,9 @@ import {
 const MODEL = 'gpt-4o';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function item(content: string, opts: { id?: string; role?: string; enabled?: boolean } = {}): any {
-	return { id: opts.id ?? content, role: opts.role ?? 'system', content, enabled: opts.enabled ?? true };
+function item(content: string, opts: { id?: string; role?: string; enabled?: boolean; depth?: number } = {}): any {
+	return { id: opts.id ?? content, role: opts.role ?? 'system', content, enabled: opts.enabled ?? true,
+		...(opts.depth !== undefined ? { depth: opts.depth } : {}) };
 }
 
 function preset(items: any[], extra: Record<string, unknown> = {}): any {
@@ -69,6 +70,137 @@ const CHAT = [
 	msg('m4', 'assistant', 'Second assistant reply.'),
 	msg('m5', 'user', 'Latest user turn.')
 ];
+
+describe('preset item history depth', () => {
+	const plain = { chatMessages: CHAT, postProcessing: { mode: 'none' as const } };
+	test('places prompts relative to original history, preserving roles and post-history blocks', () => {
+		const p = preset([
+			item('Start.'), item('After latest.', { depth: 0, role: 'assistant' }),
+			item('{{chatHistory}}'), item('Post-history.'),
+			item('Before latest.', { depth: 1, role: 'user' }), item('Before last two.', { depth: 2 })
+		]);
+		const result = assemblePrompt(input(p, plain));
+		expect(result.messages.map(m => m.content)).toEqual([
+			'Start.', ...CHAT.slice(0, -2).map(m => m.content), 'Before last two.',
+			CHAT.at(-2)!.content, 'Before latest.', CHAT.at(-1)!.content, 'After latest.', 'Post-history.'
+		]);
+		expect(result.messages.find(m => m.content === 'Before latest.')?.role).toBe('user');
+		expect(result.messages.find(m => m.content === 'After latest.')?.role).toBe('assistant');
+	});
+
+	test('ties and depths beyond a short or empty history retain preset list order', () => {
+		const p = preset([item('First.', { depth: 100 }), item('{{chatHistory}}'), item('Second.', { depth: 100 })]);
+		for (const chatMessages of [[], CHAT.slice(-1)]) {
+			const result = assemblePrompt(input(p, { ...plain, chatMessages }));
+			expect(result.messages.map(m => m.content)).toEqual(['First.', 'Second.', ...chatMessages.map(m => m.content)]);
+		}
+	});
+
+	test('without a history container, appends depth items once in list order', () => {
+		const result = assemblePrompt(input(preset([
+			item('Depth A.', { depth: 0 }), item('Ordered.'), item('Depth B.', { depth: 9 })
+		]), plain));
+		expect(result.messages.map(m => m.content)).toEqual(['Ordered.', 'Depth A.', 'Depth B.']);
+		const only = assemblePrompt(input(preset([item('Only.', { depth: 1 })]), plain));
+		expect(only.messages).toEqual([{ role: 'system', content: 'Only.' }]);
+	});
+
+	test('disabled and empty depth items do not inject content or consume tokens', () => {
+		const baseline = assemblePrompt(input(preset([item('{{chatHistory}}')]), plain));
+		const result = assemblePrompt(input(preset([
+			item('Disabled.', { enabled: false, depth: 0 }), item(' ', { depth: 1 }), item('{{chatHistory}}')
+		]), plain));
+		expect(result).toEqual(baseline);
+	});
+
+	test('macro expansion and memory attribution stay with the prompt item', () => {
+		const options = { ...plain, authorsNote: 'Gentle and thoughtful direction.',
+			recall: { text: 'A remembered meeting by the ancient lake.', archivedIds: new Set<string>() } };
+		const content = 'Guidance: {{authorsNote}}\nRecall: {{memory}}';
+		const ordered = assemblePrompt(input(preset([item(content), item('{{chatHistory}}')]), options));
+		const result = assemblePrompt(input(preset([item(content, { depth: 1 }), item('{{chatHistory}}')]), options));
+		expect(result.breakdown).toEqual(ordered.breakdown);
+		expect(result.breakdown.memory).toBeGreaterThan(0);
+		expect(result.messages.at(-2)?.content).toContain(options.authorsNote);
+		expect(result.messages.at(-2)?.content).toContain(options.recall.text);
+	});
+
+	test('budget trimming keeps depth prompts, repositions against surviving history and reports fixed overflow', () => {
+		const p = preset([item('Fixed guidance.', { depth: 99 }), item('{{chatHistory}}'), item('Post.')]);
+		const fixed = countTokens('Fixed guidance.', MODEL) + countTokens('Post.', MODEL);
+		const newest = CHAT.slice(-2).reduce((sum, m) => sum + countTokens(m.content, MODEL), 0);
+		const result = assemblePrompt(input(p, { ...plain, contextBudget: fixed + newest }));
+		expect(result.trimmedMessages).toBe(3);
+		expect(result.overBudget).toBe(false);
+		expect(result.messages.map(m => m.content)).toEqual(['Fixed guidance.', ...CHAT.slice(-2).map(m => m.content), 'Post.']);
+		expect(result.breakdown.total).toBe(fixed + newest);
+		const overflow = assemblePrompt(input(p, { ...plain, contextBudget: 1 }));
+		expect(overflow.overBudget).toBe(true);
+		expect(overflow.messages.map(m => m.content)).toEqual(['Fixed guidance.', 'Post.']);
+	});
+
+	test('repeated history containers charge every depth prompt copy to its original bucket', () => {
+		const p = preset([item('Guidance.', { depth: 1 }), item('{{chatHistory}}\n{{chatHistory}}')]);
+		const result = assemblePrompt(input(p, plain));
+		expect(result.messages.filter(m => m.content === 'Guidance.')).toHaveLength(2);
+		expect(result.breakdown.preset).toBe(countTokens('Guidance.', MODEL) * 2);
+		expect(result.breakdown.chat).toBe(CHAT.reduce((sum, m) => sum + countTokens(m.content, MODEL), 0) * 2);
+		const fixedBudget = countTokens('Guidance.', MODEL) * 2;
+		const trimmed = assemblePrompt(input(p, { ...plain, contextBudget: fixedBudget }));
+		expect(trimmed.trimmedMessages).toBe(CHAT.length);
+		expect(trimmed.breakdown.total).toBe(fixedBudget);
+		expect(trimmed.overBudget).toBe(false);
+	});
+
+	test('preset prompts, lore and steering share a slot without shifting each other', () => {
+		const book = createEmptyLorebook('Depth');
+		book.entries = [{ ...createEmptyLorebookEntry(), constant: true, content: 'Lore.',
+			position: LOREBOOK_POSITION_AT_DEPTH, depth: 1 }];
+		const result = assemblePrompt(input(preset([item('{{chatHistory}}'), item('Preset.', { depth: 1 })]), {
+			...plain, lorebooks: [book], steering: { notes: [{ text: 'Steering.', role: 'system', depth: 1 }], wrapper: '{{steering}}' }
+		}));
+		expect(result.messages.slice(-4).map(m => m.content)).toEqual(['Preset.', 'Lore.', 'Steering.', CHAT.at(-1)!.content]);
+		expect(result.breakdown.preset).toBe(countTokens('Preset.', MODEL));
+		expect(result.breakdown.context).toBe(countTokens('Lore.', MODEL) + countTokens('Steering.', MODEL));
+	});
+
+	test('continuation remains after depth prompts and post-history instructions', () => {
+		const continuation = msg('continue', 'assistant', 'An unfinished reply');
+		const p = preset([item('{{chatHistory}}'), item('Post.'), item('Depth.', { depth: 0 })], { continuePrompt: 'Continue.' });
+		const result = assemblePrompt(input(p, { ...plain, continuation }));
+		expect(result.messages.slice(-4).map(m => m.content)).toEqual(['Depth.', 'Post.', continuation.content, 'Continue.']);
+		expect(result.continuationSent).toBe(continuation.content);
+	});
+
+	test('depth counts only injected history, retaining image-only messages and attachments', () => {
+		const chatMessages = [
+			{ ...CHAT[0], excludedFromPrompt: true }, CHAT[1], CHAT[2],
+			{ ...msg('image', 'user', ''), attachments: [{ kind: 'image', path: '/files/image.png' }] }
+		];
+		const result = assemblePrompt(input(preset([
+			item('{{memory}}'), item('{{chatHistory}}'), item('Before image.', { depth: 1 })
+		]), { ...plain, chatMessages, recall: { text: 'Saved memory.', archivedIds: new Set([CHAT[1].id]) } }));
+		expect(result.messages.map(m => m.content)).toEqual(['Saved memory.', CHAT[2].content, 'Before image.', '']);
+		expect(result.messages.at(-1)?.images).toEqual(['/files/image.png']);
+	});
+
+	test('post-processing keeps depth content and the shared token attribution', () => {
+		const p = preset([item('{{chatHistory}}'), item('Depth prompt.', { depth: 1, role: 'assistant' })]);
+		const baseline = assemblePrompt(input(p, plain));
+		for (const mode of ['merge', 'semi-strict', 'strict', 'single-user'] as const) {
+			const result = assemblePrompt(input(p, { ...plain, postProcessing: { mode } }));
+			expect(result.messages).toEqual(applyPostProcessing(baseline.messages, mode));
+			expect(result.breakdown).toEqual(baseline.breakdown);
+		}
+	});
+
+	test('structural containers and invalid stored depths safely retain preset order', () => {
+		for (const depth of [-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+			const result = assemblePrompt(input(preset([item('Rules.', { depth }), item('{{chatHistory}}', { depth: 0 })]), plain));
+			expect(result.messages.map(m => m.content)).toEqual(['Rules.', ...CHAT.map(m => m.content)]);
+		}
+	});
+});
 
 describe("author's notes in prompts", () => {
 	test('notes are only included at macro references and inherit the preset item role', () => {

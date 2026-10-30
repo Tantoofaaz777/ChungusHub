@@ -51,6 +51,7 @@
 	import { fade } from 'svelte/transition';
 	import { untrack } from 'svelte';
 	import { autoResize } from '#lib/actions/autoResize.ts';
+	import { promptItemDepth, supportsPromptDepth, validPromptDepth } from '#lib/utils/prompt-placement.ts';
 	import ControlEditor from './ControlEditor.svelte';
 	import SectionEditor from './SectionEditor.svelte';
 	import PresetIdentityEditor from './PresetIdentityEditor.svelte';
@@ -349,7 +350,24 @@
 	async function handleItemFieldChange(itemId: string, field: keyof Pick<PromptItem, 'name' | 'role' | 'content'>, value: string): Promise<void> {
 		if (!currentPreset) return;
 
-		currentPreset.items = currentPreset.items.map((item) => (item.id === itemId ? { ...item, [field]: value } : item));
+		currentPreset.items = currentPreset.items.map((item) => (item.id === itemId
+			? { ...item, [field]: value, ...(field === 'content' && !supportsPromptDepth(value) ? { depth: undefined } : {}) }
+			: item));
+		await persistDraft();
+	}
+
+	async function setItemPlacement(itemId: string, atDepth: boolean): Promise<void> {
+		if (!currentPreset) return;
+		currentPreset.items = currentPreset.items.map(item => item.id === itemId
+			? { ...item, depth: atDepth && supportsPromptDepth(item.content) ? promptItemDepth(item) ?? 0 : undefined }
+			: item);
+		await persistDraft();
+	}
+
+	async function setItemDepth(itemId: string, raw: string): Promise<void> {
+		if (!currentPreset || !raw.trim() || !validPromptDepth(Number(raw))) return;
+		currentPreset.items = currentPreset.items.map(item => item.id === itemId && supportsPromptDepth(item.content)
+			? { ...item, depth: Number(raw) } : item);
 		await persistDraft();
 	}
 
@@ -668,6 +686,7 @@
 					{@const isExpanded = expandedItemIds.has(item.id)}
 					{@const breakdown = getItemTokenBreakdown(item)}
 					{@const unboundMacros = unboundMacrosFor(item.content)}
+					{@const depth = promptItemDepth(item)}
 					<div class="pb-row" class:is-expanded={isExpanded}>
 						<!-- Header row: the lead grip drags, everything else is a plain click -->
 						<div class="pb-row-head">
@@ -701,6 +720,7 @@
 									<span class="pb-role-abbr" aria-hidden="true">{roleLabels[item.role][0]}</span>
 								</span>
 								<span class="pb-name">{item.name || 'Untitled'}</span>
+								{#if depth !== undefined}<span class="pb-depth" title={`Depth ${depth}: messages back from the end of history`}>Depth {depth}</span>{/if}
 								<span class="pb-tokens">
 									{breakdown?.total.toLocaleString() ?? '…'}{#if showExpandedTokens && breakdown && breakdown.macroTokens > 0}<em>+{breakdown.macroTokens.toLocaleString()}</em>{/if}
 								</span>
@@ -758,6 +778,38 @@
 										</Select>
 									</div>
 								</div>
+
+								<div class="pb-fields">
+									<div class="pb-field">
+										<label for="item-placement-{item.id}" class="pb-label">Position</label>
+										<Select
+											id="item-placement-{item.id}"
+											value={depth !== undefined ? 'depth' : 'preset'}
+											onchange={(e) => setItemPlacement(item.id, (e.target as HTMLSelectElement).value === 'depth')}
+											class="!px-3 !py-2 !text-sm"
+										>
+											<option value="preset">Preset order</option>
+											<option value="depth" disabled={!supportsPromptDepth(item.content)}>History depth</option>
+										</Select>
+									</div>
+									{#if depth !== undefined}
+										<div class="pb-field">
+											<label for="item-depth-{item.id}" class="pb-label">Depth</label>
+											<input
+												id="item-depth-{item.id}" type="number" min="0" max={Number.MAX_SAFE_INTEGER} step="1"
+												value={depth} aria-describedby="item-placement-help-{item.id}"
+												oninput={(e) => setItemDepth(item.id, e.currentTarget.value)}
+												onblur={(e) => { e.currentTarget.value = String(depth); }}
+												class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm"
+											/>
+										</div>
+									{/if}
+								</div>
+								{#if depth !== undefined}
+									<p id="item-placement-help-{item.id}" class="pb-placement-help">0 follows the newest history message; 1 goes before it. Deeper values move toward the start. Without a history item, this prompt goes at the end.</p>
+								{:else if !supportsPromptDepth(item.content)}
+									<p class="pb-placement-help">Items containing {'{{chatHistory}}'} use preset order.</p>
+								{/if}
 
 								<div class="pb-field">
 									<label for="item-content-{item.id}" class="pb-label">Prompt content</label>
@@ -1708,6 +1760,26 @@
 		font-size: 0.72rem;
 		font-weight: 600;
 		color: var(--color-text-secondary);
+	}
+
+	.pb-depth {
+		flex-shrink: 1;
+		min-width: 0;
+		max-width: 5rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-family: var(--font-ui);
+		font-size: 0.65rem;
+		color: var(--color-text-muted);
+	}
+
+	.pb-placement-help {
+		margin: 0;
+		font-family: var(--font-ui);
+		font-size: 0.72rem;
+		line-height: 1.45;
+		color: var(--color-text-muted);
 	}
 
 	.pb-lint {

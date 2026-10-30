@@ -105,16 +105,19 @@ describe('preset refresh preserves editor identity', () => {
 	});
 	test('draft and committed writes retain item IDs across another client and save', async () => {
 		await service.initialize(); const edit = clonePreset(service.getEffective('p')!);
-		edit.items[0].content = 'Draft instructions'; await service.saveDraft(edit);
+		edit.items[0].content = 'Draft instructions'; edit.items[0].depth = 2; await service.saveDraft(edit);
 		expect(writes[0].body.items.map((item: PromptItem) => item.id)).toEqual(edit.items.map(item => item.id));
+		expect(writes[0].body.items[0].depth).toBe(2);
 		snapshot.drafts = [{ id: 'p', ...writes[0].body }];
 		const otherClient = new PresetService(); await otherClient.initialize();
 		expect(otherClient.getEffective('p')!.items.map(item => item.id)).toEqual(edit.items.map(item => item.id));
+		expect(otherClient.getEffective('p')!.items[0].depth).toBe(2);
 		const before = otherClient.getEffective('p'); await otherClient.syncReload();
 		expect(otherClient.getEffective('p')).toBe(before); expect(otherClient.getContentVersion()).toBe(0);
 		await otherClient.commitDraft('p');
 		const saved = writes.findLast(write => write.path === '/api/presets/p' && write.method === 'PUT')!;
 		expect(saved.body.items.map((item: PromptItem) => item.id)).toEqual(edit.items.map(item => item.id));
+		expect(saved.body.items[0].depth).toBe(2);
 		snapshot = { presets: [{ id: 'p', ...saved.body }], drafts: [] };
 		await otherClient.syncReload();
 		expect(otherClient.getEffective('p')!.items.map(item => item.id)).toEqual(edit.items.map(item => item.id));

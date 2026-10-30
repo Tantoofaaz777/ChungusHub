@@ -70,6 +70,10 @@ export interface PromptItem {
 	role: PromptRole;
 	content: string;
 	enabled: boolean;
+	/** Absent = preset order. Otherwise, messages back from the end of {{chatHistory}}.
+	 *  0 follows the newest message; larger values clamp to the start of the history.
+	 *  Items containing structural history macros always stay in preset order. */
+	depth?: number;
 }
 
 /**

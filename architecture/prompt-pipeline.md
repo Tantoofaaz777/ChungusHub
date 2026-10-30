@@ -52,6 +52,8 @@ The reader-facing `PresetControlsView` uses the shell's shared stacked utility-o
 
 Prompt Builder's preset picker, save control, and preset-action menu remain in normal document flow rather than sticking to the Settings scroller.
 
+Preset item depth is resolved inside `resolveEnabled`, on every trim pass. Depth items expand through the same `resolveItem` as ordered items, retain their preset/context/memory attribution, and join the shared history-splice placement (preset list order, then lore, then steering at a shared slot). Depth counts only injected history messages; exclusions, recalled scenes and budget cuts therefore affect the target sequence. Out-of-range depths clamp to the start. With no rendered history container, depth items append once in list order. Repeated history macros repeat and price each injection. Structural containers stay in preset order, and the continuation tail still closes the prompt. Covered by `prompt-assembly.test.ts`, interchange and cross-client preset tests.
+
 ## Before touching this
 
 - A new foreground generation the reader triggers by hand gets a hold gate, or the setting silently means "some of your requests". One entry in `HOLD_GATES`, one `review` call above every write that path does.

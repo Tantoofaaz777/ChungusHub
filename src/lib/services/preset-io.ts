@@ -13,6 +13,7 @@ import { DEFAULT_EXAMPLE_SEPARATOR } from '#lib/macros.ts';
 import { DEFAULT_CONTINUE_PROMPT } from '#lib/utils/prompt-assembly.ts';
 import { normalizeCarriedRules } from '#lib/utils/regex-rules.ts';
 import type { RegexRule } from '#lib/utils/regex-rules.ts';
+import { promptItemDepth, supportsPromptDepth, validPromptDepth } from '#lib/utils/prompt-placement.ts';
 
 export interface ImportedPreset {
 	name: string;
@@ -41,7 +42,9 @@ const ROLES = new Set<PromptRole>(['system', 'user', 'assistant']);
 
 /** Copy the supported item fields only, dropping legacy annotations on read/save/export. */
 export function promptItemBody(item: Omit<PromptItem, 'id'>): Omit<PromptItem, 'id'> {
-	return { name: item.name, role: item.role, content: item.content, enabled: item.enabled };
+	const depth = promptItemDepth(item);
+	return { name: item.name, role: item.role, content: item.content, enabled: item.enabled,
+		...(depth !== undefined ? { depth } : {}) };
 }
 
 function objectAt(value: unknown, label: string): Record<string, unknown> {
@@ -78,12 +81,18 @@ export function parsePresetJson(text: string): ImportedPreset {
 		if (item.role !== undefined && !ROLES.has(item.role as PromptRole)) {
 			throw new Error(`Item ${index + 1} has an unknown role "${String(item.role)}".`);
 		}
+		const content = typeof item.content === 'string' ? item.content : '';
+		if (item.depth !== undefined) {
+			if (!validPromptDepth(item.depth)) throw new Error(`Item ${index + 1} "depth" must be a nonnegative safe integer.`);
+			if (!supportsPromptDepth(content)) throw new Error(`Item ${index + 1} contains chat history and must use preset order.`);
+		}
 		return {
 			id: crypto.randomUUID(),
 			name: typeof item.name === 'string' ? item.name : '',
 			role: (item.role as PromptRole | undefined) ?? 'system',
-			content: typeof item.content === 'string' ? item.content : '',
-			enabled: typeof item.enabled === 'boolean' ? item.enabled : true
+			content,
+			enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
+			...(item.depth !== undefined ? { depth: item.depth as number } : {})
 		};
 	});
 

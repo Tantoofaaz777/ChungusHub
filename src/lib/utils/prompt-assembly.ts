@@ -40,6 +40,7 @@ import {
 } from '#lib/macros.ts';
 import { countTokens } from '#lib/tokenizer/count.ts';
 import { applyPromptRegex, type RegexRule } from './regex-rules';
+import { promptItemDepth } from './prompt-placement';
 
 export const DEFAULT_SYSTEM_PROMPT =
 	'You are a helpful, creative assistant for interactive fiction and storytelling. Respond naturally and engagingly to the user.';
@@ -305,7 +306,7 @@ function toInjectedMessage(m: Message, ctx: MacroContext): LLMMessage {
 	return message;
 }
 
-/** MacroContext plus the depth placements (steering groups and at-depth lorebook entries),
+/** MacroContext plus the depth placements (preset items, steering and lorebook entries),
  *  carried on the ctx used for a given resolution so the trim passes in assemblePrompt (which
  *  rebuild ctx and re-run resolveEnabled) carry the splices forward automatically, always
  *  against THAT resolution's own filtered/dropped chat. Local to this module:
@@ -335,7 +336,7 @@ function injectedTurns(ctx: SplicedContext): LLMMessage[] {
  * clamped to the front once N runs deeper than the injected chat. Every position is measured
  * against the UNSPLICED sequence and the result rebuilt in one pass, so several splices can't
  * shift each other's target and groups landing on the same slot keep their own order, which is
- * the order the caller built them in: lore first, then steering, so the reader's own direction
+ * the order the caller built them in: preset items, lore, then steering, so the reader's own direction
  * sits closest to the turn it is steering.
  */
 function placeSplices(injected: LLMMessage[], splices: DepthSplice[] | undefined): LLMMessage[] {
@@ -652,15 +653,45 @@ function resolveEnabled(
 ): { messages: LLMMessage[]; breakdown: PromptTokenBreakdown } {
 	const messages: LLMMessage[] = [];
 	const breakdown: PromptTokenBreakdown = { preset: 0, context: 0, memory: 0, chat: 0, total: 0 };
+	// Resolve depth items against THIS trim pass, so macro expansion and attribution
+	// follow the same history/example cuts as ordinary items. Their own item retains
+	// its token buckets; injecting it into history must not charge it as chat or lore.
+	const depthItems = new Map<PromptItem, ResolvedItem>();
+	const presetSplices: DepthSplice[] = [];
+	for (const item of preset.items) {
+		const depth = promptItemDepth(item);
+		if (!item.enabled || depth === undefined) continue;
+		const resolved = resolveItem(item, ctx, model);
+		depthItems.set(item, resolved);
+		for (const message of resolved.messages) {
+			presetSplices.push({ message, depth, tokens: countTokens(message.content, model) });
+		}
+	}
+	// A shared slot keeps preset list order, then lore, then steering. All depths
+	// are measured against the original chat, so injected items never shift one another.
+	const renderCtx = presetSplices.length ? { ...ctx, splices: [...presetSplices, ...(ctx.splices ?? [])] } : ctx;
 
 	for (const item of preset.items) {
 		if (!item.enabled) continue;
-		const r = resolveItem(item, ctx, model);
-		messages.push(...r.messages);
+		const r = depthItems.get(item) ?? resolveItem(item, renderCtx, model);
+		if (!depthItems.has(item)) messages.push(...r.messages);
 		breakdown.preset += r.preset;
 		breakdown.context += r.context;
 		breakdown.memory += r.memory;
 		breakdown.chat += r.chat;
+	}
+	for (const resolved of depthItems.values()) {
+		// No rendered history container: append once instead of silently losing the item.
+		// Deliberately repeated history containers repeat injections, just like lore and
+		// steering, so each additional copy must retain the item's original attribution.
+		const copies = resolved.messages.length
+			? messages.filter(message => message === resolved.messages[0]).length : 0;
+		if (!copies) messages.push(...resolved.messages);
+		const extra = Math.max(0, copies - 1);
+		breakdown.preset += extra * resolved.preset;
+		breakdown.context += extra * resolved.context;
+		breakdown.memory += extra * resolved.memory;
+		breakdown.chat += extra * resolved.chat;
 	}
 	// The fixed-extra allowance already prices one copy. A deliberately repeated history
 	// tag repeats its splices too, so every additional occurrence must also fit the budget.

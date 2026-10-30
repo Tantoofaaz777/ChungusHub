@@ -12,6 +12,26 @@ const bare = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('preset JSON interchange', () => {
+	test('depth, roles and preset order survive JSON export and reimport', () => {
+		const items = [
+			{ id: 'a', name: 'A', role: 'system' as const, content: 'Rules.', enabled: true },
+			{ id: 'b', name: 'B', role: 'user' as const, content: 'Hint.', enabled: true, depth: 0 },
+			{ id: 'c', name: 'C', role: 'assistant' as const, content: '{{authorsNote}}', enabled: false, depth: 25 }
+		];
+		const exported = serializePresetJson({ name: 'Depth', items, controls: [] });
+		const imported = parsePresetJson(exported);
+		expect(imported.items.map(({ id, ...body }) => body)).toEqual(items.map(({ id, ...body }) => body));
+		expect(imported.items.map(item => item.id)).not.toEqual(items.map(item => item.id));
+		expect(JSON.parse(exported).items[0]).not.toHaveProperty('depth');
+	});
+
+	test('rejects invalid depths and depth on a structural history container', () => {
+		for (const depth of [-1, 1.5, '2', null, Number.MAX_SAFE_INTEGER + 1]) {
+			expect(() => parsePresetJson(JSON.stringify(bare({ items: [{ content: 'Rules.', depth }] })))).toThrow('depth');
+		}
+		expect(() => parsePresetJson(JSON.stringify(bare({ items: [{ content: '<chat>{{ CHATHistory }}</chat>', depth: 0 }] })))).toThrow('preset order');
+	});
+
 	test('legacy item notes are accepted on import and omitted from exports', () => {
 		const legacyItem = { id: 'old', name: 'System', role: 'system' as const, content: 'Write a story.', enabled: true, note: 'Old annotation' };
 		const legacy = bare({ items: [legacyItem] });
