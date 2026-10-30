@@ -1,6 +1,7 @@
 /** Domain types for the character/persona library. Lorebooks live in `#lib/lorebook`. */
 import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
 import type { CharacterCardMetadata } from './character-card';
+import type { CharacterAuthorsNote } from '../../../shared/character-authors-note';
 
 /** Type discriminator for library entries */
 export type LibraryEntryType = 'character' | 'persona';
@@ -108,6 +109,8 @@ export interface LibraryEntry {
 	defaultConnectionId?: string;
 	defaultPresetId?: string;
 	defaultVersionId?: string;
+	/** Private note shared by all chats with this character, outside card/version data. */
+	characterAuthorsNote?: CharacterAuthorsNote;
 	isFavorite: boolean;
 	createdAt: number;
 	updatedAt: number;

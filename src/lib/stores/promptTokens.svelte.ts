@@ -51,6 +51,7 @@ class PromptTokensStore {
 	});
 	private assembly = $derived(this.chat && this.currentPreset ? tokenEstimate(() => assemblePrompt({
 		authorsNote: chatAuthorsNote(this.chat),
+		characterAuthorsNote: this.character?.characterAuthorsNote,
 		preset: this.currentPreset,
 		resolvedPersona: toPromptCharacter(this.persona),
 		resolvedCharacters: this.character && this.characterData

@@ -8,6 +8,7 @@
 	import AuthorsNotesDialog from './AuthorsNotesDialog.svelte';
 	import ChatBookmarksDialog from './ChatBookmarksDialog.svelte';
 	import { chatAuthorsNote } from '#lib/types/chat.ts';
+	import { resolveAuthorsNote } from '../../../../shared/character-authors-note';
 	import TransformPanel from './TransformPanel.svelte';
 	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
@@ -174,7 +175,9 @@
 
 	let activePath = $derived(chatStore.currentChatState?.activePath ?? []);
 	let authorsNotesOpen = $state(false);
-	let authorsNotesActive = $derived(!!chatAuthorsNote(chatStore.activeChat).trim());
+	let authorsNotesActive = $derived(!!resolveAuthorsNote(
+		chatAuthorsNote(chatStore.activeChat), activeCharacterEntry?.characterAuthorsNote
+	).trim());
 
 	// The popover that edits the notes lives in its own component.
 	let steeringTarget = $derived(steeringTargetForChat(chatStore.activeChat));

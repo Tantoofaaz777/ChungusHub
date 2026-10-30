@@ -136,6 +136,7 @@
 	let chatPersona = $derived(chatPersonaEntry(chatStore.activeChat));
 	let assembleInput = $derived<AssembleInput>({
 		authorsNote: chatAuthorsNote(chatStore.activeChat),
+		characterAuthorsNote: activeCharacterEntry?.characterAuthorsNote,
 		preset: currentPreset,
 		resolvedPersona: toPromptCharacter(chatPersona),
 		resolvedCharacters: activeCharacterEntry && activeCharacterData

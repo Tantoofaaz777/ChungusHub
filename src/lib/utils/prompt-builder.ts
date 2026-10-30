@@ -170,6 +170,7 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 
 	const { messages, lorebook, continuationSent } = await withTokenizers(() => assemblePrompt({
 		authorsNote: chatAuthorsNote(chat),
+		characterAuthorsNote: character?.characterAuthorsNote,
 		preset,
 		resolvedCharacters: character ? [toPromptCharacter(character)!] : [],
 		resolvedPersona: toPromptCharacter(personaEntry),

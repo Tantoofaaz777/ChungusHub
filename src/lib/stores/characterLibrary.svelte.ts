@@ -16,6 +16,7 @@ import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
 import type { BookIndex } from '#lib/lorebook/identity.ts';
 import { toastStore } from '#lib/stores/toast.svelte.ts';
 import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
+import { normalizeCharacterAuthorsNote, type CharacterAuthorsNote } from '../../../shared/character-authors-note';
 import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
 import {
 	clampPortraitFocus,
@@ -240,6 +241,7 @@ class CharacterLibraryStore {
 	async refresh(): Promise<void> {
 		const ticket = ++this.refreshTicket;
 		const beforeEntries = captureEditorRows(this._entries), beforeVersions = captureEditorRows(this._versions);
+		const beforeNotes = new Map(this._entries.map(entry => [entry.id, entry.characterAuthorsNote]));
 		this._loading = true;
 		try {
 			// Commit what this device has typed but not yet sent, so the refetch can't hand
@@ -253,6 +255,15 @@ class CharacterLibraryStore {
 			// is one that was touched since the flush, so the copy on screen is the newer one.
 			// Keep it; its own pending write carries it to the server a moment later.
 			this._entries = retainEditorChanges(rows, beforeEntries, this._entries);
+			// A card's pending trait edits must not hide another chat's private-note update.
+			// Keep a note edited DURING this read, but refresh untouched note fields even
+			// when the rest of the entry was retained to protect local card typing.
+			const remoteNotes = new Map(rows.map(entry => [entry.id, entry.characterAuthorsNote]));
+			for (const entry of this._entries) {
+				if (remoteNotes.has(entry.id) && entry.characterAuthorsNote === beforeNotes.get(entry.id)) {
+					entry.characterAuthorsNote = remoteNotes.get(entry.id);
+				}
+			}
 		} finally {
 			if (ticket === this.refreshTicket) this._loading = false;
 		}
@@ -495,6 +506,18 @@ class CharacterLibraryStore {
 		if (value) entry[key] = value;
 		else delete entry[key];
 		await this.persistEntry(entry);
+	}
+
+	/** Independent patch: a private note must not flush/overwrite a card being edited. */
+	async updateCharacterAuthorsNote(id: string, note: CharacterAuthorsNote): Promise<void> {
+		const entry = this.getEntryById(id);
+		if (!entry || entry.type !== 'character') throw new Error('That character no longer exists.');
+		const saved = await db.updateCharacterAuthorsNote(id, normalizeCharacterAuthorsNote(note));
+		const current = this.getEntryById(id);
+		if (!current) return;
+		current.characterAuthorsNote = saved;
+		current.updatedAt = Math.max(Date.now(), current.updatedAt + 1);
+		this._entries = [...this._entries];
 	}
 
 	/** Trait-only `updateData`. The proposal apply path writes through here right after

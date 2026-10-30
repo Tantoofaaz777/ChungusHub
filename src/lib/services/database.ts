@@ -8,6 +8,7 @@
  */
 import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta } from '#lib/types/chat.ts';
 import type { CharacterVersion, LibraryEntry } from '#lib/types/library.ts';
+import type { CharacterAuthorsNote } from '../../../shared/character-authors-note';
 import type { Lorebook } from '#lib/lorebook/types.ts';
 import type { SteeringNote } from '#lib/types/steering.ts';
 import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '#shared/threads/types.ts';
@@ -190,6 +191,9 @@ class DatabaseService {
 	 *  server/db.ts refreshSeededGreetings). The server announces those itself, on the
 	 *  `messages` scope and to every device, so nothing here has to act on the list. */
 	updateLibraryEntry(entry: LibraryEntry): Promise<string[]> { return this.call('updateLibraryEntry', entry); }
+	updateCharacterAuthorsNote(id: string, note: CharacterAuthorsNote): Promise<CharacterAuthorsNote> {
+		return this.call('updateCharacterAuthorsNote', id, note);
+	}
 	updateLibraryEntryFavorite(id: string, isFavorite: boolean): Promise<void> {
 		return this.call('updateLibraryEntryFavorite', id, isFavorite);
 	}

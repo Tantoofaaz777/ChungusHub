@@ -203,6 +203,87 @@ describe('preset item history depth', () => {
 });
 
 describe("author's notes in prompts", () => {
+	for (const position of ['replace', 'before', 'after'] as const) {
+		test(`private character notes compose ${position}, expanding identity refs in both note sources`, () => {
+			const options = {
+				authorsNote: 'Chat {{user}}.',
+				characterAuthorsNote: { text: 'Shared {{char}}.', enabled: true, position },
+				resolvedCharacters: [{ name: 'Alice', traits: {} }] as any,
+				resolvedPersona: { name: 'Player', traits: {} } as any,
+				postProcessing: { mode: 'none' as const }
+			};
+			const expected = position === 'replace' ? 'Shared Alice.' : position === 'before'
+				? 'Shared Alice.\nChat Player.' : 'Chat Player.\nShared Alice.';
+			const result = assemblePrompt(input(preset([item('{{authorsNote}}', { role: 'assistant' })]), options));
+			expect(result.messages).toEqual([{ role: 'assistant', content: expected }]);
+			const explicit = assemblePrompt(input(preset([item('{{authorsNote}}', { role: 'assistant' })]),
+				{ ...options, characterAuthorsNote: undefined, authorsNote: expected }));
+			expect(result.breakdown).toEqual(explicit.breakdown);
+		});
+	}
+
+	test('chat author notes resolve identity refs and pronouns live without changing stored text', () => {
+		const authorsNote = '{{ USER }} meets {{char}}. {{sub}} waits for {{obj}}.';
+		const options = input(preset([item('{{authorsNote}}')]), {
+			authorsNote, resolvedCharacters: [{ name: 'Alice', traits: {} }] as any,
+			resolvedPersona: { name: 'Player $&', traits: {}, pronouns: { subjective: 'she', objective: 'her' } } as any,
+			postProcessing: { mode: 'none' }
+		});
+		expect(assemblePrompt(options).messages[0].content).toBe('Player $& meets Alice. she waits for her.');
+		expect(assemblePrompt({ ...options, resolvedPersona: { name: 'New persona', traits: {} } as any }).messages[0].content)
+			.toBe('New persona meets Alice. they waits for them.');
+		expect(options.authorsNote).toBe(authorsNote);
+	});
+
+	test('chat notes use identity fallbacks without recursively expanding other macros', () => {
+		const result = assemblePrompt(input(preset([item('{{authorsNote}}')]), {
+			authorsNote: '{{user}} / {{char}} / {{authorsNote}} / {{chatHistory}} / {{unknown}}',
+			postProcessing: { mode: 'none' }
+		}));
+		expect(result.messages).toEqual([{ role: 'system', content: 'User / Narrator / {{authorsNote}} / {{chatHistory}} / {{unknown}}' }]);
+	});
+
+	test('expanded chat notes keep item depth and use the expanded text for token accounting', () => {
+		const p = preset([item('{{authorsNote}}', { depth: 1, role: 'assistant' }), item('{{chatHistory}}')]);
+		const options = { chatMessages: CHAT, resolvedPersona: { name: 'A much longer persona name', traits: {} } as any,
+			postProcessing: { mode: 'none' as const } };
+		const expanded = 'Keep A much longer persona name in mind.';
+		const result = assemblePrompt(input(p, { ...options, authorsNote: 'Keep {{user}} in mind.' }));
+		expect(result.messages.at(-2)).toEqual({ role: 'assistant', content: expanded });
+		expect(result.breakdown).toEqual(assemblePrompt(input(p, { ...options, authorsNote: expanded })).breakdown);
+	});
+
+	test('a shared private note applies to chats with independent local notes, including empty ones', () => {
+		const p = preset([item('{{authorsNote}}')]);
+		const characterAuthorsNote = { text: 'Character guidance.', enabled: true, position: 'after' as const };
+		for (const authorsNote of ['First story.', 'Another story.', '']) {
+			const result = assemblePrompt(input(p, { authorsNote, characterAuthorsNote, postProcessing: { mode: 'none' } }));
+			expect(result.messages[0].content).toBe([authorsNote, characterAuthorsNote.text].filter(Boolean).join('\n'));
+		}
+	});
+
+	test('private notes inherit preset depth and remain fixed while history is trimmed', () => {
+		const p = preset([item('{{authorsNote}}', { depth: 1, role: 'user' }), item('{{chatHistory}}')]);
+		const authorsNote = 'Local guidance.';
+		const characterAuthorsNote = { text: 'Shared guidance.', enabled: true, position: 'before' as const };
+		const options = { authorsNote, characterAuthorsNote, chatMessages: CHAT, postProcessing: { mode: 'none' as const } };
+		const result = assemblePrompt(input(p, options));
+		expect(result.messages.at(-2)).toEqual({ role: 'user', content: 'Shared guidance.\nLocal guidance.' });
+		const fixed = result.breakdown.preset + result.breakdown.context;
+		const trimmed = assemblePrompt(input(p, { ...options, contextBudget: fixed + countTokens(CHAT.at(-1)!.content, MODEL) }));
+		expect(trimmed.trimmedMessages).toBe(CHAT.length - 1);
+		expect(trimmed.messages).toEqual([result.messages.at(-2)!, { role: 'user', content: CHAT.at(-1)!.content }]);
+		expect(trimmed.overBudget).toBe(false);
+	});
+
+	test('private notes are opt-in and cannot leak without the authorsNote macro', () => {
+		const options = { authorsNote: 'Local.', characterAuthorsNote: { text: 'Private.', enabled: false, position: 'replace' as const },
+			postProcessing: { mode: 'none' as const } };
+		expect(assemblePrompt(input(preset([item('{{authorsNote}}')]), options)).messages[0].content).toBe('Local.');
+		expect(assemblePrompt(input(preset([item('Rules.')]), { ...options, characterAuthorsNote: { ...options.characterAuthorsNote, enabled: true } })).messages)
+			.toEqual([{ role: 'system', content: 'Rules.' }]);
+	});
+
 	test('notes are only included at macro references and inherit the preset item role', () => {
 		const options = { authorsNote: 'Keep the scene intimate.', postProcessing: { mode: 'none' as const } };
 		const unused = input(preset([item('Rules.')]), options);

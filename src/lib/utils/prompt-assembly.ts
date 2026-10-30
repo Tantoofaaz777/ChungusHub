@@ -16,6 +16,7 @@
  */
 
 import { sceneHistory, type MemoryScene } from '../../../shared/memory-scenes';
+import { resolveAuthorsNote, type CharacterAuthorsNote } from '../../../shared/character-authors-note';
 import type { LLMMessage, PromptPostProcessingMode } from '#lib/types/llm.ts';
 import { DEFAULT_PROMPT_PLACEHOLDER } from '#lib/types/llm.ts';
 import type { Message } from '#lib/types/chat.ts';
@@ -62,6 +63,8 @@ export interface PromptRecall {
 export interface AssembleInput {
 	/** Nonblank chat notes; only included where {{authorsNote}} is referenced. */
 	authorsNote?: string;
+	/** Shared private state of the chat's bound character, independent of its version. */
+	characterAuthorsNote?: CharacterAuthorsNote;
 	preset: PromptPreset | null;
 	resolvedCharacters: PromptCharacter[];
 	resolvedPersona: PromptCharacter | null;
@@ -188,8 +191,14 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 					count: (text: string) => countTokens(text, input.model)
 				}
 			: undefined;
+	// Both note sources use the live character/persona, without changing saved text.
+	// Compose first and expand identity refs once; arbitrary nested macros and history
+	// remain literal instead of recursively injecting more prompt content.
+	const authorsNote = expandSelfRefs(resolveAuthorsNote(input.authorsNote, input.characterAuthorsNote),
+		input.resolvedCharacters[0]?.name || 'Narrator', input.resolvedPersona?.name || 'User',
+		input.resolvedPersona ? input.resolvedPersona.pronouns ?? {} : undefined);
 	const base: MacroContext = {
-		authorsNote: input.authorsNote,
+		authorsNote,
 		cardLorePositions: cardLorePositions(input.preset?.items ?? []),
 		resolvedPersona: input.resolvedPersona,
 		resolvedCharacters: input.resolvedCharacters,

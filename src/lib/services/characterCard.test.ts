@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { deflateRawSync } from 'node:zlib';
 import type { CharacterCardV3 } from '#lib/types/character-card.ts';
 import type { LibraryEntry } from '#lib/types/library.ts';
-import { buildCharacterCardV3, buildCharx, embedCardInPng } from './sillyTavernExport';
+import { buildCharacterCardV3, buildSillyTavernCard, buildCharx, embedCardInPng } from './sillyTavernExport';
 import { importSillyTavernCard } from './sillyTavernImport';
 import { buildTextChunk, insertTextChunk, encodeBase64Utf8, readTextChunk } from './pngText';
 import { bytesDataUrl, dataUrlBytes, readCharx } from './charx';
@@ -34,6 +34,23 @@ function entryFrom(result: Awaited<ReturnType<typeof imported>>): LibraryEntry {
 }
 
 describe('Character Card V3 interchange', () => {
+	test('private character notes never enter V2/V3 cards, native fidelity blocks, or version exports', async () => {
+		const entry = entryFrom(await imported());
+		entry.characterAuthorsNote = { text: 'PRIVATE_DO_NOT_EXPORT', enabled: true, position: 'after' };
+		entry.activeVersionId = 'v';
+		const versions = [{ id: 'v', entryId: entry.id, name: 'Version', data: entry.data, createdAt: 1, updatedAt: 1 }];
+		for (const selection of ['all', 'v']) {
+			for (const build of [buildSillyTavernCard, buildCharacterCardV3]) {
+				const card = build(entry, versions, selection);
+				const json = JSON.stringify(card);
+				expect(json).not.toContain(entry.characterAuthorsNote.text);
+				expect(json).not.toContain('characterAuthorsNote');
+				const roundTrip = await imported(card as CharacterCardV3);
+				expect(roundTrip.character).not.toHaveProperty('characterAuthorsNote');
+			}
+		}
+	});
+
 	test('JSON preserves every V3 field, unknown extensions, Unicode and arbitrary asset bytes on re-export', async () => {
 		const result = await imported();
 		const entry = entryFrom(result);

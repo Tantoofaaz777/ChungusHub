@@ -16,7 +16,8 @@ mock.module('#lib/services/database.ts', () => ({ ...realDb, db: new Proxy({}, {
 	if (['getAllLorebooks', 'getAllSteeringNotes', 'getAllLibraryEntries'].includes(method)) return () => new Promise(resolve => reads.push({ kind: method, resolve }));
 	if (method === 'getAllCharacterVersions') return async () => [];
 	if (method === 'getAllChats') return async () => [];
-	return async () => { writes.push(method); if (method === 'deleteLibraryEntry' && refuseDelete) throw new Error('Last persona'); };
+	return async (...args: unknown[]) => { writes.push(method); if (method === 'deleteLibraryEntry' && refuseDelete) throw new Error('Last persona');
+		if (method === 'updateCharacterAuthorsNote') return args[1]; };
 } }) }));
 const { lorebookStore } = await import('#lib/lorebook/store.svelte.ts');
 const { steeringStore } = await import('./steering.svelte');
@@ -24,6 +25,33 @@ const { characterLibraryStore } = await import('./characterLibrary.svelte');
 const instantiate = <T extends object>(store: T): T => new (store.constructor as { new(): T })();
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 beforeEach(() => { reads = []; writes = []; refuseDelete = false; });
+
+test('private-note sync reaches a character while local card typing is retained', async () => {
+	const store = instantiate(characterLibraryStore), seed = createEmptyPersona();
+	const row: LibraryEntry = { id: seed.id, type: 'character', identity: { name: 'Character' }, data: { traits: seed.traits },
+		isFavorite: false, createdAt: 1, updatedAt: 1, characterAuthorsNote: { text: 'Old.', enabled: true, position: 'after' } };
+	(store as any)._entries = [row];
+	const remote = structuredClone(row); remote.characterAuthorsNote!.text = 'From another chat.';
+	const read = store.refresh(); await settle();
+	store.scheduleDataEdit(row.id, { traits: { description: 'Typing locally.' } });
+	reads[0].resolve([remote]); await read;
+	expect(store.entries[0].data.traits.description).toBe('Typing locally.');
+	expect(store.entries[0].characterAuthorsNote?.text).toBe('From another chat.');
+	await store.flushEntry();
+});
+
+test('a stale reload cannot replace a private note just saved by this client', async () => {
+	const store = instantiate(characterLibraryStore), seed = createEmptyPersona();
+	const row: LibraryEntry = { id: seed.id, type: 'character', identity: { name: 'Character' }, data: { traits: seed.traits },
+		isFavorite: false, createdAt: 1, updatedAt: 1 };
+	(store as any)._entries = [row]; const stale = structuredClone(row);
+	const read = store.refresh(); await settle();
+	const note = { text: 'Just saved.', enabled: true, position: 'before' as const };
+	await store.updateCharacterAuthorsNote(row.id, note);
+	reads[0].resolve([stale]); await read;
+	expect(store.entries[0].characterAuthorsNote).toEqual(note);
+	expect(writes).toEqual(['updateCharacterAuthorsNote']);
+});
 
 for (const kind of ['lorebook', 'steering', 'library'] as const) {
 	function fixture() {

@@ -22,6 +22,7 @@ import { IMAGES_ROOT, resolveDbPath } from './config';
 import { deleteImage, IMAGE_EXT_RE, IMAGE_EXTENSIONS, thumbnailFor } from './files';
 import { referencedImagePaths, referencedPresetImages } from './image-references';
 import type { SyncScope } from '../shared/sync';
+import { normalizeCharacterAuthorsNote, type CharacterAuthorsNote } from '../shared/character-authors-note';
 import { librarySteeringNotes, type SteeringNote } from '../src/lib/types/steering';
 import { captureScene, resolveScenes, scenePath, sceneLevel, MEMORY_LEVELS, type MemoryScene, type SaveMemoryScene, type SceneMessage } from '../shared/memory-scenes';
 
@@ -2211,6 +2212,9 @@ class ServerDatabase {
 		for (const key of CHAT_DEFAULT_KEYS) {
 			if (entry[key]) payload[key] = entry[key];
 		}
+		if (entry.type === 'character' && entry.characterAuthorsNote !== undefined) {
+			payload.characterAuthorsNote = normalizeCharacterAuthorsNote(entry.characterAuthorsNote);
+		}
 		return payload;
 	}
 
@@ -2234,8 +2238,15 @@ class ServerDatabase {
 				'SELECT type, data_json FROM character_library WHERE id = ?',
 				[entry.id]
 			)[0];
+			const payload = this.libraryPayload(entry);
+			// Card editors can hold old snapshots. Only the dedicated private-note
+			// mutation may change this field; a normal card/version save preserves it.
+			const privateNote = stored?.type === 'character'
+				? (JSON.parse(stored.data_json) as Record<string, unknown>).characterAuthorsNote : undefined;
+			if (privateNote !== undefined) payload.characterAuthorsNote = normalizeCharacterAuthorsNote(privateNote);
+			else delete payload.characterAuthorsNote;
 			this.execute('UPDATE character_library SET data_json = ?, updated_at = ? WHERE id = ?', [
-				JSON.stringify(this.libraryPayload(entry)),
+				JSON.stringify(payload),
 				Date.now(),
 				entry.id
 			]);
@@ -2249,6 +2260,22 @@ class ServerDatabase {
 				);
 			}
 			return stored ? this.refreshSeededGreetings(entry, stored) : [];
+		});
+	}
+
+	/** Patch only private character state, without rewriting traits or active version data. */
+	updateCharacterAuthorsNote(id: string, raw: unknown): CharacterAuthorsNote {
+		return this.inTransaction(() => {
+			const stored = this.select<{ type: string; data_json: string }[]>(
+				'SELECT type, data_json FROM character_library WHERE id = ?', [id]
+			)[0];
+			if (!stored || stored.type !== 'character') throw new Error('That character no longer exists.');
+			const note = normalizeCharacterAuthorsNote(raw);
+			const payload = JSON.parse(stored.data_json) as Record<string, unknown>;
+			payload.characterAuthorsNote = note;
+			this.execute('UPDATE character_library SET data_json = ?, updated_at = ? WHERE id = ?',
+				[JSON.stringify(payload), Date.now(), id]);
+			return note;
 		});
 	}
 
@@ -3032,6 +3059,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	copyConnectionCredentials: 'settings',
 	insertLibraryEntry: 'library',
 	updateLibraryEntry: 'library',
+	updateCharacterAuthorsNote: 'library',
 	updateLibraryEntryFavorite: 'library',
 	deleteLibraryEntry: 'library',
 	insertCharacterVersion: 'library',
