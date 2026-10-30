@@ -367,17 +367,17 @@
 	}
 
 	:global(.desktop-shell) .title-bar {
-		width:3.75rem; height:100%; padding-top:0; border-bottom:0;
+		width:2.75rem; height:100%; padding-top:0; border-bottom:0;
 		border-right:1px solid var(--color-border-subtle); overflow-y:auto; scrollbar-width:none;
 	}
 	:global(.desktop-right) .title-bar { border-right:0; border-left:1px solid var(--color-border-subtle); }
 	:global(.desktop-shell) .title-bar-inner {
-		flex-direction:column; max-width:none; margin:0; padding:0.65rem 0.45rem; gap:1rem; min-height:25rem;
+		flex-direction:column; max-width:none; margin:0; padding:0.65rem 0.3rem; gap:1rem; min-height:25rem;
 	}
 	:global(.desktop-shell) .nav-group,
 	:global(.desktop-shell) .nav-cluster { flex-direction:column; gap:0.45rem; }
 	:global(.desktop-shell) .overlay-btn,
-	:global(.desktop-shell) .overlay-split { width:2.65rem; height:2.65rem; justify-content:center; padding:0; }
+	:global(.desktop-shell) .overlay-split { width:2rem; height:2.65rem; justify-content:center; padding:0; }
 	:global(.desktop-shell) .overlay-split-main { width:100%; justify-content:center; padding:0; }
 	:global(.desktop-shell) .title-bar :global(svg[class~="w-3.5"]) { width:1.125rem; height:1.125rem; }
 
