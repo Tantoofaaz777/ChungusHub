@@ -51,6 +51,9 @@ class ChatStore {
 	 *  Always written through `setLiveElsewhere`, which owns the re-ask that ends it. */
 	liveElsewhere = $state<ForeignGeneration | null>(null);
 	private liveRecheck: ReturnType<typeof setInterval> | null = null;
+	/** Only the latest status read for a chat may publish. Stream transitions and Stop
+	 *  invalidate older snapshots, including one that was describing our own request. */
+	private liveStatusReads = new Map<string, symbol>();
 	/** A sync hint that arrived mid-stream, replayed once the stream ends. */
 	private missedSyncWhileStreaming = false;
 	/** Claimed by every transcript load, so an answer coming back after a newer load has
@@ -487,16 +490,32 @@ class ChatStore {
 	 * transcript must still open when the socket is down.
 	 */
 	private async refreshLiveElsewhere(chatId: string): Promise<void> {
+		if (this.stream?.chatId === chatId) {
+			this.clearLiveElsewhereFor(chatId);
+			return;
+		}
+		const ticket = Symbol();
+		this.liveStatusReads.set(chatId, ticket);
 		try {
 			const running = (await llmStatus([chatId]))[0];
-			// The chat may have changed under the round trip.
-			if (this.currentChatState?.chat.id !== chatId) return;
+			// The snapshot may have been overtaken, or a local stream may have started
+			// AND ended while the answer was on the wire. Checking the chat alone lets
+			// that old answer resurrect our stopped reply as a foreign generation.
+			if (this.liveStatusReads.get(chatId) !== ticket || this.currentChatState?.chat.id !== chatId ||
+				this.stream?.chatId === chatId) return;
 			this.setLiveElsewhere(
 				running ? { chatId, requestId: running.requestId, startedAt: Date.now() - running.runningMs } : null
 			);
 		} catch (e) {
 			console.error('[chat] could not ask what is generating:', e);
+		} finally {
+			if (this.liveStatusReads.get(chatId) === ticket) this.liveStatusReads.delete(chatId);
 		}
+	}
+
+	private clearLiveElsewhereFor(chatId: string): void {
+		this.liveStatusReads.delete(chatId);
+		if (this.liveElsewhere?.chatId === chatId) this.setLiveElsewhere(null);
 	}
 
 	/**
@@ -536,7 +555,7 @@ class ChatStore {
 		if (!live) return;
 		try {
 			stopGeneration(live.requestId);
-			this.setLiveElsewhere(null);
+			this.clearLiveElsewhereFor(live.chatId);
 		} catch (e) {
 			toastStore.failed('stop that reply', e);
 		}
@@ -884,6 +903,7 @@ class ChatStore {
 		chatId: string,
 		opts: { continuingMessageId?: string; replacingMessageId?: string; openingScene?: boolean } = {}
 	): void {
+		this.clearLiveElsewhereFor(chatId);
 		this.streamPaint.cancel();
 		this.stream = {
 			chatId,
@@ -901,13 +921,18 @@ class ChatStore {
 	/** Close the stream. Every caller does this in a `finally`, after its own message is
 	 *  committed, so a deferred sync reload reads a settled tree. */
 	endStream(): void {
+		const chatId = this.stream?.chatId;
 		this.streamPaint.flush();
 		this.stream = null;
 		this.streamPreview = null;
+		if (chatId) this.clearLiveElsewhereFor(chatId);
 		if (this.missedSyncWhileStreaming) {
 			this.missedSyncWhileStreaming = false;
 			void this.syncReload();
 		}
+		// A failed local start can mean a genuinely remote reply won the server's
+		// single-flight gate. Discover it with a NEW snapshot, never a cached local one.
+		if (chatId && this.currentChatState?.chat.id === chatId) void this.refreshLiveElsewhere(chatId);
 	}
 
 	// Tokens land on the stream record itself, which already names its owner, so they

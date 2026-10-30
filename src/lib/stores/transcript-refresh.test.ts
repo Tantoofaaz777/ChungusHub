@@ -11,7 +11,7 @@
  * and `$derived` are shimmed to identity BEFORE the store module loads, exactly as
  * new-chat-flow.test.ts does. Ordering is under test; reactivity is not.
  */
-import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, afterAll, mock, spyOn } from 'bun:test';
 
 const identity = <T>(value?: T): T | undefined => value;
 (globalThis as unknown as { $state: unknown }).$state = Object.assign(identity, { raw: identity });
@@ -34,6 +34,10 @@ let visibility: { sinceRev: number; resolve: (delta: Delta) => void; reject: (er
 let chatReads = 0;
 let delayedLists = false;
 let chatLists: { resolve: (rows: unknown[]) => void }[] = [];
+
+let delayGenerationStatus = false;
+let generationStatusReads: { resolve: (running: { chatId: string; requestId: string; runningMs: number }[]) => void }[] = [];
+let stoppedGenerations: string[] = [];
 
 const CHAT = { id: 'chat-1', title: 'Overlap', activeLeafId: 'reply', rootMessageId: 'greeting' };
 /** The chat row as the server currently holds it. Moved between reads to model a swipe,
@@ -82,8 +86,8 @@ mock.module('#lib/services/database.ts', () => ({
 }));
 mock.module('#lib/services/transport.ts', () => ({
 	...realTransport,
-	llmStatus: async () => [],
-	stopGeneration: () => {}
+	llmStatus: async () => delayGenerationStatus ? new Promise(resolve => generationStatusReads.push({ resolve })) : [],
+	stopGeneration: (id: string) => { stoppedGenerations.push(id); }
 }));
 mock.module('#lib/memory/scene-store.svelte.ts', () => ({
 	...realMemory,
@@ -108,6 +112,11 @@ const BASE = [row('greeting', null, 'assistant'), row('user', 'greeting', 'user'
 const EDITED_USER = row('user', 'greeting', 'user', 'rewritten');
 
 beforeEach(() => {
+	(chatStore as any).setLiveElsewhere(null);
+	(chatStore as any).visibleLiveElsewhere = null;
+	delayGenerationStatus = false;
+	generationStatusReads = [];
+	stoppedGenerations = [];
 	memoryGate = null;
 	memoryLeaves = [];
 	owed = [];
@@ -133,6 +142,12 @@ beforeEach(() => {
 /** Let the store's own awaits drain, so the load has reached its delta and parked there. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+afterEach(async () => {
+	generationStatusReads.forEach(read => read.resolve([]));
+	await settle();
+	(chatStore as any).setLiveElsewhere(null);
+});
+
 /** Two overlapping loads, both parked on their delta: `stale` read first, `current` second. */
 async function overlap(): Promise<{ stale: Promise<void>; current: Promise<void> }> {
 	const stale = chatStore.loadChatState(CHAT.id);
@@ -148,6 +163,82 @@ const NOTHING_CHANGED: Delta = { rev: 5, full: false, upserts: [], deletedIds: [
 
 const ids = () => chatStore.currentChatState!.allMessages.map((m) => m.id);
 const userTurn = () => chatStore.currentChatState!.allMessages.find((m) => m.id === 'user')!.content;
+
+describe('generation status races', () => {
+	const running = { chatId: CHAT.id, requestId: 'request-local', runningMs: 500 };
+	const ask = () => (chatStore as any).refreshLiveElsewhere(CHAT.id) as Promise<void>;
+
+	test('does not classify an active local stream through server status', async () => {
+		delayGenerationStatus = true;
+		chatStore.startStream(CHAT.id);
+		try {
+			const read = ask();
+			// Drain even an unexpected read so a red test leaves no pending work behind.
+			const count = generationStatusReads.length;
+			generationStatusReads.forEach(read => read.resolve([running]));
+			await read;
+			expect(count).toBe(0);
+			expect(chatStore.liveElsewhere).toBeNull();
+		} finally { chatStore.endStream(); (chatStore as any).setLiveElsewhere(null); }
+	});
+
+	test('a status read overtaken by a local start and stop cannot resurrect that reply', async () => {
+		delayGenerationStatus = true;
+		const read = ask();
+		chatStore.startStream(CHAT.id);
+		chatStore.endStream();
+		generationStatusReads[0].resolve([running]);
+		await read;
+		expect(chatStore.liveElsewhere).toBeNull();
+	});
+
+	test('ending a local stream clears its hidden status record without a second Stop', () => {
+		chatStore.startStream(CHAT.id);
+		(chatStore as any).setLiveElsewhere({ ...running, startedAt: Date.now() - running.runningMs });
+		chatStore.endStream();
+		expect(chatStore.liveElsewhere).toBeNull();
+	});
+
+	test('an older running status cannot overwrite a newer idle answer', async () => {
+		delayGenerationStatus = true;
+		const older = ask(), newer = ask();
+		generationStatusReads[1].resolve([]); await newer;
+		generationStatusReads[0].resolve([running]); await older;
+		expect(chatStore.liveElsewhere).toBeNull();
+	});
+
+	test('a delayed status answer cannot undo a successful Stop of a remote reply', async () => {
+		const remote = { ...running, requestId: 'request-remote', startedAt: Date.now() - 500 };
+		(chatStore as any).setLiveElsewhere(remote);
+		(chatStore as any).visibleLiveElsewhere = remote;
+		delayGenerationStatus = true;
+		const read = ask();
+		chatStore.stopLiveElsewhere();
+		generationStatusReads[0].resolve([running]); await read;
+		expect(stoppedGenerations).toEqual(['request-remote']);
+		expect(chatStore.liveElsewhere).toBeNull();
+	});
+
+	test('genuine remote status remains discoverable and unrelated local streams cannot clear it', async () => {
+		delayGenerationStatus = true;
+		const read = ask(); generationStatusReads[0].resolve([running]); await read;
+		expect(chatStore.liveElsewhere?.requestId).toBe(running.requestId);
+		chatStore.startStream('another-chat');
+		chatStore.endStream();
+		expect(chatStore.liveElsewhere?.requestId).toBe(running.requestId);
+		(chatStore as any).setLiveElsewhere(null);
+	});
+
+	test('a fresh read after a local failure still discovers a real remote generation', async () => {
+		delayGenerationStatus = true;
+		chatStore.startStream(CHAT.id);
+		chatStore.endStream();
+		expect(generationStatusReads).toHaveLength(1);
+		generationStatusReads[0].resolve([{ ...running, requestId: 'real-remote-request' }]);
+		await settle();
+		expect(chatStore.liveElsewhere?.requestId).toBe('real-remote-request');
+	});
+});
 
 describe('chat list synchronization', () => {
 	test('an older list cannot remove a newer chat after overlapping syncs', async () => {
