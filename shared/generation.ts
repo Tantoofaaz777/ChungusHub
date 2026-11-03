@@ -7,7 +7,31 @@
  * renamed on one side alone would vanish through `JSON.stringify` with nothing failing to
  * build. Same reasoning as `SyncScope` in ./sync.ts.
  */
+import { isContinuationContext, isConversationPlacement, type ContinuationContext, type ConversationPlacement } from './conversation';
+
+export interface ContinuationCommit extends ContinuationContext {
+	continuationSent: string;
+	spendSteeringIds: string[];
+}
+export interface ContinuationBase {
+	content: string;
+	thinking: string | null;
+	tokensCompletion: number | null;
+	generationMs: number | null;
+	reasoningMs: number | null;
+}
+export interface ContinuationPatch extends ContinuationBase {
+	tokensPrompt: number | null;
+	finishReason: string | null;
+}
+export function isContinuationCommit(value: unknown): value is ContinuationCommit {
+	const c = value as ContinuationCommit | null;
+	return isContinuationContext(c) && typeof (c as ContinuationCommit).continuationSent === 'string' &&
+		Array.isArray((c as ContinuationCommit).spendSteeringIds) && (c as ContinuationCommit).spendSteeringIds.every(id => typeof id === 'string' && !!id);
+}
+
 export interface GenerationCommit {
+	placement?: ConversationPlacement;
 	chatId: string;
 	/** The row the turn hangs under; null lands a root sibling (an opening scene). */
 	parentId: string | null;
@@ -34,6 +58,7 @@ export function isGenerationCommit(value: unknown): value is GenerationCommit {
 		typeof c === 'object' &&
 		typeof c.chatId === 'string' &&
 		!!c.chatId &&
+		(c.placement === undefined || isConversationPlacement(c.placement)) &&
 		(c.parentId === null || typeof c.parentId === 'string') &&
 		(c.expectedLeafId === null || typeof c.expectedLeafId === 'string') &&
 		typeof c.claimsRoot === 'boolean' &&

@@ -73,7 +73,7 @@ async function initial() {
 
 describe('swipe preparation snapshots', () => {
 	test('reuses the initial fresh history/memory for assembly and rechecks once after review', async () => {
-		const work = messageStore.retryMessageResponse('reply', 'branch');
+		const work = messageStore.retryMessageResponse('reply', 'add_variant');
 		await initial();
 		expect(contexts).toHaveLength(1);
 		expect(contexts[0].chatMessages.map(m => m.id)).toEqual(['user']);
@@ -90,14 +90,14 @@ describe('swipe preparation snapshots', () => {
 	});
 
 	test('cancelled review starts no final reads or generation', async () => {
-		const work = messageStore.retryMessageResponse('reply', 'branch');
+		const work = messageStore.retryMessageResponse('reply', 'add_variant');
 		await initial(); review.resolve(null); await work;
 		expect(history).toHaveLength(1); expect(memory).toHaveLength(1); expect(generated).toHaveLength(0);
 	});
 
 	for (const change of ['hidden', 'deleted', 'leaf changed', 'chat changed', 'new chapter']) {
 		test(`a ${change} during review prevents the swipe from being sent`, async () => {
-			const work = messageStore.retryMessageResponse('reply', 'branch');
+			const work = messageStore.retryMessageResponse('reply', 'add_variant');
 			await initial(); review.resolve(built.messages); await settle();
 			const next = snapshot();
 			let scenes: MemoryScene[] = [];
@@ -113,7 +113,7 @@ describe('swipe preparation snapshots', () => {
 	}
 
 	test('a remote leaf change detected initially stops before prompt preparation', async () => {
-		const work = messageStore.retryMessageResponse('reply', 'branch');
+		const work = messageStore.retryMessageResponse('reply', 'add_variant');
 		history[0].resolve(snapshot({ chat: { ...chat.currentChatState.chat, activeLeafId: 'another reply' } })); memory[0].resolve([]);
 		await work;
 		expect(contexts).toHaveLength(0); expect(generated).toHaveLength(0);

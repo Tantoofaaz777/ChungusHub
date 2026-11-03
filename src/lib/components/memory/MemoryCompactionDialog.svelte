@@ -12,7 +12,7 @@
 	{#if selection}
 		<div class="compaction-picker">
 			<p>Select at least two consecutive {selection.level === 'arc' ? 'chapters' : 'arcs'}. Their saved summaries will be used to create the {selection.level}.</p>
-			{#if !candidates.length}<p>No available sources on this branch. Create or review the source summaries first.</p>{/if}
+			{#if !candidates.length}<p>No available sources in the selected conversation. Create or review the source summaries first.</p>{/if}
 			<div class="source-list">
 				{#each candidates as item (item.scene.id)}
 					<label class:selected={selection.ids.includes(item.scene.id)}>

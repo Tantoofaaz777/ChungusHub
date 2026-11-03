@@ -53,6 +53,7 @@ afterAll(() => {
 
 /** The path on screen at every server call, and once more when the delete returns. */
 let frames: string[] = [];
+let afterDelete: (() => void) | null = null;
 const frame = () => {
 	const ids = chatStore.currentChatState?.activePath.map((m) => labelOf.get(m.id) ?? m.id) ?? [];
 	const drawn = ids.join('>') || '(empty)';
@@ -68,7 +69,11 @@ mock.module('#lib/services/database.ts', () => ({
 			get: (_, name: string) =>
 				async (...args: unknown[]) => {
 					frame();
-					return structuredClone(serverDb[name](...args));
+					const result = serverDb[name](...args);
+					if (name === 'deleteMessageOnly' || name === 'deleteMessageAndDescendants') {
+						const callback = afterDelete; afterDelete = null; callback?.();
+					}
+					return structuredClone(result);
 				}
 		}
 	)
@@ -136,6 +141,7 @@ async function open(leaf: string): Promise<void> {
 }
 
 beforeEach(() => {
+	afterDelete = null;
 	fakeMemory.clear();
 	fakeMemory.loaded = true;
 	chatId = crypto.randomUUID();
@@ -156,6 +162,80 @@ beforeEach(() => {
 	add('greeting', null, 'assistant');
 	add('user', 'greeting', 'user');
 	add('reply', 'user', 'assistant');
+});
+
+async function openVersionedChat() {
+	chatId = crypto.randomUUID();
+	serverDb.insertChat({ id: chatId, title: 'Versioned', createdAt: clock, updatedAt: clock,
+		rootMessageId: null, activeLeafId: null, conversationVersion: 2 });
+	const id = serverDb.seedConversationGreetings(chatId, ['First', 'Second', 'Third']);
+	idOf.set('greeting', id); labelOf.set(id, 'greeting');
+	await open('greeting');
+	return id as string;
+}
+
+describe('version actions in the real message store', () => {
+	for (const action of ['this_only', 'with_descendants'] as const) test(`${action} adopts a remote append after deletion without restoring the old endpoint`, async () => {
+		await openVersionedChat();
+		for (const [label, role] of [['user', 'user'], ['reply', 'assistant']]) {
+			const context = serverDb.getConversationPlacement(chatId, 'append'), id = crypto.randomUUID();
+			idOf.set(label, id); labelOf.set(id, label);
+			serverDb.appendConversationTurn({ id, chatId, parentId: context.expectedLeafId, role, content: label, createdAt: clock }, context);
+		}
+		await open('reply');
+		afterDelete = () => {
+			const context = serverDb.getConversationPlacement(chatId, 'append'), id = crypto.randomUUID(); labelOf.set(id, 'remote');
+			serverDb.appendConversationTurn({ id, chatId, parentId: context.expectedLeafId, role: 'user', content: 'Remote', createdAt: clock }, context);
+		};
+		await messageStore.deleteMessage(idOf.get('reply')!, action); frame();
+		expect(chatStore.currentChatState!.activePath.map(m => m.content)).toEqual(['First', 'user', 'Remote']);
+		expect(frames).toEqual(['greeting>user>reply', 'greeting>user>remote']);
+		expect(chatStore.currentChatState!.chat.activeLeafId).toBe(serverDb.getChat(chatId).activeLeafId);
+	});
+
+	test('a lost deletion acknowledgement still refreshes committed server state', async () => {
+		const id = await openVersionedChat();
+		afterDelete = () => { throw new Error('Acknowledgement lost'); };
+		await expect(messageStore.deleteMessage(id, 'this_only')).rejects.toThrow('Acknowledgement lost');
+		expect(chatStore.currentChatState!.activePath).toEqual([]);
+	});
+
+	test('prompt visibility cannot be redirected by a remote swipe selection', async () => {
+		const id = await openVersionedChat();
+		const shown = chatStore.currentChatState!.activePath[0];
+		serverDb.selectMessageVariant({ chatId, messageId: id, variantId: shown.variants![1].id, expectedRevision: shown.revision });
+		await messageStore.setExcludedFromPrompt(id, true);
+		expect(serverDb.getMessagesByChat(chatId)[0].variants.every((v: any) => !v.excludedFromPrompt)).toBe(true);
+		expect(chatStore.currentChatState!.activePath[0].content).toBe('Second');
+		await messageStore.setExcludedFromPrompt(id, true);
+		expect(serverDb.getMessagesByChat(chatId)[0].variants.map((v: any) => v.excludedFromPrompt)).toEqual([false, true, false]);
+		expect(chatStore.currentChatState!.activePath[0].excludedFromPrompt).toBe(true);
+	});
+
+	test('the swipe pager changes the selected version while preserving the turn and endpoint', async () => {
+		const id = await openVersionedChat();
+		await messageStore.navigateSwipe(id, 'next');
+		expect(chatStore.currentChatState!.activePath.map(m => [m.id, m.content])).toEqual([[id, 'Second']]);
+		expect(serverDb.getChat(chatId).activeLeafId).toBe(id);
+		await messageStore.navigateSwipe(id, 'prev');
+		expect(chatStore.currentChatState!.activePath[0].content).toBe('First');
+		const context = serverDb.getConversationPlacement(chatId, 'append');
+		serverDb.appendConversationTurn({ id: crypto.randomUUID(), chatId, parentId: id, role: 'user', content: 'Continued', createdAt: clock }, context);
+		await chatStore.refreshChat(chatId);
+		expect(messageStore.canSelectSwipe(id)).toBe(false);
+		await messageStore.navigateSwipe(id, 'next');
+		expect(chatStore.currentChatState!.activePath.map(m => m.content)).toEqual(['First', 'Continued']);
+	});
+	test('deleting one swipe keeps the turn and the rest of its versions', async () => {
+		const id = await openVersionedChat();
+		const turn = chatStore.currentChatState!.activePath[0];
+		expect(await messageStore.deleteSwipe(id, turn.selectedVariantId!, turn.revision!)).toBe(true);
+		const after = chatStore.currentChatState!.activePath[0];
+		expect(after.id).toBe(id); expect(after.content).toBe('Second');
+		expect(after.variants!.map(v => v.content)).toEqual(['Second', 'Third']);
+		await messageStore.deleteMessage(id, 'this_only');
+		expect(chatStore.currentChatState!.activePath).toEqual([]);
+	});
 });
 
 describe('deleting from the transcript', () => {
@@ -255,7 +335,7 @@ describe('swipes belong to the last visible assistant', () => {
 		add('next-reply', 'next-user', 'assistant');
 		await open('next-reply');
 		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
-		await messageStore.retryMessageResponse(idOf.get('reply')!, 'branch');
+		await messageStore.retryMessageResponse(idOf.get('reply')!, 'add_variant');
 		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('next-reply'));
 	});
 
@@ -264,7 +344,7 @@ describe('swipes belong to the last visible assistant', () => {
 		await open('reply');
 		await messageStore.setExcludedFromPrompt(idOf.get('reply')!, true);
 		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
-		await messageStore.regenerateLastResponse('branch');
+		await messageStore.regenerateLastResponse('add_variant');
 		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('reply'));
 		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(4);
 	});
@@ -282,7 +362,7 @@ describe('swipes belong to the last visible assistant', () => {
 		await open('greeting');
 		await messageStore.setExcludedFromPrompt(idOf.get('greeting')!, true);
 		await messageStore.generateOpeningScene('A different beginning');
-		await messageStore.regenerateLastResponse('branch');
+		await messageStore.regenerateLastResponse('add_variant');
 		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('greeting'));
 		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(3);
 	});
@@ -291,7 +371,7 @@ describe('swipes belong to the last visible assistant', () => {
 		add('other-user', 'greeting', 'user', 1);
 		await open('user');
 		await messageStore.navigateToSibling(idOf.get('user')!, 'next');
-		await messageStore.regenerateLastResponse('branch');
+		await messageStore.regenerateLastResponse('add_variant');
 		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('user'));
 		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(4);
 	});
@@ -303,7 +383,7 @@ describe('swipes belong to the last visible assistant', () => {
 			source: captureScene(chatStore.currentChatState!.activePath.slice(1)) });
 		fakeMemory.scenes = [scene];
 		await messageStore.navigateToSibling(idOf.get('swipe')!, 'prev');
-		await messageStore.regenerateLastResponse('branch');
+		await messageStore.regenerateLastResponse('add_variant');
 		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('swipe'));
 		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(4);
 	});
@@ -313,7 +393,7 @@ describe('swipes belong to the last visible assistant', () => {
 		serverDb.saveMemoryScene({ chatId, title: 'Chapter 2–3', content: 'They spoke.',
 			source: captureScene(chatStore.currentChatState!.activePath.slice(1)) });
 		// The cached chapter list is still empty, so only the fresh check can reject this.
-		await messageStore.regenerateLastResponse('branch');
+		await messageStore.regenerateLastResponse('add_variant');
 		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('reply'));
 		expect(serverDb.getMessagesByChat(chatId)).toHaveLength(3);
 	});
@@ -332,7 +412,7 @@ describe('swipes belong to the last visible assistant', () => {
 		await open('reply');
 		fakeMemory.loaded = false;
 		await messageStore.navigateToSibling(idOf.get('reply')!, 'next');
-		await messageStore.regenerateLastResponse('branch');
+		await messageStore.regenerateLastResponse('add_variant');
 		expect(chatStore.currentChatState?.activePath.at(-1)?.id).toBe(idOf.get('reply'));
 	});
 });

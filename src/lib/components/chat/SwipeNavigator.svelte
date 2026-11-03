@@ -13,10 +13,10 @@
 	const createsNext = $derived(canGenerate && current >= total - 1);
 </script>
 
-<div class="branch-nav" role="group" aria-label="Response swipes">
+<div class="swipe-nav" role="group" aria-label="Response swipes">
 	<button
 		type="button"
-		class="branch-btn"
+		class="swipe-btn"
 		disabled={disabled || current <= 0}
 		onclick={() => onNavigate('prev')}
 		aria-label="Previous swipe"
@@ -25,11 +25,11 @@
 		<Icon name="chevronLeft" class="w-3.5 h-3.5" strokeWidth={1.75} />
 	</button>
 
-	<span class="branch-count">{current + 1} / {total}</span>
+	<span class="swipe-count">{current + 1} / {total}</span>
 
 	<button
 		type="button"
-		class="branch-btn"
+		class="swipe-btn"
 		disabled={disabled || (current >= total - 1 && !canGenerate)}
 		onclick={() => onNavigate('next')}
 		aria-label={createsNext ? 'Generate alternate response' : 'Next swipe'}
@@ -40,7 +40,7 @@
 </div>
 
 <style>
-	.branch-nav {
+	.swipe-nav {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.14rem;
@@ -50,7 +50,7 @@
 		background: color-mix(in srgb, var(--color-bg-secondary) 76%, transparent);
 	}
 
-	.branch-btn {
+	.swipe-btn {
 		width: 1.6rem;
 		height: 1.6rem;
 		padding: 0;
@@ -65,18 +65,18 @@
 		transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
 	}
 
-	.branch-btn:hover:not(:disabled) {
+	.swipe-btn:hover:not(:disabled) {
 		color: var(--color-text-primary);
 		background: color-mix(in srgb, var(--color-bg-tertiary) 86%, transparent);
 		border-color: color-mix(in srgb, var(--color-border) 76%, transparent);
 	}
 
-	.branch-btn:disabled {
+	.swipe-btn:disabled {
 		opacity: 0.32;
 		cursor: not-allowed;
 	}
 
-	.branch-btn:focus-visible {
+	.swipe-btn:focus-visible {
 		outline: 0;
 		border-color: color-mix(in srgb, var(--color-accent) 85%, white 15%);
 		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent-muted) 70%, transparent);
@@ -84,23 +84,23 @@
 
 	/* A compact mobile pager still leaves a larger target than the desktop control. */
 	@media (pointer: coarse) {
-		.branch-nav {
+		.swipe-nav {
 			gap: 0.08rem;
 			padding: 0.1rem;
 		}
 
-		.branch-btn {
+		.swipe-btn {
 			width: 2.1rem;
 			height: 2.1rem;
 		}
 
-		.branch-count {
+		.swipe-count {
 			min-width: 2rem;
 			padding-inline: 0.1rem;
 		}
 	}
 
-	.branch-count {
+	.swipe-count {
 		min-width: 2.3rem;
 		padding: 0 0.2rem;
 		text-align: center;

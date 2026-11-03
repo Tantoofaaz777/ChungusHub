@@ -9,6 +9,13 @@
  * exactly once, tracked in the _migrations table. No "IF NOT EXISTS" guesswork.
  */
 import { Database } from 'bun:sqlite';
+import { ConversationStorage, ConversationRecoveryError, CONVERSATION_SCHEMA, variantPayload, VARIANT_COLUMNS } from './conversation-storage';
+import { isContinuationContext, type ContinuationContext, type ConversationPlacement, type VariantSelection, type VariantBookmark, type VariantContent } from '../shared/conversation';
+import type { RecoveredGeneration } from '../shared/recovered-generation';
+import type { ChatDraft } from '../shared/chat-draft';
+import type { ContinuationBase, ContinuationCommit, ContinuationPatch } from '../shared/generation';
+import { joinContinuation } from '../src/lib/utils/continuation';
+import type { ConfirmedSwipeGroup } from '../shared/conversation-migration';
 import { parseReasoningRetention } from '../shared/reasoning-retention';
 import { normalizeAo3Information, emptyAo3Information } from '../shared/threads/ao3';
 import { threadsSelectionOverlaps } from '../shared/threads/model';
@@ -138,6 +145,7 @@ const CHAT_DEFAULT_KEYS = [
 
 /** A chat row as a caller hands it in, shared by the two doors that create one. */
 interface NewChatRow {
+	conversationVersion?: number;
 	id: string;
 	title: string;
 	createdAt: number;
@@ -553,7 +561,9 @@ const MIGRATIONS: Migration[] = [
 		version: 51,
 		name: 'message_bookmarks',
 		sql: `ALTER TABLE messages ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0;`
-	}
+	},
+	{ version: 52, name: 'conversation_turn_variants', sql: CONVERSATION_SCHEMA },
+	{ version: 53, name: 'chat_draft_revisions', sql: "ALTER TABLE chat_drafts ADD COLUMN revision TEXT NOT NULL DEFAULT 'legacy';" }
 ];
 
 /** The newest schema this build can produce. A snapshot recording a higher one was written
@@ -596,6 +606,17 @@ export function schemaVersionOnDisk(): number {
 	}
 }
 
+/** Restored/imported databases can carry legacy rows even after their DDL reached version 52. */
+export function hasLegacyConversationsOnDisk(): boolean {
+	if (!existsSync(resolveDbPath())) return false;
+	const probe = new Database(resolveDbPath(), { readonly: true });
+	try {
+		const columns = probe.query('PRAGMA table_info(chats)').all() as { name: string }[];
+		if (!columns.some(column => column.name === 'conversation_version')) return false;
+		return !!probe.query('SELECT 1 FROM chats WHERE conversation_version = 1 LIMIT 1').get();
+	} finally { probe.close(); }
+}
+
 class ServerDatabase {
 	private _db: Database | null = null;
 
@@ -612,10 +633,12 @@ class ServerDatabase {
 			this._db = new Database(resolveDbPath(), { create: true });
 			this._db.exec('PRAGMA journal_mode = WAL');
 			this._db.exec('PRAGMA foreign_keys = ON');
-			this.runMigrations();
+			try { this.runMigrations(); } catch (error) { this._db.close(); this._db = null; throw error; }
 		}
 		return this._db;
 	}
+
+	private get conversations(): ConversationStorage { return new ConversationStorage(this.db); }
 
 	/** Force the lazy handle open now (fail-fast at server boot). */
 	open(): void {
@@ -674,6 +697,7 @@ class ServerDatabase {
 			console.log(`[db] applying migration ${migration.version}: ${migration.name}`);
 			const tx = this.db.transaction(() => {
 				this.db.exec(migration.sql);
+				if (migration.version === 52) this.conversations.migrateAll();
 				this.db.run('INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)', [
 					migration.version,
 					migration.name,
@@ -682,6 +706,8 @@ class ServerDatabase {
 			});
 			tx();
 		}
+		// Import/restore may supply a current schema with legacy rows. Convert before accepting writes.
+		this.db.transaction(() => this.conversations.migrateAll())();
 	}
 
 	private select<T>(sql: string, params: unknown[] = []): T {
@@ -704,6 +730,7 @@ class ServerDatabase {
 
 	private mapChat(row: Record<string, unknown>): unknown {
 		return {
+			conversationVersion: row.conversation_version ?? 1,
 			id: row.id,
 			title: row.title,
 			createdAt: row.created_at,
@@ -723,8 +750,15 @@ class ServerDatabase {
 		};
 	}
 
-	private mapMessage(row: Record<string, unknown>): unknown {
+	private mapMessage(row: Record<string, unknown>, variants?: Record<string, unknown>[]): unknown {
 		return {
+			...(row.selected_variant_id ? {
+				selectedVariantId: row.selected_variant_id, revision: row.rev, position: row.position,
+				variants: (variants ?? this.conversations.variants(row.id as string)).map(variant => ({
+					id: variant.id, messageId: row.id,
+					...this.mapVariantPayload(variant)
+				}))
+			} : {}),
 			id: row.id,
 			chatId: row.chat_id,
 			parentId: row.parent_id,
@@ -756,6 +790,12 @@ class ServerDatabase {
 		};
 	}
 
+	private mapVariantPayload(row: Record<string, unknown>): Record<string, unknown> {
+		const { id: _id, chatId: _chat, parentId: _parent, role: _role, siblingIndex: _sibling, ...payload } =
+			this.mapMessage({ ...Object.fromEntries(VARIANT_COLUMNS.map(c => [c, null])), ...row, selected_variant_id: null }) as Record<string, unknown>;
+		return payload;
+	}
+
 	// ===== CHATS =====
 
 	getAllChats(): unknown[] {
@@ -772,8 +812,8 @@ class ServerDatabase {
 
 	insertChat(chat: NewChatRow): void {
 		this.execute(
-			`INSERT INTO chats (id, title, created_at, updated_at, root_message_id, active_leaf_id, canon_leaf_id, settings_json, character_id, character_version_id, feature_state, is_favorite)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO chats (id, title, created_at, updated_at, root_message_id, active_leaf_id, canon_leaf_id, settings_json, character_id, character_version_id, feature_state, is_favorite, conversation_version)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				chat.id,
 				chat.title,
@@ -786,7 +826,8 @@ class ServerDatabase {
 				chat.characterId ?? null,
 				chat.characterVersionId ?? null,
 				chat.featureState ?? null,
-				chat.isFavorite ? 1 : 0
+				chat.isFavorite ? 1 : 0,
+				chat.conversationVersion === 2 ? 2 : 1
 			]
 		);
 	}
@@ -819,13 +860,13 @@ class ServerDatabase {
 	}
 
 	/** A separate conversation containing only the selected turn and its ancestors. */
-	branchChat(options: { chatId: string; messageId: string; title: string; content: string }): string {
+	branchChat(options: { chatId: string; messageId: string; title: string; content: string; variantId?: string }): string {
 		return this.copyChat({ ...options, includeMemory: true, branch: options });
 	}
 
 	private copyChat(options: {
 		chatId: string; title: string; includeMemory: boolean;
-		branch?: { messageId: string; content: string };
+		branch?: { messageId: string; content: string; variantId?: string };
 	}): string {
 		const { chatId, title, includeMemory } = options;
 		const { branch } = options;
@@ -848,18 +889,25 @@ class ServerDatabase {
 				}
 				if (!path.length) throw new Error('branchChat: no source message');
 				rows = path.reverse();
+				if (branch.variantId) {
+					const variant = this.conversations.variants(branch.messageId).find(v => v.id === branch.variantId);
+					if (!variant) throw new Error('branchChat: source variant is unavailable');
+					rows[rows.length - 1] = { ...rows.at(-1), ...Object.fromEntries(VARIANT_COLUMNS.map(c => [c, variant[c] ?? null])),
+						selected_variant_id: variant.id };
+				}
 			}
 			const idMap = new Map<string, string>();
 			for (const row of rows) idMap.set(row.id as string, randomUUID());
 			const remap = (id: unknown): string | null => (typeof id === 'string' ? (idMap.get(id) ?? null) : null);
 
 			const newChatId = randomUUID();
+			const variantIds = new Map<string, string>();
 			const now = Date.now();
 			// Chat row first (messages.chat_id is a real FK), its pointers last, the same
 			// ordering createChat -> seedCharacterGreetings uses, for the same reason.
 			this.execute(
-				`INSERT INTO chats (id, title, created_at, updated_at, root_message_id, active_leaf_id, canon_leaf_id, settings_json, character_id, character_version_id, feature_state, seeded_greetings, is_favorite)
-				 VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, 0)`,
+				`INSERT INTO chats (id, title, created_at, updated_at, root_message_id, active_leaf_id, canon_leaf_id, settings_json, character_id, character_version_id, feature_state, seeded_greetings, is_favorite, conversation_version)
+				 VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, 0, ?)`,
 				[
 					newChatId,
 					title,
@@ -871,7 +919,8 @@ class ServerDatabase {
 					source.feature_state ?? null,
 					// A full duplicate keeps the greeting claim. An explicit branch owns its
 					// copied opening, including a one-turn branch, rather than following card edits.
-					branch ? null : source.seeded_greetings ?? null
+					branch ? null : source.seeded_greetings ?? null,
+					source.conversation_version ?? 1
 				]
 			);
 
@@ -926,7 +975,24 @@ class ServerDatabase {
 						row.is_bookmarked ?? 0
 					]
 				);
-				queue.push(...(children.get(row.id as string) ?? []));
+				if (source.conversation_version === 2) {
+					const copiedId = idMap.get(row.id as string)!;
+					const versions = this.conversations.variants(row.id as string);
+					const selected = versions.find(v => v.id === row.selected_variant_id)!;
+					this.execute('UPDATE message_variants SET payload_json = ? WHERE id = ?',
+						[JSON.stringify({ ...selected, content, edited_at: edited ? now : selected.edited_at ?? null }), copiedId]);
+					variantIds.set(selected.id, copiedId);
+					if (!branch) {
+						this.execute('UPDATE message_variants SET ordinal = ? WHERE id = ?', [selected.ordinal, copiedId]);
+						for (const variant of versions) {
+							if (variant.id === selected.id) continue;
+							const id = randomUUID(); variantIds.set(variant.id, id);
+							this.execute('INSERT INTO message_variants(id, message_id, ordinal, payload_json) VALUES (?, ?, ?, ?)',
+								[id, copiedId, variant.ordinal, JSON.stringify(variant)]);
+						}
+					}
+				}
+				for (const child of children.get(row.id as string) ?? []) queue.push(child);
 			}
 			// Every row must be reachable from a root (a deleted parent NULLs its children
 			// into roots, so it always is). If that ever stops holding, a silent partial
@@ -957,20 +1023,24 @@ class ServerDatabase {
 				);
 			}
 
-			if (includeMemory) this.copyChatMemory(chatId, newChatId, idMap, !!branch);
+			if (includeMemory) this.copyChatMemory(chatId, newChatId, idMap, !!branch, variantIds);
 			const threadMessageIds = new Map(idMap);
 			// Threads have no review state: do not inherit reactions to the ending the
 			// reader just rewrote. Memory retains its fingerprint-based review instead.
 			if (branch && rows.at(-1)?.content !== branch.content) threadMessageIds.delete(branch.messageId);
-			this.copyChatThreads(chatId, newChatId, threadMessageIds);
+			this.copyChatThreads(chatId, newChatId, threadMessageIds, variantIds);
 			return newChatId;
 		});
 	}
 
 	/** Threads are copied independently of the optional Chat Memory payload. */
-	private copyChatThreads(fromChatId: string, toChatId: string, messageIds: Map<string, string>): void {
+	private copyChatThreads(fromChatId: string, toChatId: string, messageIds: Map<string, string>, variantIds = new Map<string, string>()): void {
 		const data = this.getThreadsData(fromChatId);
-		for (const round of inheritThreadsRounds(data.rounds, toChatId, messageIds, randomUUID)) this.writeThreadsRound(round);
+		for (const round of inheritThreadsRounds(data.rounds, toChatId, messageIds, randomUUID)) {
+			if (round.messages.some(m => m.variantId && !variantIds.has(m.variantId))) continue;
+			round.messages = round.messages.map(m => ({ ...m, ...(m.variantId ? { variantId: variantIds.get(m.variantId)! } : {}) }));
+			this.writeThreadsRound(round);
+		}
 		const notes = this.select<{ notes: string; ao3_json: string; prompt_id: string | null }[]>('SELECT notes, ao3_json, prompt_id FROM threads_notes WHERE chat_id = ?', [fromChatId])[0];
 		if (notes) this.execute('INSERT INTO threads_notes (chat_id, notes, ao3_json, prompt_id) VALUES (?, ?, ?, ?)', [toChatId, notes.notes, notes.ao3_json, notes.prompt_id]);
 	}
@@ -980,14 +1050,15 @@ class ServerDatabase {
 	 *  their own fresh-id map: memory still pointing at the original's rows would resolve
 	 *  its coverage against a tree it no longer belongs to. Runs inside the chat copy's
 	 *  transaction. */
-	private copyChatMemory(fromChatId: string, toChatId: string, messageIds: Map<string, string>, onlyComplete = false): void {
+	private copyChatMemory(fromChatId: string, toChatId: string, messageIds: Map<string, string>, onlyComplete = false, variantIds = new Map<string, string>()): void {
 		const sourceScenes = this.getMemoryScenes(fromChatId).filter(scene =>
-			!onlyComplete || (scene.source.length > 0 && scene.source.every(entry => messageIds.has(entry.id)))
+			!onlyComplete || (scene.source.length > 0 && scene.source.every(entry => messageIds.has(entry.id) && (!entry.variantId || variantIds.has(entry.variantId))))
 		);
 		const sceneIds = new Map(sourceScenes.map(scene => [scene.id, randomUUID()]));
 		const oldScenes = new Map(sourceScenes.map(scene => [scene.id, scene]));
 		for (const scene of sourceScenes) {
-			const source = scene.source.map((entry) => ({ ...entry, id: messageIds.get(entry.id) ?? `missing:${randomUUID()}` }));
+			const source = scene.source.map((entry) => ({ ...entry, id: messageIds.get(entry.id) ?? `missing:${randomUUID()}`,
+				...(entry.variantId ? { variantId: variantIds.get(entry.variantId) ?? `missing:${entry.variantId}` } : {}) }));
 			const children = (scene.children ?? []).map(ref => ({ id: sceneIds.get(ref.id) ?? `missing:${randomUUID()}`,
 				revision: oldScenes.get(ref.id)?.revision === ref.revision ? 1 : 0 }));
 			this.execute('INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason, level, children_json) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)',
@@ -1044,6 +1115,11 @@ class ServerDatabase {
 	}
 
 	updateChat(chat: Record<string, unknown> & { id: string }, options: { touchUpdatedAt?: boolean } = {}): void {
+		if ((chat.activeLeafId !== undefined || chat.rootMessageId !== undefined) && this.conversations.modern(chat.id)) {
+			const ends = this.select<{ id: string }[]>('SELECT id FROM messages WHERE chat_id = ? ORDER BY position', [chat.id]);
+			if (chat.activeLeafId !== undefined && chat.activeLeafId !== (ends.at(-1)?.id ?? null) ||
+				chat.rootMessageId !== undefined && chat.rootMessageId !== (ends[0]?.id ?? null)) throw new Error('Conversation pointers must identify the first and last turns.');
+		}
 		const { touchUpdatedAt = false } = options;
 		const updates: string[] = [];
 		const values: unknown[] = [];
@@ -1101,6 +1177,9 @@ class ServerDatabase {
 	}
 
 	updateChatActiveLeaf(chatId: string, leafId: string | null, options: { touchUpdatedAt?: boolean } = {}): void {
+		if (this.conversations.modern(chatId) && this.conversations.context(chatId, 'append').expectedLeafId !== leafId) {
+			throw new Error('A conversation endpoint cannot select a swipe; use selectMessageVariant.');
+		}
 		if (leafId !== null && !this.select<{ id: string }[]>(
 			'SELECT id FROM messages WHERE id = ? AND chat_id = ?', [leafId, chatId]
 		).length) throw new Error('The selected response no longer exists in this chat.');
@@ -1136,6 +1215,7 @@ class ServerDatabase {
 	 * to hang is a real failure rather than a race to absorb quietly.
 	 */
 	commitGeneratedTurn(commit: {
+		placement?: ConversationPlacement;
 		chatId: string;
 		/** The row the turn hangs under; null lands a root sibling (an opening scene). */
 		parentId: string | null;
@@ -1164,6 +1244,10 @@ class ServerDatabase {
 		spendSteeringIds: string[];
 		replaceMessageIds?: string[];
 	}): { messageId: string; spentSteeringIds: string[] } | null {
+		if (this.conversations.modern(commit.chatId)) {
+			if (!commit.placement) throw new Error('Reload the client to use the turn/variant generation protocol.');
+			return this.commitConversationGeneration(commit, commit.placement);
+		}
 		const removedImages: string[] = [];
 		const landed = this.inTransaction(() => {
 			const chat = this.select<{ active_leaf_id: string | null; root_message_id: string | null }[]>(
@@ -1243,6 +1327,165 @@ class ServerDatabase {
 		return landed;
 	}
 
+	getConversationPlacement(chatId: string, operation: ConversationPlacement['operation']): ConversationPlacement | null {
+		if (!['append', 'add_variant', 'replace_variants'].includes(operation)) throw new Error('Invalid conversation operation.');
+		return this.conversations.modern(chatId) ? this.conversations.context(chatId, operation) : null;
+	}
+
+	private assertConversationSwipe(messageId: string): void {
+		const message = this.getMessage(messageId) as { chatId: string; role: string; excludedFromPrompt?: boolean } | null;
+		if (!message) throw new Error('The response is unavailable.');
+		if (message.role !== 'assistant' || message.excludedFromPrompt ||
+			this.conversations.context(message.chatId, 'add_variant').messageId !== messageId) throw new Error('Swipes belong to the last included assistant turn.');
+		const all = this.getMessagesByChat(message.chatId) as SceneMessage[];
+		if (resolveScenes(this.getMemoryScenes(message.chatId), all, all).some(item => item.status === 'active' &&
+			item.scene.source.some(source => source.id === messageId))) throw new Error('This response is covered by active memory.');
+	}
+
+	selectMessageVariant(input: VariantSelection): unknown {
+		return this.inTransaction(() => {
+			this.assertConversationSwipe(input.messageId); this.conversations.select(input);
+			this.pruneOldReasoning(input.chatId);
+			return this.getMessagesDelta(input.chatId, null);
+		});
+	}
+
+	setMessageVariantBookmarked(input: VariantBookmark): void {
+		if (typeof input.bookmarked !== 'boolean') throw new Error('Expected a boolean bookmark flag.');
+		this.inTransaction(() => {
+			const row = this.variantOwner(input);
+			const variant = this.conversations.variants(input.messageId).find(v => v.id === input.variantId)!;
+			if (!!variant.is_bookmarked === input.bookmarked) return;
+			const rev = this.bumpMessagesRev(input.chatId);
+			if (row.selected_variant_id === input.variantId) this.execute('UPDATE messages SET is_bookmarked = ?, rev = ? WHERE id = ?', [input.bookmarked ? 1 : 0, rev, input.messageId]);
+			else {
+				this.execute("UPDATE message_variants SET payload_json = json_set(payload_json, '$.is_bookmarked', ?) WHERE id = ? AND message_id = ?", [input.bookmarked ? 1 : 0, input.variantId, input.messageId]);
+				this.execute('UPDATE messages SET rev = ? WHERE id = ?', [rev, input.messageId]);
+			}
+		});
+	}
+
+	private variantOwner(input: VariantSelection): Record<string, any> {
+		const row = this.select<Record<string, any>[]>('SELECT * FROM messages WHERE id = ? AND chat_id = ?', [input.messageId, input.chatId])[0];
+		if (!row || !this.conversations.variants(input.messageId).some(v => v.id === input.variantId)) throw new Error('This version is no longer available.');
+		if (row.rev !== input.expectedRevision) throw new Error('This response changed on another device. Reopen it before saving.');
+		return row;
+	}
+
+	updateMessageVariantContent(input: VariantContent): void {
+		if (typeof input.content !== 'string') throw new Error('Expected response text.');
+		this.inTransaction(() => {
+			const row = this.variantOwner(input);
+			const rev = this.bumpMessagesRev(input.chatId), column = input.minor ? 'minor_edited_at' : 'edited_at';
+			if (row.selected_variant_id === input.variantId) this.execute(`UPDATE messages SET content = ?, ${column} = ?, rev = ? WHERE id = ?`, [input.content, Date.now(), rev, input.messageId]);
+			else {
+				this.execute(`UPDATE message_variants SET payload_json = json_set(payload_json, '$.content', ?, '$.${column}', ?) WHERE id = ? AND message_id = ?`, [input.content, Date.now(), input.variantId, input.messageId]);
+				this.execute('UPDATE messages SET rev = ? WHERE id = ?', [rev, input.messageId]);
+			}
+		});
+	}
+
+	deleteMessageVariant(input: VariantSelection): unknown {
+		const paths = this.inTransaction(() => {
+			this.assertConversationSwipe(input.messageId);
+			const paths = this.conversations.remove(input); this.conversations.pruneArchives(); return paths;
+		});
+		this.dropOrphanedChatImages(paths);
+		return this.getMessagesDelta(input.chatId, null);
+	}
+
+	appendConversationTurn(message: Record<string, unknown>, context: ConversationPlacement): ConversationPlacement {
+		return this.inTransaction(() => {
+			const current = this.conversations.context(message.chatId as string, 'append');
+			if (context.operation !== 'append' ||
+				current.contextFingerprint !== context.contextFingerprint || current.expectedLeafId !== context.expectedLeafId ||
+				message.parentId !== current.expectedLeafId) throw new Error('The conversation changed before this turn was sent.');
+			this.insertMessage(message);
+			this.updateChat({ id: message.chatId as string, activeLeafId: message.id,
+				...(current.expectedLeafId === null ? { rootMessageId: message.id } : {}) }, { touchUpdatedAt: true });
+			return this.conversations.context(message.chatId as string, 'append');
+		});
+	}
+
+	seedConversationGreetings(chatId: string, greetings: string[]): string | null {
+		return this.inTransaction(() => {
+			if (!this.conversations.modern(chatId) || this.getMessagesByChat(chatId).length) throw new Error('Only an empty conversation can be seeded.');
+			if (!Array.isArray(greetings) || greetings.some(g => typeof g !== 'string' || !g.trim())) throw new Error('Invalid greetings.');
+			this.setChatSeededGreetings(chatId, greetings);
+			if (!greetings.length) return null;
+			const id = randomUUID();
+			this.insertMessage({ id, chatId, parentId: null, role: 'assistant', content: greetings[0], createdAt: Date.now() });
+			for (const content of greetings.slice(1)) this.conversations.add(id, variantPayload({ content }), false);
+			this.updateChat({ id: chatId, rootMessageId: id, activeLeafId: id });
+			return id;
+		});
+	}
+
+	getRecoveredGenerations(chatId: string): RecoveredGeneration[] { return this.conversations.getRecovery(chatId); }
+	discardRecoveredGeneration(chatId: string, id: string): void { this.conversations.discardRecovery(chatId, id); }
+
+	validateConversationGeneration(chatId: string, placement: ConversationPlacement): void {
+		const current = this.conversations.context(chatId, placement.operation);
+		if (current.messageId !== placement.messageId || current.expectedLeafId !== placement.expectedLeafId ||
+			current.contextFingerprint !== placement.contextFingerprint || placement.operation !== 'append' && current.expectedRevision !== placement.expectedRevision ||
+			current.expectedVariantId !== placement.expectedVariantId) throw new Error('The conversation changed during prompt preparation. Review it again.');
+		if (placement.messageId) this.assertConversationSwipe(placement.messageId);
+	}
+
+	/** Also used by offline import tooling; never exposed as a live RPC mutation. */
+	migrateLegacyConversation(chatId: string, confirmed: readonly ConfirmedSwipeGroup[] = []): void {
+		this.inTransaction(() => this.conversations.migrate(chatId, confirmed));
+	}
+
+	private commitConversationGeneration(commit: Record<string, any>, placement: ConversationPlacement): { messageId: string; spentSteeringIds: string[] } | null {
+		const removedImages: string[] = [];
+		const result = this.inTransaction(() => {
+			if (!this.getChat(commit.chatId)) return null;
+			if (!commit.content.trim() || placement.operation === 'replace_variants' && commit.finishReason === 'cancelled') return null;
+			let conflict: string | null = null;
+			let current: ConversationPlacement | null = null;
+			try {
+				current = this.conversations.context(commit.chatId, placement.operation);
+				if (current.expectedLeafId !== placement.expectedLeafId || current.messageId !== placement.messageId ||
+					current.contextFingerprint !== placement.contextFingerprint) conflict = 'The conversation context changed during generation.';
+				if (placement.operation === 'replace_variants' && current.expectedRevision !== placement.expectedRevision) conflict = 'The conversation revision changed during generation.';
+				if (placement.operation === 'replace_variants' && current.expectedVariantId !== placement.expectedVariantId) conflict = 'The selected variant changed during generation.';
+				if (placement.messageId) this.assertConversationSwipe(placement.messageId);
+			} catch (error) { conflict = error instanceof Error ? error.message : String(error); }
+			if (conflict) return { recoveryId: this.conversations.recover(commit.chatId, conflict, commit), conflict };
+			let messageId: string;
+			if (placement.operation === 'append') {
+				messageId = randomUUID();
+				this.insertMessage({ ...commit, id: messageId, chatId: commit.chatId, parentId: current!.expectedLeafId,
+					role: 'assistant', createdAt: Date.now() });
+				this.updateChat({ id: commit.chatId, activeLeafId: messageId,
+					...(current!.expectedLeafId === null ? { rootMessageId: messageId } : {}) }, { touchUpdatedAt: true });
+			} else {
+				messageId = placement.messageId!;
+				const previous = this.conversations.variants(messageId);
+				const replacements = [...new Set(placement.replaceVariantIds ?? [])];
+				if (placement.operation === 'replace_variants' && (!replacements.length || replacements.some(id => !previous.some(v => v.id === id)))) {
+					const conflict = 'Replacement names an unavailable or foreign variant.';
+					return { recoveryId: this.conversations.recover(commit.chatId, conflict, commit), conflict };
+				}
+				const selected = current!.expectedVariantId === placement.expectedVariantId && current!.expectedRevision === placement.expectedRevision;
+				this.conversations.add(messageId, variantPayload({ ...commit, createdAt: Date.now(), excludedFromPrompt: false, isBookmarked: false }), selected);
+				if (placement.operation === 'replace_variants') for (const id of replacements) {
+					removedImages.push(...this.conversations.images(previous.find(v => v.id === id)!));
+					this.execute('DELETE FROM message_variants WHERE id = ? AND message_id = ?', [id, messageId]);
+				}
+				this.touchChatActivity(commit.chatId);
+				this.pruneOldReasoning(commit.chatId);
+				if (placement.operation === 'replace_variants') this.conversations.pruneArchives();
+			}
+			return { messageId, spentSteeringIds: this.consumeSteeringNotes(commit.spendSteeringIds), recoveryId: null };
+		});
+		if (!result) return null;
+		if (result.recoveryId) throw new ConversationRecoveryError(commit.chatId, result.recoveryId, result.conflict!);
+		this.dropOrphanedChatImages(removedImages);
+		return { messageId: result.messageId!, spentSteeringIds: result.spentSteeringIds! };
+	}
+
 	// ===== Chat image attachments (files under images/chat/) =====
 	//
 	// A deleted chat or message must leave nothing behind on disk: the user deleted it, so
@@ -1267,14 +1510,17 @@ class ServerDatabase {
 
 	private imagePathsOfChat(chatId: string): string[] {
 		const rows = this.select<{ attachments_json: string | null }[]>('SELECT attachments_json FROM messages WHERE chat_id = ?', [chatId]);
-		return rows.flatMap((r) => this.imagePathsIn(r.attachments_json));
+		return [...rows.flatMap((r) => this.imagePathsIn(r.attachments_json)),
+			...this.conversations.variantRows(chatId).flatMap(row => this.conversations.images(JSON.parse(row.payload_json)))];
 	}
 
 	private imagePathsOfMessages(messageIds: string[]): string[] {
 		if (!messageIds.length) return [];
 		const holes = messageIds.map(() => '?').join(', ');
 		const rows = this.select<{ attachments_json: string | null }[]>(`SELECT attachments_json FROM messages WHERE id IN (${holes})`, messageIds);
-		return rows.flatMap((r) => this.imagePathsIn(r.attachments_json));
+		const variants = this.select<{ payload_json: string }[]>(`SELECT payload_json FROM message_variants WHERE message_id IN (${holes})`, messageIds);
+		return [...rows.flatMap((r) => this.imagePathsIn(r.attachments_json)),
+			...variants.flatMap(row => this.conversations.images(JSON.parse(row.payload_json)))];
 	}
 
 	/** Ids of a message and everything under it, so their files can be collected first. */
@@ -1376,6 +1622,7 @@ class ServerDatabase {
 	deleteChat(chatId: string): void {
 		const paths = this.imagePathsOfChat(chatId);
 		this.execute('DELETE FROM chats WHERE id = ?', [chatId]); // messages cascade
+		this.conversations.pruneArchives();
 		// Steering notes bound to this chat can't cascade, since scope_id has no FK, so they
 		// are reaped here, where the delete can't be forgotten.
 		// This rides the 'chats' broadcast: another device keeps those note rows cached
@@ -1389,8 +1636,13 @@ class ServerDatabase {
 	// ===== MESSAGES =====
 
 	getMessagesByChat(chatId: string): unknown[] {
-		const rows = this.select<Record<string, unknown>[]>('SELECT * FROM messages WHERE chat_id = ?', [chatId]);
-		return rows.map((r) => this.mapMessage(r));
+		const rows = this.select<Record<string, unknown>[]>('SELECT * FROM messages WHERE chat_id = ? ORDER BY position', [chatId]);
+		const variants = new Map<string, Record<string, unknown>[]>();
+		for (const row of this.conversations.variantRows(chatId)) {
+			const group = variants.get(row.message_id) ?? [];
+			group.push({ ...JSON.parse(row.payload_json), id: row.id }); variants.set(row.message_id, group);
+		}
+		return rows.map((r) => this.mapMessage(r, variants.get(r.id as string) ?? []));
 	}
 
 	/**
@@ -1525,15 +1777,12 @@ class ServerDatabase {
 		);
 	}
 
-	/** Per-chat row data for the chats panel: how many turns the active branch holds
-	 *  (`path`: what a reader would actually read), how many rows the whole tree holds
-	 *  (`total`: every swipe, alternate greeting and abandoned fork), and when that
-	 *  branch was last written to (`lastAt`). Lists and previews display `path`;
-	 *  deletion uses `total` because it also removes alternate turns.
+	/** Per-chat counts without message text. Modern chats count turns separately from
+	 *  their saved versions; legacy fixtures retain their original forest counts.
 	 *  No message text: the rows show times and counts, and the only snippet
 	 *  the panel renders is the one searchChatMessages cuts around a hit. */
-	getChatListStats(): Record<string, { path: number; total: number; lastAt: number | null }> {
-		const out: Record<string, { path: number; total: number; lastAt: number | null }> = {};
+	getChatListStats(): Record<string, { path: number; total: number; versions?: number; lastAt: number | null }> {
+		const out: Record<string, { path: number; total: number; versions?: number; lastAt: number | null }> = {};
 		const blank = () => ({ path: 0, total: 0, lastAt: null as number | null });
 
 		for (const r of this.select<{ chat_id: string; count: number }[]>(
@@ -1562,6 +1811,12 @@ class ServerDatabase {
 			entry.path = ids.length;
 			entry.lastAt = leafByChat.get(chatId) ?? null;
 		}
+		for (const r of this.select<{ chat_id: string; count: number }[]>(
+			`SELECT c.id AS chat_id, COUNT(v.id) AS count FROM chats c
+			 LEFT JOIN messages m ON m.chat_id = c.id
+			 LEFT JOIN message_variants v ON v.message_id = m.id
+			 WHERE c.conversation_version = 2 GROUP BY c.id`
+		)) (out[r.chat_id] ??= blank()).versions = r.count;
 		return out;
 	}
 
@@ -1610,6 +1865,21 @@ class ServerDatabase {
 	 *  are not the same chat. `thinking` deliberately does not: reasoning is the model's
 	 *  scratch paper, not the story. */
 	private hashChatTree(chatId: string): string {
+		if (this.conversations.modern(chatId)) {
+			const turns = this.select<{ id: string; role: string; selected_variant_id: string }[]>(
+				'SELECT id, role, selected_variant_id FROM messages WHERE chat_id = ? ORDER BY position', [chatId]);
+			const versions = new Map<string, { id: string; content: string; attachments: unknown }[]>();
+			for (const variant of this.conversations.variantRows(chatId)) {
+				const group = versions.get(variant.message_id) ?? [], payload = JSON.parse(variant.payload_json);
+				group.push({ id: variant.id, content: payload.content, attachments: payload.attachments_json ?? null });
+				versions.set(variant.message_id, group);
+			}
+			return shortDigest(JSON.stringify(turns.map(turn => {
+				const group = versions.get(turn.id) ?? [];
+				return [turn.role, group.findIndex(variant => variant.id === turn.selected_variant_id),
+					group.map(variant => [variant.content, variant.attachments])];
+			})));
+		}
 		const rows = this.select<{ id: string; parent_id: string | null; role: string; content: string; attachments_json: string | null; sibling_index: number }[]>(
 			'SELECT id, parent_id, role, content, attachments_json, sibling_index FROM messages WHERE chat_id = ?',
 			[chatId]
@@ -1747,11 +2017,22 @@ class ServerDatabase {
 		});
 	}
 
-	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null): unknown {
+	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null, expected?: VariantSelection): unknown {
 		if (typeof excluded !== 'boolean') throw new Error('Expected a boolean prompt exclusion flag.');
 		return this.inTransaction(() => {
 			const message = this.select<{ chat_id: string }[]>('SELECT chat_id FROM messages WHERE id = ?', [messageId])[0];
 			if (!message) throw new Error('The message no longer exists.');
+			if (this.conversations.modern(message.chat_id)) {
+				if (!expected || expected.messageId !== messageId || expected.chatId !== message.chat_id) throw new Error('Reload before changing this version’s prompt visibility.');
+				const owner = this.variantOwner(expected);
+				const rev = this.bumpMessagesRev(message.chat_id);
+				if (owner.selected_variant_id === expected.variantId) this.execute('UPDATE messages SET excluded_from_prompt = ?, rev = ? WHERE id = ?', [excluded ? 1 : 0, rev, messageId]);
+				else {
+					this.execute("UPDATE message_variants SET payload_json = json_set(payload_json, '$.excluded_from_prompt', ?) WHERE id = ? AND message_id = ?", [excluded ? 1 : 0, expected.variantId, messageId]);
+					this.execute('UPDATE messages SET rev = ? WHERE id = ?', [rev, messageId]);
+				}
+				return this.getMessagesDelta(message.chat_id, sinceRev);
+			}
 			const rev = this.bumpMessagesRev(message.chat_id);
 			this.execute('UPDATE messages SET excluded_from_prompt = ?, rev = ? WHERE id = ?', [
 				excluded ? 1 : 0, rev, messageId
@@ -1801,6 +2082,41 @@ class ServerDatabase {
 		});
 	}
 
+	/** Shared by prompt-review release, the model request and the continuation write. */
+	validateMessageContinuation(expected: ContinuationContext): void {
+		if (!isContinuationContext(expected)) throw new Error('Reload to use the continuation context protocol.');
+		const row = this.select<Record<string, any>[]>('SELECT * FROM messages WHERE id = ? AND chat_id = ?', [expected.messageId, expected.chatId])[0];
+		if (!row || row.role !== 'assistant' || row.excluded_from_prompt || row.selected_variant_id !== expected.variantId || row.rev !== expected.expectedRevision) {
+			throw new Error('The response changed during continuation. Review it again.');
+		}
+		const context = this.conversations.context(expected.chatId, 'append');
+		if (context.expectedLeafId !== expected.messageId || context.contextFingerprint !== expected.contextFingerprint) {
+			throw new Error('The conversation context changed during continuation. Review it again.');
+		}
+	}
+
+	/** Captured synchronously at dispatch; later conflicts recover output against this base. */
+	captureMessageContinuation(expected: ContinuationContext): ContinuationBase {
+		this.validateMessageContinuation(expected);
+		const message = this.getMessage(expected.messageId) as ContinuationBase;
+		return { content: message.content, thinking: message.thinking, tokensCompletion: message.tokensCompletion,
+			generationMs: message.generationMs, reasoningMs: message.reasoningMs };
+	}
+
+	/** The server owns continuation joining, persistence and one-shot consumption. */
+	commitMessageContinuation(expected: ContinuationCommit, base: ContinuationBase, output: ContinuationPatch): { messageId: string; spentSteeringIds: string[] } | null {
+		if (!output.content.trim() || !this.getChat(expected.chatId)) return null;
+		const content = joinContinuation(base.content, output.content, expected.continuationSent);
+		if (content === base.content) return null;
+		const patch: ContinuationPatch = { ...output, content,
+			thinking: output.thinking ? base.thinking ? base.thinking + '\n\n' + output.thinking : output.thinking : base.thinking,
+			tokensCompletion: (base.tokensCompletion ?? 0) + (output.tokensCompletion ?? 0),
+			generationMs: output.generationMs === null ? base.generationMs : (base.generationMs ?? 0) + output.generationMs,
+			reasoningMs: base.reasoningMs === null && output.reasoningMs === null ? null : (base.reasoningMs ?? 0) + (output.reasoningMs ?? 0) };
+		const spentSteeringIds = this.persistMessageContinuation(expected.messageId, patch, expected, expected.spendSteeringIds);
+		return { messageId: expected.messageId, spentSteeringIds };
+	}
+
 	/** Extend an assistant turn with a generated continuation: the full joined content plus
 	 *  the run's accumulated stats. Deliberately leaves edited_at alone: a continuation is
 	 *  more generation, not a user edit, so the turn never gets flagged as edited. The
@@ -1815,17 +2131,26 @@ class ServerDatabase {
 	 *  accumulates both. */
 	applyMessageContinuation(
 		messageId: string,
-		patch: {
-			content: string;
-			thinking: string | null;
-			tokensPrompt: number | null;
-			tokensCompletion: number | null;
-			finishReason: string | null;
-			generationMs: number | null;
-			reasoningMs: number | null;
-		}
+		patch: ContinuationPatch,
+		expected?: ContinuationContext
 	): void {
-		this.inTransaction(() => {
+		this.persistMessageContinuation(messageId, patch, expected);
+	}
+
+	private persistMessageContinuation(messageId: string, patch: ContinuationPatch, expected?: ContinuationContext, spendSteeringIds?: string[]): string[] {
+		const outcome = this.inTransaction<{ chatId: string; reason: string; id: string } | { spentSteeringIds: string[] }>(() => {
+			const row = this.select<Record<string, any>[]>('SELECT * FROM messages WHERE id = ?', [messageId])[0];
+			if (row?.selected_variant_id || expected) {
+				const chatId = row?.chat_id ?? expected!.chatId;
+				try {
+					if (!expected || expected.messageId !== messageId) throw new Error('Reload to use the continuation context protocol.');
+					this.validateMessageContinuation(expected);
+				} catch (error) {
+					if (!this.getChat(chatId)) throw new Error('The conversation no longer exists.');
+					const reason = error instanceof Error ? error.message : String(error);
+					return { chatId, reason, id: this.conversations.recover(chatId, reason, { messageId, patch, expected }) };
+				}
+			}
 			const rev = this.revForMessageWrite(messageId);
 			this.execute(
 				'UPDATE messages SET content = ?, thinking = ?, tokens_prompt = ?, tokens_completion = ?, finish_reason = ?, generation_ms = ?, reasoning_ms = ?, rev = ? WHERE id = ?',
@@ -1843,7 +2168,11 @@ class ServerDatabase {
 			);
 			const owner = this.select<{ chat_id: string }[]>('SELECT chat_id FROM messages WHERE id = ?', [messageId])[0];
 			if (owner) this.pruneOldReasoning(owner.chat_id);
+			if (spendSteeringIds !== undefined && owner) this.touchChatActivity(owner.chat_id);
+			return { spentSteeringIds: this.consumeSteeringNotes(spendSteeringIds ?? []) };
 		});
+		if ('id' in outcome) throw new ConversationRecoveryError(outcome.chatId, outcome.id, outcome.reason);
+		return outcome.spentSteeringIds;
 	}
 
 	/** Re-attribute a message to a persona (or clear it with null). Independent of
@@ -1970,6 +2299,7 @@ class ServerDatabase {
 			// The splice re-parents the children, so the one row that vanishes from the tree is
 			// this one and the parent is where anything pointing at it lands.
 			this.repairChatPointers(message.chatId, new Set([messageId]), message.parentId);
+			this.conversations.pruneArchives();
 		});
 		tx();
 		this.dropOrphanedChatImages(paths);
@@ -1993,6 +2323,7 @@ class ServerDatabase {
 				[messageId]
 			);
 			this.repairChatPointers(message.chatId, new Set(doomed), message.parentId);
+			this.conversations.pruneArchives();
 		});
 		tx();
 		this.dropOrphanedChatImages(paths);
@@ -2017,6 +2348,7 @@ class ServerDatabase {
 			);
 			// Nothing below survives, so the turn itself is where a pointer lands.
 			this.repairChatPointers(message.chatId, new Set(doomed), messageId);
+			this.conversations.pruneArchives();
 		});
 		tx();
 		this.dropOrphanedChatImages(paths);
@@ -2059,7 +2391,9 @@ class ServerDatabase {
 			const after = parseReasoningRetention(value);
 			this.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
 			if (after.autoClearReasoning && JSON.stringify(before) !== JSON.stringify(after)) {
-				const chats = this.select<{ chat_id: string }[]>('SELECT DISTINCT chat_id FROM messages WHERE thinking IS NOT NULL');
+				const chats = this.select<{ chat_id: string }[]>(`SELECT DISTINCT chat_id FROM messages WHERE thinking IS NOT NULL
+					UNION SELECT m.chat_id FROM messages m JOIN message_variants v ON v.message_id = m.id
+					WHERE json_extract(v.payload_json, '$.thinking') IS NOT NULL`);
 				for (const chat of chats) this.pruneOldReasoning(chat.chat_id, after);
 			}
 		});
@@ -2069,6 +2403,20 @@ class ServerDatabase {
 	 *  Only the text is discarded: timing/usage and story edits remain historical facts. */
 	private pruneOldReasoning(chatId: string, policy = parseReasoningRetention(this.getSetting('generalSettings'))): void {
 		if (!policy.autoClearReasoning) return;
+		if (this.conversations.modern(chatId)) {
+			this.inTransaction(() => {
+				const turns = this.select<{ id: string }[]>(`SELECT DISTINCT m.id FROM messages m JOIN message_variants v ON v.message_id = m.id
+					WHERE m.chat_id = ? AND m.position <= (SELECT MAX(position) FROM messages WHERE chat_id = ?) - ?
+					AND json_extract(v.payload_json, '$.thinking') IS NOT NULL`, [chatId, chatId, policy.reasoningDepth]);
+				if (!turns.length) return;
+				const rev = this.bumpMessagesRev(chatId);
+				for (const turn of turns) {
+					this.execute("UPDATE message_variants SET payload_json = json_set(payload_json, '$.thinking', NULL) WHERE message_id = ?", [turn.id]);
+					this.execute('UPDATE messages SET thinking = NULL, rev = ? WHERE id = ?', [rev, turn.id]);
+				}
+			});
+			return;
+		}
 		this.inTransaction(() => {
 			const changed = this.execute(`WITH RECURSIVE positions(id, depth) AS (
 				SELECT id, 0 FROM messages WHERE chat_id = ? AND parent_id IS NULL
@@ -2091,28 +2439,36 @@ class ServerDatabase {
 
 	// ===== CHAT DRAFTS =====
 
-	getChatDraft(chatId: string): unknown {
-		const rows = this.select<{ chat_id: string; content: string; updated_at: number }[]>(
+	getChatDraft(chatId: string): ChatDraft | null {
+		const rows = this.select<{ chat_id: string; content: string; updated_at: number; revision: string }[]>(
 			'SELECT * FROM chat_drafts WHERE chat_id = ?',
 			[chatId]
 		);
 		if (!rows[0]) return null;
-		return { chatId: rows[0].chat_id, content: rows[0].content, updatedAt: rows[0].updated_at };
+		return { chatId: rows[0].chat_id, content: rows[0].content, updatedAt: rows[0].updated_at, revision: rows[0].revision };
 	}
 
-	upsertChatDraft(chatId: string, content: string): void {
+	upsertChatDraft(chatId: string, content: string): ChatDraft {
+		const revision = randomUUID(), updatedAt = Date.now();
 		this.execute(
-			`INSERT INTO chat_drafts (chat_id, content, updated_at)
-			 VALUES (?, ?, ?)
+			`INSERT INTO chat_drafts (chat_id, content, updated_at, revision)
+			 VALUES (?, ?, ?, ?)
 			 ON CONFLICT(chat_id) DO UPDATE SET
 			 content = excluded.content,
-			 updated_at = excluded.updated_at`,
-			[chatId, content, Date.now()]
+			 updated_at = excluded.updated_at,
+			 revision = excluded.revision`,
+			[chatId, content, updatedAt, revision]
 		);
+		return { chatId, content, updatedAt, revision };
 	}
 
-	deleteChatDraft(chatId: string): void {
-		this.execute('DELETE FROM chat_drafts WHERE chat_id = ?', [chatId]);
+	/** Null means the caller knew no draft, never permission to erase an unknown one. */
+	deleteChatDraft(chatId: string, expectedRevision: string | null): ChatDraft | null {
+		if (expectedRevision !== null && (typeof expectedRevision !== 'string' || !expectedRevision)) throw new Error('Reload before clearing this draft.');
+		return this.inTransaction(() => {
+			this.execute('DELETE FROM chat_drafts WHERE chat_id = ? AND revision = ?', [chatId, expectedRevision]);
+			return this.getChatDraft(chatId);
+		});
 	}
 
 	// ===== INPUT HISTORY =====
@@ -2339,6 +2695,14 @@ class ServerDatabase {
 		const touched: string[] = [];
 		for (const chat of chats) {
 			const claimed = JSON.parse(chat.seeded_greetings) as string[];
+			if (this.conversations.modern(chat.id)) {
+				if (this.conversations.refreshGreetings(chat.id, claimed, after)) {
+					if (!chat.row_count && after.length) this.seedConversationGreetings(chat.id, after);
+					else this.setChatSeededGreetings(chat.id, after);
+					touched.push(chat.id);
+				}
+				continue;
+			}
 			if (chat.row_count !== claimed.length) continue;
 			const rows = this.select<Record<string, unknown>[]>(
 				'SELECT * FROM messages WHERE chat_id = ? ORDER BY sibling_index',
@@ -2852,10 +3216,11 @@ class ServerDatabase {
 			const path = scenePath(all, chat.activeLeafId);
 			const now = Date.now();
 			const scene: MemoryScene = { id: input.id ?? randomUUID(), chatId: input.chatId, title: input.title.trim(), content: input.content.trim(),
-				source: input.source.map((s) => ({ id: s.id, signature: s.signature })), createdAt: previous?.createdAt ?? now,
+				source: input.source.map((s) => ({ id: s.id, signature: s.signature, ...(s.variantId ? { variantId: s.variantId } : {}) })), createdAt: previous?.createdAt ?? now,
 				updatedAt: now, revision: (previous?.revision ?? 0) + 1, reviewReason: null, level: input.level ?? 'chapter',
 				children: (input.children ?? []).map(c => ({ id: c.id, revision: c.revision })) };
 			const candidate = resolveScenes([...scenes.filter(s => s.id !== scene.id), scene], path, all).find(r => r.scene.id === scene.id)!;
+			if (this.conversations.modern(input.chatId) && scene.source.some(source => !source.variantId)) throw new Error('Memory sources must identify their response versions.');
 			if (candidate.status !== 'active' && candidate.status !== 'covered') throw new Error(`The selected memory changed: ${candidate.reason} Select the sources again.`);
 			this.execute(`INSERT INTO memory_scenes (id, chat_id, title, content, source_json, created_at, updated_at, revision, review_reason, level, children_json)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
@@ -2913,7 +3278,7 @@ class ServerDatabase {
 			if (existing) {
 				if (existing.label === input.label.trim() && existing.messages.length === input.messages.length && existing.messages.every((m,i) => {
 					const source = input.messages[i];
-					return m.id === source.id && m.content === source.content && m.role === source.role && m.speaker === source.speaker;
+					return m.id === source.id && m.variantId === source.variantId && m.content === source.content && m.role === source.role && m.speaker === source.speaker;
 				}) && JSON.stringify(existing.versions[0].feed) === JSON.stringify(feed)) return existing;
 				throw new Error('This thread already exists. Reload Threads.');
 			}
@@ -2926,13 +3291,14 @@ class ServerDatabase {
 			if (!branchLeafId || !all.some(m => m.id === branchLeafId)) throw new Error('The selected branch changed while generating. Select the scene again.');
 			const path = scenePath(all, branchLeafId);
 			const wanted = new Set(ids), selected = path.filter(m => wanted.has(m.id));
-			if (selected.length !== ids.length || selected.some((m, i) => m.id !== ids[i] || m.content !== input.messages[i].content || m.role !== input.messages[i].role)) {
+			if (selected.length !== ids.length || selected.some((m, i) => m.id !== ids[i] || m.content !== input.messages[i].content || m.role !== input.messages[i].role ||
+				(m.selectedVariantId && input.messages[i].variantId !== m.selectedVariantId))) {
 				throw new Error('Selected messages changed while generating. Select the scene again.');
 			}
 			if (threadsSelectionOverlaps(data.rounds, input.messages, path, all)) throw new Error('Some messages were already used by another thread on this branch. Select a scene that includes this fork’s own messages.');
 			const now = Date.now(), versionId = randomUUID();
 			return this.writeThreadsRound({ id: input.id, chatId: input.chatId, label: input.label.trim(), createdAt: now,
-				revision: 1, messages: input.messages.map(m => ({ id: m.id, role: m.role, content: m.content, speaker: m.speaker, index: path.findIndex(p => p.id === m.id) })),
+				revision: 1, messages: input.messages.map(m => ({ id: m.id, ...(m.variantId ? { variantId: m.variantId } : {}), role: m.role, content: m.content, speaker: m.speaker, index: path.findIndex(p => p.id === m.id) })),
 				versions: [{ id: versionId, createdAt: now, feed }], activeVersionId: versionId });
 		});
 	}
@@ -3038,6 +3404,13 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	// the open chat anywhere, so its memory loads on first open like any other chat's.
 	duplicateChat: 'chats',
 	branchChat: 'chats',
+	appendConversationTurn: 'messages',
+	selectMessageVariant: 'messages',
+	setMessageVariantBookmarked: 'messages',
+	updateMessageVariantContent: 'messages',
+	deleteMessageVariant: 'messages',
+	seedConversationGreetings: 'messages',
+	discardRecoveredGeneration: 'messages',
 	insertMessage: 'messages',
 	updateMessageContent: 'messages',
 	setMessageExcludedFromPrompt: 'messages',
@@ -3086,6 +3459,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 
 // Every method the bridge is allowed to dispatch (reads + mutations).
 const READ_METHODS = [
+	'getConversationPlacement', 'getRecoveredGenerations', 'validateMessageContinuation',
 	'getAllChats', 'getChat', 'getMessagesByChat', 'getMessagesDelta', 'getMessageCounts', 'getLastPersonaByChat',
 	'getLastUserMessageTimes',
 	'getChatListStats', 'getChatContentGroups', 'searchChatMessages', 'getChatMemoryFootprint',
@@ -3101,6 +3475,13 @@ export const ALLOWED_DB_METHODS = new Set([...READ_METHODS, ...Object.keys(MUTAT
 export function callDbMethod(method: string, args: unknown[]): unknown {
 	if (!ALLOWED_DB_METHODS.has(method)) {
 		throw new Error(`Unknown db method: ${method}`);
+	}
+	if (method === 'insertChat' && args[0] && typeof args[0] === 'object') {
+		args = [{ ...args[0], conversationVersion: 2 }, ...args.slice(1)];
+	}
+	if (method === 'insertMessage' && args[0] && typeof args[0] === 'object') {
+		const chat = serverDb.getChat((args[0] as { chatId: string }).chatId) as { conversationVersion?: number } | null;
+		if (chat?.conversationVersion === 2) throw new Error('Use appendConversationTurn with its captured context.');
 	}
 	const fn = (serverDb as unknown as Record<string, (...a: unknown[]) => unknown>)[method];
 	return fn.apply(serverDb, args);

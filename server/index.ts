@@ -29,9 +29,11 @@ import {
 } from './access';
 import * as security from './security';
 import { installInfo, latestRelease } from './about';
-import { LATEST_SCHEMA_VERSION, MUTATION_SCOPES, callDbMethod, schemaVersionOnDisk, serverDb } from './db';
+import { LATEST_SCHEMA_VERSION, MUTATION_SCOPES, callDbMethod, schemaVersionOnDisk, hasLegacyConversationsOnDisk, serverDb } from './db';
 import type { SyncScope } from '../shared/sync';
-import { isGenerationCommit, type GenerationCommit } from '../shared/generation';
+import { isGenerationCommit, isContinuationCommit, type GenerationCommit, type ContinuationCommit, type ContinuationBase } from '../shared/generation';
+import { CONVERSATION_PROTOCOL } from '../shared/conversation';
+import { ConversationRecoveryError } from './conversation-storage';
 import { runBootSweeps } from './boot-sweeps';
 import { backupService } from './backup/service';
 import { JOB_ENV, runJobChild } from './backup/job';
@@ -818,14 +820,23 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 	}
 
 	if (path === '/api/rpc/db' && req.method === 'POST') {
-		const { method, args, clientId } = (await req.json()) as {
+		const { method, args, clientId, conversationProtocol } = (await req.json()) as {
 			method: string;
 			args: unknown[];
 			clientId?: string;
+			conversationProtocol?: number;
 		};
+		if (MUTATION_SCOPES[method] && conversationProtocol !== CONVERSATION_PROTOCOL) {
+			return json({ error: 'This client uses an older conversation format. Reload before making changes.' }, 409);
+		}
 		const retentionChange = method === 'setSetting' && args?.[0] === 'generalSettings';
 		const previousRetention = retentionChange ? parseReasoningRetention(serverDb.getSetting('generalSettings')) : null;
-		const result = callDbMethod(method, args ?? []);
+		let result: unknown;
+		try { result = callDbMethod(method, args ?? []); }
+		catch (error) {
+			if (error instanceof ConversationRecoveryError) broadcastSync('messages', null);
+			throw error;
+		}
 		const scope = MUTATION_SCOPES[method];
 		if (scope) broadcastSync(scope, clientId ?? null);
 		if (retentionChange) {
@@ -1042,14 +1053,8 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 // ===== WebSocket message handling (sync + LLM streaming) =====
 
 /**
- * A reply and an opening scene are written HERE, because the page that asked for them may
- * never come back: a phone whose browser is discarded loses the request id with the tab, and
- * the reply it paid for would sit unclaimed until its window ran out. Every other call keeps
- * its result client-side, and the difference is what the loss costs. Chat memory refires on
- * the next turn, a spellcheck is a button press, and a continue extends
- * a turn that is already safe on disk and re-continues with one click. None of those is a
- * story the reader cannot get back, and giving each of them a commit path would be machinery
- * that only ever runs where nothing was at stake.
+ * Replies, opening scenes and continuations are persisted by the server. Their generation
+ * can outlive the page and its request id. Sidecar engine calls keep their own result paths.
  *
  * The placement shape itself is in shared/generation.ts, since both ends speak it.
  *
@@ -1077,6 +1082,7 @@ function commitGeneration(
 
 	const landed = serverDb.commitGeneratedTurn({
 		chatId: commit.chatId,
+		placement: commit.placement,
 		parentId: commit.parentId,
 		expectedLeafId: commit.expectedLeafId,
 		claimsRoot: commit.claimsRoot,
@@ -1122,11 +1128,13 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 	deliverTokens?: boolean;
 	/** Debug-panel label for what kind of query this is ('chat', 'memory', …). */
 	source?: string;
+	conversationProtocol?: number;
 	/** Where this generation's reply belongs in the story, when it belongs in one at all.
 	 *  Present for the two paths that CREATE a turn (a reply, an opening scene) and absent
 	 *  for every other call, which is what decides who writes the answer down. See
 	 *  `commitGeneration`. */
 	commit?: GenerationCommit;
+	continuation?: ContinuationCommit;
 }): Promise<void> {
 	if (!isProvider(msg.provider)) {
 		ws.send(JSON.stringify({ t: 'llm-error', id: msg.id, message: `Unknown provider: ${msg.provider}` }));
@@ -1138,11 +1146,38 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 	}
 
 	if (typeof msg.id !== 'string' || !msg.id) return;
+	if (msg.conversationProtocol !== CONVERSATION_PROTOCOL) {
+		ws.send(JSON.stringify({ t: 'llm-error', id: msg.id, message: 'Reload to use the current conversation protocol.' }));
+		return;
+	}
+	let continuationBase: ContinuationBase | null = null;
+	if (msg.source === 'continue' || msg.continuation !== undefined) {
+		if (!isContinuationCommit(msg.continuation) || msg.commit) {
+			ws.send(JSON.stringify({ t: 'llm-error', id: msg.id, message: 'Reload to use the continuation context protocol.' }));
+			return;
+		}
+		try { continuationBase = serverDb.captureMessageContinuation(msg.continuation); }
+		catch (error) {
+			ws.send(JSON.stringify({ t: 'llm-error', id: msg.id, message: error instanceof Error ? error.message : String(error) }));
+			return;
+		}
+	}
 	// A placement that does not typecheck would land a turn somewhere nobody asked for, so it
 	// is refused before a token is paid for rather than absorbed at commit time.
 	if (msg.commit !== undefined && !isGenerationCommit(msg.commit)) {
 		ws.send(JSON.stringify({ t: 'llm-error', id: msg.id, message: 'Malformed commit placement on the request.' }));
 		return;
+	}
+	if (msg.commit && !msg.commit.placement && (serverDb.getChat(msg.commit.chatId) as { conversationVersion?: number } | null)?.conversationVersion === 2) {
+		ws.send(JSON.stringify({ t: 'llm-error', id: msg.id, message: 'Reload to use the turn/variant generation protocol.' }));
+		return;
+	}
+	if (msg.commit?.placement) {
+		try { serverDb.validateConversationGeneration(msg.commit.chatId, msg.commit.placement); }
+		catch (error) {
+			ws.send(JSON.stringify({ t: 'llm-error', id: msg.id, message: error instanceof Error ? error.message : String(error) }));
+			return;
+		}
 	}
 	// A reused id would orphan the first controller (uncancellable, unclaimable) and let the
 	// first generation's ending overwrite the second's. The check is global because the map
@@ -1157,9 +1192,10 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 	// would commit, and the chat would hold two replies to one message. The composer's own
 	// lock cannot see this: it belongs to a page that no longer exists. Engine calls stay
 	// unlocked, since memory folding a chat while a reply is written into it is ordinary.
-	if (msg.commit) {
+	const committingChatId = msg.commit?.chatId ?? msg.continuation?.chatId ?? null;
+	if (committingChatId) {
 		for (const live of generations.values()) {
-			if (live.commitChatId === msg.commit.chatId && !live.settled) {
+			if (live.commitChatId === committingChatId && !live.settled) {
 				ws.send(
 					JSON.stringify({
 						t: 'llm-error',
@@ -1180,7 +1216,7 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 		settled: null,
 		dropTimer: null,
 		source: msg.source ?? 'completion',
-		commitChatId: msg.commit?.chatId ?? null,
+		commitChatId: committingChatId,
 		startedAt: Date.now()
 	};
 	generations.set(msg.id, gen);
@@ -1291,12 +1327,23 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 							? null
 							: Math.round(thinkingLastAt - thinkingFirstAt)
 				})
-			: null;
+			: msg.continuation && continuationBase
+				? serverDb.commitMessageContinuation(msg.continuation, continuationBase, {
+					content: result.content, thinking: result.thinking ?? null,
+					tokensPrompt: result.usage.promptTokens, tokensCompletion: result.usage.completionTokens,
+					finishReason: result.finishReason, generationMs: Math.round(performance.now() - startedAt),
+					reasoningMs: thinkingFirstAt === null || thinkingLastAt === null ? null : Math.round(thinkingLastAt - thinkingFirstAt)
+				}) : null;
+		if (msg.continuation && landed) {
+			broadcastSync('messages', null);
+			if (landed.spentSteeringIds.length) broadcastSync('steering', null);
+		}
 		const committedMessageId = landed?.messageId ?? null;
 		const spentSteeringIds = landed?.spentSteeringIds ?? [];
 		emitGeneration(gen, { t: 'llm-done', id: msg.id, result, committedMessageId, spentSteeringIds });
 		settleGeneration(msg.id, gen, { result, committedMessageId, spentSteeringIds });
 	} catch (e) {
+		if (e instanceof ConversationRecoveryError) broadcastSync('messages', null);
 		const message = e instanceof Error ? e.message : String(e);
 		emitGeneration(gen, { t: 'llm-error', id: msg.id, message });
 		settleGeneration(msg.id, gen, { error: message });
@@ -1516,7 +1563,7 @@ backupService.startSchedule();
  * screen rather than left to be guessed, so a full disk is an inconvenience and not a wall.
  */
 async function snapshotBeforeUpgrade(onDisk: number): Promise<void> {
-	if (onDisk === 0 || onDisk >= LATEST_SCHEMA_VERSION) return;
+	if (onDisk === 0 || onDisk >= LATEST_SCHEMA_VERSION && !hasLegacyConversationsOnDisk()) return;
 	if (process.env.CHUNGUS_SKIP_UPGRADE_BACKUP === '1') {
 		console.log('  CHUNGUS_SKIP_UPGRADE_BACKUP is set: upgrading the database without a backup.');
 		return;

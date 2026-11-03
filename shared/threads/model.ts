@@ -36,16 +36,20 @@ export function normalizeThreadsConfig(raw: Partial<ThreadsConfig> | null): Thre
 }
 
 /** A branch inherits only whole scenes on its own path; partial scenes never consume turns. */
-export function threadsOnPath(rounds: ThreadsRound[], path: { id: string }[]): ThreadsRound[] {
-	const ids = new Set(path.map(m => m.id));
-	return rounds.filter(r => r.messages.length > 0 && r.messages.every(m => ids.has(m.id)));
+export function threadsOnPath(rounds: ThreadsRound[], path: { id: string; selectedVariantId?: string; content?: string; role?: string }[]): ThreadsRound[] {
+	const ids = new Map(path.map(m => [m.id, m]));
+	return rounds.filter(r => r.messages.length > 0 && r.messages.every(m => ids.has(m.id) &&
+		(!m.variantId || m.variantId === ids.get(m.id)!.selectedVariantId &&
+			(ids.get(m.id)!.content === undefined || ids.get(m.id)!.content === m.content) &&
+			(ids.get(m.id)!.role === undefined || ids.get(m.id)!.role === m.role))));
 }
 
 /** Overlap is safe only when the two complete scenes cannot coexist on any branch. */
-export function threadsSelectionOverlaps(rounds: ThreadsRound[], selected: { id: string }[], path: { id: string }[], all: { id: string; parentId: string | null }[]): boolean {
+export function threadsSelectionOverlaps(rounds: ThreadsRound[], selected: { id: string }[], path: { id: string; selectedVariantId?: string }[], all: { id: string; parentId: string | null }[]): boolean {
 	const selectedIds = new Set(selected.map(m => m.id)), pathIds = new Set(path.map(m => m.id));
 	const byId = new Map(all.map(m => [m.id, m]));
 	return rounds.some(round => {
+		if (round.messages.some(message => message.variantId && path.some(turn => turn.id === message.id && turn.selectedVariantId !== message.variantId))) return false;
 		if (!round.messages.some(m => selectedIds.has(m.id))) return false;
 		if (round.messages.every(m => pathIds.has(m.id))) return true;
 		const oldPath = new Set<string>();

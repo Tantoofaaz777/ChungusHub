@@ -5,10 +5,11 @@ export interface SceneMessage {
 	role: 'user' | 'assistant' | 'system';
 	content: string;
 	excludedFromPrompt?: boolean;
+	selectedVariantId?: string;
 	attachments?: { kind: string; path: string }[] | null;
 }
 
-export interface SceneSource { id: string; signature: string }
+export interface SceneSource { id: string; signature: string; variantId?: string }
 export const MEMORY_LEVELS = ['chapter', 'arc', 'volume'] as const;
 export type MemoryLevel = typeof MEMORY_LEVELS[number];
 export type CompactionLevel = Exclude<MemoryLevel, 'chapter'>;
@@ -38,7 +39,7 @@ export interface SaveMemoryScene {
 	level?: MemoryLevel;
 	children?: MemoryChild[];
 }
-export type SceneStatus = 'active' | 'covered' | 'review' | 'other-branch';
+export type SceneStatus = 'active' | 'covered' | 'review' | 'other-branch' | 'other-version';
 export interface ResolvedScene { scene: MemoryScene; status: SceneStatus; reason: string; start: number; end: number; coveredBy?: string }
 
 /** Present titles generated before chapters were named, preserving custom titles
@@ -59,7 +60,8 @@ export function sceneSignature(message: SceneMessage): string {
 	return `${value.length}:${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}`;
 }
 export const captureScene = (messages: SceneMessage[]): SceneSource[] =>
-	messages.map((message) => ({ id: message.id, signature: sceneSignature(message) }));
+	messages.map((message) => ({ id: message.id, signature: sceneSignature(message),
+		...(message.selectedVariantId ? { variantId: message.selectedVariantId } : {}) }));
 
 export function scenePath<T extends SceneMessage>(messages: T[], leafId: string | null): T[] {
 	const byId = new Map(messages.map((message) => [message.id, message]));
@@ -86,6 +88,7 @@ export function resolveScenes(scenes: MemoryScene[], path: SceneMessage[], all: 
 		for (const source of scene.source) {
 			const message = byId.get(source.id);
 			if (!message) return { ...result, status: 'review', reason: 'A source message was deleted.' };
+			if (source.variantId && source.variantId !== message.selectedVariantId) return { ...result, status: 'other-version', reason: 'This chapter belongs to another version of a response.' };
 			if (!signatures.has(message.id)) signatures.set(message.id, sceneSignature(message));
 			if (signatures.get(message.id) !== source.signature) return { ...result, status: 'review', reason: 'Source text, images or visibility changed.' };
 		}
@@ -117,7 +120,7 @@ export function resolveScenes(scenes: MemoryScene[], path: SceneMessage[], all: 
 					}
 					sources.push(...original.scene.source);
 				}
-				if (!reason && (sources.length !== item.scene.source.length || sources.some((s, i) => s.id !== item.scene.source[i].id || s.signature !== item.scene.source[i].signature))) {
+				if (!reason && (sources.length !== item.scene.source.length || sources.some((s, i) => s.id !== item.scene.source[i].id || s.variantId !== item.scene.source[i].variantId || s.signature !== item.scene.source[i].signature))) {
 					reason = 'The selected source memories no longer match this range. Select them again.';
 				}
 			}

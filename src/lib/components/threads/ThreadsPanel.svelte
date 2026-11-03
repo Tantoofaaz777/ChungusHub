@@ -170,7 +170,7 @@
 						{@const versionIndex = round.versions.findIndex(v => v.id === round.activeVersionId)}
 						{@const copied = copiedFeed === `${round.id}/${round.activeVersionId}`}
 						<article class="feed-card" use:readAloudHighlight={{ key: `threads:${store.chatId}:${round.id}:${round.activeVersionId}`, version: JSON.stringify(feed), text: () => serializeFeedAsPlainText(feed) }}>
-							<div class="round-info"><span>{round.label || `Thread ${store.rounds.indexOf(round) + 1}`} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its full scene is not on the current branch.">Outside this branch</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
+							<div class="round-info"><span>{round.label || `Thread ${store.rounds.indexOf(round) + 1}`} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its source versions do not match the selected conversation.">Outside current context</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
 							<div class="feed-actions">
 								<div class="actions">
 									<button type="button" class="icon-btn" disabled={copying} aria-busy={copying} aria-label="Copy thread" title={copied ? 'Copied!' : 'Copy thread'} onclick={() => copy(round)}><Icon name={copied ? 'check' : 'copy'} class="w-4 h-4" /></button>

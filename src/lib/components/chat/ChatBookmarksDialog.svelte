@@ -14,6 +14,8 @@
 	import { displaySelfRefs } from '#lib/macros.ts';
 	import { stripMarkdown } from '#lib/utils/markdown.ts';
 	import { chatBookmarks } from '#lib/utils/chat-bookmarks.ts';
+	import { responseVersionsStore } from '#lib/stores/responseVersions.svelte.ts';
+	type Bookmark = ReturnType<typeof chatBookmarks<Message>>[number];
 
 	let { chatId, open, onClose }: { chatId: string; open: boolean; onClose: () => void } = $props();
 	const chatState = $derived(chatStore.currentChatState?.chat.id === chatId ? chatStore.currentChatState : null);
@@ -35,45 +37,46 @@
 		return stripMarkdown(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 280)
 			|| (message.attachments?.length ? 'Image attachment' : 'Empty message');
 	}
-	async function jump(message: Message, onPath: boolean) {
+	async function jump(bookmark: Bookmark) {
 		if (navigating || chatStore.activeChatId !== chatId) return;
-		if (!onPath && messageStore.warnIfBusy()) return;
 		navigating = true;
 		try {
-			if (!onPath) await messageStore.navigateToBranch(message.id);
-			if (chatStore.activeChatId !== chatId) return;
-			if (!chatStore.currentChatState?.activePath.some(turn => turn.id === message.id)) {
-				toastStore.info('This message is no longer available.'); return;
-			}
 			chatSearch.close();
 			onClose();
-			// Let the dialog release focus before the transcript loads and focuses its target.
 			await tick();
-			if (chatStore.activeChatId === chatId) chatCursor.goTo(message.id, 'start');
+			if (chatStore.activeChatId !== chatId) return;
+			const turn = chatStore.currentChatState?.activePath.find(turn => turn.id === bookmark.message.id);
+			if (!turn) { toastStore.info('This message is no longer available in this conversation.'); return; }
+			if (bookmark.variantId && turn.selectedVariantId !== bookmark.variantId) responseVersionsStore.show(chatId, turn.id, bookmark.variantId);
+			else chatCursor.goTo(turn.id, 'start');
 		} catch (error) { toastStore.failed('open bookmarked message', error); }
 		finally { navigating = false; }
 	}
-	async function remove(message: Message) {
-		removing = [...removing, message.id];
-		try { await messageStore.setBookmarked(message.id, false); }
-		finally { removing = removing.filter(id => id !== message.id); }
+	async function remove(bookmark: Bookmark) {
+		if (chatStore.activeChatId !== chatId) return;
+		removing = [...removing, bookmark.key];
+		try {
+			if (bookmark.variantId) await messageStore.setVersionBookmarked(bookmark.message.id, bookmark.variantId, false, bookmark.message.revision!);
+			else await messageStore.setBookmarked(bookmark.message.id, false);
+		} catch (error) { toastStore.failed('remove bookmark', error); }
+		finally { removing = removing.filter(id => id !== bookmark.key); }
 	}
 </script>
 
 <Dialog {open} {onClose} title="Bookmarks" titleAlign="left" size="md" placement="center">
 	{#if bookmarks.length}
 		<div class="bookmarks-list">
-			{#each bookmarks as bookmark (bookmark.message.id)}
+			{#each bookmarks as bookmark (bookmark.key)}
 				{@const name = speaker(bookmark.message)}
 				{@const snippet = preview(bookmark.message)}
 				<div class="bookmark-row">
 					<button type="button" class="bookmark-target" disabled={navigating}
-						aria-label="Go to message #{bookmark.ordinal}: {snippet}" onclick={() => jump(bookmark.message, bookmark.onPath)}>
-						<span class="bookmark-meta">#{bookmark.ordinal} · {name}{#if !bookmark.onPath}<span class="bookmark-branch">Other branch</span>{/if}</span>
+						aria-label="{bookmark.onPath ? 'Go to' : 'Inspect'} message #{bookmark.ordinal}: {snippet}" onclick={() => jump(bookmark)}>
+						<span class="bookmark-meta">#{bookmark.ordinal} · {name}{#if bookmark.variantId && (bookmark.message.variants?.length ?? 0) > 1}<span class="bookmark-version">Version {bookmark.versionIndex + 1} · {bookmark.onPath ? 'Selected' : 'Other version'}</span>{/if}</span>
 						<span class="bookmark-preview">{snippet}</span>
 					</button>
-					<button type="button" class="bookmark-remove" disabled={navigating || removing.includes(bookmark.message.id)}
-						aria-label="Remove bookmark #{bookmark.ordinal}" title="Remove bookmark" onclick={() => remove(bookmark.message)}>
+					<button type="button" class="bookmark-remove" disabled={navigating || removing.includes(bookmark.key)}
+						aria-label="Remove bookmark #{bookmark.ordinal}, version {bookmark.versionIndex + 1}" title="Remove bookmark" onclick={() => remove(bookmark)}>
 						<Icon name="star" class="w-4 h-4 fill-current" />
 					</button>
 				</div>
@@ -90,7 +93,7 @@
 	.bookmark-row:hover { background:var(--color-bg-tertiary); }
 	.bookmark-target { flex:1; min-width:0; padding:.65rem; display:flex; flex-direction:column; gap:.35rem; text-align:left; cursor:pointer; border-radius:var(--radius-md); }
 	.bookmark-meta { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; font-size:.72rem; color:var(--color-accent); }
-	.bookmark-branch { font-size:.65rem; color:var(--color-text-muted); }
+	.bookmark-version { font-size:.65rem; color:var(--color-text-muted); }
 	.bookmark-preview { font-size:.82rem; line-height:1.5; color:var(--color-text-primary); display:-webkit-box; -webkit-line-clamp:3; line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
 	.bookmark-remove { display:flex; align-items:center; justify-content:center; flex-shrink:0; width:2.5rem; height:2.5rem; border-radius:var(--radius-md); color:var(--color-accent); cursor:pointer; }
 	.bookmark-remove:hover { background:var(--color-bg-tertiary); }

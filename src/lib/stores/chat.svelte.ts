@@ -175,6 +175,7 @@ class ChatStore {
 		const presetId = entry?.defaultPresetId ?? null;
 		const backgroundPath = entry ? characterLibraryStore.dataForVersion(entry, characterVersionId).cardMetadata?.backgroundPath : undefined;
 		const chat: Chat = {
+			conversationVersion: 2,
 			id: crypto.randomUUID(),
 			title: this.generateChatTitle(characterId),
 			createdAt: now,
@@ -224,6 +225,11 @@ class ChatStore {
 		const greetings = [entry.data.traits.firstMessage ?? '', ...(entry.data.alternateGreetings ?? [])]
 			.map((g) => g.trim())
 			.filter((g) => g.length > 0);
+		if (chat.conversationVersion === 2) {
+			const root = await db.seedConversationGreetings(chat.id, greetings);
+			chat.rootMessageId = root; chat.activeLeafId = root;
+			return;
+		}
 		await db.setChatSeededGreetings(chat.id, greetings);
 		if (greetings.length === 0) return;
 
@@ -457,7 +463,10 @@ class ChatStore {
 	/** The mutation returns its canonical delta, so a simple metadata change needs
 	 * one round trip. Never apply it over a newer refresh or a different navigation. */
 	async setMessageExcludedFromPrompt(chatId: string, messageId: string, excluded: boolean): Promise<void> {
-		await this.changeMessageMetadata(chatId, rev => db.setMessageExcludedFromPrompt(messageId, excluded, rev));
+		const turn = this.currentChatState?.chat.id === chatId ? this.currentChatState.allMessages.find(message => message.id === messageId) : null;
+		const expected = turn?.selectedVariantId && turn.revision !== undefined
+			? { chatId, messageId, variantId: turn.selectedVariantId, expectedRevision: turn.revision } : undefined;
+		await this.changeMessageMetadata(chatId, rev => db.setMessageExcludedFromPrompt(messageId, excluded, rev, expected));
 	}
 
 	async setMessageBookmarked(chatId: string, messageId: string, bookmarked: boolean): Promise<void> {
@@ -829,7 +838,7 @@ class ChatStore {
 	}
 
 	/** Copy the selected history into an independent chat and continue there. */
-	async branchChat(chatId: string, messageId: string, content: string): Promise<string> {
+	async branchChat(chatId: string, messageId: string, content: string, variantId?: string): Promise<string> {
 		const source = this.chats.find(c => c.id === chatId);
 		if (!source) throw new Error(`branchChat: no chat with id ${chatId}`);
 		const messages = this.currentChatState?.chat.id === chatId
@@ -837,7 +846,7 @@ class ChatStore {
 			: await db.getMessagesByChat(chatId);
 		const ordinal = findActivePath(messages, messageId).length;
 		if (!ordinal) throw new Error('branchChat: message not found');
-		const newChatId = await db.branchChat({ chatId, messageId, content, title: this.copyTitle(source.title, 'branch', ordinal) });
+		const newChatId = await db.branchChat({ chatId, messageId, content, ...(variantId ? { variantId } : {}), title: this.copyTitle(source.title, 'branch', ordinal) });
 		await this.registerCopiedChat(chatId, newChatId);
 		await this.selectChat(newChatId);
 		if (this.currentChatState?.chat.id === newChatId) {

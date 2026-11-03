@@ -401,8 +401,8 @@
 		const name = `"${deleteTarget.title}"`;
 		if (!deleteStats) return `Delete ${name} and every message in it? This cannot be undone.`;
 		const n = deleteStats.total;
-		const branches = n > deleteStats.path ? ', branches included' : '';
-		return `Delete ${name} and its ${n} message${n === 1 ? '' : 's'}${branches}? This cannot be undone.`;
+		const versions = deleteStats.versions;
+		return `Delete ${name} and its ${n} turn${n === 1 ? '' : 's'}${versions === undefined ? '' : ` (${versions} saved version${versions === 1 ? '' : 's'})`}? This cannot be undone.`;
 	});
 
 	function deleteChat(chatId: string) {
@@ -455,8 +455,11 @@
 	let bulkDeleteStats = $derived(
 		selectedChats.reduce((n, c) => n + (stats[c.id]?.total ?? 0), 0)
 	);
+	let bulkDeleteVersions = $derived(
+		selectedChats.reduce((n, c) => n + (stats[c.id]?.versions ?? stats[c.id]?.total ?? 0), 0)
+	);
 	let bulkDeleteMessage = $derived(
-		`Delete ${selectedCount} chat${selectedCount === 1 ? '' : 's'} and ${bulkDeleteStats} message${bulkDeleteStats === 1 ? '' : 's'} in total? This cannot be undone.`
+		`Delete ${selectedCount} chat${selectedCount === 1 ? '' : 's'} and ${bulkDeleteStats} turn${bulkDeleteStats === 1 ? '' : 's'} (${bulkDeleteVersions} saved version${bulkDeleteVersions === 1 ? '' : 's'}) in total? This cannot be undone.`
 	);
 
 	async function confirmBulkDelete() {
@@ -856,7 +859,7 @@
 	confirmLabel="Delete"
 	variant="danger"
 	destructive
-	holdMs={holdMsForBlast(deleteStats?.total ?? 0)}
+	holdMs={holdMsForBlast(deleteStats?.versions ?? deleteStats?.total ?? 0)}
 	onConfirm={confirmDeleteChat}
 	onCancel={() => (deleteTarget = null)}
 />
@@ -868,7 +871,7 @@
 	confirmLabel="Delete {selectedCount}"
 	variant="danger"
 	destructive
-	holdMs={holdMsForBlast(bulkDeleteStats)}
+	holdMs={holdMsForBlast(bulkDeleteVersions)}
 	onConfirm={confirmBulkDelete}
 	onCancel={() => (bulkDeleteOpen = false)}
 />

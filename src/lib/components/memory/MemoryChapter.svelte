@@ -34,7 +34,7 @@
 		<summary aria-label={`Preview ${level}: ${title}`}>
 			<div class="chapter-heading">
 				<h4>{title}</h4>
-				<span class="chapter-status" class:needs-review={item.status === 'review'}>{item.status === 'active' ? 'In prompt' : item.status === 'review' ? 'Needs review' : item.status === 'covered' ? 'Compacted' : 'Other branch'}</span>
+				<span class="chapter-status" class:needs-review={item.status === 'review'}>{item.status === 'active' ? 'In prompt' : item.status === 'review' ? 'Needs review' : item.status === 'covered' ? 'Compacted' : item.status === 'other-version' ? 'Other response version' : 'Outside this conversation'}</span>
 				<Icon name="chevronDown" class="chapter-chevron w-4 h-4" />
 			</div>
 			<div class="chapter-meta">

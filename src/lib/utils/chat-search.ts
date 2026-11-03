@@ -20,9 +20,34 @@ export const MAX_MATCHES = 2000;
 /** Ceiling on the off-path branch rows listed. Same honesty rule as MAX_MATCHES: the bar
  *  says "N+" rather than pretending the list is complete. */
 export const MAX_BRANCH_HITS = 100;
+export const MAX_VERSION_HITS = 100;
 
 /** Characters of context kept either side of a branch hit's first match. */
 const SNIPPET_PAD = 60;
+
+export interface VersionHit {
+	messageId: string;
+	variantId: string;
+	ordinal: number;
+	versionIndex: number;
+	count: number;
+	snippet: string;
+}
+
+/** Results identify exact versions. Reading a result never selects it as model context. */
+export function findVersionHits(versions: { messageId: string; variantId: string; ordinal: number; versionIndex: number; text: string }[], regex: RegExp, budget: number): VersionHit[] {
+	const hits: VersionHit[] = [];
+	if (budget <= 0) return hits;
+	for (const version of versions) {
+		const found = [...version.text.matchAll(regex)];
+		if (!found.length) continue;
+		const from = Math.max(0, found[0].index - SNIPPET_PAD), to = Math.min(version.text.length, found[0].index + found[0][0].length + SNIPPET_PAD);
+		const { text: _text, ...identity } = version;
+		hits.push({ ...identity, count: found.length, snippet: `${from ? '…' : ''}${version.text.slice(from, to).replace(/\s+/g, ' ').trim()}${to < version.text.length ? '…' : ''}` });
+		if (hits.length >= budget) break;
+	}
+	return hits;
+}
 
 /** Elements that do NOT break a run of text. Everything else (p, li, blockquote, pre, td,
  *  br, …) ends the segment, so a match can never span two blocks: "Ali" and "Veli" in

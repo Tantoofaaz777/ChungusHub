@@ -20,21 +20,18 @@
 
 	let { open, title, footprint, busy, onConfirm, onCancel }: Props = $props();
 
-	// Every stored row, across every branch, which is what the copy carries. The Memory
-	// panel counts only the summaries in play on the branch you are reading, so this number
-	// is usually larger; saying "across every branch" is what keeps the two from reading as
-	// the same figure disagreeing with itself.
+	// Includes summaries attached to inactive response versions.
 	let summary = $derived(
 		footprint.episodes > 0
-			? `${footprint.episodes} scene summar${footprint.episodes === 1 ? 'y' : 'ies'} across every branch`
+			? `${footprint.episodes} saved scene summar${footprint.episodes === 1 ? 'y' : 'ies'}`
 			: ''
 	);
 </script>
 
 <Dialog {open} onClose={onCancel} title="Duplicate chat" size="md">
 	<p class="dup-lead">
-		<strong>{title}</strong> will be copied whole: every message, every branch and swipe, its
-		labels and its canon path. The copy is independent from here on.
+		<strong>{title}</strong> will be copied with every turn and saved response version.
+		The copy is independent from here on.
 		Saved Threads, Fandom Notes and AO3 information are copied with either choice.
 	</p>
 

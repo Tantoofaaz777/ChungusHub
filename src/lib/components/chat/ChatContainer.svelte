@@ -1,5 +1,10 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import MessageList from './MessageList.svelte';
+	import ResponseVersionsDialog from './ResponseVersionsDialog.svelte';
+	import RecoveredResponsesDialog from './RecoveredResponsesDialog.svelte';
+	import { recoveredGenerations } from '#lib/stores/recoveredGenerations.svelte.ts';
+	import { onSync, onReconnect } from '#lib/services/transport.ts';
 	import SceneDraftDialog from '#lib/components/memory/SceneDraftDialog.svelte';
 	import MemoryReminder from '#lib/components/memory/MemoryReminder.svelte';
 	import InputArea from './InputArea.svelte';
@@ -37,6 +42,10 @@
 	let busy = $derived(messageStore.isStreaming);
 	let activePath = $derived(chatState?.activePath ?? []);
 	let allMessages = $derived(chatState?.allMessages ?? []);
+	$effect(() => recoveredGenerations.setChat(chatStore.activeChatId));
+	const stopRecoverySync = onSync(scope => { if (scope === 'messages') void recoveredGenerations.refresh(); });
+	const stopRecoveryReconnect = onReconnect(() => { void recoveredGenerations.refresh(); });
+	onDestroy(() => { stopRecoverySync(); stopRecoveryReconnect(); recoveredGenerations.setChat(null); });
 
 	// Chats are only born from the New chat flow (character + persona picked
 	// through the Library), so this hands off to it rather than creating anything here.
@@ -66,12 +75,12 @@
 		messageStore.regenerateLastResponse('replace');
 	}
 
-	// The same call with the non-destructive action: keep what is there and add a sibling to
+	// The same call with the non-destructive action: keep what is there and add a version to
 	// swipe between. Reached only by `/swipe`, since the transcript's own Retry button already
 	// offers both rows on the turn itself.
 	function handleSwipeLast() {
 		if (!chatState) return;
-		messageStore.regenerateLastResponse('branch');
+		messageStore.regenerateLastResponse('add_variant');
 	}
 
 	// Same shape as the opening-scene call site: the store's guard errors (engine off,
@@ -167,6 +176,9 @@
 				</div>
 
 				<div class="chat-input-pane">
+					{#if recoveredGenerations.entries.length}
+						<div class="recovery-notice" role="status"><span>{recoveredGenerations.entries.length} saved response{recoveredGenerations.entries.length === 1 ? '' : 's'} ready for recovery</span><Button variant="ghost" size="sm" onclick={() => recoveredGenerations.open = true}>Review saved text</Button></div>
+					{/if}
 					<InputArea
 						onSend={handleSendMessage}
 						onCancel={handleCancelGeneration}
@@ -199,8 +211,11 @@
 </div>
 
 <SceneDraftDialog />
+<ResponseVersionsDialog />
+<RecoveredResponsesDialog />
 
 <style>
+	.recovery-notice { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.4rem; margin:.4rem .7rem; padding:.4rem .6rem; font-size:.75rem; color:var(--color-text-secondary); border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-bg-secondary); }
 	.chat-shell {
 		position: relative;
 		height: 100%;

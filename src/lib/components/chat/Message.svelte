@@ -2,7 +2,7 @@
 	import type { Message, EditAction, DeleteAction } from '#lib/types/chat.ts';
 	import MessageActions from './MessageActions.svelte';
 	import MessageEditor from './MessageEditor.svelte';
-	import BranchNavigator from './BranchNavigator.svelte';
+	import SwipeNavigator from './SwipeNavigator.svelte';
 	import OpeningScenePopover from './OpeningScenePopover.svelte';
 	import MessageReasoning from './MessageReasoning.svelte';
 	import MessageAvatar from './MessageAvatar.svelte';
@@ -32,7 +32,9 @@
 	import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
 	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
-	import { canSpliceMessage, subtreeBlastRadius } from '#lib/utils/message-tree.ts';
+	import { canSpliceMessage } from '#lib/utils/message-tree.ts';
+	import { deletionStats } from '#lib/utils/response-versions.ts';
+	import { responseVersionsStore } from '#lib/stores/responseVersions.svelte.ts';
 	import { countTokens } from '#lib/tokenizer/index.ts';
 	import { tokenEstimate } from '#lib/tokenizer/reactive.svelte.ts';
 	import { liveTokenCount } from '#lib/utils/live-token-count.svelte.ts';
@@ -57,11 +59,10 @@
 		 *  rule is measured against; MessageList counts it, including the turn a live stream
 		 *  is about to become. */
 		depth: number;
-		siblingCount: number;
-		siblingIndex: number;
+		versionCount: number;
+		versionIndex: number;
 		isLast: boolean;
 		allMessages: Message[];
-		onNavigateBranch: (messageId: string) => void;
 		/** This message has been folded into chat memory (a "ghost": recalled, not sent verbatim). */
 		archived?: boolean;
 		memorySelected?: boolean;
@@ -77,11 +78,10 @@
 		message,
 		ordinal,
 		depth,
-		siblingCount,
-		siblingIndex,
+		versionCount,
+		versionIndex,
 		isLast,
 		allMessages,
-		onNavigateBranch,
 		archived = false,
 		memorySelected = false,
 		streamTail = null,
@@ -89,15 +89,13 @@
 		streamReplacement = false
 	}: Props = $props();
 
-	/** The set the viewer pages: this turn's own pictures, and nothing wider. A chat is a
-	 *  tree, so "every image in this chat" would have to pick a branch to mean anything. */
+	/** The viewer shows only the selected version's pictures. */
 	let imageAttachments = $derived(streamReplacement ? [] : (message.attachments ?? []).filter((a) => a.kind === 'image').map((a) => a.path));
 
-	// One editor, two intents, chosen by which button opened it: Edit rewrites this turn,
-	// Branch writes the text as a new sibling and leaves this one alone. Nothing is created
-	// until Save, so cancelling a branch costs nothing. Cloning the row up front instead
-	// leaves a verbatim duplicate sibling behind every time you back out.
+	// Edit rewrites the captured version; Branch copies its prefix into an independent chat.
 	let isEditing = $state(false);
+	let editorContent = $state('');
+	let editorSource = $state<{ variantId: string; expectedRevision: number } | null>(null);
 	let bookmarkBusy = $state(false);
 	async function toggleBookmark() {
 		if (bookmarkBusy) return;
@@ -113,17 +111,16 @@
 
 	// Blast radius of the destructive actions on this message, since the confirmations always
 	// state the real numbers. (Lazy deriveds: only computed while a menu/editor shows them.)
-	const deleteBlast = $derived(subtreeBlastRadius(allMessages, message.id));
-	const belowBlast = $derived(subtreeBlastRadius(allMessages, message.id, { includeSelf: false }));
+	const deleteBlast = $derived(deletionStats(allMessages, message.id));
+	const belowBlast = $derived(deletionStats(allMessages, message.id, false));
 	// With nothing below it, "this only" and "with all responses" delete the exact same single
 	// row. Offering both is a lie about a choice that doesn't exist, so the menu collapses to
 	// one delete. It always takes the this_only path: allMessages is a snapshot, and if a reply
-	// landed since it was taken, a splice costs one row where a subtree delete costs the branch.
-	const hasBelow = $derived(belowBlast.messages > 0);
-	// A branch head can't be spliced out from under its replies: see canSpliceMessage. When it
-	// holds anything below, the whole-subtree delete is the only offer the menu can honour.
+	// landed since it was taken, a splice costs one row where a subtree delete costs the remaining conversation.
+	const hasBelow = $derived(belowBlast.turns > 0);
 	const canSplice = $derived(canSpliceMessage(allMessages, message.id));
-	const confirmCount = $derived(confirmingDelete === 'this_only' ? 1 : deleteBlast.messages);
+	const confirmCount = $derived(confirmingDelete === 'this_only' ? 1 : deleteBlast.turns);
+	const confirmVersions = $derived(confirmingDelete === 'this_only' ? message.variants?.length || 1 : deleteBlast.versions);
 
 	// Names and persona pronouns resolve live at display against the active persona + bound character.
 	// Greetings store their macros raw, so changing persona reflows them on screen without
@@ -156,8 +153,7 @@
 		// Ask before closing: a busy store rejects the edit, and closing first would
 		// throw away the draft the user just wrote.
 		if (messageStore.warnIfBusy()) return;
-		isEditing = false;
-		await messageStore.editMessage(message.id, newContent, action);
+		if (await messageStore.editMessage(message.id, newContent, action, editorSource ?? {})) isEditing = false;
 	}
 
 	/** Leaving the editor discards its local draft. */
@@ -170,13 +166,15 @@
 	}
 
 	async function handleDeleteAction(action: DeleteAction) {
-		if (deleteGuard.asks && action === 'with_descendants' && confirmingDelete !== action) {
+		if (deleteGuard.asks && (action === 'with_descendants' || (message.variants?.length ?? 1) > 1) && confirmingDelete !== action) {
 			confirmingDelete = action;
 			return;
 		}
-		await messageStore.deleteMessage(message.id, action);
-		showDeleteMenu = false;
-		confirmingDelete = null;
+		try {
+			await messageStore.deleteMessage(message.id, action);
+			showDeleteMenu = false;
+			confirmingDelete = null;
+		} catch (error) { toastStore.failed('delete the turn', error); }
 	}
 
 	function cancelDelete() {
@@ -189,6 +187,7 @@
 	}
 
 	function handleBranchClick() {
+		captureEditorVersion();
 		editorMode = 'create_branch';
 		isEditing = true;
 	}
@@ -211,17 +210,24 @@
 	});
 
 	function handleEditClick() {
+		captureEditorVersion();
 		editorMode = 'save_only';
 		isEditing = true;
 	}
 
-	async function handleBranchNavigate(direction: 'prev' | 'next') {
+	function captureEditorVersion() {
+		editorContent = message.content;
+		editorSource = message.selectedVariantId && message.revision !== undefined
+			? { variantId: message.selectedVariantId, expectedRevision: message.revision } : null;
+	}
+
+	async function handleSwipeNavigate(direction: 'prev' | 'next') {
 		if (!showSwipes || messageStore.busy) return;
 		try {
-			if (direction === 'next' && canGenerateSwipe && siblingIndex >= siblingCount - 1) {
-				await messageStore.retryMessageResponse(message.id, 'branch');
+			if (direction === 'next' && canGenerateSwipe && versionIndex >= versionCount - 1) {
+				await messageStore.retryMessageResponse(message.id, 'add_variant');
 			} else {
-				await messageStore.navigateToSibling(message.id, direction);
+				await messageStore.navigateSwipe(message.id, direction);
 			}
 		} catch (error) { toastStore.failed('change the response', error); }
 	}
@@ -267,10 +273,10 @@
 				chatCursor.step(1);
 				break;
 			case 'arrowleft':
-				if (showSwipes && siblingIndex > 0) void handleBranchNavigate('prev');
+				if (showSwipes && versionIndex > 0) void handleSwipeNavigate('prev');
 				break;
 			case 'arrowright':
-				if (showSwipes && (siblingIndex < siblingCount - 1 || canGenerateSwipe)) void handleBranchNavigate('next');
+				if (showSwipes && (versionIndex < versionCount - 1 || canGenerateSwipe)) void handleSwipeNavigate('next');
 				break;
 			// Every one of these is this row's own button and never a second path to the act:
 			// Delete opens its menu; regeneration replaces the swipes directly.
@@ -564,7 +570,7 @@
 							{#if isEditing}
 								<div class="message-content message-content-editing">
 									<MessageEditor
-										initialContent={message.content}
+										initialContent={editorContent}
 										role={message.role}
 										mode={editorMode}
 										onSave={handleEdit}
@@ -639,6 +645,7 @@
 									{showContinue}
 									onBranch={handleBranchClick}
 									showBranch
+									onVersions={(message.variants?.length ?? 0) > 1 ? () => responseVersionsStore.show(message.chatId, message.id, message.selectedVariantId) : undefined}
 								/>
 
 								{#if showDeleteMenu}
@@ -666,18 +673,18 @@
 											<div class="p-3 border-b border-border-subtle bg-error/10">
 												<p class="text-sm font-ui font-medium text-error">Are you sure?</p>
 												<p class="text-xs text-text-muted mt-1">
-													This deletes {confirmCount} message{confirmCount === 1 ? '' : 's'}{confirmingDelete === 'with_descendants' && deleteBlast.branches > 1 ? ` across ${deleteBlast.branches} branches` : ''}.
+													This deletes {confirmCount} turn{confirmCount === 1 ? '' : 's'} and {confirmVersions} saved version{confirmVersions === 1 ? '' : 's'}.
 													This cannot be undone.
 												</p>
 
 											</div>
 											<div class="p-1.5 space-y-1.5">
 												<HoldToConfirmButton
-													holdMs={holdMsForBlast(confirmCount)}
+													holdMs={holdMsForBlast(confirmVersions)}
 													onconfirm={() => handleDeleteAction(confirmingDelete!)}
 												>
 													<Icon name="trash" class="w-3.5 h-3.5" />
-													Delete {confirmCount} message{confirmCount === 1 ? '' : 's'}
+													Delete {confirmCount} turn{confirmCount === 1 ? '' : 's'}
 												</HoldToConfirmButton>
 												<button
 													class="w-full px-3 py-2 text-left text-sm font-ui font-medium text-text-secondary hover:bg-bg-tertiary rounded-[var(--radius-lg)] transition-all duration-150"
@@ -688,16 +695,21 @@
 											</div>
 										{:else}
 											<div class="p-3 border-b border-border-subtle bg-bg-secondary">
-												<p class="text-sm font-ui font-medium text-text-primary">Delete message</p>
+												<p class="text-sm font-ui font-medium text-text-primary">Delete turn</p>
 											</div>
 											<div class="p-1.5">
+												{#if (message.variants?.length ?? 0) > 1}
+													<button type="button" class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui" onclick={() => { cancelDelete(); responseVersionsStore.show(message.chatId, message.id, message.selectedVariantId); }}>
+														Manage swipes… <span class="block text-xs text-text-muted">{showSwipes ? 'Inspect versions or delete only one swipe' : 'Inspect saved versions'}</span>
+													</button>
+												{/if}
 												{#if hasBelow}
 													{#if canSplice}
 														<button
 															class="w-full text-left px-3 py-2.5 hover:bg-bg-tertiary rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
 															onclick={() => handleDeleteAction('this_only')}
 														>
-															<span class="font-medium text-text-primary">Delete this message only</span>
+															<span class="font-medium text-text-primary">Delete this turn and its versions</span>
 															<p class="text-text-muted text-xs mt-0.5">Replies below are kept and reattach to the previous turn</p>
 														</button>
 													{/if}
@@ -705,11 +717,9 @@
 														class="w-full text-left px-3 py-2.5 hover:bg-error/5 rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
 														onclick={() => handleDeleteAction('with_descendants')}
 													>
-														<span class="font-medium text-error">Delete with all responses</span>
+														<span class="font-medium text-error">Delete this and later turns</span>
 														<p class="text-text-muted text-xs mt-0.5">
-															{canSplice
-																? 'Remove this and everything below it'
-																: 'This turn starts a branch, so it can only go whole'} · {deleteBlast.messages} message{deleteBlast.messages === 1 ? '' : 's'}
+															{deleteBlast.turns} turns · {deleteBlast.versions} saved versions
 														</p>
 													</button>
 												{:else}
@@ -717,8 +727,8 @@
 														class="w-full text-left px-3 py-2.5 hover:bg-error/5 rounded-[var(--radius-lg)] text-sm font-ui transition-all duration-150"
 														onclick={() => handleDeleteAction('this_only')}
 													>
-														<span class="font-medium text-error">Delete this message</span>
-														<p class="text-text-muted text-xs mt-0.5">Nothing follows this turn · this can't be undone</p>
+														<span class="font-medium text-error">Delete this turn and its versions</span>
+														<p class="text-text-muted text-xs mt-0.5">{message.variants?.length || 1} saved version{(message.variants?.length || 1) === 1 ? '' : 's'} · this can't be undone</p>
 													</button>
 												{/if}
 												<button
@@ -734,7 +744,7 @@
 							</div>
 							{#if showSwipes}
 								<div class="message-pager-slot">
-									<BranchNavigator current={siblingIndex} total={siblingCount} canGenerate={canGenerateSwipe} disabled={messageStore.busy} onNavigate={handleBranchNavigate} />
+									<SwipeNavigator current={versionIndex} total={versionCount} canGenerate={canGenerateSwipe} disabled={messageStore.busy} onNavigate={handleSwipeNavigate} />
 								</div>
 							{/if}
 						</div>
@@ -1002,7 +1012,7 @@
 		margin: 1.05em 0;
 	}
 
-	/* Quiet footnote line: one slim in-flow row under the bubble. The branch pager
+	/* Quiet footnote line: one slim in-flow row under the bubble. The swipe pager
 	   and token count are always-visible faint footnotes; the action icons share
 	   the same line and only fade in on hover. In-flow, so it can never sit on
 	   message text, and at ~1.5rem it costs half the old pill toolbar. */
@@ -1011,7 +1021,7 @@
 		display: flex;
 		/* Anchor for the delete and regenerate menus. It has to be the shell and
 		   not the actions slot: the shell spans the whole message column, while
-		   the slot is a small box that slides along the toolbar as the branch
+		   the slot is a small box that slides along the toolbar as the swipe
 		   pager comes and goes. A menu pinned to the slot's edge therefore hangs
 		   off the screen on a narrow viewport, in whichever direction the slot
 		   happens to be nearest -- which is what this anchor exists to stop. */

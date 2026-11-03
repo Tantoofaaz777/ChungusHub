@@ -6,6 +6,7 @@ import { normalizeBackgroundConfig } from '#lib/types/background.ts';
 import { normalizeReminderProgress } from '#lib/memory/reminders.ts';
 
 export interface Chat {
+	conversationVersion?: number;
 	id: string;
 	title: string;
 	createdAt: number;
@@ -36,12 +37,13 @@ export interface Chat {
 
 /** Everything the chats panel shows about a chat that isn't on the chat row itself,
  *  aggregated server-side so no message text crosses the wire (see
- *  server/db.ts `getChatListStats`). `path` is the branch a reader would actually
- *  read; `total` counts every row in the tree, swipes and dead forks included;
- *  `lastAt` is when that branch was last written to. */
+ *  server/db.ts `getChatListStats`). `path` counts visible turns; `total` counts all
+ *  turns; `versions` counts every saved version in modern chats. Legacy snapshots
+ *  omit `versions` and count their forest rows in `total`. */
 export interface ChatListStats {
 	path: number;
 	total: number;
+	versions?: number;
 	lastAt: number | null;
 }
 
@@ -291,6 +293,10 @@ export interface MessageAttachment {
 }
 
 export interface Message {
+	selectedVariantId?: string;
+	revision?: number;
+	position?: number;
+	variants?: MessageVariant[];
 	/** Prompt-only synthetic scene marker; never persisted as a message. */
 	memorySceneId?: string;
 	id: string;
@@ -418,4 +424,7 @@ export type EditAction = 'save_only' | 'create_branch';
 export type DeleteAction = 'this_only' | 'with_descendants';
 
 /** Action to take when regenerating a response */
-export type RegenerateAction = 'replace' | 'branch';
+export type RegenerateAction = 'replace' | 'add_variant';
+
+export type MessageVariant = Omit<Message, 'id' | 'chatId' | 'parentId' | 'role' | 'siblingIndex' | 'variants' |
+	'selectedVariantId' | 'revision' | 'position'> & { id: string; messageId: string };

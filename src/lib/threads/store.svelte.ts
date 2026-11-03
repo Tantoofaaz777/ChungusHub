@@ -151,7 +151,7 @@ export class ThreadsStore {
 		const persona = toPromptCharacter(personaEntryFor(chatPersonaClaim(chat)));
 		const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
 		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : (!validate && !this.selected.length ? [] : selectThreadsMessages(this.path, this.selected, this.usedIds)).map(m => ({
-			id: m.id, index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,
+			id: m.id, ...(m.selectedVariantId ? { variantId: m.selectedVariantId } : {}), index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,
 			speaker: m.role === 'assistant' ? charName : m.role === 'user' ? userName : 'System'
 		}));
 		const branchLeafId = this.path.at(-1)?.id;

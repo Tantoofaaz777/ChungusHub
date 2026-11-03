@@ -18,7 +18,7 @@
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import { reducedMotion } from '#lib/components/ui/surface-motion.ts';
-	import { groupSiblings } from '#lib/utils/message-tree.ts';
+	import { transcriptChange } from '#lib/utils/response-versions.ts';
 
 	interface Props {
 		messages: Message[];
@@ -57,9 +57,6 @@
 		onContentShift
 	}: Props = $props();
 
-	// Index once per tree update, rather than scanning the whole chat for every visible row.
-	const siblingGroups = $derived(groupSiblings(allMessages));
-
 	// Scene summaries can cover any range; their original messages keep the dim treatment.
 	let archivedIds = $derived(memoryStore.archivedMessageIds);
 	let sceneStarts = $derived(new Map(memoryStore.resolved.filter((r) => r.status === 'active').map((r) => [r.scene.source[0].id, r.scene])));
@@ -86,6 +83,7 @@
 		scrollEl = listElement;
 	});
 	let prevLastMessageId: string | null = null;
+	let prevLastVariantId: string | null = null;
 	let prevChatId: string | null = null;
 	let prevIsStreaming = false;
 
@@ -339,17 +337,18 @@
 	$effect(() => {
 		// The path's own chat, not the store's active id: that id names the chat being opened
 		// a flush before its path arrives, so keyed to it this reads the swap as a chat change
-		// against the PREVIOUS story's rows, and then reads the new story's rows as a branch
+		// against the PREVIOUS story's rows, and then reads the new story's rows as a version
 		// switch, which is the one case that deliberately does not scroll. Opening a chat would
 		// land wherever the last one's scroll offset happened to survive the swap.
 		const chatId = pathChatId;
 		const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
-		const isNewMessage = lastMessageId !== prevLastMessageId;
+		const lastVariantId = messages.at(-1)?.selectedVariantId ?? null;
+		const change = transcriptChange({ id: prevLastMessageId, variantId: prevLastVariantId }, messages);
+		const isNewMessage = change !== 'same';
 		// An appended turn EXTENDS the previous path, so the old leaf is still on it. A
-		// swipe / branch jump / delete replaces the tail instead, so the old leaf is gone.
-		// Only extensions may auto-scroll: snapping on a branch switch teleports the user
-		// to the new branch's bottom and loses the fork they were working at.
-		const isExtension = prevLastMessageId == null || messages.some((m) => m.id === prevLastMessageId);
+		// A swipe changes the selected version; deletion replaces the tail.
+		// Extensions follow the existing pin; replacements preserve the reading position.
+		const isExtension = change === 'append';
 		// Track the stream so pinning follows tokens, not just message inserts.
 		void streamingContent;
 		void streamingThinking;
@@ -366,7 +365,7 @@
 				nearBottom = true;
 				hasUnseen = false;
 			} else if (isNewMessage && !isExtension) {
-				// Branch switch. The pin as it stood BEFORE the swap is part of the reading
+				// Version change or deleted tail. The pin as it stood BEFORE the swap is part of the reading
 				// position, and this effect still sees it: it runs before any scroll event the
 				// swap itself fires. A reader at the bottom is reading the newest turn, which is
 				// exactly the turn a swipe replaces, and the control they pressed sits at that
@@ -377,7 +376,7 @@
 				} else {
 					// Scrolled up: keep the reading position, and re-baseline the pin from real
 					// geometry, because the content under the viewport just changed wholesale, so
-					// the stale nearBottom from the previous branch must not let the next stream
+					// the stale nearBottom from the previous version must not let the next stream
 					// token yank the view down.
 					const dist = listElement.scrollHeight - listElement.scrollTop - listElement.clientHeight;
 					nearBottom = dist <= NEAR_BOTTOM_PX;
@@ -396,12 +395,9 @@
 
 		prevChatId = chatId;
 		prevLastMessageId = lastMessageId;
+		prevLastVariantId = lastVariantId;
 		prevIsStreaming = isStreaming;
 	});
-
-	function handleNavigateBranch(messageId: string) {
-		messageStore.navigateToBranch(messageId);
-	}
 
 	// ===== The message cursor =====
 	// Where the keyboard is in the story (architecture/chat-sessions.md, "The message cursor").
@@ -521,8 +517,8 @@
 			{/if}
 			{#each shown as message, offset (message.id)}
 				{@const index = windowStart + offset}
-				{@const siblings = siblingGroups.get(message.parentId) ?? [message]}
-				{@const siblingIndex = siblings.findIndex(m => m.id === message.id)}
+				{@const versions = message.variants ?? [message]}
+				{@const versionIndex = versions.findIndex(m => m.id === (message.selectedVariantId ?? message.id))}
 				{#if sceneStarts.has(message.id)}
 					<button type="button" class="scene-marker" onclick={() => memoryStore.editScene(sceneStarts.get(message.id)!)}><Icon name="brain" class="w-3 h-3" />{memoryLabel(sceneLevel(sceneStarts.get(message.id)!))} · {chapterTitle(sceneStarts.get(message.id)!.title)}</button>
 				{/if}
@@ -530,13 +526,12 @@
 						{message}
 						ordinal={index + 1}
 						depth={messages.length - 1 - index + streamingTurnOffset}
-						siblingCount={siblings.length}
-						{siblingIndex}
+						versionCount={versions.length}
+						{versionIndex}
 						isLast={index === messages.length - 1}
 						{allMessages}
 						archived={archivedIds.has(message.id)}
 						memorySelected={selectedIds.has(message.id)}
-						onNavigateBranch={handleNavigateBranch}
 						streamReplacement={replacingMessageId === message.id}
 						streamTail={continuingMessageId === message.id || replacingMessageId === message.id ? streamingContent : null}
 						streamTailThinking={continuingMessageId === message.id || replacingMessageId === message.id ? streamingThinking : null}
@@ -553,7 +548,6 @@
 	<ChatSearchBar
 		container={listElement}
 		{messages}
-		{allMessages}
 		{windowStart}
 		loadThrough={showFrom}
 	/>

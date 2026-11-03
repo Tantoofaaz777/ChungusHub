@@ -25,6 +25,7 @@ const TOKENS_AFTER_CUT = ['wor', 'ld.'];
  *  else runs against a gate that is already open and streams straight through. */
 let releaseGate: () => void = () => {};
 let gate: Promise<void> = Promise.resolve();
+let modelRequests = 0;
 function armGate(): void {
 	gate = new Promise<void>((resolve) => {
 		releaseGate = resolve;
@@ -46,6 +47,7 @@ const model = Bun.serve({
 			return Response.json({ data: [{ id: 'scripted' }] });
 		}
 		if (path !== '/v1/chat/completions') return new Response('Not found', { status: 404 });
+		modelRequests++;
 
 		const stream = new ReadableStream<Uint8Array>({
 			async start(controller) {
@@ -148,6 +150,7 @@ const CONNECTION_ID = 'test-connection';
 function generateRequest(id: string, commit?: Record<string, unknown>): string {
 	return JSON.stringify({
 		t: 'llm',
+		conversationProtocol: 2,
 		id,
 		connectionId: CONNECTION_ID,
 		provider: 'openai-compatible',
@@ -164,7 +167,7 @@ async function rpc(method: string, args: unknown[]): Promise<unknown> {
 	const res = await fetch(`${origin}/api/rpc/db`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ method, args, clientId: 'test' })
+		body: JSON.stringify({ method, args, clientId: 'test', conversationProtocol: 2 })
 	});
 	if (!res.ok) throw new Error(`${method} failed: ${res.status} ${await res.text()}`);
 	return (await res.json()).result;
@@ -189,11 +192,25 @@ async function seedChat(): Promise<{ chatId: string; userTurnId: string }> {
 			characterVersionId: null
 		}
 	]);
-	await rpc('insertMessage', [
-		{ id: userTurnId, chatId, parentId: null, role: 'user', content: 'say hello', createdAt: now, siblingIndex: 0 }
+	await rpc('appendConversationTurn', [
+		{ id: userTurnId, chatId, parentId: null, role: 'user', content: 'say hello', createdAt: now, siblingIndex: 0 },
+		await rpc('getConversationPlacement', [chatId, 'append'])
 	]);
 	await rpc('updateChatActiveLeaf', [chatId, userTurnId]);
 	return { chatId, userTurnId };
+}
+
+async function seedContinuation() {
+	const { chatId, userTurnId } = await seedChat(), messageId = crypto.randomUUID();
+	await rpc('appendConversationTurn', [{ id: messageId, chatId, parentId: userTurnId, role: 'assistant', content: 'Start.', createdAt: Date.now() }, await rpc('getConversationPlacement', [chatId, 'append'])]);
+	const target = (await rpc('getMessagesByChat', [chatId]) as any[]).at(-1)!;
+	const placement = await rpc('getConversationPlacement', [chatId, 'append']) as any;
+	const continuation = { chatId, messageId, variantId: target.selectedVariantId, expectedRevision: target.revision,
+		contextFingerprint: placement.contextFingerprint, continuationSent: 'Start.', spendSteeringIds: [] as string[] };
+	return { chatId, userTurnId, messageId, continuation };
+}
+function continueRequest(id: string, continuation: unknown) {
+	return JSON.stringify({ ...JSON.parse(generateRequest(id)), source: 'continue', continuation });
 }
 
 beforeAll(async () => {
@@ -204,6 +221,7 @@ beforeAll(async () => {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
+			conversationProtocol: 2,
 			method: 'setConnectionCredentials',
 			args: [CONNECTION_ID, 'openai-compatible', 'test-key', `http://127.0.0.1:${model.port}/v1`],
 			clientId: 'test'
@@ -239,6 +257,132 @@ afterAll(async () => {
 });
 
 describe('a generation outlives its socket (architecture/server-core.md, WebSocket protocol)', () => {
+	test('an old client cannot mutate the new conversation format', async () => {
+		const before = await rpc('getAllChats', []);
+		const response = await fetch(`${origin}/api/rpc/db`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ method: 'insertChat', args: [{ id: 'old-client', title: 'Unsupported' }] }) });
+		expect(response.status).toBe(409);
+		expect(await rpc('getAllChats', [])).toEqual(before);
+	});
+
+	test('a tree-only generation is refused before the model starts', async () => {
+		const { chatId, userTurnId } = await seedChat(), socket = await openSocket();
+		const answered = collect(socket, frames => frames.some(frame => frame.t === 'llm-error'));
+		socket.send(generateRequest(crypto.randomUUID(), { chatId, parentId: userTurnId, expectedLeafId: userTurnId,
+			claimsRoot: false, lorebook: null, spendSteeringIds: [] }));
+		expect(String((await answered).find(frame => frame.t === 'llm-error')?.message)).toContain('protocol');
+		expect((await rpc('getMessagesByChat', [chatId]) as unknown[])).toHaveLength(1);
+		socket.close();
+	});
+	test('the WebSocket refuses an outdated continuation before calling the provider', async () => {
+		const { chatId, userTurnId } = await seedChat();
+		const socket = await openSocket();
+		try {
+			const complete = collect(socket, frames => frames.some(frame => frame.t === 'llm-done'));
+			socket.send(generateRequest(crypto.randomUUID(), { chatId, parentId: userTurnId, expectedLeafId: userTurnId,
+				claimsRoot: false, spendSteeringIds: [], placement: await rpc('getConversationPlacement', [chatId, 'append']) }));
+			await complete;
+			const turns = await rpc('getMessagesByChat', [chatId]) as any[], target = turns.at(-1)!, question = turns[0];
+			const placement = await rpc('getConversationPlacement', [chatId, 'append']) as any;
+			const context = { chatId, messageId: target.id, variantId: target.selectedVariantId, expectedRevision: target.revision, contextFingerprint: placement.contextFingerprint,
+				continuationSent: target.content, spendSteeringIds: [] };
+			await rpc('validateMessageContinuation', [context]);
+			await rpc('updateMessageVariantContent', [{ chatId, messageId: question.id, variantId: question.selectedVariantId,
+				expectedRevision: question.revision, content: 'Changed after review' }]);
+			const requestsBefore = modelRequests;
+			for (const continuation of [context, undefined, { ...context, contextFingerprint: 42 }]) {
+				const refused = collect(socket, frames => frames.some(frame => frame.t === 'llm-error'));
+				socket.send(JSON.stringify({ ...JSON.parse(generateRequest(crypto.randomUUID())), source: 'continue', continuation }));
+				const frames = await refused;
+				expect(frames.some(frame => frame.t === 'llm-token')).toBe(false);
+				expect(String(frames.find(frame => frame.t === 'llm-error')?.message)).toMatch(/context changed|protocol/);
+			}
+			expect(modelRequests).toBe(requestsBefore);
+			expect((await rpc('getMessagesByChat', [chatId]) as any[]).at(-1)!.content).toBe('Hello world.');
+		} finally { socket.close(); }
+	}, 30_000);
+
+	test('Continue survives its page, is discoverable and blocks both another Continue and a swipe', async () => {
+		const { chatId, messageId, continuation } = await seedContinuation(), id = crypto.randomUUID();
+		armGate(); const starter = await openSocket(), returning = await openSocket();
+		try {
+			const started = collect(starter, f => f.some(x => x.t === 'llm-token'));
+			starter.send(continueRequest(id, continuation)); await started; starter.close();
+			const status = collect(returning, f => f.some(x => x.t === 'llm-status-result'));
+			returning.send(JSON.stringify({ t: 'llm-status', id: crypto.randomUUID(), chatIds: [chatId] }));
+			expect((await status).find(x => x.t === 'llm-status-result')!.running).toMatchObject([{ chatId, requestId: id }]);
+			for (const request of [continueRequest(crypto.randomUUID(), continuation), generateRequest(crypto.randomUUID(), {
+				chatId, parentId: messageId, expectedLeafId: messageId, claimsRoot: false, spendSteeringIds: [], placement: await rpc('getConversationPlacement', [chatId, 'add_variant'])
+			})]) {
+				const refused = collect(returning, f => f.some(x => x.t === 'llm-error'));
+				returning.send(request); expect(String((await refused).find(x => x.t === 'llm-error')?.message)).toContain('already being written');
+			}
+			const landed = collect(returning, f => f.some(x => x.t === 'sync' && x.scope === 'messages'));
+			releaseGate(); await landed;
+			const target = (await rpc('getMessagesByChat', [chatId]) as any[]).at(-1)!;
+			expect(target.id).toBe(messageId); expect(target.content).toBe('Start. Hello world.'); expect(target.variants).toHaveLength(1);
+			const replay = collect(returning, f => f.some(x => x.t === 'llm-done'));
+			returning.send(JSON.stringify({ t: 'llm-attach', id, haveContent: 0, haveThinking: 0 }));
+			expect((await replay).find(x => x.t === 'llm-done')!.committedMessageId).toBe(messageId);
+			expect((await rpc('getMessagesByChat', [chatId]) as any[]).at(-1)!.content).toBe('Start. Hello world.');
+		} finally { releaseGate(); starter.close(); returning.close(); }
+	}, 30_000);
+
+	test('a returning page can stop Continue and its partial text is persisted by the server', async () => {
+		const { chatId, continuation } = await seedContinuation(), id = crypto.randomUUID();
+		armGate(); const starter = await openSocket(), returning = await openSocket();
+		try {
+			const started = collect(starter, f => f.some(x => x.t === 'llm-token'));
+			starter.send(continueRequest(id, continuation)); await started; starter.close();
+			const landed = collect(returning, f => f.some(x => x.t === 'sync' && x.scope === 'messages'));
+			returning.send(JSON.stringify({ t: 'llm-cancel', id })); await landed;
+			const target = (await rpc('getMessagesByChat', [chatId]) as any[]).at(-1)!;
+			expect(target.content).toMatch(/^Start\. Hel/); expect(target.finishReason).toBe('cancelled');
+			expect(target.content).not.toContain('world.');
+		} finally { releaseGate(); starter.close(); returning.close(); }
+	}, 30_000);
+
+	test('Continue recovers completed text after a context edit even if its page has closed', async () => {
+		const { chatId, userTurnId, continuation } = await seedContinuation();
+		armGate(); const starter = await openSocket(), observer = await openSocket();
+		try {
+			const started = collect(starter, f => f.some(x => x.t === 'llm-token'));
+			starter.send(continueRequest(crypto.randomUUID(), continuation)); await started; starter.close();
+			const question = (await rpc('getMessagesByChat', [chatId]) as any[])[0];
+			await rpc('updateMessageVariantContent', [{ chatId, messageId: userTurnId, variantId: question.selectedVariantId, expectedRevision: question.revision, content: 'Changed context' }]);
+			const recovered = collect(observer, f => f.some(x => x.t === 'sync' && x.scope === 'messages'));
+			releaseGate(); await recovered;
+			expect((await rpc('getMessagesByChat', [chatId]) as any[]).at(-1)!.content).toBe('Start.');
+			expect((await rpc('getRecoveredGenerations', [chatId]) as any[])[0].payload.patch.content).toBe('Start. Hello world.');
+		} finally { releaseGate(); starter.close(); observer.close(); }
+	}, 30_000);
+
+	test('a generation whose context changed broadcasts recovery and preserves its text outside the transcript', async () => {
+		const { chatId, userTurnId } = await seedChat();
+		armGate();
+		const socket = await openSocket();
+		try {
+			const started = collect(socket, frames => frames.some(frame => frame.t === 'llm-token'));
+			socket.send(generateRequest(crypto.randomUUID(), { chatId, parentId: userTurnId, expectedLeafId: userTurnId,
+				claimsRoot: false, spendSteeringIds: [], placement: await rpc('getConversationPlacement', [chatId, 'append']) }));
+			await started;
+			const turn = (await rpc('getMessagesByChat', [chatId]) as any[])[0];
+			await rpc('updateMessageVariantContent', [{ chatId, messageId: turn.id, variantId: turn.selectedVariantId,
+				expectedRevision: turn.revision, content: 'Changed during generation' }]);
+			// Start collecting after the edit's sync: the next hint must describe recovery.
+			const completed = collect(socket, frames => frames.some(frame => frame.t === 'llm-error'));
+			releaseGate();
+			const frames = await completed;
+			expect(String(frames.find(frame => frame.t === 'llm-error')?.message)).toContain('Recovered responses');
+			expect(frames.some(frame => frame.t === 'sync' && (frame as any).scope === 'messages')).toBe(true);
+			const saved = await rpc('getRecoveredGenerations', [chatId]) as any[];
+			expect(saved).toHaveLength(1); expect(saved[0].payload.content).toBe('Hello world.');
+			expect((await rpc('getMessagesByChat', [chatId]) as any[]).map(message => message.content)).toEqual(['Changed during generation']);
+			await rpc('discardRecoveredGeneration', [chatId, saved[0].id]);
+			expect(await rpc('getRecoveredGenerations', [chatId])).toEqual([]);
+		} finally { socket.close(); }
+	}, 30_000);
+
 	test('the tokens written while nobody was listening are handed to the page that comes back', async () => {
 		const id = crypto.randomUUID();
 		armGate();
@@ -290,6 +434,7 @@ describe('a generation outlives its socket (architecture/server-core.md, WebSock
 		socket.send(
 			generateRequest(crypto.randomUUID(), {
 				chatId,
+				placement: await rpc('getConversationPlacement', [chatId, 'append']),
 				parentId: userTurnId,
 				expectedLeafId: userTurnId,
 				claimsRoot: false,
@@ -326,6 +471,7 @@ describe('a generation outlives its socket (architecture/server-core.md, WebSock
 		armGate();
 		const placement = {
 			chatId,
+			placement: await rpc('getConversationPlacement', [chatId, 'append']),
 			parentId: userTurnId,
 			expectedLeafId: userTurnId,
 			claimsRoot: false,
@@ -360,6 +506,7 @@ describe('a generation outlives its socket (architecture/server-core.md, WebSock
 		armGate();
 		const placement = {
 			chatId,
+			placement: await rpc('getConversationPlacement', [chatId, 'append']),
 			parentId: userTurnId,
 			expectedLeafId: userTurnId,
 			claimsRoot: false,
@@ -399,7 +546,8 @@ describe('a generation outlives its socket (architecture/server-core.md, WebSock
 
 		// And the chat is free again: the send that was refused a moment ago now goes through.
 		const second = collect(returning, (f) => f.some((frame) => frame.t === 'llm-token'));
-		returning.send(generateRequest(crypto.randomUUID(), placement));
+		returning.send(generateRequest(crypto.randomUUID(), { ...placement,
+			placement: await rpc('getConversationPlacement', [chatId, 'replace_variants']) }));
 		await second;
 
 		releaseGate();

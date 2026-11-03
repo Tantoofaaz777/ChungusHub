@@ -30,7 +30,10 @@ describe('Threads persistence',()=>{
 		expect(r.messages.map(m=>m.id)).toEqual([messages[0].id,messages[2].id,messages[4].id]);
 		expect(db.getThreadsData(chatId).rounds).toEqual([r]);
 		expect(db.getMessagesByChat(chatId)).toEqual(before);expect(db.getChat(chatId)).toEqual(chatBefore);
-		db.closeForTests();expect(db.getThreadsData(chatId).rounds[0]).toEqual(r);
+		db.closeForTests();
+		const reopened = db.getThreadsData(chatId).rounds[0];
+		expect({ ...reopened, messages: reopened.messages.map(({ variantId: _variantId, ...message }) => message) }).toEqual(r);
+		expect(reopened.messages.every(message => message.variantId === (db.getMessage(message.id) as { selectedVariantId: string }).selectedVariantId)).toBe(true);
 	});
 	test('prevents overlapping concurrent selections, but retrying the same save is idempotent',()=>{
 		const {chatId,messages}=fixture(),id=crypto.randomUUID();

@@ -1,4 +1,5 @@
 import type { Message, MessageAttachment, EditAction, DeleteAction, RegenerateAction } from '#lib/types/chat.ts';
+import type { ConversationPlacement } from '#shared/conversation.ts';
 import type { LLMMessage } from '#lib/types/llm.ts';
 import { db } from '#lib/services/database.ts';
 import { chatStore } from './chat.svelte';
@@ -90,16 +91,12 @@ class MessageStore {
 	/**
 	 * Send the composer's draft as a user turn and generate the reply to it.
 	 *
-	 * `onCommit` is the composer's cue that the draft is no longer its to keep. With no hold
-	 * on this gate that is the moment the send is asked for, so the box empties on the press
-	 * as it always has; with one it is the moment the reader releases the review, so a cancel
-	 * hands them back exactly what they typed, attachments included.
+	 * `onCommit` releases the draft only after its turn is persisted. Prompt cancellation,
+	 * context conflicts and failed writes keep both text and attachments in the composer.
 	 */
 	async sendMessage(content: string, attachments?: MessageAttachment[], onCommit?: () => void): Promise<void> {
 		if (this.isProcessing) return;
 		this.isProcessing = true;
-		const held = promptHoldStore.armed('send');
-		if (!held) onCommit?.();
 
 		try {
 			const state = chatStore.currentChatState;
@@ -117,6 +114,7 @@ class MessageStore {
 				attachments: attachments?.length ? attachments : null
 			});
 
+			const appendContext = state.chat.conversationVersion === 2 ? await db.getConversationPlacement(state.chat.id, 'append') : null;
 			const path = state.chat.activeLeafId
 				? findActivePath(await chatStore.freshMessages(state.chat.id), state.chat.activeLeafId)
 				: [];
@@ -128,7 +126,6 @@ class MessageStore {
 			// Cancelled at the review: nothing has been written, and the composer still holds
 			// the draft because `onCommit` was never called.
 			if (!prompt) return;
-			if (held) onCommit?.();
 
 			// The active leaf usually has no children, but after a cancelled "alternate"
 			// regenerate it can, so never collide with an existing sibling index. Claimed at
@@ -137,10 +134,12 @@ class MessageStore {
 				...draftTurn,
 				siblingIndex: await db.getNextSiblingIndex(state.chat.id, state.chat.activeLeafId)
 			};
-			await this.persistMessageRow(userMessage);
+			const responseContext = appendContext ? await db.appendConversationTurn(userMessage, appendContext) : undefined;
+			if (!appendContext) await this.persistMessageRow(userMessage);
+			onCommit?.();
 
-			// Update active leaf and root if needed
-			if (!state.chat.rootMessageId) {
+			// Modern append updates pointers atomically. Only legacy fixtures need this repair.
+			if (!appendContext && !state.chat.rootMessageId) {
 				await db.updateChat(
 					{
 						id: state.chat.id,
@@ -149,14 +148,15 @@ class MessageStore {
 					},
 					{ touchUpdatedAt: true }
 				);
-			} else {
+			} else if (!appendContext) {
 				await db.updateChatActiveLeaf(state.chat.id, userMessage.id, { touchUpdatedAt: true });
 			}
 
 			await chatStore.refreshChat(state.chat.id);
 
 			// Generate LLM response from the prompt the review released.
-			await this.generateResponse(state.chat.id, userMessage.id, prompt);
+			await this.generateResponse(state.chat.id, userMessage.id, prompt,
+				responseContext ? { expectedLeafId: userMessage.id, conversationPlacement: responseContext } : undefined);
 		} catch (error) {
 			if (error instanceof Error && error.name !== 'AbortError') {
 				toastStore.failed('generate the reply', error);
@@ -172,7 +172,7 @@ class MessageStore {
 	 *  stop mid-stream still persists what streamed, so it returns an id like any other
 	 *  reply. Other failures throw. */
 	async generateResponse(chatId: string, parentId: string, prompt: BuiltPrompt,
-		placement?: { expectedLeafId: string | null; replaceMessageIds?: string[]; replacingMessageId?: string }): Promise<string | null> {
+		placement?: { expectedLeafId: string | null; replaceMessageIds?: string[]; replacingMessageId?: string; conversationPlacement?: ConversationPlacement }): Promise<string | null> {
 		const { messages, target: callTarget, lorebook, oneShotSteering } = prompt;
 		this.abortController = new AbortController();
 		chatStore.startStream(chatId, { replacingMessageId: placement?.replacingMessageId });
@@ -184,6 +184,9 @@ class MessageStore {
 			// is named as it stands now, so a commit that lands after the reader walked to
 			// another branch leaves them where they are (architecture/chat-sessions.md).
 			this.generationDispatched = true;
+			const conversationPlacement = placement?.conversationPlacement ?? (chatStore.currentChatState?.chat.conversationVersion === 2
+				? await db.getConversationPlacement(chatId, placement?.replacingMessageId
+					? placement.replaceMessageIds ? 'replace_variants' : 'add_variant' : 'append') : undefined);
 			const result = await llmService.complete(callTarget, {
 				messages,
 				source: 'chat',
@@ -195,6 +198,7 @@ class MessageStore {
 				},
 				signal: this.abortController.signal,
 				commit: {
+					...(conversationPlacement ? { placement: conversationPlacement } : {}),
 					chatId,
 					parentId,
 					expectedLeafId: placement ? placement.expectedLeafId : parentId,
@@ -250,6 +254,7 @@ class MessageStore {
 			await chatStore.setMessageExcludedFromPrompt(chatId, messageId, excluded);
 		} catch (error) {
 			toastStore.failed('change message visibility in the prompt', error);
+			await chatStore.refreshChat(chatId);
 		} finally {
 			this.isProcessing = false;
 		}
@@ -260,17 +265,28 @@ class MessageStore {
 	async setBookmarked(messageId: string, bookmarked: boolean): Promise<void> {
 		const chatId = chatStore.activeChatId;
 		if (!chatId) return;
-		try { await chatStore.setMessageBookmarked(chatId, messageId, bookmarked); }
+		try {
+			const turn = chatStore.currentChatState?.allMessages.find(message => message.id === messageId);
+			if (turn?.selectedVariantId && turn.revision !== undefined) await this.setVersionBookmarked(messageId, turn.selectedVariantId, bookmarked, turn.revision);
+			else await chatStore.setMessageBookmarked(chatId, messageId, bookmarked);
+		}
 		catch (error) { toastStore.failed('change message bookmark', error); }
+	}
+
+	async setVersionBookmarked(messageId: string, variantId: string, bookmarked: boolean, expectedRevision: number): Promise<void> {
+		const chatId = chatStore.activeChatId;
+		if (!chatId) throw new Error('No active chat');
+		await db.setMessageVariantBookmarked({ chatId, messageId, variantId, bookmarked, expectedRevision });
+		await chatStore.refreshChat(chatId);
 	}
 
 	async editMessage(
 		messageId: string,
 		newContent: string,
 		action: EditAction,
-		opts: { minor?: boolean } = {}
-	): Promise<void> {
-		if (this.warnIfBusy()) return;
+		opts: { minor?: boolean; variantId?: string; expectedRevision?: number } = {}
+	): Promise<boolean> {
+		if (this.warnIfBusy()) return false;
 		const state = chatStore.currentChatState;
 		if (!state) throw new Error('No active chat');
 
@@ -283,22 +299,26 @@ class MessageStore {
 		try {
 			switch (action) {
 				case 'save_only':
-					await db.updateMessageContent(messageId, newContent, { minor: opts.minor });
+					if (message.selectedVariantId) await db.updateMessageVariantContent({ chatId: state.chat.id, messageId,
+						variantId: opts.variantId ?? message.selectedVariantId, expectedRevision: opts.expectedRevision ?? message.revision!, content: newContent, minor: opts.minor });
+					else await db.updateMessageContent(messageId, newContent, { minor: opts.minor });
 					await db.touchChatActivity(state.chat.id);
 					break;
 
 				case 'create_branch': {
-					await chatStore.branchChat(state.chat.id, messageId, newContent);
-					return;
+					await chatStore.branchChat(state.chat.id, messageId, newContent, opts.variantId ?? message.selectedVariantId);
+					return true;
 				}
 			}
 
 			await chatStore.refreshCurrentChat();
+			return true;
 		} catch (error) {
 			if (error instanceof Error && error.name !== 'AbortError') {
 				toastStore.failed('save the edit', error);
 			}
 			await chatStore.refreshCurrentChat();
+			return false;
 		} finally {
 			this.isProcessing = false;
 		}
@@ -317,6 +337,18 @@ class MessageStore {
 			const message = allMessages.find((m) => m.id === messageId);
 			if (!message) {
 				await chatStore.refreshChat(state.chat.id);
+				return;
+			}
+			if (chat.conversationVersion === 2) {
+				try {
+					if (action === 'this_only') await db.deleteMessageOnly(messageId);
+					else await db.deleteMessageAndDescendants(messageId);
+					await db.touchChatActivity(state.chat.id);
+				} finally {
+					// The server repairs the sequence and pointers in its delete transaction.
+					// A later remote append owns the endpoint; never restore our old snapshot.
+					await chatStore.refreshChat(state.chat.id);
+				}
 				return;
 			}
 			if (action === 'this_only') {
@@ -476,27 +508,6 @@ class MessageStore {
 	 *  the row's own state, so the composer can only ask for it. */
 	branchTargetId = $state<string | null>(null);
 
-	async navigateToBranch(messageId: string): Promise<void> {
-		if (this.warnIfBusy()) return;
-		const state = chatStore.currentChatState;
-		if (!state) throw new Error('No active chat');
-
-		// Find the deepest leaf starting from this message
-		const messages = state.allMessages;
-
-		// Validate message exists (might be stale reference from UI race condition)
-		const messageExists = messages.some((m) => m.id === messageId);
-		if (!messageExists) {
-			// Message was deleted, just refresh to sync UI
-			await chatStore.refreshCurrentChat();
-			return;
-		}
-
-		const leafId = findDeepestLeafFromNode(messages, messageId);
-
-		await chatStore.navigateToLeaf(leafId);
-	}
-
 	/** Re-attribute every user turn in a chat to `personaId` (or clear with null so they
 	 *  read as a plain "You"). A deliberate after-the-fact rebind for imported/legacy chats
 	 *  whose user messages carry no persona, distinct from the per-message lock at send time. */
@@ -524,6 +535,40 @@ class MessageStore {
 			this.canSwipe(messageId, snapshot.messages, scenes);
 	}
 
+	canSelectSwipe(messageId: string): boolean { return this.canSwipe(messageId); }
+
+	async selectSwipe(messageId: string, variantId: string, expectedRevision: number): Promise<boolean> {
+		if (this.warnIfBusy() || !this.canSwipe(messageId)) return false;
+		const chatId = chatStore.activeChatId!;
+		this.isProcessing = true;
+		try {
+			await db.selectMessageVariant({ chatId, messageId, variantId, expectedRevision });
+			await chatStore.refreshChat(chatId);
+			return true;
+		} finally { this.isProcessing = false; }
+	}
+
+	async deleteSwipe(messageId: string, variantId: string, expectedRevision: number): Promise<boolean> {
+		if (this.warnIfBusy() || !this.canSwipe(messageId)) return false;
+		const chatId = chatStore.activeChatId!;
+		this.isProcessing = true;
+		try {
+			await db.deleteMessageVariant({ chatId, messageId, variantId, expectedRevision });
+			await chatStore.refreshChat(chatId);
+			return true;
+		} finally { this.isProcessing = false; }
+	}
+
+	/** The transcript pager only visits versions; it never follows a legacy subtree. */
+	async navigateSwipe(messageId: string, direction: 'prev' | 'next'): Promise<void> {
+		const turn = chatStore.currentChatState?.allMessages.find(message => message.id === messageId);
+		if (!turn?.variants || !turn.selectedVariantId || turn.revision === undefined) return;
+		const index = turn.variants.findIndex(variant => variant.id === turn.selectedVariantId);
+		const target = turn.variants[index + (direction === 'next' ? 1 : -1)];
+		if (target) await this.selectSwipe(messageId, target.id, turn.revision);
+	}
+
+	/** Legacy forest adapter retained for format-1 fixtures; live UI uses navigateSwipe. */
 	async navigateToSibling(messageId: string, direction: 'prev' | 'next'): Promise<void> {
 		if (this.warnIfBusy()) return;
 		const state = chatStore.currentChatState;
@@ -540,6 +585,13 @@ class MessageStore {
 		}
 
 		if (!this.canSwipe(messageId)) return;
+		if (message.variants && message.selectedVariantId && message.revision !== undefined) {
+			const index = message.variants.findIndex(variant => variant.id === message.selectedVariantId);
+			const variant = message.variants[index + (direction === 'next' ? 1 : -1)];
+			if (!variant) return;
+			await this.selectSwipe(messageId, variant.id, message.revision);
+			return;
+		}
 
 		// Existing alternatives stay saved, but only the last visible assistant can navigate them.
 		const siblings = messages
@@ -563,7 +615,7 @@ class MessageStore {
 		const state = chatStore.currentChatState;
 		if (!state || state.activePath.at(-1)?.id !== messageId) return;
 		const current = state.activePath.at(-1)!;
-		if (action === 'branch' && !this.canSwipe(messageId)) return;
+		if (action === 'add_variant' && !this.canSwipe(messageId)) return;
 		if (current.role === 'assistant' && current.parentId === null) {
 			await this.generateOpeningScene('', action);
 			return;
@@ -576,10 +628,13 @@ class MessageStore {
 			if (snapshot.chat.activeLeafId !== messageId) return;
 			const messages = snapshot.messages;
 			const message = messages.find(m => m.id === messageId);
-			if (action === 'branch' && !this.canSwipe(messageId, messages, scenes)) return;
+			if (action === 'add_variant' && !this.canSwipe(messageId, messages, scenes)) return;
 			if (!message || (message.role !== 'user' && message.role !== 'assistant')) return;
 			const parentId = message.role === 'user' ? message.id : message.parentId;
 			if (!parentId) return;
+			const conversationPlacement = snapshot.chat.conversationVersion === 2
+				? await db.getConversationPlacement(state.chat.id, message.role === 'user' ? 'append' : action === 'replace' ? 'replace_variants' : 'add_variant') : null;
+			if (conversationPlacement && conversationPlacement.expectedRevision !== snapshot.rev) return;
 			const prompt = await this.prepare('regenerate', {
 				chatId: state.chat.id, chatMessages: findActivePath(messages, parentId), lorebookTrigger: 'swipe',
 				snapshot: { chat: snapshot.chat, scenes }
@@ -587,13 +642,14 @@ class MessageStore {
 			if (!prompt) return;
 			const [fresh, freshScenes] = await Promise.all([
 				chatStore.freshSnapshot(state.chat.id),
-				action === 'branch' ? db.getMemoryScenes(state.chat.id) : Promise.resolve(undefined)
+				action === 'add_variant' ? db.getMemoryScenes(state.chat.id) : Promise.resolve(undefined)
 			]);
 			if (chatStore.currentChatState?.chat.id !== state.chat.id || fresh.chat.activeLeafId !== messageId) return;
-			if (action === 'branch' && !this.canSwipe(messageId, fresh.messages, freshScenes)) return;
+			if (action === 'add_variant' && !this.canSwipe(messageId, fresh.messages, freshScenes)) return;
 			// Keep the selected reply and every alternative until the server commits success.
 			// Only the siblings present when this request leaves may be replaced.
 			await this.generateResponse(state.chat.id, parentId, prompt, {
+				...(conversationPlacement ? { conversationPlacement } : {}),
 				expectedLeafId: fresh.chat.activeLeafId,
 				replacingMessageId: message.role === 'assistant' ? message.id : undefined,
 				replaceMessageIds: action === 'replace' ? fresh.messages.filter(m => m.parentId === parentId).map(m => m.id) : undefined
@@ -646,12 +702,23 @@ class MessageStore {
 
 		try {
 			// Fresh rows, never the state snapshot: the standing rule for long operations.
-			const allMessages = await chatStore.freshMessages(state.chat.id);
+			const snapshot = await chatStore.freshSnapshot(state.chat.id);
+			const allMessages = snapshot.messages;
 			const target = allMessages.find((m) => m.id === leaf.id);
 			if (!target) throw new Error('The reply to continue no longer exists.');
+			if (snapshot.chat.activeLeafId !== target.id) throw new Error('The conversation moved before continuation. Review it again.');
 			if (target.excludedFromPrompt) {
 				toastStore.warning('Include this reply in the prompt before continuing it');
 				return;
+			}
+			let continuation: import('#shared/conversation.ts').ContinuationContext | undefined;
+			if (target.selectedVariantId && target.revision !== undefined) {
+				const context = await db.getConversationPlacement(state.chat.id, 'append');
+				if (!context || context.expectedRevision !== snapshot.rev || context.expectedLeafId !== target.id || context.expectedVariantId !== target.selectedVariantId) {
+					throw new Error('The conversation changed before continuation. Review it again.');
+				}
+				continuation = { chatId: state.chat.id, messageId: target.id, variantId: target.selectedVariantId,
+					expectedRevision: target.revision, contextFingerprint: context.contextFingerprint };
 			}
 
 			// The same prompt that generated the reply (its parent path), with the reply
@@ -673,19 +740,20 @@ class MessageStore {
 			});
 			if (!prompt) return;
 			const { messages, target: callTarget, continuationSent, oneShotSteering } = prompt;
+			if (chatStore.activeChatId !== state.chat.id) return;
+			if (continuation) await db.validateMessageContinuation(continuation);
+			if (chatStore.activeChatId !== state.chat.id) return;
 
 			// After the review, never before it: the bubble must not sit there filling in
 			// while the request behind it is still a question.
 			this.abortController = new AbortController();
 			chatStore.startStream(state.chat.id, { continuingMessageId: leaf.id });
 
-			// The LLM call alone, no db awaits. Continue is the one story path that still
-			// persists its own turn, so this clock is still its own to keep.
-			const startedAt = performance.now();
 			this.generationDispatched = true;
 			const result = await llmService.complete(callTarget, {
 				messages,
 				source: 'continue',
+				continuation: continuation ? { ...continuation, continuationSent: continuationSent ?? target.content, spendSteeringIds: oneShotSteering.map(note => note.id) } : undefined,
 				onToken: (token) => {
 					chatStore.appendStreamingContent(token);
 				},
@@ -694,12 +762,6 @@ class MessageStore {
 				},
 				signal: this.abortController.signal
 			});
-			// Null rather than a number when the request lived through a dropped socket: the
-			// call now outlives the connection, so the disconnection would be inside this
-			// span and would be added to a turn's stored total for good. The same reason the
-			// transport nulls its own two clocks (architecture/llm-providers.md).
-			const generationMs = result.reattached ? null : Math.round(performance.now() - startedAt);
-
 			// Teach the per-model token calibration from the provider's real prompt_tokens.
 			await this.recordCalibration(result.model, messages, result.usage.promptTokens);
 
@@ -709,50 +771,22 @@ class MessageStore {
 				if (result.finishReason !== 'cancelled') toastStore.warning('The model returned no continuation text');
 				return;
 			}
-			// The anchor is the turn's text as the model received it (self-refs expanded, prompt
-			// regex applied), so a restatement of a macro-laden greeting is still caught.
-			const joined = joinContinuation(target.content, result.content, continuationSent);
-			if (joined === target.content) {
-				toastStore.warning('The model only restated the existing reply, so nothing was added');
+			if (!result.committedMessageId) {
+				if (joinContinuation(target.content, result.content, continuationSent) === target.content) {
+					toastStore.warning('The model only restated the existing reply, so nothing was added');
+				}
 				return;
 			}
-
-			await db.applyMessageContinuation(target.id, {
-				content: joined,
-				thinking: result.thinking
-					? target.thinking
-						? target.thinking + '\n\n' + result.thinking
-						: result.thinking
-					: target.thinking,
-				tokensPrompt: result.usage.promptTokens,
-				tokensCompletion: (target.tokensCompletion ?? 0) + result.usage.completionTokens,
-				finishReason: result.finishReason,
-				// Unmeasurable this run leaves the turn's stored total alone rather than
-				// writing a span that carries a disconnection inside it.
-				generationMs: generationMs === null ? target.generationMs : (target.generationMs ?? 0) + generationMs,
-				// Accumulated like generationMs, and for the same reason: a continuation is more
-				// of this turn's cost, not a second turn. Null only while neither run measured
-				// any, so a reasoning-free turn never claims a measured zero. `firstTokenMs` is
-				// deliberately not here: the turn started speaking once, on the original run.
-				reasoningMs:
-					target.reasoningMs === null && result.reasoningMs === null
-						? null
-						: (target.reasoningMs ?? 0) + (result.reasoningMs ?? 0)
-			});
-			await db.touchChatActivity(state.chat.id);
-
+			// The persisted body already includes the tail; stop previewing it before adoption.
+			chatStore.endStream();
 			await chatStore.refreshChat(state.chat.id);
-
-			// Steering rode this continuation. It is spent only here, after the persisted write,
-			// never on the two soft no-op returns above: no steered output landed there, so
-			// the one-shots must survive for the retry. By id, exactly like the two paths the
-			// server commits: spending whatever happens to be active at this moment would burn
-			// a note the reader armed for the NEXT turn while this one was still running.
-			await this.spendOneShotSteering(state.chat.id, oneShotSteering);
+			await chatStore.pushSteeringHistory(state.chat.id, spentSteeringTexts(oneShotSteering, result));
 		} catch (error) {
 			// A stop the server never answered: nothing streamed back, so the stored turn
 			// stays untouched (the kept-tail case resolves normally above).
 			if (!(error instanceof Error && error.name === 'AbortError')) {
+				chatStore.endStream();
+				await this.refreshAfterFailure(state.chat.id);
 				toastStore.failed('continue the reply', error);
 			}
 		} finally {
@@ -772,10 +806,10 @@ class MessageStore {
 	 * `direction` is what the reader typed. Blank means "surprise me"; there is no magic
 	 * string for that, because a sentinel the caller has to spell is a second contract.
 	 */
-	async generateOpeningScene(direction: string, action: RegenerateAction = 'branch'): Promise<void> {
+	async generateOpeningScene(direction: string, action: RegenerateAction = 'add_variant'): Promise<void> {
 		if (this.busy) return;
 		const last = chatStore.currentChatState?.activePath.at(-1);
-		if (action === 'branch' && last && (last.parentId !== null || !this.canSwipe(last.id))) return;
+		if (action === 'add_variant' && last && (last.parentId !== null || !this.canSwipe(last.id))) return;
 		// The Opening Scene engine can be switched off app-wide (Settings → Engines). Every
 		// trigger hides or refuses when it's off; fail loud if something calls in anyway.
 		if (!featurePromptsStore.openingSceneEnabled) throw new Error('Opening Scene is turned off in Settings → Engines');
@@ -795,7 +829,9 @@ class MessageStore {
 		try {
 			const chat = await db.getChat(state.chat.id);
 			if (!chat) throw new Error('Chat not found');
-			if (action === 'branch' && openingLeaf && !await this.canSwipeFresh(state.chat.id, openingLeaf.id)) return;
+			if (action === 'add_variant' && openingLeaf && !await this.canSwipeFresh(state.chat.id, openingLeaf.id)) return;
+			const conversationPlacement = state.chat.conversationVersion === 2
+				? await db.getConversationPlacement(state.chat.id, replacingOpening ? action === 'replace' ? 'replace_variants' : 'add_variant' : 'append') : undefined;
 
 			// Create a virtual user message for {{chatHistory}} to inject (not saved to DB)
 			const sceneIdea = direction.trim() || 'Surprise me with a compelling opening scene.';
@@ -852,7 +888,7 @@ class MessageStore {
 			// root claim both resolved against fresh rows inside the commit's own transaction
 			// rather than read here and used a paragraph later. No user turn is saved: the
 			// direction was context, not something the reader said in the story.
-			if (action === 'branch' && openingLeaf && !await this.canSwipeFresh(state.chat.id, openingLeaf.id)) return;
+			if (action === 'add_variant' && openingLeaf && !await this.canSwipeFresh(state.chat.id, openingLeaf.id)) return;
 			this.generationDispatched = true;
 			const result = await llmService.complete(callTarget, {
 				messages,
@@ -865,6 +901,7 @@ class MessageStore {
 				},
 				signal: this.abortController.signal,
 				commit: {
+					...(conversationPlacement ? { placement: conversationPlacement } : {}),
 					chatId: state.chat.id,
 					parentId: null,
 					// The reader asked for this beginning, so it is the one they land on, unless
@@ -953,7 +990,9 @@ class MessageStore {
 		}
 	): Promise<Message> {
 		const message = this.buildMessageRow(data);
-		await this.persistMessageRow(message);
+		const context = chatStore.currentChatState?.chat.conversationVersion === 2 ? await db.getConversationPlacement(data.chatId, 'append') : null;
+		if (context) await db.appendConversationTurn(message, context);
+		else await this.persistMessageRow(message);
 		return message;
 	}
 
@@ -1043,12 +1082,6 @@ class MessageStore {
 	 * the PROMPT resolved rather than whatever is active now, the same rule, so a note the
 	 * reader armed for the next turn while this one was running is not burned by it.
 	 */
-	private async spendOneShotSteering(chatId: string, rode: { id: string; text: string }[]): Promise<void> {
-		if (!featurePromptsStore.steeringEnabled || rode.length === 0) return;
-		const spent = await steeringStore.consumeById(rode.map((note) => note.id));
-		await chatStore.pushSteeringHistory(chatId, rode.filter((n) => spent.has(n.id)).map((n) => n.text));
-	}
-
 	/**
 	 * Build a generation's prompt and put it through the hold, before this path has written
 	 * anything at all.

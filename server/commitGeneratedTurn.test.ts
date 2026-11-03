@@ -217,7 +217,7 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		const saved = serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once);
 		expect(saved).toMatchObject({ mode: 'once', enabled: false });
 		serverDb.updateSteeringNote({ ...saved, enabled: true });
-		expect(serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [once] })).spentSteeringIds).toEqual([once]);
+		expect(serverDb.commitGeneratedTurn(commit({ chatId, placement: serverDb.getConversationPlacement(chatId, 'append'), spendSteeringIds: [once] })).spentSteeringIds).toEqual([once]);
 		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === once)).toMatchObject({ enabled: false });
 	});
 
@@ -231,7 +231,7 @@ describe('commitGeneratedTurn (architecture/server-core.md, the generation map)'
 		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === quickId)).toMatchObject({ transient: true });
 		expect(serverDb.reorderSteeringNotes([quickId, savedId])).not.toContain(quickId);
 		serverDb.closeForTests();
-		const landed = serverDb.commitGeneratedTurn(commit({ chatId, spendSteeringIds: [quickId, savedId] }));
+		const landed = serverDb.commitGeneratedTurn(commit({ chatId, placement: serverDb.getConversationPlacement(chatId, 'append'), spendSteeringIds: [quickId, savedId] }));
 		expect(landed.spentSteeringIds).toEqual([quickId, savedId]);
 		expect(serverDb.getAllSteeringNotes().some((n: { id: string }) => n.id === quickId)).toBe(false);
 		expect(serverDb.getAllSteeringNotes().find((n: { id: string }) => n.id === savedId)).toMatchObject({ enabled: false, mode: 'once' });

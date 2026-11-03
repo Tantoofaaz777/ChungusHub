@@ -7,12 +7,15 @@
  * settings snapshot; normal reads always reach the server.
  */
 import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta } from '#lib/types/chat.ts';
+import type { ChatDraft } from '#shared/chat-draft.ts';
 import type { CharacterVersion, LibraryEntry } from '#lib/types/library.ts';
 import type { CharacterAuthorsNote } from '../../../shared/character-authors-note';
 import type { Lorebook } from '#lib/lorebook/types.ts';
 import type { SteeringNote } from '#lib/types/steering.ts';
 import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '#shared/threads/types.ts';
 import type { MemoryScene, SaveMemoryScene } from '../../../shared/memory-scenes';
+import type { ConversationPlacement, VariantSelection, VariantBookmark, VariantContent } from '../../../shared/conversation';
+import type { RecoveredGeneration } from '../../../shared/recovered-generation';
 import { connectWs, dbRpc, onSync, onReconnect } from '#lib/services/transport.ts';
 import { SettingsSnapshot } from '#lib/services/settings-snapshot.ts';
 import { settingsSync } from './settings-sync';
@@ -72,7 +75,7 @@ class DatabaseService {
 	duplicateChat(options: { chatId: string; title: string; includeMemory: boolean }): Promise<string> {
 		return this.call('duplicateChat', options);
 	}
-	branchChat(options: { chatId: string; messageId: string; title: string; content: string }): Promise<string> {
+	branchChat(options: { chatId: string; messageId: string; title: string; content: string; variantId?: string }): Promise<string> {
 		return this.call('branchChat', options);
 	}
 	/** Per-chat row data for the chats panel: one server-side pass, no message bodies. */
@@ -90,6 +93,17 @@ class DatabaseService {
 	deleteChat(chatId: string): Promise<void> { return this.call('deleteChat', chatId); }
 
 	// ===== MESSAGES =====
+	getConversationPlacement(chatId: string, operation: ConversationPlacement['operation']): Promise<ConversationPlacement | null> {
+		return this.call('getConversationPlacement', chatId, operation);
+	}
+	selectMessageVariant(input: VariantSelection): Promise<MessagesDelta> { return this.call('selectMessageVariant', input); }
+	setMessageVariantBookmarked(input: VariantBookmark): Promise<void> { return this.call('setMessageVariantBookmarked', input); }
+	updateMessageVariantContent(input: VariantContent): Promise<void> { return this.call('updateMessageVariantContent', input); }
+	deleteMessageVariant(input: VariantSelection): Promise<MessagesDelta> { return this.call('deleteMessageVariant', input); }
+	appendConversationTurn(message: Message, context: ConversationPlacement): Promise<ConversationPlacement> { return this.call('appendConversationTurn', message, context); }
+	seedConversationGreetings(chatId: string, greetings: string[]): Promise<string | null> { return this.call('seedConversationGreetings', chatId, greetings); }
+	getRecoveredGenerations(chatId: string): Promise<RecoveredGeneration[]> { return this.call('getRecoveredGenerations', chatId); }
+	discardRecoveredGeneration(chatId: string, id: string): Promise<void> { return this.call('discardRecoveredGeneration', chatId, id); }
 	getMessagesByChat(chatId: string): Promise<Message[]> { return this.call('getMessagesByChat', chatId); }
 	/** What changed after `sinceRev` (upserts + deleted ids), or the whole transcript when
 	 *  `sinceRev` is null or unusable. Null when the chat is gone. The open chat's every
@@ -105,8 +119,8 @@ class DatabaseService {
 	insertMessage(message: Message): Promise<void> { return this.call('insertMessage', message); }
 	/** `minor: true` records the touch without advancing `edited_at`, so the summary covering
 	 *  this turn survives it (architecture/memory.md). */
-	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null): Promise<MessagesDelta> {
-		return this.call('setMessageExcludedFromPrompt', messageId, excluded, sinceRev);
+	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null, expected?: import('#shared/conversation.ts').VariantSelection): Promise<MessagesDelta> {
+		return this.call('setMessageExcludedFromPrompt', messageId, excluded, sinceRev, expected);
 	}
 	setMessageBookmarked(messageId: string, bookmarked: boolean, sinceRev: number | null = null): Promise<MessagesDelta> {
 		return this.call('setMessageBookmarked', messageId, bookmarked, sinceRev);
@@ -117,6 +131,9 @@ class DatabaseService {
 	/** Continuation write: joined content + accumulated stats, edited_at untouched. Carries no
 	 *  `firstTokenMs`: the turn started speaking on the run that created it, so a continuation
 	 *  must never rewrite that stamp. */
+	validateMessageContinuation(expected: import('#shared/conversation.ts').ContinuationContext): Promise<void> {
+		return this.call('validateMessageContinuation', expected);
+	}
 	applyMessageContinuation(
 		messageId: string,
 		patch: {
@@ -127,9 +144,10 @@ class DatabaseService {
 			finishReason: string | null;
 			generationMs: number | null;
 			reasoningMs: number | null;
-		}
+		},
+		expected?: import('#shared/conversation.ts').ContinuationContext
 	): Promise<void> {
-		return this.call('applyMessageContinuation', messageId, patch);
+		return this.call('applyMessageContinuation', messageId, patch, expected);
 	}
 	setChatUserPersona(chatId: string, personaId: string | null): Promise<void> {
 		return this.call('setChatUserPersona', chatId, personaId);
@@ -154,13 +172,13 @@ class DatabaseService {
 	}
 
 	// ===== CHAT DRAFTS =====
-	getChatDraft(chatId: string): Promise<{ chatId: string; content: string; updatedAt: number } | null> {
+	getChatDraft(chatId: string): Promise<ChatDraft | null> {
 		return this.call('getChatDraft', chatId);
 	}
-	upsertChatDraft(chatId: string, content: string): Promise<void> {
+	upsertChatDraft(chatId: string, content: string): Promise<ChatDraft> {
 		return this.call('upsertChatDraft', chatId, content);
 	}
-	deleteChatDraft(chatId: string): Promise<void> { return this.call('deleteChatDraft', chatId); }
+	deleteChatDraft(chatId: string, expectedRevision: string | null): Promise<ChatDraft | null> { return this.call('deleteChatDraft', chatId, expectedRevision); }
 
 	// ===== INPUT HISTORY =====
 	getInputHistory(limit: number): Promise<{ id: number; chatId: string | null; content: string }[]> {

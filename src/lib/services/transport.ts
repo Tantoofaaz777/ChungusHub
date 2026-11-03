@@ -9,6 +9,7 @@
  * prerendering. The browser-only bits guard on `typeof window`.
  */
 import type { BackupsPayload, SnapshotManifest } from '#shared/backups.ts';
+import { CONVERSATION_PROTOCOL } from '#shared/conversation.ts';
 
 /**
  * Identifies this PAGE, not this device. It exists for exactly one job: the server skips
@@ -280,6 +281,7 @@ export async function apiUpload(path: string, form: FormData): Promise<unknown> 
 /** DB RPC bridge: calls a whitelisted method on the server's DatabaseService. */
 export async function dbRpc(method: string, args: unknown[]): Promise<unknown> {
 	const data = (await apiSend('/api/rpc/db', 'POST', {
+		conversationProtocol: CONVERSATION_PROTOCOL,
 		method,
 		args,
 		clientId: getClientId()
@@ -1076,6 +1078,7 @@ export interface LlmRequest {
 	/** Present only for the two calls whose reply the SERVER writes into the story. The shape
 	 *  is shared, since the server reads it off the wire (shared/generation.ts). */
 	commit?: import('#shared/generation.ts').GenerationCommit;
+	continuation?: import('#shared/generation.ts').ContinuationCommit;
 }
 
 export async function llmComplete(req: LlmRequest): Promise<LlmResult> {
@@ -1129,6 +1132,7 @@ export async function llmComplete(req: LlmRequest): Promise<LlmResult> {
 				t: 'llm',
 				id,
 				connectionId: req.connectionId,
+				conversationProtocol: CONVERSATION_PROTOCOL,
 				provider: req.provider,
 				model: req.model,
 				messages: req.messages,
@@ -1141,7 +1145,8 @@ export async function llmComplete(req: LlmRequest): Promise<LlmResult> {
 				stream: req.stream,
 				deliverTokens: req.deliverTokens,
 				source: req.source ?? 'completion',
-				commit: req.commit
+				commit: req.commit,
+				continuation: req.continuation
 			})
 		);
 	});

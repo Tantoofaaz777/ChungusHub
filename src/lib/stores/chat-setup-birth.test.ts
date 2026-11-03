@@ -83,6 +83,15 @@ mock.module('#lib/services/database.ts', () => ({
 		setChatSeededGreetings: async (chatId: string, greetings: string[]) => {
 			server.greetings.set(chatId, [...greetings]);
 		},
+		seedConversationGreetings: async (chatId: string, greetings: string[]) => {
+			server.greetings.set(chatId, [...greetings]);
+			if (!greetings.length) return null;
+			const id = crypto.randomUUID();
+			server.messages.push({ id, chatId, parentId: null, role: 'assistant', content: greetings[0], siblingIndex: 0,
+				selectedVariantId: id, variants: greetings.map((content, index) => ({ id: index ? crypto.randomUUID() : id, messageId: id, content })) });
+			Object.assign(server.chats.get(chatId)!, { rootMessageId: id, activeLeafId: id });
+			return id;
+		},
 		insertMessage: async (message: Record<string, unknown>) => {
 			server.messages.push(copy(message));
 		},

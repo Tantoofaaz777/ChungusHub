@@ -7,6 +7,7 @@
 	import ChatPersonaDialog from './ChatPersonaDialog.svelte';
 	import AuthorsNotesDialog from './AuthorsNotesDialog.svelte';
 	import ChatBookmarksDialog from './ChatBookmarksDialog.svelte';
+	import { recoveredGenerations } from '#lib/stores/recoveredGenerations.svelte.ts';
 	import { chatAuthorsNote } from '#lib/types/chat.ts';
 	import { resolveAuthorsNote } from '../../../../shared/character-authors-note';
 	import TransformPanel from './TransformPanel.svelte';
@@ -19,7 +20,7 @@
 	import { messageStore } from '#lib/stores/messages.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { canPinChatShortcut, pinChatShortcut } from '#lib/services/android-client.ts';
-	import { inputDraftStore } from '#lib/stores/inputDraft.svelte.ts';
+	import { inputDraftStore, type InputDraftSubmission } from '#lib/stores/inputDraft.svelte.ts';
 	import { inputHistoryStore } from '#lib/stores/inputHistory.svelte.ts';
 	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
 	import { viewport } from '#lib/stores/viewport.svelte.ts';
@@ -704,17 +705,19 @@
 			// has to hand back exactly what they typed, pictures and all. The chat is named
 			// here rather than read again later, so the draft cleared is the one sent.
 			const chatId = chatStore.activeChatId;
-			onSend(trimmed, attachments.length ? attachments : undefined, () => releaseDraft(chatId, trimmed));
+			const submitted = { content, paths: pendingImages.map(image => image.path), draft: chatId ? inputDraftStore.captureSubmission(chatId, content) : undefined };
+			onSend(trimmed, attachments.length ? attachments : undefined, () => releaseDraft(chatId, trimmed, submitted));
 		}
 	}
 
 	/** The draft is the message's now: record it for ↑ recall and clear the box. */
-	function releaseDraft(chatId: string | null, sent: string) {
+	function releaseDraft(chatId: string | null, sent: string, submitted?: { content: string; paths: string[]; draft?: InputDraftSubmission }) {
 		if (sent) inputHistoryStore.record(chatId, sent);
-		if (chatId) inputDraftStore.clear(chatId);
+		const changed = submitted && chatId === chatStore.activeChatId && content !== submitted.content;
+		if (chatId && !changed) inputDraftStore.clear(chatId, submitted?.draft);
 		if (chatId !== chatStore.activeChatId) return;
-		content = '';
-		pendingImages = [];
+		if (!changed) content = '';
+		pendingImages = submitted ? pendingImages.filter(image => !submitted.paths.includes(image.path)) : [];
 		historyPos = null;
 		// The message is sent, so the draft's job is done.
 		if (textareaElement) {
@@ -1018,6 +1021,9 @@
 								>
 									<Icon name="search" class="w-4 h-4" />
 									Find in chat…
+								</button>
+								<button type="button" class="composer-menu-item" onclick={() => { menuOpen = false; recoveredGenerations.open = true; void recoveredGenerations.refresh(); }}>
+									<Icon name="archive" class="w-4 h-4" />Recovered responses{#if recoveredGenerations.entries.length} ({recoveredGenerations.entries.length}){/if}
 								</button>
 								<div class="composer-menu-sep"></div>
 								<button

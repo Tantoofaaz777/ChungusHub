@@ -18,10 +18,21 @@ import { MIGRATIONS_FOR_TESTS } from './db';
  */
 const DATA_MIGRATIONS: string[] = [
 	'44: backfill_chat_default_version',
-	'45: remove_chungus_assistant_storage'
+	'45: remove_chungus_assistant_storage',
+	'52: conversation_turn_variants'
 ];
 
 describe('migrations', () => {
+	test('draft revisions upgrade existing saved text without changing it', () => {
+		const old = new Database(':memory:');
+		try {
+			old.exec('CREATE TABLE chat_drafts (chat_id TEXT PRIMARY KEY, content TEXT NOT NULL, updated_at INTEGER NOT NULL)');
+			old.run('INSERT INTO chat_drafts VALUES (?, ?, ?)', ['chat', 'Existing draft', 123]);
+			old.exec(MIGRATIONS_FOR_TESTS.find(m => m.version === 53)!.sql);
+			expect(old.query('SELECT * FROM chat_drafts').get()).toEqual({ chat_id: 'chat', content: 'Existing draft', updated_at: 123, revision: 'legacy' });
+		} finally { old.close(); }
+	});
+
 	test('message exclusion upgrades existing transcripts with every message included', () => {
 		const old = new Database(':memory:');
 		try {

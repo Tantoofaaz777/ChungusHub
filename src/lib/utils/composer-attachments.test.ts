@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from 'bun:test';
 import { runInNewContext } from 'node:vm';
+import type { InputDraftSubmission } from '#lib/stores/inputDraft.svelte.ts';
 
 let source: string;
 beforeAll(async () => { source = await Bun.file(new URL('../components/chat/InputArea.svelte', import.meta.url)).text(); });
@@ -16,9 +17,9 @@ function harness() {
 		${source.slice(start, end)}
 		${source.slice(releaseStart, releaseEnd)}
 		module.exports = { attachImageFiles, releaseDraft, switchChat() { fixture.active = 'new'; const chatId = 'new'; ${source.slice(resetStart, resetEnd)} },
-			get pending() { return pendingImages }, get content() { return content }, get uploading() { return uploadingImages } };
+			edit(text) { content = text }, get pending() { return pendingImages }, get content() { return content }, get uploading() { return uploadingImages } };
 	`);
-	const module = { exports: {} as { attachImageFiles(files: File[]): Promise<void>; releaseDraft(chat: string, text: string): void; switchChat(): void; pending: { path: string }[]; content: string; uploading: number } };
+	const module = { exports: {} as { attachImageFiles(files: File[]): Promise<void>; releaseDraft(chat: string, text: string, submitted?: { content: string; paths: string[]; draft?: InputDraftSubmission }): void; edit(text: string): void; switchChat(): void; pending: { path: string }[]; content: string; uploading: number } };
 	runInNewContext(script, { module, fixture, $state: (value: unknown) => value,
 		onDestroy: (fn: () => void) => { fixture.destroy = fn; }, imageRejectionReason: () => null,
 		llmService: { sendsImages: () => true }, toastStore: { warning() {}, error() {}, failed() {} },
@@ -61,4 +62,15 @@ test('a late send commit clears its original draft without taking the new chat a
 	composer.releaseDraft('old', 'Old message');
 	expect(composer.pending.map(item => item.path)).toEqual(['images/chat/new.png']);
 	expect(composer.content).toBe('New draft'); expect(fixture.cleared).toEqual(['old']);
+});
+
+test('a delayed send preserves new text and attachments added in the same chat', async () => {
+	const { fixture, composer } = harness();
+	let upload = composer.attachImageFiles([new File(['image'], 'submitted.png')]); fixture.resolve('images/chat/submitted.png'); await upload;
+	const submitted = { content: composer.content, paths: composer.pending.map(image => image.path), draft: { version: 0, content: composer.content, draft: null } };
+	composer.edit('Newer draft');
+	upload = composer.attachImageFiles([new File(['image'], 'new.png')]); fixture.resolve('images/chat/new.png'); await upload;
+	composer.releaseDraft('old', submitted.content, submitted);
+	expect(composer.content).toBe('Newer draft'); expect(composer.pending.map(image => image.path)).toEqual(['images/chat/new.png']);
+	expect(fixture.cleared).toEqual([]);
 });

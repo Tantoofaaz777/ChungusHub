@@ -62,3 +62,7 @@ The app-file response is handled by [`static.ts`](../server/static.ts), after th
 
 
 The password gate renders `server/unlock-page.ts` as a standalone English screen, including its own CSS and small script. It uses the bundled app icon as an inline PNG when available and a built-in lock otherwise, so it never needs to expose static assets, fonts or workspace data before authentication. The responsive single-column form includes a labeled password field, a visibility toggle that preserves selection, and a full-width submit button. It avoids autofocus on touch, remains vertically scrollable with the keyboard open, and announces empty/incorrect password, rate-limit and connection failures. An in-flight submission cannot be duplicated and always restores the controls after failure. Native submission uses POST to keep a password out of the URL even with JavaScript disabled. Login/session/cookie rules and access gates are unchanged.
+
+## Server-owned continuation
+
+Continue carries `ContinuationCommit` (context, as-sent anchor and one-shot IDs). The server owns joining, persistence, timing accumulation and atomic steering consumption. It shares chat locking, status, remote Stop and reconnect replay with replies/opening scenes. No client continuation write follows `llm-done`. See [swipe-branch-separation.md](swipe-branch-separation.md).

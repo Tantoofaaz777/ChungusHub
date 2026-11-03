@@ -8,6 +8,7 @@ const IMAGE_PATH_RE = /images\/(?:characters|personas|backgrounds|chat|presets|l
 const WHOLE_IMAGE_PATH_RE = new RegExp(`^(?:${IMAGE_PATH_RE.source})$`, 'i');
 const COLUMNS = [
 	['messages', 'attachments_json', true], ['messages', 'content', false],
+	['message_variants', 'payload_json', true], ['conversation_generation_recovery', 'payload_json', true],
 	['character_library', 'data_json', true], ['character_versions', 'data_json', true],
 	['lorebooks', 'data_json', true], ['settings', 'value', false],
 	['chats', 'settings_json', true], ['chats', 'feature_state', true]
@@ -39,6 +40,10 @@ export function referencedImagePaths(db: Database, strict = false): Set<string> 
 		const filter = table === 'messages' && column === 'content' ? " AND instr(content, 'images/') > 0" : '';
 		const rows = db.query(`SELECT ${column} AS value FROM ${table} WHERE ${column} IS NOT NULL${filter}`).all() as { value: unknown }[];
 		for (const { value } of rows) if (typeof value === 'string') {
+			if (table === 'message_variants' && strict) {
+				const payload = JSON.parse(value);
+				if (typeof payload.attachments_json === 'string') JSON.parse(payload.attachments_json);
+			}
 			for (const path of referencedImagePathsInText(value, json && strict)) found.add(path);
 		}
 	}

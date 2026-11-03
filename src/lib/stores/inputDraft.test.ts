@@ -20,8 +20,10 @@ function deferred<T = void>() {
 async function settle() {
 	for (let i = 0; i < 30; i++) await Promise.resolve();
 }
-type Row = { chatId: string; content: string; updatedAt: number };
+type Row = { chatId: string; content: string; updatedAt: number; revision: string };
 let disk = new Map<string, string>();
+let revisions = new Map<string, string>();
+function row(chatId: string): Row | null { return disk.has(chatId) ? { chatId, content: disk.get(chatId)!, updatedAt: 1, revision: revisions.get(chatId)! } : null; }
 let reads: { chatId: string; result: ReturnType<typeof deferred<Row | null>> }[] = [];
 let calls: string[] = [];
 let delayReads = false;
@@ -39,17 +41,20 @@ mock.module('#lib/services/database.ts', () => ({
 				reads.push({ chatId, result });
 				return result.promise;
 			}
-			return disk.has(chatId) ? { chatId, content: disk.get(chatId)!, updatedAt: 1 } : null;
+			return row(chatId);
 		},
 		upsertChatDraft: async (chatId: string, content: string) => {
 			calls.push(`save:${chatId}:${content}`);
 			await saveGate?.promise;
 			disk.set(chatId, content);
+			revisions.set(chatId, crypto.randomUUID());
+			return row(chatId);
 		},
-		deleteChatDraft: async (chatId: string) => {
+		deleteChatDraft: async (chatId: string, expectedRevision: string | null) => {
 			calls.push(`delete:${chatId}`);
 			await deleteGate?.promise;
-			disk.delete(chatId);
+			if (revisions.get(chatId) === expectedRevision) { disk.delete(chatId); revisions.delete(chatId); }
+			return row(chatId);
 		}
 	}
 }));
@@ -62,13 +67,15 @@ function flush(chatId?: string) {
 }
 function answer(index: number, content: string | null) {
 	const read = reads[index];
-	read.result.resolve(content === null ? null : { chatId: read.chatId, content, updatedAt: 1 });
+	read.result.resolve(content === null ? null : { chatId: read.chatId, content, updatedAt: 1, revision: revisions.get(read.chatId) ?? 'read-revision' });
 }
-beforeEach(() => {
+beforeEach(async () => {
 	disk = new Map([['a', 'sent text']]); reads = []; calls = [];
+	revisions = new Map([['a', 'initial']]);
 	delayReads = false; saveGate = null; deleteGate = null;
 	settings.saveDrafts = true;
 	store = new InputDraftStore();
+	await store.load('a'); calls = [];
 });
 afterEach(async () => {
 	saveGate?.resolve(); deleteGate?.resolve();
@@ -196,6 +203,132 @@ describe('composer draft races', () => {
 		expect((await store.load('b'))?.content).toBe('');
 		saveGate.resolve(); await saving;
 		expect(disk.get('a')).toBe('sent text');
+	});
+
+	test('a delayed send only clears the draft version it actually submitted', async () => {
+		store.schedule('a', 'Submitted'); const submitted = store.captureSubmission('a', 'Submitted');
+		store.schedule('a', 'New draft'); store.clear('a', submitted); await flush('a');
+		expect(disk.get('a')).toBe('New draft'); expect(calls).not.toContain('delete:a');
+		store.clear('a', store.captureSubmission('a', 'New draft')); await settle(); expect(disk.has('a')).toBe(false);
+	});
+
+	test('an unchanged sync read before a send acknowledgement still allows cleanup', async () => {
+		store.schedule('a', 'Submitted'); await flush('a');
+		const submitted = store.captureSubmission('a', 'Submitted');
+		await store.syncReload('a'); const snapshot = store.remote!;
+		expect(snapshot.content).toBe('Submitted');
+		store.clear('a', submitted); await settle();
+		expect(calls).toContain('delete:a'); expect(disk.has('a')).toBe(false);
+		expect(store.isCurrent(snapshot)).toBe(false);
+	});
+
+	test('sending before autosave removes the saved draft replaced by the submitted edit', async () => {
+		store.schedule('a', 'Submitted before autosave');
+		const submitted = store.captureSubmission('a', 'Submitted before autosave');
+		await store.syncReload('a'); store.clear('a', submitted); await settle(); await flush('a');
+		expect(disk.has('a')).toBe(false); expect(calls).not.toContain('save:a:Submitted before autosave');
+	});
+
+	test('a read still in flight cannot block cleanup or restore the sent draft', async () => {
+		const submitted = store.captureSubmission('a', 'sent text');
+		delayReads = true;
+		const sync = store.syncReload('a'); await settle();
+		store.clear('a', submitted); await settle();
+		answer(0, 'sent text'); await sync;
+		expect(disk.has('a')).toBe(false); expect(store.remote).toBeNull();
+	});
+
+	test('cleanup follows the submitted save even if it finishes after capture and before sync', async () => {
+		for (const alreadySaving of [false, true]) {
+			saveGate = deferred(); store.schedule('a', 'Submitted');
+			const saving = alreadySaving ? flush('a') : null;
+			await settle();
+			const submitted = store.captureSubmission('a', 'Submitted');
+			const pendingSave = saving ?? flush('a'); await settle();
+			saveGate.resolve(); await pendingSave;
+			await store.syncReload('a');
+			store.clear('a', submitted); await settle();
+			expect(disk.has('a')).toBe(false);
+		}
+	});
+
+	test('a sync after submission cannot authorize deleting a newer remote draft, even with equal text', async () => {
+		for (const text of ['New text from B', 'Submitted']) {
+			store.schedule('a', 'Submitted'); await flush('a');
+			const submitted = store.captureSubmission('a', 'Submitted');
+			const second = new InputDraftStore(); second.schedule('a', text);
+			await (second as unknown as { writer: DebouncedWriter }).writer.flush('a');
+			const remoteRevision = revisions.get('a');
+			await store.syncReload('a');
+			store.clear('a', submitted); await settle();
+			expect(disk.get('a')).toBe(text); expect(revisions.get('a')).toBe(remoteRevision);
+			expect(store.remote?.content).toBe(text); expect(store.isCurrent(store.remote!)).toBe(true);
+		}
+	});
+
+	test('a sync after submitting a restored draft cannot replace its cleanup revision', async () => {
+		const submitted = store.captureSubmission('a', 'sent text');
+		const second = new InputDraftStore(); second.schedule('a', 'sent text');
+		await (second as unknown as { writer: DebouncedWriter }).writer.flush('a');
+		const remoteRevision = revisions.get('a');
+		await store.syncReload('a'); store.clear('a', submitted); await settle();
+		expect(revisions.get('a')).toBe(remoteRevision); expect(disk.get('a')).toBe('sent text');
+	});
+
+	test('a remote draft adopted before submission can be cleared after an earlier local save', async () => {
+		store.schedule('a', 'Old local draft'); await flush('a');
+		const second = new InputDraftStore(); second.schedule('a', 'Adopted remote draft');
+		await (second as unknown as { writer: DebouncedWriter }).writer.flush('a');
+		await store.syncReload('a');
+		const submitted = store.captureSubmission('a', store.remote!.content);
+		await store.syncReload('a'); store.clear('a', submitted); await settle();
+		expect(disk.has('a')).toBe(false);
+	});
+
+	test('new local edits invalidate a submission even if their final text is identical', async () => {
+		store.schedule('a', 'Submitted'); await flush('a');
+		const submitted = store.captureSubmission('a', 'Submitted');
+		store.schedule('a', 'Other text'); store.schedule('a', 'Submitted');
+		await store.syncReload('a'); store.clear('a', submitted); await flush('a');
+		expect(disk.get('a')).toBe('Submitted'); expect(calls).not.toContain('delete:a');
+	});
+
+	test('a send acknowledgement cannot erase another device’s newer draft, even with equal text', async () => {
+		for (const text of ['New text from B', 'Submitted']) {
+			store.schedule('a', 'Submitted'); await flush('a'); const submitted = store.captureSubmission('a', 'Submitted');
+			const second = new InputDraftStore(); second.schedule('a', text);
+			await (second as unknown as { writer: DebouncedWriter }).writer.flush('a');
+			store.clear('a', submitted); await settle();
+			expect(disk.get('a')).toBe(text); expect(store.remote?.content).toBe(text);
+		}
+	});
+
+	test('cleanup waits for its own save acknowledgement without adopting a newer remote revision', async () => {
+		saveGate = deferred(); deleteGate = deferred(); store.schedule('a', 'Submitted');
+		const saving = flush('a'); await settle(); store.clear('a');
+		saveGate.resolve(); await saving;
+		await settle();
+		const second = new InputDraftStore(); second.schedule('a', 'Remote after our save');
+		await (second as unknown as { writer: DebouncedWriter }).writer.flush('a');
+		deleteGate.resolve(); await settle();
+		expect(disk.get('a')).toBe('Remote after our save');
+		expect(store.remote?.content).toBe('Remote after our save');
+	});
+
+	test('an unknown draft is preserved rather than cleared without a server revision', async () => {
+		const unloaded = new InputDraftStore(); unloaded.clear('a'); await settle();
+		expect(disk.get('a')).toBe('sent text'); expect(unloaded.remote?.content).toBe('sent text');
+	});
+
+	test('a remote snapshot ignored by the focused composer cannot become the submitted draft', async () => {
+		store.schedule('a', 'Local text'); await flush('a');
+		const second = new InputDraftStore(); second.schedule('a', 'Remote text');
+		await (second as unknown as { writer: DebouncedWriter }).writer.flush('a');
+		await store.syncReload('a');
+		// InputArea keeps its local text while focused. A later send must not clear the
+		// different server snapshot just because a sync read observed its revision.
+		store.clear('a', store.captureSubmission('a', 'Local text')); await settle();
+		expect(disk.get('a')).toBe('Remote text');
 	});
 
 	test('does not restore drafts when saving drafts is disabled', async () => {

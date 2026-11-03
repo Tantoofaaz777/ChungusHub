@@ -34,6 +34,7 @@
 		/** Copy the history through this turn into a separate chat. */
 		onBranch?: () => void;
 		showBranch?: boolean;
+		onVersions?: () => void;
 		disabled?: boolean;
 	}
 
@@ -63,6 +64,7 @@
 		showContinue = false,
 		onBranch,
 		showBranch = false,
+		onVersions,
 		disabled = false
 	}: Props = $props();
 
@@ -207,6 +209,13 @@
 		>
 			<Icon name="feather" class="w-3.5 h-3.5" strokeWidth={1.75} />
 			<span class="action-label">Continue</span>
+		</button>
+	{/if}
+
+	{#if onVersions}
+		<button type="button" class="action-btn" onclick={onVersions} aria-label="Inspect response versions" title="Inspect saved versions of this response">
+			<Icon name="gallery" class="w-3.5 h-3.5" strokeWidth={1.75} />
+			<span class="action-label">Versions</span>
 		</button>
 	{/if}
 

@@ -431,6 +431,8 @@ export interface LLMCompletionOptions {
 	 *  (a reply, an opening scene). Absent everywhere else, which is what keeps every other
 	 *  call's result the client's to persist. See architecture/chat-sessions.md. */
 	commit?: import('#shared/generation.ts').GenerationCommit;
+	/** Continue checks its selected transcript at model dispatch and at the final write. */
+	continuation?: import('#shared/generation.ts').ContinuationCommit;
 }
 
 export interface LLMCompletionResult {

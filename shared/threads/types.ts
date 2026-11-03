@@ -7,6 +7,7 @@ export interface ThreadsFeed {
 	comments: ThreadsComment[];
 }
 export interface ThreadsMessage {
+	variantId?: string;
 	id: string; index: number; role: 'system' | 'user' | 'assistant'; content: string; speaker: string;
 }
 export interface ThreadsVersion { id: string; createdAt: number; feed: ThreadsFeed }
