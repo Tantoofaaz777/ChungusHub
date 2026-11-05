@@ -116,11 +116,9 @@ export interface ChatFeatureState {
 	 *  An id naming a connection that no longer exists resolves to the app's
 	 *  too, rather than throwing or being swept (see utils/chat-setup.ts). */
 	connection: string | null;
-	/** The persona this story plays as, or null to follow the app's. Stamped at birth only
-	 *  from a real choice (the character's defaultPersonaId seed, or the persona step of the
-	 *  New chat flow); every other door leaves it null, so a chat minted as a side effect of
-	 *  something else never carries a pin nobody made. Resolved like `connection`: a deleted
-	 *  persona reads as no claim. */
+	/** The persona explicitly selected for this story. Null or a deleted persona means
+	 *  a choice is required before generation. Opening a bot conversation asks every time;
+	 *  the New chat wizard's persona step already supplies that opening's choice. */
 	persona: string | null;
 	/** The preset this story's prompt is built from, or null to follow the app's active one.
 	 *  A preset is one document, so the claim carries all of it: the items, the controls the

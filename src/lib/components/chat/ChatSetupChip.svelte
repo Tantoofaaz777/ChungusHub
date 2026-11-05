@@ -127,7 +127,6 @@
 	let personas = $derived(characterLibraryStore.personas);
 	let claimedPersona = $derived(chatPersonaClaim(chat));
 	let persona = $derived(chatPersonaEntry(chat));
-	let appPersona = $derived(chatPersonaEntry(null));
 
 	// ===== Preset =====
 
@@ -226,10 +225,10 @@
 				label: 'Persona',
 				noun: 'personas',
 				value: persona ? storyRoleName(persona.identity).trim() || 'No persona' : 'No persona',
-				diverged: !!persona && persona.id !== appPersona?.id,
+				diverged: false,
 				lost:
 					claimedPersona !== null && !personas.some((p) => p.id === claimedPersona)
-						? "The persona this chat named is gone. It is playing as the app's."
+						? 'The persona this chat named is gone. Choose another persona.'
 						: null,
 				options: personas.map((p) => ({
 					id: p.id,
@@ -239,10 +238,7 @@
 				})),
 				picked: only(personas.some((p) => p.id === claimedPersona) ? claimedPersona : null),
 				multi: false,
-				app: {
-					label: 'Default',
-					detail: appPersona ? storyRoleName(appPersona.identity).trim() || 'No persona' : 'No persona'
-				},
+				app: null,
 				faces: true,
 				pick: pickPersona
 			},
@@ -412,12 +408,12 @@
 	}
 
 	async function pickPersona(id: string | null) {
-		if (!chat || busy) return;
+		if (!chat || busy || !id) return;
 		close();
 		if (id === claimedPersona) return;
 		busy = true;
 		try {
-			await chatStore.updateChatFeatureState(chat.id, { persona: id });
+			await chatStore.choosePersona(chat.id, id);
 		} catch (error) {
 			toastStore.failed('change who you play as in this chat', error);
 		} finally {

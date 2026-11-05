@@ -861,20 +861,16 @@ describe('provider vocabulary (architecture/llm-providers.md #1)', () => {
 });
 
 describe('per-chat setup (architecture/ui-shell-settings.md)', () => {
-	// A chat's persona is stamped ONLY from a real choice: the character's own seed, or the
-	// persona the New chat flow just asked for. createChat is also reached with nobody
-	// present (routeAfterDelete mints a chat as a side effect of deleting another), so a door
-	// handing it whatever persona happened to be active would write a permanent silent pin.
-	test('a new chat takes its persona from the seed or the flow, never from the app', () => {
+	// Legacy global and character defaults must never choose a persona for a new chat.
+	test('a new chat only takes a persona from an explicit choice', () => {
 		const source = read('src', 'lib', 'stores', 'chat.svelte.ts');
-		expect(source).toContain('options.personaId ?? entry?.defaultPersonaId ?? null');
+		expect(source).toContain('options.personaId ?? null');
+		expect(source).not.toContain('entry?.defaultPersonaId');
 		expect(source).not.toContain('personaStore');
 	});
 
-	// The persona a story plays as is `chatValue ?? appValue`, resolved in chat-setup.ts and
-	// nowhere else. A surface reading the app's active persona directly speaks as the wrong
-	// person the moment a chat claims one, and it does it silently: the name is a real
-	// persona's, just not this story's.
+	// A story only plays as its explicitly chosen persona. Reading the legacy global
+	// setting would silently choose somebody else when the chat has no valid choice.
 	test('nothing that renders or assembles a chat reads the app persona directly', () => {
 		// Everything app-wide by nature: boot, cross-device reload, the Library's own view of
 		// which persona new chats start as, the store itself, and the resolver that owns the

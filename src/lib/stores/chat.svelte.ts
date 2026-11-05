@@ -37,6 +37,8 @@ class ChatStore {
 	currentChatState = $state<ChatState | null>(null);
 	/** Covers navigation from the click, including saving edits before the chat is read. */
 	openingChatId = $state<string | null>(null);
+	/** Opening a bot conversation always requires an explicit persona choice. */
+	personaSelectionChatId = $state<string | null>(null);
 	private selectionTicket = 0;
 	/** The one generation in flight, tagged with the chat that owns it. Null when idle. */
 	stream = $state<ChatStream | null>(null);
@@ -149,6 +151,7 @@ class ChatStore {
 		this.chats = await db.getAllChats();
 		this.activeChatId = null;
 		this.currentChatState = null;
+		this.personaSelectionChatId = null;
 		memoryStore.clear();
 	}
 
@@ -156,8 +159,7 @@ class ChatStore {
 	 *  chat: a story never exists without a character, so the id is required.
 	 *
 	 *  `personaId` is the New chat flow's persona step saying who this story is played by.
-	 *  It is the only thing that outranks the character's own seed, because it is a choice
-	 *  somebody just made about this chat. */
+	 *  Other entry points ask for a persona as soon as the chat opens. */
 	async createChat(options: { characterId: string; personaId?: string }): Promise<string> {
 		const now = Date.now();
 		const { characterId } = options;
@@ -165,12 +167,12 @@ class ChatStore {
 		// The story keeps the exact variant it was born on, however far the character moves
 		// on afterwards.
 		const characterVersionId = characterLibraryStore.chatVersionSeed(characterId);
-		// A persona, a connection and a preset are stamped ONLY from a real choice: this
-		// character's own seed, or the picker the reader just used. Every other door leaves them
-		// null and the story follows the app, because createChat is also reached with nobody
-		// present (routeAfterDelete mints a chat as a side effect of deleting another), and
-		// stamping whatever happened to be active there would write a permanent pin nobody made.
-		const personaId = options.personaId ?? entry?.defaultPersonaId ?? null;
+		// Legacy persona defaults are ignored. Only the person choosing for this chat can
+		// supply its persona; connection and preset still use the character's seeds.
+		const personaId = options.personaId ?? null;
+		if (personaId && !characterLibraryStore.personas.some((p) => p.id === personaId)) {
+			throw new Error('Choose a persona from your library.');
+		}
 		const connectionId = entry?.defaultConnectionId ?? null;
 		const presetId = entry?.defaultPresetId ?? null;
 		const backgroundPath = entry ? characterLibraryStore.dataForVersion(entry, characterVersionId).cardMetadata?.backgroundPath : undefined;
@@ -205,7 +207,7 @@ class ChatStore {
 		// The chat opens on its greeting: the First Message becomes message 1 and any
 		// alternate greetings become its sibling branches (swipeable).
 		await this.seedCharacterGreetings(chat, characterId);
-		await this.selectChat(chat.id);
+		await this.selectChat(chat.id, { personaSelected: !!personaId });
 
 		return chat.id;
 	}
@@ -283,22 +285,31 @@ class ChatStore {
 	 *  chat independently of this view and is deliberately left intact. Callers use
 	 *  messageStore.warnIfNavigationBusy() to protect unfinished prompt preparation/review. */
 	async goHome(): Promise<void> {
-		++this.selectionTicket;
+		const selection = ++this.selectionTicket;
+		const personaSelection = this.personaSelectionChatId;
 		this.openingChatId = null;
 		if (!this.activeChatId) {
+			if (personaSelection && uiStore.newChatTargetChatId === personaSelection) uiStore.clearNewChat();
+			this.personaSelectionChatId = null;
 			uiStore.openWelcome();
 			return;
 		}
 		// Persist any pending lorebook edits before leaving, same as selectChat.
 		await lorebookStore.flush();
+		if (selection !== this.selectionTicket) return;
+		if (personaSelection && uiStore.newChatTargetChatId === personaSelection) uiStore.clearNewChat();
+		this.personaSelectionChatId = null;
 		this.activeChatId = null;
 		this.currentChatState = null;
 		memoryStore.clear();
 		uiStore.openWelcome();
 	}
 
-	async selectChat(chatId: string): Promise<void> {
+	async selectChat(chatId: string, options: { personaSelected?: boolean } = {}): Promise<void> {
+		if (uiStore.guardBlocksNav()) return;
 		const selection = ++this.selectionTicket;
+		const previousPersonaSelection = this.personaSelectionChatId;
+		this.personaSelectionChatId = null;
 		// Opening a chat is the sole trigger that retires the landing screen, and it runs
 		// before the early-return, so re-selecting the active chat still dismisses it.
 		uiStore.dismissWelcome();
@@ -307,6 +318,7 @@ class ChatStore {
 		uiStore.clearNewChat();
 		if (this.activeChatId === chatId && this.currentChatState?.chat.id === chatId) {
 			this.openingChatId = null;
+			if (this.currentChatState.chat.characterId && !options.personaSelected) this.requestPersonaSelection(chatId);
 			return;
 		}
 		this.openingChatId = chatId;
@@ -319,6 +331,10 @@ class ChatStore {
 			if (selection !== this.selectionTicket) return;
 			this.activeChatId = chatId;
 			await this.loadChatState(chatId);
+			if (selection === this.selectionTicket && this.currentChatState?.chat.id === chatId &&
+				this.currentChatState.chat.characterId && !options.personaSelected) {
+				this.requestPersonaSelection(chatId);
+			}
 		} catch (e) {
 			if (selection !== this.selectionTicket) return;
 			// The id is claimed before the load, so a failure leaves the store naming a chat
@@ -326,11 +342,39 @@ class ChatStore {
 			// "already open" and swallows every retry: the row goes dead until a reload, with
 			// nothing on screen saying why. Put the reader back where they were and say it.
 			this.activeChatId = previousChatId;
+			this.personaSelectionChatId = previousPersonaSelection;
+			if (previousPersonaSelection) this.requestPersonaSelection(previousPersonaSelection);
 			if (previousChatId === null) uiStore.openWelcome();
 			toastStore.failed('open that chat', e);
 			throw e;
 		} finally {
 			if (selection === this.selectionTicket) this.openingChatId = null;
+		}
+	}
+
+	private requestPersonaSelection(chatId: string): void {
+		const chat = this.currentChatState?.chat;
+		if (!chat?.characterId || chat.id !== chatId) return;
+		this.personaSelectionChatId = chatId;
+		uiStore.startPersonaSelection(chatId, chat.characterId, () => {
+			if (this.personaSelectionChatId !== chatId) return;
+			void this.goHome().catch((error) => {
+				toastStore.failed('leave the persona selection', error);
+				if (this.personaSelectionChatId === chatId) this.requestPersonaSelection(chatId);
+			});
+		});
+	}
+
+	/** Save only this chat's persona. Historical message attribution stays intact. */
+	async choosePersona(chatId: string, personaId: string): Promise<void> {
+		if (!characterLibraryStore.personas.some((p) => p.id === personaId)) {
+			throw new Error('That persona is no longer in your library.');
+		}
+		const selection = this.selectionTicket;
+		await this.updateChatFeatureState(chatId, { persona: personaId });
+		if (selection === this.selectionTicket && this.personaSelectionChatId === chatId) {
+			this.personaSelectionChatId = null;
+			uiStore.clearNewChat();
 		}
 	}
 
@@ -620,6 +664,7 @@ class ChatStore {
 			if (this.activeChatId) uiStore.openWelcome();
 			this.activeChatId = null;
 			this.currentChatState = null;
+			this.personaSelectionChatId = null;
 			memoryStore.clear();
 			return;
 		}
@@ -638,6 +683,7 @@ class ChatStore {
 				} else {
 					this.activeChatId = null;
 					this.currentChatState = null;
+					this.personaSelectionChatId = null;
 					memoryStore.clear();
 					uiStore.openWelcome();
 				}
@@ -770,6 +816,7 @@ class ChatStore {
 		} else {
 			this.activeChatId = null;
 			this.currentChatState = null;
+			this.personaSelectionChatId = null;
 			memoryStore.clear();
 			uiStore.openWelcome();
 		}

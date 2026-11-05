@@ -347,7 +347,7 @@
 			await chatStore.createChat({ characterId: id });
 		}
 		uiStore.closeOverlay();
-		if (!viewport.canDockSettings) uiStore.closeLibrary();
+		if (!viewport.canDockSettings && !chatStore.personaSelectionChatId) uiStore.closeLibrary();
 	}
 
 	// Open the editor, wired to the per-card edit button. The editor renders centered

@@ -66,7 +66,7 @@ export interface CommandContext {
 	chatId: string | null;
 	/** The chat's library character while it still resolves; null once it is deleted. */
 	characterEntryId: string | null;
-	/** The app-wide active persona's library entry, or null when none is set. */
+	/** This conversation's selected persona, or null when a choice is needed. */
 	personaEntryId: string | null;
 	/** The newest turn on the visible path. */
 	lastTurnId: string | null;

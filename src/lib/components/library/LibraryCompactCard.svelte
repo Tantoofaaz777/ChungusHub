@@ -8,8 +8,6 @@
 
 	interface Props {
 		entry: LibraryEntry;
-		/** Marks the persona new chats start as (personas only). */
-		active?: boolean;
 		showTags?: boolean;
 		/** Bulk-selection mode: a click toggles selection instead of opening the entry. */
 		selectionMode?: boolean;
@@ -31,7 +29,6 @@
 
 	let {
 		entry,
-		active = false,
 		showTags = false,
 		selectionMode = false,
 		selected = false,
@@ -135,11 +132,6 @@
 		<!-- Compact identity over the portrait, sized for the dense grid. -->
 		<div class="absolute inset-x-0 bottom-0 px-2.5 py-2.5 flex flex-col items-start gap-1">
 			<span class="w-full min-w-0 font-ui font-semibold text-[13px] text-white truncate" style="text-shadow: 0 1px 4px rgb(0 0 0 / 0.85), 0 0 2px rgb(0 0 0 / 0.5);">{getName()}</span>
-			{#if active}
-				<span class="shrink-0 text-[10px] font-ui px-1.5 py-0.5 rounded-full bg-accent/14 text-accent border border-accent/30 backdrop-blur-sm">
-					Default
-				</span>
-			{/if}
 			{#if showTags && entry.identity.tags?.length}
 				<TagList tags={entry.identity.tags} tone="overlay" class="w-full pt-0.5" />
 			{/if}

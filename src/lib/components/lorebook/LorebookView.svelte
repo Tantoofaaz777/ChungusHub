@@ -143,7 +143,7 @@
 		}
 		uiStore.lorebookEditorId = null;
 		await chatStore.selectChat(chatId);
-		if (!viewport.canDockSettings) uiStore.closeLibrary();
+		if (!viewport.canDockSettings && !chatStore.personaSelectionChatId) uiStore.closeLibrary();
 	}
 
 	// ===== binding, from the book's side =====

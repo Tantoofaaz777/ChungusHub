@@ -311,28 +311,25 @@ describe('resolvePersonaId', () => {
 	const OWN_PERSONA = 'own-persona';
 	const LIBRARY = [persona(APP_PERSONA), persona(OWN_PERSONA)];
 
-	test('a chat that claimed nobody plays as the app persona', () => {
-		expect(resolvePersonaId(chatPersonaClaim(chat(null)), LIBRARY, APP_PERSONA)).toBe(APP_PERSONA);
-		expect(resolvePersonaId(null, LIBRARY, APP_PERSONA)).toBe(APP_PERSONA);
+	test('a chat without a choice has no persona', () => {
+		expect(resolvePersonaId(chatPersonaClaim(chat(null)), LIBRARY)).toBeNull();
+		expect(resolvePersonaId(null, LIBRARY)).toBeNull();
 	});
 
-	test('a live claim outranks the app persona', () => {
+	test('a live claim resolves to the chosen persona', () => {
 		const claim = chatPersonaClaim(chat(null, OWN_PERSONA));
 		expect(claim).toBe(OWN_PERSONA);
-		expect(resolvePersonaId(claim, LIBRARY, APP_PERSONA)).toBe(OWN_PERSONA);
+		expect(resolvePersonaId(claim, LIBRARY)).toBe(OWN_PERSONA);
 	});
 
-	test('a claim naming a deleted persona falls back to the app persona', () => {
-		expect(resolvePersonaId('gone', LIBRARY, APP_PERSONA)).toBe(APP_PERSONA);
+	test('a deleted persona never falls back to another persona', () => {
+		expect(resolvePersonaId('gone', LIBRARY)).toBeNull();
 	});
 
 	test('an id belonging to a character is not a persona claim', () => {
 		// The store holds both kinds in one list, so the type check is the whole guard.
 		const characters = [{ ...persona(OWN_PERSONA), type: 'character' } as LibraryEntry];
-		expect(resolvePersonaId(OWN_PERSONA, characters, APP_PERSONA)).toBe(APP_PERSONA);
+		expect(resolvePersonaId(OWN_PERSONA, characters)).toBeNull();
 	});
 
-	test('with no app persona either, a dead claim resolves to nobody', () => {
-		expect(resolvePersonaId('gone', LIBRARY, null)).toBeNull();
-	});
 });

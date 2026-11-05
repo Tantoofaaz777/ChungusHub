@@ -5,7 +5,6 @@
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 	import { connectionStore } from '#lib/stores/connections.svelte.ts';
 	import { presetService } from '#lib/services/presets.svelte.ts';
-	import { chatPersonaEntry } from '#lib/utils/chat-setup.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import EntryFormFields from './EntryFormFields.svelte';
 	import CharacterVersionMenu from './CharacterVersionMenu.svelte';
@@ -92,20 +91,6 @@
 		if (!entry) return [];
 		const versions = characterLibraryStore.versionsFor(entry.id);
 		const rows: ChatDefaultRow[] = [
-			{
-				key: 'defaultPersonaId',
-				label: 'Persona',
-				// The word the library badges the app's own persona with, so the option points at
-				// something the reader can go and look at.
-				fallback: 'Default',
-				detail: chatPersonaEntry(null)?.identity.name?.trim() || 'No persona',
-				group: 'Personas',
-				options: characterLibraryStore.personas.map((p) => ({
-					id: p.id,
-					name: p.identity.name || 'Unnamed persona'
-				})),
-				gone: "That persona is no longer in your library, so new chats start as the app's."
-			},
 			{
 				key: 'defaultConnectionId',
 				label: 'Connection',

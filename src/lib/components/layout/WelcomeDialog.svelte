@@ -42,7 +42,6 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Spinner from '#lib/components/ui/Spinner.svelte';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
-	import { personaStore } from '#lib/stores/persona.svelte.ts';
 	import { generalSettingsStore } from '#lib/stores/general-settings.svelte.ts';
 	import { failureText } from '#lib/stores/toast.svelte.ts';
 
@@ -95,7 +94,6 @@
 			// Promote it out of the unsaved-new set, or the Library's nav guard would trap
 			// the very next navigation on an entry the reader already finished writing.
 			characterLibraryStore.confirmNewEntry(entry.id);
-			personaStore.setActive(entry.id);
 			close();
 		} catch (e) {
 			error = failureText('create that persona', e);
@@ -126,8 +124,8 @@
 	{:else}
 		<div class="wd-form">
 			<p class="wd-lede">
-				A persona is you in the story. Name one now and every chat starts with it;
-				you can write more in the Library later.
+				A persona is you in the story. Create one now, then choose who to play as
+				whenever you open a conversation. You can add more in the Library later.
 			</p>
 
 			<label class="wd-field">

@@ -38,6 +38,8 @@
 			<span class="library-flow-text">
 				{#if flowStep === 'character'}
 					New chat: choose a character
+				{:else if uiStore.newChatTargetChatId}
+					Chat{flowCharacterName ? ` with ${flowCharacterName}` : ''}: choose your persona
 				{:else if flowCharacterName}
 					New chat with {flowCharacterName}: choose your persona
 				{:else}
@@ -47,9 +49,9 @@
 			<button
 				type="button"
 				class="library-flow-cancel"
-				onclick={() => uiStore.clearNewChat()}
-				aria-label="Cancel new chat"
-				title="Cancel new chat"
+				onclick={() => uiStore.cancelNewChat()}
+				aria-label={uiStore.newChatTargetChatId ? 'Cancel persona selection' : 'Cancel new chat'}
+				title={uiStore.newChatTargetChatId ? 'Cancel persona selection' : 'Cancel new chat'}
 			>
 				<Icon name="close" class="w-3.5 h-3.5" />
 			</button>

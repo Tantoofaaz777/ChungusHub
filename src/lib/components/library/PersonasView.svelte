@@ -2,7 +2,7 @@
 	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 	import { chatStore } from '#lib/stores/chat.svelte.ts';
-	import { personaStore, LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
+	import { LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
 	import { uiStore } from '#lib/stores/ui.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import Icon from '#lib/components/ui/Icon.svelte';
@@ -33,9 +33,8 @@
 	// Personas half of the merged Library (see LibraryView): the browse list, speaking
 	// the same toolbar/card language as CharacterLibraryView. The entry editor opens
 	// wide and centered over the chat (LibraryEditorOverlay) via uiStore.libraryEditorId.
-	// Clicking a persona makes it the active "you"; the pencil opens its editor.
+	// Outside the New chat picker, clicking a persona opens its editor.
 	let personas = $derived(characterLibraryStore.personas);
-	let activeId = $derived(personaStore.activeEntry?.id ?? null);
 	// The app keeps at least one persona (architecture/library.md): the server refuses the
 	// last delete, so the menu item goes inert and says why rather than vanishing.
 	let deleteBlockedReason = $derived(personas.length > 1 ? undefined : LAST_PERSONA_REASON);
@@ -161,19 +160,27 @@
 	);
 
 	// ---- Entry actions ----
-	// In the New chat flow's persona step the pick belongs to the chat being made: it stamps
-	// that story's own persona and touches nothing app-wide, because a reader answering "who
-	// are you in this one" has not asked to be that person everywhere. (createChat's selectChat
-	// clears the flow; the Library is handed back after.) Outside the flow the same press is
-	// the app-level choice: the persona new chats start as.
+	let selectingPersona = $state(false);
+	// The same shelf chooses for a new chat or the conversation that was just opened.
 	async function handleSelectEntry(id: string) {
+		if (selectingPersona) return;
 		const characterId = uiStore.newChatStep === 'persona' ? uiStore.newChatCharacterId : null;
 		if (!characterId) {
-			personaStore.setActive(id);
+			handleEditEntry(id);
 			return;
 		}
-		await chatStore.createChat({ characterId, personaId: id });
-		uiStore.closeLibrary();
+		const targetChatId = uiStore.newChatTargetChatId;
+		selectingPersona = true;
+		try {
+			if (targetChatId) await chatStore.choosePersona(targetChatId, id);
+			else await chatStore.createChat({ characterId, personaId: id });
+			if (!uiStore.newChatStep && !chatStore.personaSelectionChatId &&
+				(!targetChatId || chatStore.activeChatId === targetChatId)) uiStore.closeLibrary();
+		} catch (error) {
+			toastStore.failed('select the persona for this chat', error);
+		} finally {
+			selectingPersona = false;
+		}
 	}
 
 	// Open the editor, wired to the per-card edit button. The editor renders centered
@@ -207,8 +214,7 @@
 			: ''
 	);
 	let deleteTargetMessage = $derived(
-		`Are you sure you want to delete "${deleteTargetName}"? This cannot be undone.` +
-			(deleteTargetId === activeId ? ' New chats start as it, so another one takes that over.' : '')
+		`Are you sure you want to delete "${deleteTargetName}"? This cannot be undone.`
 	);
 
 	// The successor is the server's to pick, and it announces the switch on the `settings`
@@ -478,7 +484,6 @@
 						<LibraryCompactCard
 							{entry}
 							showTags={personasViewPrefs.gridTags}
-							active={entry.id === activeId}
 							onSelect={handleSelectEntry}
 							onEdit={handleEditEntry}
 							onDuplicate={handleDuplicate}
@@ -497,7 +502,6 @@
 					{#each paginatedEntries as entry (entry.id)}
 						<LibraryGalleryCard
 							{entry}
-							active={entry.id === activeId}
 							onSelect={handleSelectEntry}
 							onEdit={handleEditEntry}
 							onDuplicate={handleDuplicate}
@@ -513,7 +517,6 @@
 					{#each paginatedEntries as entry (entry.id)}
 						<LibraryListRow
 							{entry}
-							active={entry.id === activeId}
 							onSelect={handleSelectEntry}
 							onEdit={handleEditEntry}
 							onDuplicate={handleDuplicate}

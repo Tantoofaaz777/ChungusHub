@@ -11,7 +11,6 @@ import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
 import { steeringStore } from '#lib/stores/steering.svelte.ts';
 import { chatCastStore } from '#lib/stores/chatCast.svelte.ts';
-import { personaStore } from '#lib/stores/persona.svelte.ts';
 import { presetControlsStore } from '#lib/stores/presetControls.svelte.ts';
 import { inputDraftStore } from '#lib/stores/inputDraft.svelte.ts';
 import { inputHistoryStore } from '#lib/stores/inputHistory.svelte.ts';
@@ -59,12 +58,12 @@ const HANDLERS: Record<SyncScope, () => Promise<void>> = {
 	steering: () => steeringStore.refresh(),
 	presets: () => presetService.syncReload(),
 	settings: async () => {
-		// Global active persona + preset-control values are stored as settings.
+		// Preset-control values are stored as settings.
 		// Every store that rides the synced-setting primitive (theme,
 		// view prefs, …) re-reads here, so a setting changed on one
 		// device shows up live on the others instead of only on next boot.
 		const results = await Promise.allSettled([
-			personaStore.syncReload(), presetControlsStore.syncReload(), reloadAllSyncedSettings()
+			presetControlsStore.syncReload(), reloadAllSyncedSettings()
 		]);
 		const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
 		if (errors.length) throw new AggregateError(errors, 'Some settings could not be synchronized');

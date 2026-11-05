@@ -3,8 +3,8 @@
  * the connection that prompt is priced, shaped and sent in, and the lorebooks it attached.
  *
  * Every surface that assembles or renders this story asks here, so one chat has one answer.
- * The rule is the whole design and it is one line: the chat's own claim when the thing it
- * names still exists, otherwise the app's. No layer between the two, and no third state.
+ * Connections and presets fall back to the app's choice. Personas are always selected
+ * explicitly for a conversation and never fall back to an app-wide default.
  * The lorebooks are the one entry here that does not replace anything: they are a layer the
  * link resolver adds on top of what the cards and the shelf already bring, plus the one that
  * takes away, which is how a story leaves out a book nothing else in this app can exempt it from.
@@ -21,7 +21,6 @@ import type { CallTarget, PromptPostProcessingMode } from '#lib/types/llm.ts';
 import type { PromptCharacter } from '#lib/macros.ts';
 import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 import { connectionStore } from '#lib/stores/connections.svelte.ts';
-import { personaStore } from '#lib/stores/persona.svelte.ts';
 import { presetService } from '#lib/services/presets.svelte.ts';
 import { llmService } from '#lib/services/llm/provider.ts';
 
@@ -76,8 +75,7 @@ export function resolvePromptTarget(chat: Chat | null, base: CallTarget = 'prima
 	};
 }
 
-/** The persona id a chat claimed, before any liveness check. The chip reads this beside
- *  the resolved one to tell "follows the app" from "the persona it named is gone". */
+/** The persona id selected for a chat, before any liveness check. */
 export function chatPersonaClaim(chat: Chat | null): string | null {
 	return chat ? normalizeChatFeatureState(chat.featureState).persona : null;
 }
@@ -141,8 +139,8 @@ export function chatPreset(chat: Chat | null): PromptPreset | null {
 }
 
 /**
- * The persona a claim resolves to, against a persona list and the app's own choice. A claim
- * naming a persona that no longer exists reads as no claim.
+ * The persona explicitly selected for this chat. A missing or deleted persona requires
+ * another choice; it never selects somebody else on the reader's behalf.
  *
  * The db-sourced generation path passes the entries it read; every reactive surface goes
  * through `personaEntryFor` below, which passes the store's. Same doctrine as the lorebooks
@@ -150,18 +148,17 @@ export function chatPreset(chat: Chat | null): PromptPreset | null {
  */
 export function resolvePersonaId(
 	claimed: string | null,
-	personas: LibraryEntry[],
-	appPersonaId: string | null
+	personas: LibraryEntry[]
 ): string | null {
 	if (claimed && personas.some((e) => e.id === claimed && e.type === 'persona')) return claimed;
-	return appPersonaId;
+	return null;
 }
 
 /** Store-sourced twin of `resolvePersonaId`, by claim: what a surface holding only the id
  *  speaks as (the manual-memory context carries the claim the way it carries the version pin). */
 export function personaEntryFor(claimed: string | null): LibraryEntry | null {
 	const entries = characterLibraryStore.entries;
-	const id = resolvePersonaId(claimed, entries, personaStore.activeId);
+	const id = resolvePersonaId(claimed, entries);
 	return id ? entries.find((e) => e.id === id && e.type === 'persona') ?? null : null;
 }
 

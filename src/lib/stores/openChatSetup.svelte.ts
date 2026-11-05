@@ -19,8 +19,7 @@ class OpenChatSetup {
 	/** The one parse. Both fields below read their claim off this rather than off the blob. */
 	private claims = $derived(normalizeChatFeatureState(chatStore.activeChat?.featureState ?? null));
 
-	/** The persona this story is played by, or the app's while it claims none or names one
-	 *  that is gone. */
+	/** The explicitly selected persona, or null while a new choice is needed. */
 	persona = $derived(personaEntryFor(this.claims.persona));
 
 	/** The preset its transcript is read under: effective on both branches, so an unsaved

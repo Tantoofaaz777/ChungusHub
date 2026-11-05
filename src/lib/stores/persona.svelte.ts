@@ -1,9 +1,6 @@
 /**
- * Global active persona.
- *
- * In the ST-style model there is one "you" across the whole app: a single active
- * persona, chosen from the library, used as the protagonist in every chat's
- * generation. Persisted to the settings table so it survives restarts and syncs.
+ * Legacy active-persona setting retained for compatibility with older data.
+ * Conversations no longer read it: they require an explicit per-chat choice.
  */
 import { db } from '#lib/services/database.ts';
 import { reloadSettings } from '#lib/services/syncedSetting.ts';

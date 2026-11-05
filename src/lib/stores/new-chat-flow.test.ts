@@ -219,3 +219,63 @@ describe('cancel edges', () => {
 		expect(uiStore.libraryOpen).toBe(true);
 	});
 });
+
+describe('the same persona shelf for an existing conversation', () => {
+	test('opens Personas with a chat target and dismisses the previous editor', () => {
+		uiStore.libraryEditorId = 'old-editor';
+		uiStore.pendingLibraryEntryId = 'old-editor';
+		uiStore.startPersonaSelection('chat-1', 'char-1', () => {});
+
+		expect(uiStore.libraryOpen).toBe(true);
+		expect(uiStore.libraryTab).toBe('personas');
+		expect(uiStore.libraryEditorId).toBeNull();
+		expect(uiStore.pendingLibraryEntryId).toBeNull();
+		expect(uiStore.newChatStep).toBe('persona');
+		expect(uiStore.newChatCharacterId).toBe('char-1');
+		expect(uiStore.newChatTargetChatId).toBe('chat-1');
+	});
+
+	test('closing the Library cancels that opening exactly once', () => {
+		let cancelled = 0;
+		uiStore.startPersonaSelection('chat-1', 'char-1', () => { cancelled++; });
+		uiStore.closeLibrary();
+		uiStore.closeLibrary();
+		expect(cancelled).toBe(1);
+		expect(uiStore.newChatTargetChatId).toBeNull();
+	});
+
+	test('completing the choice clears its callback before the Library closes', () => {
+		let cancelled = 0;
+		uiStore.startPersonaSelection('chat-1', 'char-1', () => { cancelled++; });
+		uiStore.clearNewChat();
+		uiStore.closeLibrary();
+		expect(cancelled).toBe(0);
+	});
+
+	test('changing shelves cancels an existing-chat choice and opens the requested shelf', () => {
+		let cancelled = 0;
+		uiStore.startPersonaSelection('chat-1', 'char-1', () => { cancelled++; });
+		uiStore.setLibraryTab('characters');
+		expect(cancelled).toBe(1);
+		expect(uiStore.newChatStep).toBeNull();
+		expect(uiStore.libraryTab).toBe('characters');
+	});
+
+	test('starting New chat cancels the existing target and begins at Characters', () => {
+		let cancelled = 0;
+		uiStore.startPersonaSelection('chat-1', 'char-1', () => { cancelled++; });
+		uiStore.startNewChat();
+		expect(cancelled).toBe(1);
+		expect(uiStore.newChatTargetChatId).toBeNull();
+		expect(uiStore.newChatStep).toBe('character');
+	});
+
+	test('an unsaved entry blocks cancellation and leaves the choice intact', () => {
+		let cancelled = 0;
+		uiStore.startPersonaSelection('chat-1', 'char-1', () => { cancelled++; });
+		blockNavigation();
+		uiStore.cancelNewChat();
+		expect(cancelled).toBe(0);
+		expect(uiStore.newChatTargetChatId).toBe('chat-1');
+	});
+});

@@ -88,6 +88,12 @@ class MessageStore {
 		return this.warnIfBusy();
 	}
 
+	private warnIfPersonaPending(): boolean {
+		if (!chatStore.personaSelectionChatId && !chatStore.openingChatId) return false;
+		toastStore.warning('Choose a persona for this conversation first.');
+		return true;
+	}
+
 	/**
 	 * Send the composer's draft as a user turn and generate the reply to it.
 	 *
@@ -95,6 +101,7 @@ class MessageStore {
 	 * context conflicts and failed writes keep both text and attachments in the composer.
 	 */
 	async sendMessage(content: string, attachments?: MessageAttachment[], onCommit?: () => void): Promise<void> {
+		if (this.warnIfPersonaPending()) return;
 		if (this.isProcessing) return;
 		this.isProcessing = true;
 
@@ -611,6 +618,7 @@ class MessageStore {
 	}
 
 	async retryMessageResponse(messageId: string, action: RegenerateAction = 'replace'): Promise<void> {
+		if (this.warnIfPersonaPending()) return;
 		if (this.busy) return;
 		const state = chatStore.currentChatState;
 		if (!state || state.activePath.at(-1)?.id !== messageId) return;
@@ -689,6 +697,7 @@ class MessageStore {
 	 * joins it like any other continuation, and a stop before the first token touches nothing.
 	 */
 	async continueMessage(): Promise<void> {
+		if (this.warnIfPersonaPending()) return;
 		if (this.isProcessing) return;
 		const state = chatStore.currentChatState;
 		if (!state) throw new Error('No active chat');
@@ -807,6 +816,7 @@ class MessageStore {
 	 * string for that, because a sentinel the caller has to spell is a second contract.
 	 */
 	async generateOpeningScene(direction: string, action: RegenerateAction = 'add_variant'): Promise<void> {
+		if (this.warnIfPersonaPending()) return;
 		if (this.busy) return;
 		const last = chatStore.currentChatState?.activePath.at(-1);
 		if (action === 'add_variant' && last && (last.parentId !== null || !this.canSwipe(last.id))) return;

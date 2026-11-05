@@ -17,7 +17,7 @@
  * store detaches everything it hands out through it, and an aliasing shim would let a test
  * mutate the store by accident and then read its own write back as a pass.
  */
-import { describe, test, expect, beforeEach, afterAll, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from 'bun:test';
 
 const identity = <T>(value?: T): T | undefined => value;
 (globalThis as unknown as { $state: unknown }).$state = Object.assign(identity, {
@@ -162,6 +162,8 @@ mock.module('#lib/memory/scene-store.svelte.ts', () => ({
 }));
 
 const { chatStore } = await import('./chat.svelte');
+const { uiStore } = await import('./ui.svelte');
+const { db } = await import('#lib/services/database.ts');
 const { characterLibraryStore } = await import('./characterLibrary.svelte');
 const { connectionStore } = await import('./connections.svelte');
 const { personaStore } = await import('./persona.svelte');
@@ -245,6 +247,8 @@ async function reset(): Promise<void> {
 	chatStore.chats = [];
 	chatStore.activeChatId = null;
 	chatStore.currentChatState = null;
+	chatStore.personaSelectionChatId = null;
+	uiStore.clearNewChat();
 
 	await characterLibraryStore.refresh();
 	await personaStore.initialize();
@@ -288,7 +292,7 @@ const claims = (chatId: string): Claims => normalizeChatFeatureState(stored(chat
 const asChat = (chatId: string) => stored(chatId) as never;
 
 describe('a chat born from the composer', () => {
-	test('a character with every default set is born claiming all four', async () => {
+	test('legacy persona defaults are ignored while other defaults still apply', async () => {
 		const versionId = crypto.randomUUID();
 		const entryId = await character({
 			defaultPersonaId: otherPersonaId,
@@ -303,18 +307,19 @@ describe('a chat born from the composer', () => {
 
 		expect(stored(chatId).characterVersionId).toBe(versionId);
 		expect(claims(chatId)).toMatchObject({
-			persona: otherPersonaId,
+			persona: null,
 			connection: OWN_CONNECTION,
 			preset: OWN_PRESET
 		});
 		// The claims are not merely stored: every surface resolves the story to them.
-		expect(chatPersonaEntry(asChat(chatId))?.id).toBe(otherPersonaId);
+		expect(chatPersonaEntry(asChat(chatId))).toBeNull();
+		expect(chatStore.personaSelectionChatId).toBe(chatId);
 		expect(chatConnectionId(asChat(chatId))).toBe(OWN_CONNECTION);
 		expect(chatPreset(asChat(chatId))?.id).toBe(OWN_PRESET);
 		expect(resolvePromptTarget(asChat(chatId)).model).toBe('anthropic/own-model');
 	});
 
-	test('a character with no defaults is born with no blob at all and follows the app', async () => {
+	test('a character with no defaults waits for a persona choice', async () => {
 		// Not merely a blob whose fields are null: a chat minted with nobody present must store
 		// exactly what a chat stored before any of this existed, or every install grows a row of
 		// pins nobody made.
@@ -322,20 +327,23 @@ describe('a chat born from the composer', () => {
 
 		expect(stored(chatId).featureState).toBeNull();
 		expect(stored(chatId).characterVersionId).toBeNull();
-		expect(chatPersonaEntry(asChat(chatId))?.id).toBe(appPersonaId);
+		expect(chatPersonaEntry(asChat(chatId))).toBeNull();
+		expect(chatStore.personaSelectionChatId).toBe(chatId);
 		expect(chatConnectionId(asChat(chatId))).toBeNull();
 		expect(chatPresetId(asChat(chatId))).toBeNull();
 		expect(chatPreset(asChat(chatId))?.id).toBe(APP_PRESET);
 		expect(resolvePromptTarget(asChat(chatId)).model).toBe('openai/app-model');
 	});
 
-	test("the New chat flow's persona outranks the character's own seed", async () => {
+	test('the New chat flow supplies the explicit choice without asking twice', async () => {
 		// Somebody just chose this persona for this story, one press ago. The seed is what the
 		// character answers when nobody asked.
 		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION });
 		const chatId = await chatStore.createChat({ characterId: entryId, personaId: appPersonaId });
 
 		expect(claims(chatId).persona).toBe(appPersonaId);
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(uiStore.newChatTargetChatId).toBeNull();
 		// The other seeds are untouched by the flow: it asks about a persona and nothing else.
 		expect(claims(chatId).connection).toBe(OWN_CONNECTION);
 	});
@@ -348,10 +356,109 @@ describe('a chat born from the composer', () => {
 
 });
 
+describe('choosing a persona when opening a conversation', () => {
+	test('saving the choice affects only that chat and preserves existing messages', async () => {
+		const characterId = await character();
+		const first = await chatStore.createChat({ characterId, personaId: appPersonaId });
+		const second = await chatStore.createChat({ characterId });
+		const messages = copy(server.messages);
+
+		await chatStore.choosePersona(second, otherPersonaId);
+
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(claims(first).persona).toBe(appPersonaId);
+		expect(claims(second).persona).toBe(otherPersonaId);
+		expect(server.settings.get('activePersonaId')).toBe(appPersonaId);
+		expect(server.messages).toEqual(messages);
+		expect(server.chats.size).toBe(2);
+		expect(uiStore.newChatStep).toBeNull();
+	});
+
+	test('opening an existing chat asks again even when it already has a persona', async () => {
+		const chatId = await chatStore.createChat({ characterId: await character(), personaId: otherPersonaId });
+		await chatStore.goHome();
+		await chatStore.selectChat(chatId);
+
+		expect(chatStore.personaSelectionChatId).toBe(chatId);
+		expect(uiStore.libraryOpen).toBe(true);
+		expect(uiStore.libraryTab).toBe('personas');
+		expect(uiStore.newChatTargetChatId).toBe(chatId);
+		expect(claims(chatId).persona).toBe(otherPersonaId);
+		await chatStore.choosePersona(chatId, appPersonaId);
+		await chatStore.selectChat(chatId);
+		expect(chatStore.personaSelectionChatId).toBe(chatId);
+	});
+
+	test('closing the persona shelf cancels the opening instead of accepting the old choice', async () => {
+		const chatId = await chatStore.createChat({ characterId: await character(), personaId: otherPersonaId });
+		await chatStore.selectChat(chatId);
+		uiStore.closeLibrary();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(chatStore.activeChatId).toBeNull();
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(uiStore.welcomeOpen).toBe(true);
+		expect(claims(chatId).persona).toBe(otherPersonaId);
+	});
+
+	test('cancelling returns home without assigning a persona', async () => {
+		const chatId = await chatStore.createChat({ characterId: await character() });
+		await chatStore.goHome();
+
+		expect(chatStore.activeChatId).toBeNull();
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(claims(chatId).persona).toBeNull();
+	});
+
+	test('a persona that disappeared from the library cannot dismiss the picker', async () => {
+		const chatId = await chatStore.createChat({ characterId: await character() });
+		await expect(chatStore.choosePersona(chatId, 'deleted-persona')).rejects.toThrow('no longer in your library');
+		expect(chatStore.personaSelectionChatId).toBe(chatId);
+		expect(claims(chatId).persona).toBeNull();
+	});
+
+	test('a failed write keeps the picker open and leaves the stored choice unchanged', async () => {
+		const chatId = await chatStore.createChat({ characterId: await character() });
+		const write = spyOn(db, 'updateChat').mockRejectedValueOnce(new Error('Offline'));
+		try {
+			await expect(chatStore.choosePersona(chatId, otherPersonaId)).rejects.toThrow('Offline');
+			expect(chatStore.personaSelectionChatId).toBe(chatId);
+			expect(claims(chatId).persona).toBeNull();
+		} finally {
+			write.mockRestore();
+		}
+	});
+
+	test('a late save for one conversation does not dismiss the next conversation picker', async () => {
+		const characterId = await character();
+		const first = await chatStore.createChat({ characterId });
+		const second = await chatStore.createChat({ characterId });
+		await chatStore.selectChat(first);
+		const original = db.updateChat.bind(db);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const write = spyOn(db, 'updateChat').mockImplementationOnce(async (...args) => {
+			await gate;
+			return original(...args);
+		});
+		try {
+			const saving = chatStore.choosePersona(first, otherPersonaId);
+			await chatStore.selectChat(second);
+			release();
+			await saving;
+			expect(claims(first).persona).toBe(otherPersonaId);
+			expect(claims(second).persona).toBeNull();
+			expect(chatStore.personaSelectionChatId).toBe(second);
+		} finally {
+			release();
+			write.mockRestore();
+		}
+	});
+});
+
 describe('the defaults are seeds and stop deciding at birth', () => {
 	test('moving a character default leaves a story already under way exactly where it was', async () => {
 		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION, defaultPresetId: OWN_PRESET });
-		const first = await chatStore.createChat({ characterId: entryId });
+		const first = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
 		const bornWith = stored(first).featureState;
 
 		await characterLibraryStore.setChatDefault(entryId, 'defaultPersonaId', appPersonaId);
@@ -362,12 +469,12 @@ describe('the defaults are seeds and stop deciding at birth', () => {
 		expect(chatPersonaEntry(asChat(first))?.id).toBe(otherPersonaId);
 
 		const second = await chatStore.createChat({ characterId: entryId });
-		expect(claims(second)).toMatchObject({ persona: appPersonaId, connection: APP_CONNECTION, preset: APP_PRESET });
+		expect(claims(second)).toMatchObject({ persona: null, connection: APP_CONNECTION, preset: APP_PRESET });
 	});
 
 	test('clearing every default stops stamping without disturbing the chats already born', async () => {
 		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION, defaultPresetId: OWN_PRESET });
-		const first = await chatStore.createChat({ characterId: entryId });
+		const first = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
 
 		for (const key of ['defaultPersonaId', 'defaultConnectionId', 'defaultPresetId'] as const) {
 			await characterLibraryStore.setChatDefault(entryId, key, null);
@@ -544,7 +651,7 @@ describe('a claim outlives the thing it names', () => {
 			defaultConnectionId: OWN_CONNECTION,
 			defaultPresetId: OWN_PRESET
 		});
-		return chatStore.createChat({ characterId: entryId });
+		return chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
 	}
 
 	test('deleting the claimed connection sends on the app and keeps the id for its return', async () => {
@@ -580,13 +687,13 @@ describe('a claim outlives the thing it names', () => {
 		expect(chatPresetId(asChat(chatId))).toBe(OWN_PRESET);
 	});
 
-	test('deleting the claimed persona plays as the app one and keeps the id for its return', async () => {
+	test('deleting the claimed persona resolves to nobody and keeps the id for its return', async () => {
 		const chatId = await claimedChat();
 
 		await characterLibraryStore.deleteEntry(otherPersonaId);
 
 		expect(chatPersonaClaim(asChat(chatId))).toBe(otherPersonaId);
-		expect(chatPersonaEntry(asChat(chatId))?.id).toBe(appPersonaId);
+		expect(chatPersonaEntry(asChat(chatId))).toBeNull();
 
 		server.entries.push({ ...libraryRow('persona', 'Stranger'), id: otherPersonaId });
 		await characterLibraryStore.refresh();
@@ -602,7 +709,7 @@ describe('a claim outlives the thing it names', () => {
 			defaultPresetId: OWN_PRESET
 		});
 		const pirate = await characterLibraryStore.createVersion(entryId, 'Pirate');
-		const chatId = await chatStore.createChat({ characterId: entryId });
+		const chatId = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
 		expect(stored(chatId).characterVersionId).not.toBe(pirate!.id);
 
 		await characterLibraryStore.deleteEntry(entryId);
@@ -651,7 +758,7 @@ describe('one blob, every feature', () => {
 		chatStore.currentChatState = null;
 
 		expect(claims(chatId)).toMatchObject({ connection: null, persona: null, preset: null });
-		expect(chatPersonaEntry(asChat(chatId))?.id).toBe(appPersonaId);
+		expect(chatPersonaEntry(asChat(chatId))).toBeNull();
 		expect(chatPreset(asChat(chatId))?.id).toBe(APP_PRESET);
 
 		await chatStore.updateChatFeatureState(chatId, { preset: OWN_PRESET });

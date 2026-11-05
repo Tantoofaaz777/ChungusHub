@@ -33,8 +33,6 @@ import {
 import { assemblePrompt, type PromptRecall } from './prompt-assembly';
 import { withTokenizers } from '#lib/tokenizer/loader.ts';
 
-const ACTIVE_PERSONA_KEY = 'activePersonaId';
-
 export interface PromptBuildContext {
 	chatId: string | null;
 	chatMessages: Message[]; // Full chat path for history and last_message macros
@@ -95,9 +93,8 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 			: Promise.resolve({ text: null, archivedIds: new Set<string>() });
 	// These sources are independent once the chat/preset is known. Keep each read fresh
 	// while paying one network round instead of waiting on them one after another.
-	const [libraryEntries, activePersona, allLorebooks, recall, steeringNotes, customFields, version] = await Promise.all([
+	const [libraryEntries, allLorebooks, recall, steeringNotes, customFields, version] = await Promise.all([
 		chat ? db.getAllLibraryEntries() : Promise.resolve([]),
-		db.getSetting(ACTIVE_PERSONA_KEY),
 		db.getAllLorebooks(),
 		recallRead,
 		featurePromptsStore.steeringEnabled ? db.getAllSteeringNotes() : Promise.resolve([]),
@@ -120,14 +117,10 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 		}
 		character = { ...character, data: version.data };
 	}
-	// The chat's own persona while it names one that still exists, else the app's. Same
-	// resolver the meter and the transcript run, against the rows read here rather than the
-	// store's copy (architecture/prompt-pipeline.md coupling 3c).
-	const personaId = resolvePersonaId(
-		chatPersonaClaim(chat),
-		libraryEntries,
-		activePersona || null
-	);
+	const personaId = resolvePersonaId(chatPersonaClaim(chat), libraryEntries);
+	if (chat?.characterId && !personaId) {
+		throw new Error('Choose a persona for this conversation before generating a reply.');
+	}
 	const personaEntry = personaId
 		? libraryEntries.find((entry) => entry.id === personaId && entry.type === 'persona') ?? null
 		: null;

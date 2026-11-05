@@ -99,6 +99,9 @@ class UiStore {
 	// is held here between the steps.
 	newChatStep = $state<'character' | 'persona' | null>(null);
 	newChatCharacterId = $state<string | null>(null);
+	/** Existing conversation choosing a persona through the same Library step. */
+	newChatTargetChatId = $state<string | null>(null);
+	private onPersonaSelectionCancel: (() => void) | null = null;
 
 	// Navigation guard. A panel can register a blocker that vetoes leaving it while
 	// it has unfinished business: the Library uses it to trap an unsaved brand-new
@@ -208,7 +211,7 @@ class UiStore {
 		// Closing the dock also dismisses whichever centered editor it opened.
 		this.openEditor(null, null);
 		// The flow lives in the Library, so closing the panel abandons the wizard.
-		this.clearNewChat();
+		this.cancelNewChat();
 	}
 
 	/** Begin the New chat flow: the Library opens on Characters, a character pick
@@ -216,6 +219,7 @@ class UiStore {
 	 *  when the Library closes or any chat opens (chatStore.selectChat clears it). */
 	startNewChat(flushFn?: () => void) {
 		if (this.navBlocked()) return;
+		this.cancelNewChat();
 		if (this.libraryTab !== 'characters') {
 			flushFn?.();
 			this.libraryTab = 'characters';
@@ -236,16 +240,40 @@ class UiStore {
 		this.openEditor(null, null);
 	}
 
+	/** Reuse the New chat persona shelf to choose for an already-created conversation. */
+	startPersonaSelection(chatId: string, characterId: string, onCancel: () => void) {
+		if (this.navBlocked()) return;
+		this.openEditor(null, null);
+		this.pendingLibraryEntryId = null;
+		this.openLibrary();
+		this.newChatStep = 'persona';
+		this.newChatCharacterId = characterId;
+		this.newChatTargetChatId = chatId;
+		this.onPersonaSelectionCancel = onCancel;
+		this.libraryTab = 'personas';
+	}
+
+	/** User cancellation also abandons a conversation awaiting its opening choice. */
+	cancelNewChat() {
+		if (this.navBlocked()) return;
+		const onCancel = this.onPersonaSelectionCancel;
+		this.clearNewChat();
+		onCancel?.();
+	}
+
 	/** End the New chat flow, completion and cancel alike. */
 	clearNewChat() {
 		this.newChatStep = null;
 		this.newChatCharacterId = null;
+		this.newChatTargetChatId = null;
+		this.onPersonaSelectionCancel = null;
 	}
 
 	/** The flow's two steps ARE two shelves, so reaching any other one ends it: its banner over
 	 *  a list with no persona to pick is a step nobody can take and no way to leave it. */
 	private endFlowOffShelf(tab: LibraryTab) {
-		if (this.newChatStep && tab !== 'characters' && tab !== 'personas') this.clearNewChat();
+		if (this.newChatStep && ((tab !== 'characters' && tab !== 'personas') ||
+			(this.newChatTargetChatId !== null && tab !== 'personas'))) this.cancelNewChat();
 	}
 
 	toggleLibrary(flushFn?: () => void) {

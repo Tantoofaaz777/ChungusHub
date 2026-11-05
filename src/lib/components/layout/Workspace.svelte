@@ -275,7 +275,7 @@
 			try { await chatStore.selectChat(id); } catch { return; } // selectChat owns its error toast.
 			uiStore.closeOverlay();
 			if (!uiStore.settingsPinned) uiStore.closeSettings();
-			if (!uiStore.libraryPinned) uiStore.closeLibrary();
+			if (!uiStore.libraryPinned && !chatStore.personaSelectionChatId) uiStore.closeLibrary();
 			uiStore.closeDebugPanel();
 		},
 		missing: () => toastStore.error('This chat no longer exists on this server'),

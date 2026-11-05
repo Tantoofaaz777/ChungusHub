@@ -4,7 +4,7 @@
 	import Select from '#lib/components/ui/Select.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
-	import { personaStore, LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
+	import { LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { imageService, imageRejectionReason } from '#lib/services/imageService.ts';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
@@ -55,7 +55,6 @@
 	let entry = $derived(characterLibraryStore.entries.find((e) => e.id === entryId));
 	// Brand-new personas get explicit Save/Discard; confirmed ones autosave silently.
 	let isNew = $derived(!!entry && characterLibraryStore.isUnconfirmedNew(entry.id));
-	let isActive = $derived(!!entry && personaStore.activeId === entry.id);
 	// Edits land on the entry and the store's debounce carries them out, so "saving" is
 	// exactly "a write is still waiting".
 	let saving = $derived(!!entry && characterLibraryStore.hasPendingWrite(entry.id));
@@ -200,11 +199,6 @@
 	}
 
 	// ---- Entry actions ----
-	function handleSetActive() {
-		if (!entry) return;
-		personaStore.setActive(entry.id);
-	}
-
 	async function handleToggleFavorite() {
 		if (!entry) return;
 		await characterLibraryStore.toggleFavorite(entry.id);
@@ -221,8 +215,7 @@
 	let showDeleteConfirm = $state(false);
 	let deleteName = $derived(snapshot?.name || 'this persona');
 	let deleteMessage = $derived(
-		`Are you sure you want to delete ${deleteName}? This cannot be undone.` +
-			(isActive ? ' New chats start as it, so another one takes that over.' : '')
+		`Are you sure you want to delete ${deleteName}? This cannot be undone.`
 	);
 	// The app keeps at least one persona (architecture/library.md): the server refuses the last
 	// delete, so the menu item goes inert and says why rather than vanishing.
@@ -268,9 +261,6 @@
 		try {
 			await characterLibraryStore.flushEntry(entry.id);
 			characterLibraryStore.confirmNewEntry(entry.id);
-			// First persona ever saved becomes the active "you" so a fresh setup works
-			// without a second step; otherwise activation stays an explicit choice.
-			if (!personaStore.activeId) personaStore.setActive(entry.id);
 			flashSaved();
 			toastStore.success('Persona saved');
 		} finally {
@@ -331,23 +321,6 @@
 			entryType="persona"
 			onConvert={() => (showConvert = true)}
 		>
-			{#snippet badge()}
-				{#if isActive && !isNew}
-					<span class="persona-default shrink-0 text-[10px] font-ui px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30" aria-label="Default persona" title="Default persona">
-						<span class="persona-mobile-icon"><Icon name="check" class="w-3.5 h-3.5" /></span>
-						<span class="persona-header-label">Default</span>
-					</span>
-				{/if}
-			{/snippet}
-			{#snippet primaryAction()}
-				{#if !isActive}
-					<button type="button" class="persona-activate" onclick={handleSetActive}
-						aria-label="Start new chats as this" title="Start new chats as this">
-						<Icon name="user" class="w-4 h-4" />
-						<span class="persona-header-label">Start new chats as this</span>
-					</button>
-				{/if}
-			{/snippet}
 		</LibraryEditorHeader>
 
 		<div class="flex-1 panel-scroll">
@@ -562,18 +535,6 @@
 	.persona-form { display: flex; flex-direction: column; gap: 1.5rem; padding: 1.5rem; min-width: 0; }
 	.persona-identity { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); align-items: start; gap: 1.25rem; }
 	.persona-basics { display: grid; gap: 1rem; min-width: 0; }
-	.persona-mobile-icon { display: none; }
-	.persona-activate { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
-		height: 2.25rem; padding: 0 0.7rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md);
-		background: var(--color-bg-tertiary); color: var(--color-text-secondary); font-family: var(--font-ui); font-size: 0.74rem; font-weight: 600; }
-	.persona-activate:hover { color: var(--color-text-primary); border-color: var(--color-accent); }
-	.persona-activate:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-	@media (max-width: 640px) {
-		.persona-header-label { display: none; }
-		.persona-mobile-icon { display: inline-flex; }
-		.persona-default { display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem; }
-		.persona-activate { width: 2.25rem; padding: 0; }
-	}
 	@media (max-width: 560px) {
 		.persona-form { padding: 1rem; gap: 1.25rem; }
 		.persona-identity { grid-template-columns: clamp(6rem, 28vw, 7rem) minmax(0, 1fr); gap: 0.75rem; }

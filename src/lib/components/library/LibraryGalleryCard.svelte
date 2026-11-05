@@ -9,8 +9,6 @@
 
 	interface Props {
 		entry: LibraryEntry;
-		/** Marks the persona new chats start as (personas only). */
-		active?: boolean;
 		/** Bulk-selection mode: a click toggles selection instead of opening the entry. */
 		selectionMode?: boolean;
 		selected?: boolean;
@@ -31,7 +29,6 @@
 
 	let {
 		entry,
-		active = false,
 		selectionMode = false,
 		selected = false,
 		onToggleSelect,
@@ -141,11 +138,6 @@
 	<div class="absolute inset-x-0 bottom-0 p-3.5 flex flex-col gap-1.5">
 		<div class="flex items-center gap-1.5">
 			<h3 class="font-ui font-semibold text-[15px] text-white truncate" style="text-shadow: 0 1px 4px rgb(0 0 0 / 0.85), 0 0 2px rgb(0 0 0 / 0.5);">{name}</h3>
-			{#if active}
-				<span class="shrink-0 text-[10px] font-ui px-1.5 py-0.5 rounded-full bg-accent/14 text-accent border border-accent/30 backdrop-blur-sm">
-					Default
-				</span>
-			{/if}
 		</div>
 
 		{#if notes}

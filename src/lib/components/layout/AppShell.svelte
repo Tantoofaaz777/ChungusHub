@@ -32,7 +32,6 @@
 	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
 	import { steeringStore } from '#lib/stores/steering.svelte.ts';
 	import { lorebookSettingsStore } from '#lib/lorebook/settings.svelte.ts';
-	import { personaStore } from '#lib/stores/persona.svelte.ts';
 	import { presetControlsStore } from '#lib/stores/presetControls.svelte.ts';
 	import { tokenCalibration } from '#lib/tokenizer/index.ts';
 	import {
@@ -185,7 +184,6 @@
 				// readout and the chat meter both resolve them the moment a chat opens, so
 				// they load before chatStore does.
 				await steeringStore.load();
-				await personaStore.initialize();
 				await presetControlsStore.initialize();
 			});
 
