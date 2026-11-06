@@ -99,7 +99,7 @@ class UiStore {
 	// is held here between the steps.
 	newChatStep = $state<'character' | 'persona' | null>(null);
 	newChatCharacterId = $state<string | null>(null);
-	/** Existing conversation choosing a persona through the same Library step. */
+	/** Newly created conversation choosing a persona through the same Library step. */
 	newChatTargetChatId = $state<string | null>(null);
 	private onPersonaSelectionCancel: (() => void) | null = null;
 
@@ -240,7 +240,7 @@ class UiStore {
 		this.openEditor(null, null);
 	}
 
-	/** Reuse the New chat persona shelf to choose for an already-created conversation. */
+	/** Reuse the New chat persona shelf for a chat just created by another entry point. */
 	startPersonaSelection(chatId: string, characterId: string, onCancel: () => void) {
 		if (this.navBlocked()) return;
 		this.openEditor(null, null);

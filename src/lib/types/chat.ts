@@ -117,8 +117,8 @@ export interface ChatFeatureState {
 	 *  too, rather than throwing or being swept (see utils/chat-setup.ts). */
 	connection: string | null;
 	/** The persona explicitly selected for this story. Null or a deleted persona means
-	 *  a choice is required before generation. Opening a bot conversation asks every time;
-	 *  the New chat wizard's persona step already supplies that opening's choice. */
+	 *  a choice is required before generation. Only creating a new conversation asks;
+	 *  reopening an existing chat keeps its choice. The New chat wizard supplies it at birth. */
 	persona: string | null;
 	/** The preset this story's prompt is built from, or null to follow the app's active one.
 	 *  A preset is one document, so the claim carries all of it: the items, the controls the

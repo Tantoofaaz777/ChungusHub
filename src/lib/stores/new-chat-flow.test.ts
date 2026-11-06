@@ -220,7 +220,7 @@ describe('cancel edges', () => {
 	});
 });
 
-describe('the same persona shelf for an existing conversation', () => {
+describe('the same persona shelf for a newly created conversation', () => {
 	test('opens Personas with a chat target and dismisses the previous editor', () => {
 		uiStore.libraryEditorId = 'old-editor';
 		uiStore.pendingLibraryEntryId = 'old-editor';

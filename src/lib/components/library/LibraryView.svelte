@@ -39,7 +39,7 @@
 				{#if flowStep === 'character'}
 					New chat: choose a character
 				{:else if uiStore.newChatTargetChatId}
-					Chat{flowCharacterName ? ` with ${flowCharacterName}` : ''}: choose your persona
+					New chat{flowCharacterName ? ` with ${flowCharacterName}` : ''}: choose your persona
 				{:else if flowCharacterName}
 					New chat with {flowCharacterName}: choose your persona
 				{:else}

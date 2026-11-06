@@ -125,7 +125,7 @@
 		<div class="wd-form">
 			<p class="wd-lede">
 				A persona is you in the story. Create one now, then choose who to play as
-				whenever you open a conversation. You can add more in the Library later.
+				when you start a new conversation. You can add more in the Library later.
 			</p>
 
 			<label class="wd-field">

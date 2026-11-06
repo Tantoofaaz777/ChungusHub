@@ -37,7 +37,7 @@ class ChatStore {
 	currentChatState = $state<ChatState | null>(null);
 	/** Covers navigation from the click, including saving edits before the chat is read. */
 	openingChatId = $state<string | null>(null);
-	/** Opening a bot conversation always requires an explicit persona choice. */
+	/** A newly created chat awaiting its explicit persona choice. */
 	personaSelectionChatId = $state<string | null>(null);
 	private selectionTicket = 0;
 	/** The one generation in flight, tagged with the chat that owns it. Null when idle. */
@@ -159,7 +159,7 @@ class ChatStore {
 	 *  chat: a story never exists without a character, so the id is required.
 	 *
 	 *  `personaId` is the New chat flow's persona step saying who this story is played by.
-	 *  Other entry points ask for a persona as soon as the chat opens. */
+	 *  Other creation entry points ask once after creating the chat. */
 	async createChat(options: { characterId: string; personaId?: string }): Promise<string> {
 		const now = Date.now();
 		const { characterId } = options;
@@ -207,7 +207,10 @@ class ChatStore {
 		// The chat opens on its greeting: the First Message becomes message 1 and any
 		// alternate greetings become its sibling branches (swipeable).
 		await this.seedCharacterGreetings(chat, characterId);
-		await this.selectChat(chat.id, { personaSelected: !!personaId });
+		await this.selectChat(chat.id);
+		if (!personaId && this.activeChatId === chat.id && this.currentChatState?.chat.id === chat.id) {
+			this.requestPersonaSelection(chat.id);
+		}
 
 		return chat.id;
 	}
@@ -305,7 +308,7 @@ class ChatStore {
 		uiStore.openWelcome();
 	}
 
-	async selectChat(chatId: string, options: { personaSelected?: boolean } = {}): Promise<void> {
+	async selectChat(chatId: string): Promise<void> {
 		if (uiStore.guardBlocksNav()) return;
 		const selection = ++this.selectionTicket;
 		const previousPersonaSelection = this.personaSelectionChatId;
@@ -318,7 +321,6 @@ class ChatStore {
 		uiStore.clearNewChat();
 		if (this.activeChatId === chatId && this.currentChatState?.chat.id === chatId) {
 			this.openingChatId = null;
-			if (this.currentChatState.chat.characterId && !options.personaSelected) this.requestPersonaSelection(chatId);
 			return;
 		}
 		this.openingChatId = chatId;
@@ -331,10 +333,6 @@ class ChatStore {
 			if (selection !== this.selectionTicket) return;
 			this.activeChatId = chatId;
 			await this.loadChatState(chatId);
-			if (selection === this.selectionTicket && this.currentChatState?.chat.id === chatId &&
-				this.currentChatState.chat.characterId && !options.personaSelected) {
-				this.requestPersonaSelection(chatId);
-			}
 		} catch (e) {
 			if (selection !== this.selectionTicket) return;
 			// The id is claimed before the load, so a failure leaves the store naming a chat

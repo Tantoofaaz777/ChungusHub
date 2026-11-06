@@ -161,7 +161,7 @@
 
 	// ---- Entry actions ----
 	let selectingPersona = $state(false);
-	// The same shelf chooses for a new chat or the conversation that was just opened.
+	// The same shelf chooses before creating a chat or for a newly created chat.
 	async function handleSelectEntry(id: string) {
 		if (selectingPersona) return;
 		const characterId = uiStore.newChatStep === 'persona' ? uiStore.newChatCharacterId : null;

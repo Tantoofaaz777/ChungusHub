@@ -356,7 +356,7 @@ describe('a chat born from the composer', () => {
 
 });
 
-describe('choosing a persona when opening a conversation', () => {
+describe('choosing a persona only when creating a conversation', () => {
 	test('saving the choice affects only that chat and preserves existing messages', async () => {
 		const characterId = await character();
 		const first = await chatStore.createChat({ characterId, personaId: appPersonaId });
@@ -374,30 +374,57 @@ describe('choosing a persona when opening a conversation', () => {
 		expect(uiStore.newChatStep).toBeNull();
 	});
 
-	test('opening an existing chat asks again even when it already has a persona', async () => {
+	test('reopening an existing chat preserves its persona without asking again', async () => {
 		const chatId = await chatStore.createChat({ characterId: await character(), personaId: otherPersonaId });
 		await chatStore.goHome();
+		uiStore.closeLibrary();
+		const before = copy(stored(chatId));
 		await chatStore.selectChat(chatId);
 
-		expect(chatStore.personaSelectionChatId).toBe(chatId);
-		expect(uiStore.libraryOpen).toBe(true);
-		expect(uiStore.libraryTab).toBe('personas');
-		expect(uiStore.newChatTargetChatId).toBe(chatId);
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(uiStore.libraryOpen).toBe(false);
+		expect(uiStore.newChatStep).toBeNull();
+		expect(uiStore.newChatTargetChatId).toBeNull();
 		expect(claims(chatId).persona).toBe(otherPersonaId);
-		await chatStore.choosePersona(chatId, appPersonaId);
+		expect(stored(chatId)).toEqual(before);
 		await chatStore.selectChat(chatId);
-		expect(chatStore.personaSelectionChatId).toBe(chatId);
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(uiStore.newChatStep).toBeNull();
 	});
 
-	test('closing the persona shelf cancels the opening instead of accepting the old choice', async () => {
-		const chatId = await chatStore.createChat({ characterId: await character(), personaId: otherPersonaId });
+	test('switching between existing chats keeps each saved persona', async () => {
+		const characterId = await character();
+		const first = await chatStore.createChat({ characterId, personaId: appPersonaId });
+		const second = await chatStore.createChat({ characterId, personaId: otherPersonaId });
+		await chatStore.selectChat(first);
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(claims(first).persona).toBe(appPersonaId);
+		await chatStore.selectChat(second);
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(claims(second).persona).toBe(otherPersonaId);
+		expect(uiStore.newChatStep).toBeNull();
+	});
+
+	test('an existing chat with no persona claim also opens without a new-chat picker', async () => {
+		const chatId = await chatStore.createChat({ characterId: await character() });
+		await chatStore.goHome();
+		uiStore.closeLibrary();
 		await chatStore.selectChat(chatId);
+		expect(chatStore.activeChatId).toBe(chatId);
+		expect(chatStore.personaSelectionChatId).toBeNull();
+		expect(uiStore.libraryOpen).toBe(false);
+		expect(uiStore.newChatStep).toBeNull();
+		expect(claims(chatId).persona).toBeNull();
+	});
+
+	test('closing the persona shelf cancels a new chat awaiting its first choice', async () => {
+		const chatId = await chatStore.createChat({ characterId: await character() });
 		uiStore.closeLibrary();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(chatStore.activeChatId).toBeNull();
 		expect(chatStore.personaSelectionChatId).toBeNull();
 		expect(uiStore.welcomeOpen).toBe(true);
-		expect(claims(chatId).persona).toBe(otherPersonaId);
+		expect(claims(chatId).persona).toBeNull();
 	});
 
 	test('cancelling returns home without assigning a persona', async () => {
@@ -431,8 +458,6 @@ describe('choosing a persona when opening a conversation', () => {
 	test('a late save for one conversation does not dismiss the next conversation picker', async () => {
 		const characterId = await character();
 		const first = await chatStore.createChat({ characterId });
-		const second = await chatStore.createChat({ characterId });
-		await chatStore.selectChat(first);
 		const original = db.updateChat.bind(db);
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -442,7 +467,7 @@ describe('choosing a persona when opening a conversation', () => {
 		});
 		try {
 			const saving = chatStore.choosePersona(first, otherPersonaId);
-			await chatStore.selectChat(second);
+			const second = await chatStore.createChat({ characterId });
 			release();
 			await saving;
 			expect(claims(first).persona).toBe(otherPersonaId);
