@@ -220,6 +220,7 @@
 			<!-- A textarea, not an <input>: replacements may contain real line breaks (the
 			     blank-line default does), which a single-line input silently mangles on edit. -->
 			<ExpandableTextarea
+				macroScope="none"
 				id="regex-replacement-{rule.id}"
 				value={rule.replacement}
 				onValueChange={(value) => onPatch?.({ replacement: value })}

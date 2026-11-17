@@ -573,6 +573,7 @@
 						<span class="font-mono text-[0.65rem] text-text-muted tabular-nums">~{contentTokens ?? '…'} tokens</span>
 					</div>
 					<ExpandableTextarea
+						macroScope="lorebook"
 						id="entry-content-{entryId}"
 						value={entry.content}
 						onValueChange={(value) => update({ content: value })}

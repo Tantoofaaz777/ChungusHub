@@ -4,10 +4,11 @@ import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 import { chatPersonaEntry, toPromptCharacter } from '#lib/utils/chat-setup.ts';
 import { llmService } from '#lib/services/llm/provider.ts';
 import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
-import { expandSelfRefs } from '#lib/macros.ts';
+import { expandPromptSelfRefs, expandPromptTemplate, type MacroContext } from '#lib/macros.ts';
+import type { Message } from '#lib/types/chat.ts';
 import { countTokens, withTokenizers } from '#lib/tokenizer/index.ts';
 import { toastStore } from '#lib/stores/toast.svelte.ts';
-import { emptyAo3Information, type Ao3Information } from '#shared/threads/ao3.ts';
+import { AO3_TEXT_FIELDS, emptyAo3Information, type Ao3Information } from '#shared/threads/ao3.ts';
 import { selectThreadsMessages, threadsPrompt, threadsOnPath, threadsSelectionOverlaps } from '#shared/threads/model.ts';
 import { parseGeneratedThreadsFeed } from '#shared/threads/feed.ts';
 import type { ThreadsFeed, ThreadsRound, ThreadsMessage, SaveThreadsRound, ThreadsNotesPatch } from '#shared/threads/types.ts';
@@ -52,6 +53,14 @@ export class ThreadsStore {
 	get selectedCount() { const ids = new Set(this.selected); return this.available.filter(m => ids.has(m.id)).length; }
 	get previousRounds() {
 		return threadsOnPath(this.rounds, this.path);
+	}
+	get displayedLabels() {
+		const cast = this.promptCast();
+		const byId = new Map(chatStore.currentChatState?.allMessages.map(m => [m.id, m]));
+		return new Map(this.rounds.map((round, index) => {
+			const label = expandPromptTemplate(round.label, this.templateContext(cast, round.messages, byId));
+			return [round.id, label.trim() || `Thread ${index + 1}`];
+		}));
 	}
 	/** Ordinary panel opens reuse the current data; explicit reloads and live sync stay fresh. */
 	async ensureLoaded(chatId: string | null) {
@@ -144,12 +153,30 @@ export class ThreadsStore {
 		}
 	}
 	cancel() { this.controller?.abort(); this.controller = null; if (this.phase === 'generating') this.phase = 'idle'; }
-	private preparePrompt(round?: ThreadsRound, validate = true) {
+	private promptCast() {
 		const chat = chatStore.activeChat;
 		const entry = characterLibraryStore.entries.find(e => e.id === chat?.characterId);
 		const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, chat?.characterVersionId ?? null)) : null;
 		const persona = toPromptCharacter(chatPersonaEntry(chat));
-		const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
+		return {
+			resolvedCharacters: character ? [character] : [],
+			resolvedPersona: persona,
+			fallbackNames: { char: character?.name || 'Narrator', user: persona?.name || 'User' }
+		};
+	}
+	private templateContext(cast: MacroContext, source: ThreadsMessage[], byId: ReadonlyMap<string, Message>): MacroContext {
+		return {
+			...cast,
+			// Inline history describes the selected scene, including older saved rounds.
+			chatMessages: source.flatMap(m => {
+				const original = byId.get(m.id);
+				return original ? [{ ...original, role: m.role, content: m.content }] : [];
+			})
+		};
+	}
+	private preparePrompt(round?: ThreadsRound, validate = true) {
+		const cast = this.promptCast();
+		const { char: charName, user: userName } = cast.fallbackNames;
 		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : (!validate && !this.selected.length ? [] : selectThreadsMessages(this.path, this.selected, this.usedIds)).map(m => ({
 			id: m.id, ...(m.selectedVariantId ? { variantId: m.selectedVariantId } : {}), index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,
 			speaker: m.role === 'assistant' ? charName : m.role === 'user' ? userName : 'System'
@@ -160,11 +187,25 @@ export class ThreadsStore {
 		if (round && (cutoff < 0 || !this.previousRounds.some(r => r.id === round.id))) throw new Error('This thread belongs to another branch. Return to its branch to regenerate it.');
 		const earlierIds = new Set(this.rounds.slice(0, cutoff).map(r => r.id));
 		const previous = this.previousRounds.filter(r => earlierIds.has(r.id));
-		const expand = (m: ThreadsMessage) => ({ ...m, content: expandSelfRefs(m.content, charName, userName, persona?.pronouns ?? {}) });
+		const pathById = new Map(this.path.map(m => [m.id, m]));
+		const context = this.templateContext(cast, messages, pathById);
+		const expandTemplate = (text: string) => expandPromptTemplate(text, context);
+		const expandMessage = (m: ThreadsMessage) => ({
+			...m, content: expandPromptSelfRefs(m.content, context)
+		});
+		const ao3 = { ...this.ao3 };
+		if (ao3.enabled) {
+			for (const [key] of AO3_TEXT_FIELDS) ao3[key] = expandTemplate(ao3[key]);
+		}
 		const label = round?.label ?? this.label;
-		const input = $state.snapshot({ messages: messages.map(expand), label,
-			previous: previous.map(r => ({ ...r, messages: r.messages.map(expand) })), notes: this.notes, ao3: this.ao3,
-			instructions: expandSelfRefs(this.instructions, charName, userName, persona?.pronouns ?? {}), config: threadsConfigStore.value });
+		const input = $state.snapshot({
+			messages: messages.map(expandMessage), label: expandTemplate(label),
+			previous: previous.map(r => ({
+				...r, label: expandPromptTemplate(r.label, this.templateContext(cast, r.messages, pathById)), messages: r.messages.map(expandMessage)
+			})),
+			notes: expandTemplate(this.notes), ao3, instructions: expandTemplate(this.instructions),
+			config: threadsConfigStore.value
+		});
 		return { messages, branchLeafId, label, input };
 	}
 	get promptPreview(): Parameters<typeof threadsPrompt>[0] | null {

@@ -114,6 +114,17 @@ test('spellcheck keeps its existing context and single-message shape', () => {
 	expect(fixture.access).toContain('lorebook-scan');
 });
 
+test('spellcheck expands the combined author notes using the live cast', () => {
+	const { service, fixture, params } = harness();
+	fixture.template = '{{authorsNote}} / {{draft}}';
+	fixture.chat.featureState = JSON.stringify({ authorsNote: { text: 'Chat note for {{user}}.' } });
+	Object.assign(fixture.character, {
+		characterAuthorsNote: { enabled: true, position: 'before', text: 'Card note for {{char}} and {{sub}}.' }
+	});
+	expect(service.buildComposerTransformPrompt({ ...params, kind: 'spellcheck' })[0].content)
+		.toBe('Card note for Sephiroth and they.\nChat note for Alice. / Say hello');
+});
+
 test('composer transforms forward separate reasoning and response streams for progress', async () => {
 	for (const kind of ['impersonate', 'spellcheck'] as const) {
 		const { service, fixture, params } = harness();

@@ -325,6 +325,7 @@
 							}}
 							dialogTitle={`${engine.name} · ${field.label}`}
 							expandLabel={`Expand ${field.label} prompt`}
+							macroScope="standalone"
 							spellcheck={false}
 							rows={promptRows(drafts[field.key] ?? '')}
 							class={`input-base prompt-input${missing.length ? ' is-broken' : ''}`}

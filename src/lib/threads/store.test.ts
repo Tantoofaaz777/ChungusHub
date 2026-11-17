@@ -44,20 +44,46 @@ async function open() {const p=store.load('a');reads.shift()!.resolve(empty());a
 async function start() {store.selected=['5','2'];const p=store.generate();for(let i=0;i<100 && !calls.length;i++) await Promise.resolve();return {p};}
 function previous():ThreadsRound {return {id:'previous',chatId:'a',label:'Prior scene',revision:1,createdAt:1,messages:[{...path[0],role:'assistant',index:0,speaker:'Narrator'}],activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed}]};}
 describe('Threads generation lifecycle',()=>{
-	test('instructions resolve the chat persona in both the preview and generated prompt',async()=>{
+	test('Threads fields resolve live macros in the preview and the request while saving raw text',async()=>{
 		const {characterLibraryStore}=await import('#lib/stores/characterLibrary.svelte.ts');
-		const entry:any={id:'threads-test-persona',type:'persona',identity:{name:'Persona card',alias:'Aster'},data:{traits:{}}};
+		const entry:any={id:'threads-test-persona',type:'persona',identity:{name:'Persona card',alias:'Aster',pronouns:{subjective:'she'}},data:{traits:{}}};
 		characterLibraryStore.entries.push(entry);
 		try {
 			fakeChat.activeChat.featureState=JSON.stringify({persona:entry.id});
-			await open();store.selected=['2','5'];
-			const expected=DEFAULT_THREADS_INSTRUCTIONS.replaceAll('{{user}}','Aster');
+			const notes='{{user}} told {{char}} that {{sub}} would return. Latest: {{lastMessage}}.';
+			const expandedNotes='Aster told Narrator that she would return. Latest: Turn 5.';
+			const ao3={...emptyAo3Information(),enabled:true,summary:'{{user}} returns.',relationships:'{{char}}/{{user}}'};
+			const newLabel='{{user}} returns';
+			const opening=store.load('a');
+			reads.shift()!.resolve({...empty(),notes,ao3,rounds:[{...previous(),label:'{{char}} opens: {{lastMessage}}'}]});
+			await opening;
+			store.label=newLabel;
+			store.selected=['2','5'];
+			const original=featurePromptsStore.activeThreadsPrompt;
+			const template=DEFAULT_THREADS_INSTRUCTIONS+'\nScene recap: {{chatHistoryLast1}}.';
+			featurePromptsStore.state={...featurePromptsStore.state,threadsPrompts:{
+				...featurePromptsStore.threadsPrompts,
+				prompts:featurePromptsStore.threadsPrompts.prompts.map(p=>p.id===original.id?{...p,content:template}:p)
+			}};
+			const expected=template.replaceAll('{{user}}','Aster').replace('{{chatHistoryLast1}}','Narrator: Turn 5');
 			expect(store.promptPreview!.instructions).toBe(expected);
-			expect(store.instructions).toBe(DEFAULT_THREADS_INSTRUCTIONS);
+			expect(store.promptPreview!.notes).toBe(expandedNotes);
+			expect(store.promptPreview!.ao3.relationships).toBe('Narrator/Aster');
+			expect(store.promptPreview!.label).toBe('Aster returns');
+			expect(store.promptPreview!.previous[0].label).toBe('Narrator opens: Turn 1');
+			expect(store.displayedLabels.get('previous')).toBe('Narrator opens: Turn 1');
+			expect(store.instructions).toBe(template);
 			const {p}=await start();
 			expect(calls[0].messages[0].content).toContain(expected);
+			expect(calls[0].messages[0].content).toContain(`# FANDOM NOTES\n\n${expandedNotes}`);
+			expect(calls[0].messages[0].content).toContain('## Aster returns');
+			expect(calls[0].messages[0].content).toContain('Summary: Aster returns.');
+			expect(calls[0].messages[0].content).toContain('Relationships: Narrator/Aster');
 			expect(calls[0].messages[0].content).not.toContain('{{user}}');
 			calls[0].resolve({content:JSON.stringify(feed)});await p;
+			expect(store.notes).toBe(notes);
+			expect(store.ao3).toEqual(ao3);
+			expect(saved[0].label).toBe(newLabel);
 		} finally {
 			const index=characterLibraryStore.entries.findIndex(item=>item.id===entry.id);
 			if(index>=0)characterLibraryStore.entries.splice(index,1);

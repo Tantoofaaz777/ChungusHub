@@ -14,7 +14,7 @@ import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 
 import type { Message } from '#lib/types/chat.ts';
 import { chatAuthorsNote } from '#lib/types/chat.ts';
-import { expandMacros, cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields, type MacroContext } from '#lib/macros.ts';
+import { expandAuthorsNote, expandMacros, expandPromptSelfRefs, cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields, type MacroContext } from '#lib/macros.ts';
 import { resolveLorebooks } from '#lib/lorebook/engine.ts';
 import { lorebookHistory, lorebookScanFields, type LorebookTrigger } from '#lib/lorebook/types.ts';
 import { chatStore } from '#lib/stores/chat.svelte.ts';
@@ -82,7 +82,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 			: undefined;
 	const base: MacroContext = {
 		...historyContext,
-		authorsNote: chatAuthorsNote(chatStore.activeChat),
+		authorsNote: expandAuthorsNote(chatAuthorsNote(chatStore.activeChat), characterEntry?.characterAuthorsNote, historyContext),
 		cardLorePositions: cardLorePositions(preset?.items ?? []),
 		controls: preset?.controls ?? [],
 		customFields: presetControlsStore.valuesFor(preset?.id ?? null),
@@ -100,6 +100,7 @@ export function buildLiveMacroContext(opts: LiveMacroContextOptions = {}): Macro
 			muted: chatMutedLorebookClaim(chatStore.activeChat)
 		}),
 		messages: chatMessages.map((m) => m.content),
+		expandMessage: text => expandPromptSelfRefs(text, base, 'scan'),
 		fields: lorebookScanFields(base.resolvedCharacters ?? [], base.resolvedPersona),
 		trigger: opts.lorebookTrigger,
 		history: lorebookHistory(chatMessages),

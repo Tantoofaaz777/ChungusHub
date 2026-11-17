@@ -2,7 +2,7 @@
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import type { ThreadsRound } from '#shared/threads/types.ts';
 
-	let { rounds, value, onchange }: { rounds: ThreadsRound[]; value: string; onchange: (id: string) => void } = $props();
+	let { rounds, labels, value, onchange }: { rounds: ThreadsRound[]; labels: ReadonlyMap<string, string>; value: string; onchange: (id: string) => void } = $props();
 	const index = $derived(rounds.findIndex(round => round.id === value));
 	function move(direction: -1 | 1) { const round = rounds[index + direction]; if (round) onchange(round.id); }
 </script>
@@ -11,7 +11,7 @@
 	<button class="chapter-arrow" aria-label="Previous chapter" title="Previous chapter" disabled={index <= 0} onclick={() => move(-1)}><Icon name="chevronLeft" class="w-4 h-4" /></button>
 	<select class="chapter-select input-base" aria-label="Choose chapter" {value} onchange={(event) => onchange(event.currentTarget.value)}>
 		{#each [...rounds].reverse() as round (round.id)}
-			<option value={round.id}>{round.label || `Thread ${rounds.indexOf(round) + 1}`}</option>
+			<option value={round.id}>{labels.get(round.id)}</option>
 		{/each}
 	</select>
 	<button class="chapter-arrow" aria-label="Next chapter" title="Next chapter" disabled={index < 0 || index >= rounds.length - 1} onclick={() => move(1)}><Icon name="chevronRight" class="w-4 h-4" /></button>

@@ -41,6 +41,7 @@
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => { if (resetting && resetting.chatId !== store.chatId) resetting = null; });
 	const viewedRound = $derived(store.rounds.find(round => round.id === store.viewedRoundId) ?? store.rounds.at(-1));
+	const chapterLabels = $derived(store.displayedLabels);
 	let notesOpen = $state(false);
 	let ao3Open = $state(false);
 	let touch: { id: string; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -146,7 +147,7 @@
 			<p class="muted">Loading threads…</p>
 		{:else}
 			<div class="tabs"><PillRow options={[{value:'feed',label:'Feed'}, {value:'make',label:'Make'}]} current={store.tab} onpick={(value) => store.tab = value as 'feed' | 'make'} label="Threads view" /></div>
-			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} value={viewedRound.id} onchange={(id) => store.viewedRoundId = id} />{/if}
+			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} labels={chapterLabels} value={viewedRound.id} onchange={(id) => store.viewedRoundId = id} />{/if}
 			{#if store.loadError}<div class="error" role="alert">Could not {store.loaded ? 'refresh' : 'load'} threads. {store.loadError}<Button variant="secondary" size="sm" onclick={() => store.load(chatId)}>{store.loaded ? 'Retry updating' : 'Retry loading'}</Button></div>{/if}
 			{#if store.error}<div class="error" role="alert">{store.error}</div>{/if}
 			{#if store.pending}
@@ -170,7 +171,7 @@
 						{@const versionIndex = round.versions.findIndex(v => v.id === round.activeVersionId)}
 						{@const copied = copiedFeed === `${round.id}/${round.activeVersionId}`}
 						<article class="feed-card" use:readAloudHighlight={{ key: `threads:${store.chatId}:${round.id}:${round.activeVersionId}`, version: JSON.stringify(feed), text: () => serializeFeedAsPlainText(feed) }}>
-							<div class="round-info"><span>{round.label || `Thread ${store.rounds.indexOf(round) + 1}`} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its source versions do not match the selected conversation.">Outside current context</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
+							<div class="round-info"><span>{chapterLabels.get(round.id)} · {round.messages.length} {round.messages.length === 1 ? 'message' : 'messages'}</span>{#if !currentRoundIds.has(round.id)}<span title="Its source versions do not match the selected conversation.">Outside current context</span>{/if}<time datetime={new Date(round.createdAt).toISOString()}>{new Date(round.createdAt).toLocaleDateString()}</time></div>
 							<div class="feed-actions">
 								<div class="actions">
 									<button type="button" class="icon-btn" disabled={copying} aria-busy={copying} aria-label="Copy thread" title={copied ? 'Copied!' : 'Copy thread'} onclick={() => copy(round)}><Icon name={copied ? 'check' : 'copy'} class="w-4 h-4" /></button>
@@ -228,7 +229,7 @@
 							{#each AO3_TEXT_FIELDS as [key,label]}
 								<label class="field-label" for={`threads-ao3-${key}`}>{label}</label>
 								{#if key === 'summary'}
-									<ExpandableTextarea id={`threads-ao3-${key}`} value={store.ao3[key]} onValueChange={(value) => ao3({[key]:value})} dialogTitle="AO3 summary" rows={3} class="input-base threads-textarea" />
+									<ExpandableTextarea id={`threads-ao3-${key}`} value={store.ao3[key]} onValueChange={(value) => ao3({[key]:value})} dialogTitle="AO3 summary" rows={3} macroScope="standalone" class="input-base threads-textarea" />
 								{:else if key === 'additionalTags'}
 									{#key store.chatId}<ThreadsTagsInput id={`threads-ao3-${key}`} value={store.ao3.additionalTags} onchange={(value) => ao3({additionalTags: value})} />{/key}
 								{:else}
@@ -238,7 +239,7 @@
 						</div>
 						{/if}
 					</section>
-					<details class="notes-section" bind:open={notesOpen}><summary><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="users" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span>Fandom Notes</span><span class="section-rule" aria-hidden="true"></span></summary>{#if notesOpen}<label class="sr-only" for="threads-notes">Fandom Notes</label><ExpandableTextarea id="threads-notes" class="input-base threads-textarea" value={store.notes} onValueChange={(notes) => store.updateNotes({notes})} dialogTitle="Fandom Notes" placeholder="Reader expectations, recurring jokes, ships…" rows={4} />{/if}</details>
+					<details class="notes-section" bind:open={notesOpen}><summary><Icon name="chevronDown" class="section-chevron w-3.5 h-3.5" aria-hidden="true" /><Icon name="users" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span>Fandom Notes</span><span class="section-rule" aria-hidden="true"></span></summary>{#if notesOpen}<label class="sr-only" for="threads-notes">Fandom Notes</label><ExpandableTextarea id="threads-notes" class="input-base threads-textarea" value={store.notes} onValueChange={(notes) => store.updateNotes({notes})} dialogTitle="Fandom Notes" placeholder="Reader expectations, recurring jokes, ships…" rows={4} macroScope="standalone" />{/if}</details>
 					{#if store.notesError}<div class="error" role="alert">{store.notesError}<Button variant="secondary" size="sm" onclick={() => store.flushNotes().catch(() => {})}>Retry saving notes</Button></div>{/if}
 					{#if !featurePromptsStore.threadsEnabled}<p class="muted">Enable Threads in <button class="text-link" onclick={settings}>Settings → Engines</button> to generate.</p>{/if}
 					<div class="message-list" aria-label="Unused messages" onscroll={scrollMessages}>

@@ -616,7 +616,7 @@ export function activationSummary(
  * fired, so a match can name the entry that pulled another one in.
  */
 export type LorebookScanSource =
-	| { kind: 'message'; depth: number; text: string }
+	| { kind: 'message'; depth: number; text: string; rawText?: string }
 	| { kind: 'field'; field: LorebookScanField; text: string }
 	| { kind: 'entry'; entryId: string; title: string; bookName: string; text: string };
 

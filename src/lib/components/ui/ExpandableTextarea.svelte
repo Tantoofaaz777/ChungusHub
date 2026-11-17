@@ -6,6 +6,7 @@
 	import MacroReference from './MacroReference.svelte';
 	import { autoResize } from '#lib/actions/autoResize.ts';
 	import { tokenizeEditorSyntax } from '#lib/utils/editor-syntax.ts';
+	import type { MacroReferenceScope } from '#lib/utils/macro-reference.ts';
 	import { MAX_MATCHES } from '#lib/utils/chat-search.ts';
 	import { findEditorMatches, markEditorMatches, replaceAllEditorMatches } from '#lib/utils/editor-search.ts';
 
@@ -25,6 +26,7 @@
 		readonly?: boolean;
 		spellcheck?: boolean;
 		macroControls?: { name: string; description: string }[];
+		macroScope?: MacroReferenceScope | 'none';
 	}
 
 	let {
@@ -41,7 +43,8 @@
 		disabled = false,
 		readonly = false,
 		spellcheck,
-		macroControls
+		macroControls,
+		macroScope = 'identity'
 	}: Props = $props();
 
 	let open = $state(false);
@@ -241,10 +244,12 @@
 					<Icon name="search" class="w-3.5 h-3.5" />
 					Find &amp; replace
 				</Button>
+			{#if macroScope !== 'none'}
 				<Button variant="ghost" size="sm" aria-haspopup="dialog" onclick={() => { macrosOpen = true; }}>
 					<Icon name="sparkles" class="w-3.5 h-3.5" />
 					Macros
 				</Button>
+			{/if}
 			</div>
 			{#if findOpen}
 				<div class="editor-find" role="search" aria-label="Find and replace in {dialogTitle}">
@@ -298,9 +303,9 @@
 	</div>
 </Dialog>
 
-{#if open && macrosOpen}
+{#if open && macrosOpen && macroScope !== 'none'}
 	<Dialog open onClose={() => { macrosOpen = false; }} title="Macros" titleAlign="left" size="xl" bare fill mobileFullscreen>
-		<MacroReference collapsible={false} templates controls={macroControls} />
+	<MacroReference collapsible={false} scope={macroScope} templates={macroScope === 'preset'} controls={macroControls} />
 	</Dialog>
 {/if}
 

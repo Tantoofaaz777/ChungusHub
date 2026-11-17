@@ -81,7 +81,7 @@
 		<button class="preset-action" aria-label="Rename prompt" title="Rename prompt" onclick={() => namePrompt('rename')}><Icon name="pencil" class="w-4 h-4" /></button>
 		<button class="preset-action" aria-label="Delete prompt" title={library.prompts.length === 1 ? 'Keep at least one prompt' : 'Delete prompt'} disabled={library.prompts.length === 1} onclick={() => { flush(); removing = { ...active }; }}><Icon name="trash" class="w-4 h-4" /></button>
 	</div>
-	<ExpandableTextarea id="engine-prompt-threads" value={draft} onValueChange={edit} dialogTitle={`Threads · ${field.label}`} expandLabel={`Expand ${field.label} prompt`} spellcheck={false} rows={Math.min(20, Math.max(3, draft.split('\n').length + 1))} class="input-base prompt-input" expandedClass="font-mono text-sm text-text-primary" />
+	<ExpandableTextarea id="engine-prompt-threads" value={draft} onValueChange={edit} dialogTitle={`Threads · ${field.label}`} expandLabel={`Expand ${field.label} prompt`} spellcheck={false} rows={Math.min(20, Math.max(3, draft.split('\n').length + 1))} macroScope="standalone" class="input-base prompt-input" expandedClass="font-mono text-sm text-text-primary" />
 </div>
 <PromptDialog open={naming !== null} title={naming?.kind === 'rename' ? 'Rename prompt' : 'New prompt'} label="Prompt name" value={naming?.kind === 'rename' ? naming.target.name : ''} confirmLabel={naming?.kind === 'rename' ? 'Rename' : 'Create'} onConfirm={confirmName} onCancel={() => naming = null} />
 <ConfirmDialog open={removing !== null} title="Delete prompt?" message={`Delete “${removing?.name ?? ''}” and its saved instructions? Your saved Threads will be kept.`} confirmLabel="Delete prompt" variant="danger" destructive onConfirm={confirmDelete} onCancel={() => removing = null} />

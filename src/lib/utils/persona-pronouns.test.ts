@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { expandMacros } from '#lib/macros.ts';
+import { expandMacros, expandSelfRefs } from '#lib/macros.ts';
 
 import {
 	DEFAULT_PERSONA_PRONOUNS,
@@ -103,7 +103,7 @@ describe('persona pronoun macros', () => {
 	test('pronouns resolve inside persona and character fields instead of staying nested', () => {
 		const resolvedPersona = {
 			name: 'Mara',
-			traits: { description: '{{sub}} trusts {{ref}}.' },
+			traits: { description: '{{user}} trusts {{char}}, and {{sub}} trusts {{ref}}.' },
 			pronouns: {
 				subjective: 'she',
 				objective: 'her',
@@ -115,7 +115,8 @@ describe('persona pronoun macros', () => {
 		const resolvedCharacters = [
 			{ name: 'Lila', traits: { description: '{{poss}} compass belongs to {{obj}}.' } }
 		];
-		expect(expandMacros('{{persona}}', { resolvedPersona })).toBe('she trusts herself.');
+		expect(expandMacros('{{persona}}', { resolvedPersona, resolvedCharacters }))
+			.toBe('Mara trusts Lila, and she trusts herself.');
 		expect(expandMacros('{{character}}', { resolvedPersona, resolvedCharacters })).toContain(
 			'**Description:** her compass belongs to her.'
 		);
@@ -123,5 +124,11 @@ describe('persona pronoun macros', () => {
 
 	test('without a persona the engine-owned forms resolve empty', () => {
 		expect(expandMacros('A{{sub}}B{{obj}}C{{poss}}D{{ref}}E{{poss_p}}F', {})).toBe('ABCDEF');
+		expect(expandSelfRefs('A{{sub}}B{{obj}}C{{poss}}D{{ref}}E{{poss_p}}F', 'Narrator', 'User')).toBe('ABCDEF');
+	});
+
+	test('stored identity values are inserted literally without resolving them again', () => {
+		expect(expandSelfRefs('{{CHAR}} / <bot> / {{ user }} / {{sub}}',
+			'{{user}}', 'Mara', { subjective: '$&' })).toBe('{{user}} / {{user}} / Mara / $&');
 	});
 });

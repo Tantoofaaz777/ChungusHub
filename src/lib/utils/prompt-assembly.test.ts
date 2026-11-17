@@ -71,6 +71,28 @@ const CHAT = [
 	msg('m5', 'user', 'Latest user turn.')
 ];
 
+test('lorebook keys see live identity references at their original message depth', () => {
+	const book = createEmptyLorebook('Story');
+	book.entries = [
+		{ ...createEmptyLorebookEntry(), key: ['Aster'], content: 'The persona was mentioned.' },
+		{ ...createEmptyLorebookEntry(), key: ['{{user}}'], content: 'A placeholder was mentioned.' },
+		{ ...createEmptyLorebookEntry(), key: ['secret'], content: 'A hidden comment was matched.' }
+	];
+	const message = msg('m1', 'user', '{{ user }} returns with {{char}}.');
+	const rawMessage = msg('m2', 'assistant', '{{user}} responds. {{// secret}}');
+	const result = assemblePrompt(input(preset([item('{{lorebook}}'), item('{{chatHistory}}')]), {
+		resolvedPersona: { name: 'Aster', traits: {} },
+		resolvedCharacters: [{ name: 'Mira', traits: {} }],
+		chatMessages: [message, rawMessage], lorebooks: [book], postProcessing: { mode: 'none' }
+	}));
+	expect(result.messages.map(m => m.content).join('\n')).toContain('The persona was mentioned.');
+	expect(result.messages.map(m => m.content).join('\n')).toContain('A placeholder was mentioned.');
+	expect(result.messages.map(m => m.content).join('\n')).not.toContain('A hidden comment was matched.');
+	expect(result.lorebook.records.find(r => r.entryId === book.entries[0].id)?.matches[0])
+		.toMatchObject({ source: { kind: 'message', depth: 0 }, excerpt: 'Aster responds.' });
+	expect(message.content).toBe('{{ user }} returns with {{char}}.');
+});
+
 describe('preset item history depth', () => {
 	const plain = { chatMessages: CHAT, postProcessing: { mode: 'none' as const } };
 	test('places prompts relative to original history, preserving roles and post-history blocks', () => {

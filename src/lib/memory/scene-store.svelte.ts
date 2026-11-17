@@ -4,10 +4,10 @@ import { llmService } from '#lib/services/llm/provider.ts';
 import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 import { personaEntryFor, toPromptCharacter } from '#lib/utils/chat-setup.ts';
-import { expandSelfRefs } from '#lib/macros.ts';
+import { expandPromptSelfRefs, expandPromptTemplate, type MacroContext } from '#lib/macros.ts';
 import { markSceneBoundary } from './scene-selection';
 import { parseChapterResponse } from './chapter-response';
-import { generationSourcePrompt, previousGenerationSummaries } from './generation-context';
+import { formatMemorySource, generationSourcePrompt, previousGenerationSummaries } from './generation-context';
 import { retainLocalChanges } from '#lib/utils/retain-local-changes.ts';
 import type { Message } from '#lib/types/chat.ts';
 import { chapterTitle, captureScene, resolveScenes, scenePath, sceneSignature, sceneLevel, memoryLabel, prepareCompaction, type MemoryScene, type SceneSource, type MemoryLevel, type CompactionLevel, type MemoryChild } from '../../../shared/memory-scenes';
@@ -189,21 +189,26 @@ export class SceneMemoryStore {
 		draft.phase = 'generating'; draft.error = '';
 		try {
 			if (!featurePromptsStore.memoryEnabled) throw new Error(`Enable Chat Memory in Settings → Engines to generate a ${draft.level}, or write one below.`);
+			const all = new Map(this.path.map(m => [m.id, m]));
+			const source = draft.source.map(s => all.get(s.id));
+			const messages = source.filter((m): m is Message => !!m && !m.excludedFromPrompt);
+			const entry = characterLibraryStore.entries.find(e => e.id === this.ctx?.characterId);
+			const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, this.ctx?.characterVersionId ?? null)) : null;
+			const persona = toPromptCharacter(personaEntryFor(this.ctx?.personaId ?? null, this.ctx?.personaVersionId ?? null));
+			const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
+			const context: MacroContext = {
+				resolvedCharacters: character ? [character] : [], resolvedPersona: persona, chatMessages: messages,
+				fallbackNames: { char: charName, user: userName }
+			};
+			const expandSource = (text: string) => expandPromptSelfRefs(text, context);
 			let transcript: string;
 			if (draft.level === 'chapter') {
-				const all = new Map(this.path.map((m) => [m.id, m]));
-				const source = draft.source.map((s) => all.get(s.id));
 				if (source.some((m, i) => !m || sceneSignature(m) !== draft.source[i].signature)) throw new Error('Source messages are unavailable on this branch. Select the chapter range again.');
-				const messages = source.filter((m) => m && !m.excludedFromPrompt);
-				const entry = characterLibraryStore.entries.find((e) => e.id === this.ctx?.characterId);
-				const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, this.ctx?.characterVersionId ?? null)) : null;
-				const persona = toPromptCharacter(personaEntryFor(this.ctx?.personaId ?? null, this.ctx?.personaVersionId ?? null));
-				const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
-				transcript = messages.map((m) => `[${m!.role === 'assistant' ? charName : m!.role === 'user' ? userName : 'System'}]\n${expandSelfRefs(m!.content, charName, userName, persona?.pronouns ?? {})}`).join('\n\n');
+				transcript = messages.map(m => `[${m.role === 'assistant' ? charName : m.role === 'user' ? userName : 'System'}]\n${expandSource(m.content)}`).join('\n\n');
 			} else {
 				const prepared = prepareCompaction(draft.level, draft.children.map(c => c.id), this.scenes, this.path, this.ctx?.allMessages, draft.sceneId);
 				if (JSON.stringify(prepared.children) !== JSON.stringify(draft.children) || JSON.stringify(prepared.source) !== JSON.stringify(draft.source)) throw new Error('Source memories changed. Reselect the sources before generating.');
-				transcript = draft.children.map(c => this.scenes.find(s => s.id === c.id)!).map(s => `[${memoryLabel(sceneLevel(s))}: ${chapterTitle(s.title)}]\n${s.content}`).join('\n\n');
+				transcript = draft.children.map(c => formatMemorySource(this.scenes.find(s => s.id === c.id)!, expandSource)).join('\n\n');
 			}
 			const promptKey = draft.level === 'chapter' ? 'memoryScene' : draft.level === 'arc' ? 'memoryArc' : 'memoryVolume';
 			const previous = previousGenerationSummaries(this.scenes, this.path, this.ctx?.allMessages ?? this.path,
@@ -216,8 +221,8 @@ export class SceneMemoryStore {
 			};
 			const result = await llmService.complete(target, { source: 'memory', signal: controller.signal,
 				onToken: text => receive(text, false), onThinkingToken: text => receive(text, true),
-				messages: [{ role: 'system', content: featurePromptsStore.promptFor(promptKey) },
-					{ role: 'user', content: generationSourcePrompt(draft.level, transcript, previous) }] });
+				messages: [{ role: 'system', content: expandPromptTemplate(featurePromptsStore.promptFor(promptKey), context) },
+					{ role: 'user', content: generationSourcePrompt(draft.level, transcript, previous, expandSource) }] });
 			if (controller.signal.aborted || this.abort !== controller || this.draft !== draft) return;
 			const chapter = parseChapterResponse(result.content, memoryLabel(draft.level));
 			if (chapter.title !== undefined) draft.title = chapter.title;

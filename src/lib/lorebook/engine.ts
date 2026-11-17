@@ -89,9 +89,13 @@ interface MatchDefaults {
 const EXCERPT_RADIUS = 32;
 
 /** Turn a chat path (oldest → newest) into scan sources, newest at depth 0. */
-export function messageScanSources(messages: string[]): LorebookScanSource[] {
+export function messageScanSources(messages: string[], expand?: (text: string) => string): LorebookScanSource[] {
 	const newest = messages.length - 1;
-	return messages.map((text, i) => ({ kind: 'message', depth: newest - i, text }));
+	return messages.map((message, i) => {
+		const rawText = cardScanText(message);
+		const text = expand?.(rawText) ?? rawText;
+		return { kind: 'message', depth: newest - i, text, ...(text !== rawText ? { rawText } : {}) };
+	});
 }
 
 /**
@@ -203,8 +207,12 @@ function findKey(
 	for (let i = sources.length - 1; i >= 0; i--) {
 		const source = sources[i];
 		const hit = matcher(source.text);
-		if (!hit) continue;
-		return { key, role, source: sourceOf(source), excerpt: excerptAround(source.text, hit.at, hit.length) };
+		if (hit) return { key, role, source: sourceOf(source), excerpt: excerptAround(source.text, hit.at, hit.length) };
+		// Existing keys and regexes can still target the stored spelling of a message.
+		if (source.kind === 'message' && source.rawText !== undefined) {
+			const rawHit = matcher(source.rawText);
+			if (rawHit) return { key, role, source: sourceOf(source), excerpt: excerptAround(source.rawText, rawHit.at, rawHit.length) };
+		}
 	}
 	return null;
 }
@@ -913,6 +921,8 @@ export function resolveLorebooks(opts: {
 	books: Lorebook[];
 	/** The chat path macros read, oldest → newest, message contents only. */
 	messages: string[];
+	/** Resolve live identity references before matching a message. */
+	expandMessage?: (text: string) => string;
 	/** The cards' own text ({@link lorebookScanFields}); only entries that opted into a field see it. */
 	fields?: LorebookScanFieldText;
 	/** What is being generated; entries naming their kinds sit the others out. Default: a send. */
@@ -938,7 +948,7 @@ export function resolveLorebooks(opts: {
 	const selection = scanLorebooks({
 		books: opts.books,
 		cardContext: opts.cardContext,
-		sources: [...fields, ...messageScanSources(opts.messages)],
+		sources: [...fields, ...messageScanSources(opts.messages, opts.expandMessage)],
 		rng: opts.rng,
 		settings: opts.settings,
 		trigger: opts.trigger,

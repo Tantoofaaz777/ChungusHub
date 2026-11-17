@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { MACROS, cappedHistoryTurns, outletMacroName } from '#lib/macros.ts';
 import { resolveCardCbs } from '#lib/card-cbs.ts';
-import { macroToken, matchesMacro, TEMPLATE_MACROS } from './macro-reference';
+import { macrosForScope, macroToken, matchesMacro, TEMPLATE_MACROS } from './macro-reference';
 
 describe('macro reference', () => {
 	test('combines words across name and description, ignoring case and accents', () => {
@@ -38,5 +38,19 @@ describe('macro reference', () => {
 		expect(TEMPLATE_MACROS.filter((macro) => matchesMacro(macro, 'steering wrapper')).map((macro) => macro.name))
 			.toEqual(['steering']);
 		for (const macro of TEMPLATE_MACROS) expect(MACROS.some((global) => global.name === macro.name)).toBe(false);
+	});
+
+	test('offers only macros available to each editor', () => {
+		const names = (scope: Parameters<typeof macrosForScope>[0]) => macrosForScope(scope).map(macro => macro.name);
+		expect(names('identity')).toContain('sub');
+		expect(names('identity')).not.toContain('date');
+		expect(names('standalone')).toContain('lastMessage');
+		expect(names('standalone')).not.toContain('chatHistory');
+		expect(names('standalone')).not.toContain('authorsNote');
+		expect(names('lorebook')).toContain('hidden_key:text');
+		expect(names('lorebook')).not.toContain('outlet::name');
+		expect(names('preset')).toContain('chatHistory');
+		expect(names('preset')).not.toContain('batch');
+		expect(TEMPLATE_MACROS.some(macro => (macro.name as string) === 'perspective')).toBe(false);
 	});
 });

@@ -16,7 +16,7 @@
  */
 
 import { sceneHistory, type MemoryScene } from '../../../shared/memory-scenes';
-import { resolveAuthorsNote, type CharacterAuthorsNote } from '../../../shared/character-authors-note';
+import type { CharacterAuthorsNote } from '../../../shared/character-authors-note';
 import type { LLMMessage, PromptPostProcessingMode } from '#lib/types/llm.ts';
 import { DEFAULT_PROMPT_PLACEHOLDER } from '#lib/types/llm.ts';
 import type { Message } from '#lib/types/chat.ts';
@@ -28,7 +28,8 @@ import { resolveLorebooks } from '#lib/lorebook/engine.ts';
 import { cardLoreContext, cardLorePositions, referencedLorebookOutlets, withLorebookFields } from '#lib/macros.ts';
 import {
 	expandMacros,
-	expandSelfRefs,
+	expandAuthorsNote,
+	expandPromptSelfRefs,
 	historyTurns,
 	pruneEmptyTagBlocks,
 	referencesMacro,
@@ -191,14 +192,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 					count: (text: string) => countTokens(text, input.model)
 				}
 			: undefined;
-	// Both note sources use the live character/persona, without changing saved text.
-	// Compose first and expand identity refs once; arbitrary nested macros and history
-	// remain literal instead of recursively injecting more prompt content.
-	const authorsNote = expandSelfRefs(resolveAuthorsNote(input.authorsNote, input.characterAuthorsNote),
-		input.resolvedCharacters[0]?.name || 'Narrator', input.resolvedPersona?.name || 'User',
-		input.resolvedPersona ? input.resolvedPersona.pronouns ?? {} : undefined);
 	const base: MacroContext = {
-		authorsNote,
 		cardLorePositions: cardLorePositions(input.preset?.items ?? []),
 		resolvedPersona: input.resolvedPersona,
 		resolvedCharacters: input.resolvedCharacters,
@@ -211,6 +205,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 		pruneEmptyBlocks: input.preset?.pruneEmptyBlocks ?? false,
 		exampleSeparator: input.preset?.exampleSeparator ?? undefined
 	};
+	base.authorsNote = expandAuthorsNote(input.authorsNote, input.characterAuthorsNote, base);
 	// The lorebook is scanned and rendered once, here, against a context that has no lore in it
 	// yet: that is what makes a stray {{lorebook}} inside an entry resolve to nothing instead of
 	// recursing, and it leaves ONE roll of the probabilistic entries per assembly.
@@ -223,6 +218,7 @@ export function buildMacroContext(input: AssembleInput): MacroContext {
 		// in a position nothing renders. Decided here, once, where the preset is already known.
 		placeAtDepth: base.injectsHistory,
 		messages: chatMessages.map((m) => m.content),
+		expandMessage: text => expandPromptSelfRefs(text, base, 'scan'),
 		fields: lorebookScanFields(input.resolvedCharacters, input.resolvedPersona),
 		trigger: input.lorebookTrigger,
 		// Sticky and cooldown read the traces the path's own turns stored, so a swipe measures
@@ -304,12 +300,7 @@ const STRUCTURAL_TAG_RE = new RegExp(`\\{\\{\\s*(?:${STRUCTURAL_ALTERNATION})\\s
 const sceneInjectedMessages = new WeakSet<LLMMessage>();
 function toInjectedMessage(m: Message, ctx: MacroContext): LLMMessage {
 	const images = m.attachments?.filter((a) => a.kind === 'image').map((a) => a.path);
-	const content = expandSelfRefs(
-		m.content,
-		ctx.resolvedCharacters?.[0]?.name || 'Narrator',
-		ctx.resolvedPersona?.name || 'User',
-		ctx.resolvedPersona ? ctx.resolvedPersona.pronouns ?? {} : undefined
-	);
+	const content = expandPromptSelfRefs(m.content, ctx);
 	const message: LLMMessage = { role: m.role, content, ...(images?.length ? { images } : {}) };
 	if (m.memorySceneId) sceneInjectedMessages.add(message);
 	return message;

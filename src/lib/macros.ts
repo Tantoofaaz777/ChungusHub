@@ -27,6 +27,7 @@ import { normalizeLorebookOutletName } from '#lib/lorebook/types.ts';
 import { formatControlForPrompt } from '#lib/utils/prompt-controls.ts';
 import { personaPronouns } from '#lib/utils/persona-pronouns.ts';
 import { expandCardCbs, resolveCardCbs, type CardTextMode } from '#lib/card-cbs.ts';
+import { resolveAuthorsNote, type CharacterAuthorsNote } from '../../shared/character-authors-note';
 
 // ============================================================================
 // Registry: definitions + the shared substitution primitive
@@ -158,6 +159,7 @@ export const STRUCTURAL_MACROS: readonly string[] = MACROS.filter((m) => m.struc
 
 /** Matches {{name}} and {{name.sub}}, the one macro shape used everywhere. */
 export const MACRO_REGEX = /\{\{\s*(\/\/[^{}]*?|\w+(?:\.\w+)?(?::[^{}]*?)?)\s*\}\}/g;
+const LEGACY_CHARACTER_REF = /<(?:char|bot)>/gi;
 
 /** Heads each example-dialogue block when the preset names no `exampleSeparator` of its own
  *  (SillyTavern's <START> marker becomes this). An empty separator is a real choice, meaning
@@ -170,13 +172,13 @@ export const DEFAULT_EXAMPLE_SEPARATOR = '***';
  * literal $-sequences in a value aren't treated as replacement patterns.
  * Macros with no entry in `values` are left literal (so typos surface instead of vanishing).
  */
-export function substitute(template: string, values: Record<string, string>): string {
+export function substitute(template: string, values: Record<string, string>, mode: CardTextMode = 'prompt'): string {
 	if (!template) return '';
 	return template.replace(MACRO_REGEX, (match, name: string) => {
 		if (Object.hasOwn(values, name)) return values[name];
 		const canonical = SYSTEM_MACROS.find((key) => key.toLowerCase() === name.toLowerCase());
 		if (canonical && Object.hasOwn(values, canonical)) return values[canonical];
-		return resolveCardCbs(name, { seed: template }) ?? match;
+		return resolveCardCbs(name, { mode, seed: template }) ?? match;
 	});
 }
 
@@ -366,6 +368,8 @@ export interface MacroContext {
 	withoutOptionalLore?: () => MacroContext;
 	cardLorePositions?: string[];
 	chatMessages?: Message[]; // Full chat path for the history and last-turn macros
+	/** Names used by standalone engines when the chat has no card or persona. */
+	fallbackNames?: { char: string; user: string };
 	/** Pre-rendered chat-memory recall block, injected via {{memory}} (empty when off). */
 	memory?: string;
 	/** Ids of messages folded into memory, excluded from {{chatHistory}} so they're not duplicated. */
@@ -527,6 +531,11 @@ export function expandMacros(text: string, context: MacroContext): string {
 	return substitute(text, resolveMacroValues(text, context));
 }
 
+/** Standalone engine templates also accept the older card spelling for the character. */
+export function expandPromptTemplate(text: string, context: MacroContext): string {
+	return expandMacros(text.replace(LEGACY_CHARACTER_REF, '{{char}}'), context);
+}
+
 /**
  * Resolve a single macro name to its value, or undefined when nothing here answers it.
  *
@@ -567,10 +576,10 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 	// Data system macros. With nothing resolved they resolve empty (still not shadowable).
 	switch (name) {
 		case 'user':
-			return resolvedPersona?.name || '';
+			return resolvedPersona?.name || context.fallbackNames?.user || '';
 		case 'char':
 			// The character the chat is bound to.
-			return resolvedCharacters?.[0]?.name || '';
+			return resolvedCharacters?.[0]?.name || context.fallbackNames?.char || '';
 		case 'sub':
 			return resolvedPersona ? personaPronouns(resolvedPersona.pronouns).subjective.trim() : '';
 		case 'obj':
@@ -590,7 +599,7 @@ function resolveMacro(name: string, context: MacroContext): string | undefined {
 		case 'lastCharMessage':
 			return lastTurnText(context, 'assistant');
 		case 'persona':
-			return formatPersona(resolvedPersona ?? null);
+			return formatPersona(resolvedPersona ?? null, resolvedCharacters?.[0]?.name || 'Narrator');
 		case 'character':
 			return formatCharacters(
 				resolvedCharacters ?? [],
@@ -682,12 +691,7 @@ function lastTurnText(context: MacroContext, role?: 'user' | 'assistant'): strin
 	const msgs = context.chatMessages ?? [];
 	for (let i = msgs.length - 1; i >= 0; i--) {
 		if (role && msgs[i].role !== role) continue;
-		return expandSelfRefs(
-			msgs[i].content,
-			context.resolvedCharacters?.[0]?.name || 'Narrator',
-			context.resolvedPersona?.name || 'User',
-			context.resolvedPersona ? context.resolvedPersona.pronouns ?? {} : undefined
-		);
+		return expandPromptSelfRefs(msgs[i].content, context);
 	}
 	return '';
 }
@@ -732,19 +736,30 @@ export function expandSelfRefs(
 	mode: CardTextMode = 'prompt'
 ): string {
 	if (!text) return text;
-	let expanded = expandCardCbs(text, { mode, seed: text })
-		.replace(/\{\{\s*char\s*\}\}/gi, () => charName)
-		.replace(/<(?:char|bot)>/gi, () => charName)
-		.replace(/\{\{\s*user\s*\}\}/gi, () => userName);
-	if (userPronouns === undefined) return expanded;
-	const pronouns = personaPronouns(userPronouns);
-	expanded = expanded
-		.replace(/\{\{\s*sub\s*\}\}/gi, pronouns.subjective.trim())
-		.replace(/\{\{\s*obj\s*\}\}/gi, pronouns.objective.trim())
-		.replace(/\{\{\s*poss\s*\}\}/gi, pronouns.possessive.trim())
-		.replace(/\{\{\s*ref\s*\}\}/gi, pronouns.reflexive.trim())
-		.replace(/\{\{\s*poss_p\s*\}\}/gi, pronouns.possessivePronoun.trim());
-	return expanded;
+	const values: Record<string, string> = { char: charName, user: userName };
+	if (userPronouns !== undefined || mode !== 'display') {
+		const pronouns = userPronouns === undefined ? null : personaPronouns(userPronouns);
+		values.sub = pronouns?.subjective.trim() ?? '';
+		values.obj = pronouns?.objective.trim() ?? '';
+		values.poss = pronouns?.possessive.trim() ?? '';
+		values.ref = pronouns?.reflexive.trim() ?? '';
+		values.poss_p = pronouns?.possessivePronoun.trim() ?? '';
+	}
+	const template = expandCardCbs(text, { mode, seed: text }).replace(LEGACY_CHARACTER_REF, '{{char}}');
+	return substitute(template, values, mode);
+}
+
+export function expandPromptSelfRefs(
+	text: string, { resolvedCharacters, resolvedPersona }: MacroContext, mode: CardTextMode = 'prompt'
+): string {
+	return expandSelfRefs(text, resolvedCharacters?.[0]?.name || 'Narrator',
+		resolvedPersona?.name || 'User', resolvedPersona ? resolvedPersona.pronouns ?? {} : undefined, mode);
+}
+
+export function expandAuthorsNote(
+	chatNote: string | undefined, characterNote: CharacterAuthorsNote | undefined, context: MacroContext
+): string {
+	return expandPromptSelfRefs(resolveAuthorsNote(chatNote, characterNote), context);
 }
 
 /** Display keeps inline comments visible; prompts and lorebook matching use the core above. */
@@ -845,12 +860,12 @@ function formatSingleCharacter(
  * writes both. Personas are a single free-text field (PERMANENT_TRAITS.persona), so there is
  * no sheet to format here the way {{character}} has one.
  */
-function formatPersona(activePersona: PromptCharacter | null): string {
+function formatPersona(activePersona: PromptCharacter | null, charName: string): string {
 	const description = activePersona?.traits.description;
 	if (!description) return '';
 	return expandSelfRefs(
 		description,
-		activePersona.name,
+		charName,
 		activePersona.name,
 		activePersona.pronouns ?? {}
 	);

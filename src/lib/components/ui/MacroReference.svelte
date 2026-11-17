@@ -1,16 +1,13 @@
 <script lang="ts">
 	/**
-	 * The one "Available macros" reference, rendered from the MACROS registry so it
-	 * can never drift from what actually resolves. Macros are global: the same
-	 * component appears in the Prompt Builder and expanded editors.
-	 * Flow macros carry their availability in their group hint.
+	 * The shared reference for macros available in the current editor.
 	 */
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import Alert from './Alert.svelte';
-	import { MACROS, MACRO_GROUPS } from '#lib/macros.ts';
+	import { MACRO_GROUPS } from '#lib/macros.ts';
 	import { onDestroy } from 'svelte';
 	import { copyText } from '#lib/utils/clipboard.ts';
-	import { macroToken, matchesMacro, TEMPLATE_MACROS, type ReferenceMacro } from '#lib/utils/macro-reference.ts';
+	import { macrosForScope, macroToken, matchesMacro, TEMPLATE_MACROS, type MacroReferenceScope, type ReferenceMacro } from '#lib/utils/macro-reference.ts';
 
 	interface Props {
 		/** Dynamic per-preset control macros, rendered as their own group when provided. */
@@ -19,18 +16,20 @@
 		collapsible?: boolean;
 		/** Template-only keys stay separate from the globally registered vocabulary. */
 		templates?: boolean;
+		scope: MacroReferenceScope;
 	}
 
-	let { controls, collapsible = true, templates = false }: Props = $props();
+	let { controls, collapsible = true, templates = false, scope }: Props = $props();
 	const referenceId = `macro-reference-${crypto.randomUUID()}`;
 	let query = $state('');
 	function descriptionId(macro: ReferenceMacro, tag?: string): string {
 		return `${referenceId}-${encodeURIComponent(`${tag ?? ''}:${macro.name}`)}`;
 	}
 
+	let available = $derived(macrosForScope(scope));
 	let groups = $derived(MACRO_GROUPS.map((g) => ({
 		...g,
-		macros: MACROS.filter((m) => m.group === g.id && matchesMacro(m, query))
+		macros: available.filter((m) => m.group === g.id && matchesMacro(m, query))
 	})).filter((g) => g.macros.length > 0));
 	let filteredControls = $derived(controls?.filter((macro) => matchesMacro(macro, query)) ?? []);
 	let filteredTemplates = $derived(templates ? TEMPLATE_MACROS.filter((macro) => matchesMacro(macro, query)) : []);
@@ -192,15 +191,16 @@
 			</div>
 		{/if}
 
-		<!-- The pruning rule, stated once where every macro author already looks. -->
+		{#if scope === 'preset'}
 		<p class="text-[11px] font-ui text-text-muted leading-snug border-t border-border-subtle/60 pt-2.5">
 			<span class="font-semibold text-text-secondary">Empty blocks can prune themselves:</span>
 			with the preset's “Prune empty blocks” toggle on, wrapping a macro in a plain tag
-			(<code class="font-mono text-accent">&lt;memory&gt;{'{{memory}}'}&lt;/memory&gt;</code>) drops the whole
+			(<code class="font-mono text-accent">&lt;scenario&gt;{'{{scenario}}'}&lt;/scenario&gt;</code>) drops the whole
 			block from the prompt only when its resolved content is empty after pruning child blocks.
 			Written text keeps its block even when every macro is empty. Static-only blocks and unknown
 			macro names are never touched.
 		</p>
+		{/if}
 	</div>
 </div>
 {/snippet}

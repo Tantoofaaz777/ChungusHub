@@ -815,6 +815,7 @@
 								<div class="pb-field">
 									<label for="item-content-{item.id}" class="pb-label">Prompt content</label>
 									<ExpandableTextarea
+										macroScope="preset"
 										{macroControls}
 										id="item-content-{item.id}"
 										value={item.content}
