@@ -8,6 +8,7 @@
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { imageService, imageRejectionReason } from '#lib/services/imageService.ts';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
+	import CharacterVersionMenu from './CharacterVersionMenu.svelte';
 	import FieldTokenCount from './FieldTokenCount.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
@@ -321,6 +322,9 @@
 			entryType="persona"
 			onConvert={() => (showConvert = true)}
 		>
+			{#snippet badge()}
+				{#if !isNew}<CharacterVersionMenu entryId={entry.id} />{/if}
+			{/snippet}
 		</LibraryEditorHeader>
 
 		<div class="flex-1 panel-scroll">

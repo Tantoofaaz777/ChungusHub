@@ -18,6 +18,7 @@
  * mutate the store by accident and then read its own write back as a pass.
  */
 import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from 'bun:test';
+import { personaVersionData } from '#shared/persona-version.ts';
 
 const identity = <T>(value?: T): T | undefined => value;
 (globalThis as unknown as { $state: unknown }).$state = Object.assign(identity, {
@@ -114,6 +115,8 @@ mock.module('#lib/services/database.ts', () => ({
 			const at = server.entries.findIndex((e) => e.id === entry.id);
 			if (at < 0) throw new Error(`updateLibraryEntry: no entry ${entry.id}`);
 			server.entries[at] = copy(entry);
+			const active = server.versions.find(row => row.id === entry.activeVersionId && row.entryId === entry.id);
+			if (active && entry.type === 'persona') active.data = personaVersionData(entry.data);
 		},
 		deleteLibraryEntry: async (id: string) => {
 			server.entries = server.entries.filter((e) => e.id !== id);
@@ -122,6 +125,18 @@ mock.module('#lib/services/database.ts', () => ({
 		},
 
 		getAllCharacterVersions: async () => server.versions.map(copy),
+		forkPersonaVersion: async (entryId: string, name: string, expectedActive: string | null) => {
+			const entry = server.entries.find(row => row.id === entryId)!;
+			if ((entry.activeVersionId ?? null) !== expectedActive) throw new Error('Stale editor');
+			const names = expectedActive ? [name] : ['Original', name];
+			const added = names.map(name => ({
+				id: crypto.randomUUID(), entryId, name, data: personaVersionData(entry.data),
+				createdAt: ++clock, updatedAt: clock
+			}));
+			entry.activeVersionId = added.at(-1)!.id;
+			server.versions.push(...added);
+			return copy(added);
+		},
 		insertCharacterVersion: async (version: Record<string, unknown>) => {
 			server.versions.push(copy(version));
 		},
@@ -177,10 +192,13 @@ const {
 	chatPresetClaim,
 	chatPresetId,
 	chatPersonaEntry,
+	toPromptCharacter,
 	resolvePromptTarget
 } = await import('#lib/utils/chat-setup.ts');
 const { normalizeChatFeatureState } = await import('#lib/types/chat.ts');
 const { DEFAULT_GENERATION_SETTINGS } = await import('#lib/types/llm.ts');
+const { expandMacros } = await import('#lib/macros.ts');
+const { personaPronounPreset } = await import('#lib/utils/persona-pronouns.ts');
 
 type Claims = ReturnType<typeof normalizeChatFeatureState>;
 
@@ -290,6 +308,39 @@ const claims = (chatId: string): Claims => normalizeChatFeatureState(stored(chat
 
 /** The chat as a surface holding it would read it, straight off the stored row. */
 const asChat = (chatId: string) => stored(chatId) as never;
+
+test('changing pronouns in a persona fork updates Original and every other version after reload', async () => {
+	const characterId = await character();
+	await characterLibraryStore.updateIdentity(otherPersonaId, { pronouns: personaPronounPreset('she-her')! });
+	await characterLibraryStore.updateData(otherPersonaId, { traits: { description: 'By the sea, {{sub}} can find peace.' } });
+	const originalChat = await chatStore.createChat({ characterId, personaId: otherPersonaId });
+	const city = (await characterLibraryStore.createVersion(otherPersonaId, 'City'))!;
+	await characterLibraryStore.updateData(otherPersonaId, { traits: { description: 'In the city, {{sub}} must stay alert.' } });
+	const cityChat = await chatStore.createChat({ characterId, personaId: otherPersonaId, personaVersionId: city.id });
+	const manor = (await characterLibraryStore.createVersion(otherPersonaId, 'Manor'))!;
+	await characterLibraryStore.updateData(otherPersonaId, { traits: { description: 'At the manor, {{sub}} can rest.' } });
+	const manorChat = await chatStore.createChat({ characterId, personaId: otherPersonaId, personaVersionId: manor.id });
+	const read = (chatId: string) => expandMacros('{{persona}} {{obj}} / {{poss}} / {{ref}} / {{poss_p}}', {
+		resolvedPersona: toPromptCharacter(chatPersonaEntry(asChat(chatId)))
+	});
+	expect([originalChat, cityChat, manorChat].map(read)).toEqual([
+		'By the sea, she can find peace. her / her / herself / hers',
+		'In the city, she must stay alert. her / her / herself / hers',
+		'At the manor, she can rest. her / her / herself / hers'
+	]);
+	await characterLibraryStore.updateIdentity(otherPersonaId, { pronouns: personaPronounPreset('they-them')! });
+	const original = characterLibraryStore.versionsFor(otherPersonaId)[0];
+	await characterLibraryStore.switchActiveVersion(otherPersonaId, original.id);
+	await characterLibraryStore.refresh();
+	expect(original.name).toBe('Original');
+	expect([originalChat, cityChat, manorChat].map(read)).toEqual([
+		'By the sea, they can find peace. them / their / themself / theirs',
+		'In the city, they must stay alert. them / their / themself / theirs',
+		'At the manor, they can rest. them / their / themself / theirs'
+	]);
+	expect(claims(cityChat).personaVersion).toBe(city.id);
+	expect(claims(manorChat).personaVersion).toBe(manor.id);
+});
 
 describe('a chat born from the composer', () => {
 	test('legacy persona defaults are ignored while other defaults still apply', async () => {

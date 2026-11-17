@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * Version manager for a character: a calm chip in the editor header that opens the
+	 * Version manager for a library entry: a chip in the editor header that opens the
 	 * variant list. Fork-before-edit model: "New version" duplicates the current state
 	 * and switches to it; the state you forked from stays parked exactly as it was.
 	 * Chats pin variants, so the delete/switch guards here are what keeps old
@@ -26,6 +26,7 @@
 	// Chat Defaults names another. Badged here because that panel's Version row calls it
 	// "Default" without naming it, and this list is where a reader finds out which one it is.
 	let defaultVersionId = $derived(characterLibraryStore.chatVersionSeed(entryId));
+	let persona = $derived(entry?.type === 'persona');
 
 	let open = $state(false);
 	let busy = $state(false);
@@ -60,9 +61,8 @@
 		try {
 			const wasUnversioned = !entry?.activeVersionId;
 			await characterLibraryStore.createVersion(entryId, name);
-			// The first fork pins this character's existing chats to the baseline row
-			// server-side; reload so open chat state reflects its new pin immediately.
-			if (wasUnversioned) await chatStore.syncReload();
+			// A character's first fork writes baseline pins into its existing chat rows.
+			if (wasUnversioned && !persona) await chatStore.syncReload();
 			usage = await characterLibraryStore.versionUsage(entryId);
 			newName = '';
 			creating = false;
@@ -145,12 +145,16 @@
 
 	<Dialog {open} onClose={closeMenu} title="Versions" titleAlign="left" size="sm" placement="center" bare>
 		<div class="min-h-0 panel-scroll overscroll-contain py-1.5">
-			{#if versions.length === 0}
+			{#if persona || versions.length === 0}
 				<p class="px-3 py-1.5 text-[11px] leading-relaxed font-ui text-text-muted">
-					Fork the current state into a named version before reworking it. Chats keep
-					the exact version they were played with; you can switch any time.
+					{#if persona}
+						Each version has its own description. All versions share the persona’s name, portrait, pronouns, and lorebooks.
+					{:else}
+						Fork the current state into a named version before reworking it. Each chat keeps its chosen version.
+					{/if}
 				</p>
-			{:else}
+			{/if}
+			{#if versions.length}
 				<div class="max-h-64 overflow-y-auto">
 					{#each versions as version (version.id)}
 						{@const isActive = version.id === entry?.activeVersionId}

@@ -20,7 +20,7 @@ class OpenChatSetup {
 	private claims = $derived(normalizeChatFeatureState(chatStore.activeChat?.featureState ?? null));
 
 	/** The explicitly selected persona, or null while a new choice is needed. */
-	persona = $derived(personaEntryFor(this.claims.persona));
+	persona = $derived(personaEntryFor(this.claims.persona, this.claims.personaVersion ?? null));
 
 	/** The preset its transcript is read under: effective on both branches, so an unsaved
 	 *  draft is what the display rules come from either way. */

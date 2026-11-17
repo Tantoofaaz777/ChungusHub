@@ -25,8 +25,10 @@ import {
 	chatLorebookClaim,
 	chatMutedLorebookClaim,
 	chatPersonaClaim,
+	chatPersonaVersionClaim,
 	chatPreset,
 	resolvePersonaId,
+	resolvePersonaVersion,
 	resolvePromptTarget,
 	toPromptCharacter
 } from './chat-setup';
@@ -93,13 +95,21 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 			: Promise.resolve({ text: null, archivedIds: new Set<string>() });
 	// These sources are independent once the chat/preset is known. Keep each read fresh
 	// while paying one network round instead of waiting on them one after another.
-	const [libraryEntries, allLorebooks, recall, steeringNotes, customFields, version] = await Promise.all([
-		chat ? db.getAllLibraryEntries() : Promise.resolve([]),
+	const personaClaim = chatPersonaClaim(chat);
+	const personaVersionClaim = chatPersonaVersionClaim(chat);
+	const libraryRead = chat ? db.getAllLibraryEntries() : Promise.resolve([]);
+	const personaVersionsRead = personaVersionClaim && personaClaim
+		? db.getCharacterVersion(personaVersionClaim).then(row => row ? [row] : [])
+		: libraryRead.then(entries => entries.some(entry => entry.id === personaClaim && entry.type === 'persona' && entry.activeVersionId)
+			? db.getCharacterVersionsByEntry(personaClaim!) : []);
+	const [libraryEntries, allLorebooks, recall, steeringNotes, customFields, version, personaVersions] = await Promise.all([
+		libraryRead,
 		db.getAllLorebooks(),
 		recallRead,
 		featurePromptsStore.steeringEnabled ? db.getAllSteeringNotes() : Promise.resolve([]),
 		readPresetControlValues(preset?.id ?? null),
-		chat?.characterId && chat.characterVersionId ? db.getCharacterVersion(chat.characterVersionId) : Promise.resolve(null)
+		chat?.characterId && chat.characterVersionId ? db.getCharacterVersion(chat.characterVersionId) : Promise.resolve(null),
+		personaVersionsRead
 	]);
 	let character = chat?.characterId
 		? libraryEntries.find((entry) => entry.id === chat.characterId && entry.type === 'character') ?? null
@@ -117,13 +127,17 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 		}
 		character = { ...character, data: version.data };
 	}
-	const personaId = resolvePersonaId(chatPersonaClaim(chat), libraryEntries);
+	const personaId = resolvePersonaId(personaClaim, libraryEntries);
 	if (chat?.characterId && !personaId) {
 		throw new Error('Choose a persona for this conversation before generating a reply.');
 	}
-	const personaEntry = personaId
+	const persona = personaId
 		? libraryEntries.find((entry) => entry.id === personaId && entry.type === 'persona') ?? null
 		: null;
+	if (persona && personaVersionClaim && !personaVersions.some(row => row.id === personaVersionClaim && row.entryId === persona.id)) {
+		throw new Error('Choose another persona version for this conversation before generating a reply.');
+	}
+	const personaEntry = persona ? resolvePersonaVersion(persona, personaVersionClaim, personaVersions) : null;
 
 	// Active lorebooks = every book switched into every chat, then those linked by the bound
 	// character and the active persona, then the ones this chat attached for itself, resolved

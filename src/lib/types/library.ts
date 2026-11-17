@@ -86,7 +86,7 @@ export interface LibraryEntry {
 	identity: LibraryEntryIdentity;
 	data: LibraryEntryData;
 	/**
-	 * The CharacterVersion row whose content `data` currently is (characters only).
+	 * The version being edited. Characters mirror all their data into it; personas mirror their description.
 	 * Absent = unversioned: the entry has no version rows and behaves exactly as before
 	 * versions existed. When set, every save of `data` is mirrored into that row, so all
 	 * version rows (parked and active) always hold real, current content.
@@ -126,7 +126,7 @@ export type ChatDefaultKey =
 	| 'defaultVersionId';
 
 /**
- * One named variant of a character ("pirate", "castle guard", "calmer take", …).
+ * One named variant in the library ("pirate", "castle guard", "calmer take", …).
  * Versions are peers, not a linear history: the user forks before changing, switches
  * freely, and chats pin the exact variant they were played with. Identity (name,
  * portrait, tags) is deliberately NOT versioned: it stays live on the entry.

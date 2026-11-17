@@ -16,7 +16,7 @@
 import type { Chat } from '#lib/types/chat.ts';
 import { normalizeChatFeatureState } from '#lib/types/chat.ts';
 import type { PromptPreset } from '#lib/types/database.ts';
-import { storyRoleName, type LibraryEntry, type LibraryEntryData } from '#lib/types/library.ts';
+import { storyRoleName, type CharacterVersion, type LibraryEntry, type LibraryEntryData } from '#lib/types/library.ts';
 import type { CallTarget, PromptPostProcessingMode } from '#lib/types/llm.ts';
 import type { PromptCharacter } from '#lib/macros.ts';
 import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
@@ -78,6 +78,10 @@ export function resolvePromptTarget(chat: Chat | null, base: CallTarget = 'prima
 /** The persona id selected for a chat, before any liveness check. */
 export function chatPersonaClaim(chat: Chat | null): string | null {
 	return chat ? normalizeChatFeatureState(chat.featureState).persona : null;
+}
+
+export function chatPersonaVersionClaim(chat: Chat | null): string | null {
+	return normalizeChatFeatureState(chat?.featureState).personaVersion ?? null;
 }
 
 /** The preset id a chat claimed, before any liveness check. Read beside `chatPresetId`
@@ -156,15 +160,22 @@ export function resolvePersonaId(
 
 /** Store-sourced twin of `resolvePersonaId`, by claim: what a surface holding only the id
  *  speaks as (the manual-memory context carries the claim the way it carries the version pin). */
-export function personaEntryFor(claimed: string | null): LibraryEntry | null {
+export function resolvePersonaVersion(entry: LibraryEntry, claimed: string | null, versions: readonly CharacterVersion[]): LibraryEntry {
+	const version = versions.find(row => row.entryId === entry.id && (!claimed || row.id === claimed));
+	return version ? { ...entry, data: { ...entry.data, traits: { ...entry.data.traits, description: version.data.traits.description } } } : entry;
+}
+
+export function personaEntryFor(claimed: string | null, version: string | null = null): LibraryEntry | null {
 	const entries = characterLibraryStore.entries;
 	const id = resolvePersonaId(claimed, entries);
-	return id ? entries.find((e) => e.id === id && e.type === 'persona') ?? null : null;
+	const entry = id ? entries.find((e) => e.id === id && e.type === 'persona') : undefined;
+	return entry?.activeVersionId ? resolvePersonaVersion(entry, version, characterLibraryStore.versionsFor(entry.id)) : entry ?? null;
 }
 
 /** The entry a reactive surface holding the chat speaks as. */
 export function chatPersonaEntry(chat: Chat | null): LibraryEntry | null {
-	return personaEntryFor(chatPersonaClaim(chat));
+	const claims = normalizeChatFeatureState(chat?.featureState);
+	return personaEntryFor(claims.persona, claims.personaVersion ?? null);
 }
 
 /** A library entry as prompt assembly sees it. Aliases become the in-story name for both

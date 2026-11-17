@@ -1,7 +1,7 @@
 import { db } from '#lib/services/database.ts';
 import { chatStore } from '#lib/stores/chat.svelte.ts';
 import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
-import { chatPersonaClaim, personaEntryFor, toPromptCharacter } from '#lib/utils/chat-setup.ts';
+import { chatPersonaEntry, toPromptCharacter } from '#lib/utils/chat-setup.ts';
 import { llmService } from '#lib/services/llm/provider.ts';
 import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 import { expandSelfRefs } from '#lib/macros.ts';
@@ -148,7 +148,7 @@ export class ThreadsStore {
 		const chat = chatStore.activeChat;
 		const entry = characterLibraryStore.entries.find(e => e.id === chat?.characterId);
 		const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, chat?.characterVersionId ?? null)) : null;
-		const persona = toPromptCharacter(personaEntryFor(chatPersonaClaim(chat)));
+		const persona = toPromptCharacter(chatPersonaEntry(chat));
 		const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
 		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : (!validate && !this.selected.length ? [] : selectThreadsMessages(this.path, this.selected, this.usedIds)).map(m => ({
 			id: m.id, ...(m.selectedVariantId ? { variantId: m.selectedVariantId } : {}), index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,

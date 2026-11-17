@@ -17,6 +17,7 @@ import type { BookIndex } from '#lib/lorebook/identity.ts';
 import { toastStore } from '#lib/stores/toast.svelte.ts';
 import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
 import { normalizeCharacterAuthorsNote, type CharacterAuthorsNote } from '../../../shared/character-authors-note';
+import { personaVersionData, readPersonaVersionClaim } from '#shared/persona-version.ts';
 import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
 import {
 	clampPortraitFocus,
@@ -472,7 +473,7 @@ class CharacterLibraryStore {
 		if (entry.activeVersionId) {
 			const activeId = entry.activeVersionId;
 			this._versions = this._versions.map((v) =>
-				v.id === activeId ? { ...v, data: this.clone(entry.data), updatedAt: entry.updatedAt } : v
+				v.id === activeId ? { ...v, data: entry.type === 'persona' ? personaVersionData(entry.data) : this.clone(entry.data), updatedAt: entry.updatedAt } : v
 			);
 		}
 	}
@@ -748,7 +749,15 @@ class CharacterLibraryStore {
 	async versionUsage(entryId: string): Promise<Record<string, number>> {
 		const chats = await db.getAllChats();
 		const out: Record<string, number> = {};
+		const persona = this.getEntryById(entryId)?.type === 'persona';
+		const original = persona ? this.versionsFor(entryId)[0]?.id : undefined;
 		for (const chat of chats) {
+			if (persona) {
+				const claim = readPersonaVersionClaim(chat.featureState);
+				const version = claim?.persona === entryId ? claim.version ?? original : null;
+				if (version) out[version] = (out[version] ?? 0) + 1;
+				continue;
+			}
 			if (chat.characterId !== entryId || !chat.characterVersionId) continue;
 			out[chat.characterVersionId] = (out[chat.characterVersionId] ?? 0) + 1;
 		}
@@ -766,9 +775,20 @@ class CharacterLibraryStore {
 	 */
 	async createVersion(entryId: string, name: string): Promise<CharacterVersion | null> {
 		const entry = this.getEntryById(entryId);
-		if (!entry || entry.type !== 'character') return null;
+		if (!entry) return null;
 		// Send any pending editor keystrokes first, so the fork captures what the user sees.
 		await this.flushEntry(entryId);
+		if (entry.type === 'persona') {
+			const added = await db.forkPersonaVersion(entryId, name, entry.activeVersionId ?? null);
+			const fork = added.at(-1)!;
+			entry.activeVersionId = fork.id;
+			entry.data = { ...entry.data, traits: { ...entry.data.traits, description: fork.data.traits.description } };
+			entry.updatedAt = fork.updatedAt;
+			const existing = new Set(added.map(version => version.id));
+			this._versions = [...this._versions.filter(version => !existing.has(version.id)), ...added];
+			this._entries = [...this._entries];
+			return fork;
+		}
 		const now = Date.now();
 
 		if (!entry.activeVersionId) {
@@ -808,11 +828,21 @@ class CharacterLibraryStore {
 		const entry = this.getEntryById(entryId);
 		if (!entry || entry.activeVersionId === versionId) return;
 		const version = this._versions.find((v) => v.id === versionId && v.entryId === entryId);
-		if (!version) throw new Error(`No version "${versionId}" on this character.`);
+		if (!version) throw new Error('That version does not belong to this entry.');
 		await this.flushEntry(entryId);
-		entry.data = this.clone(version.data);
+		const previous = { data: entry.data, activeVersionId: entry.activeVersionId, updatedAt: entry.updatedAt };
+		const next = entry.type === 'persona'
+			? { ...entry.data, traits: { ...entry.data.traits, description: version.data.traits.description } }
+			: this.clone(version.data);
+		entry.data = next;
 		entry.activeVersionId = versionId;
-		await this.persistEntry(entry);
+		try {
+			await this.persistEntry(entry);
+		} catch (error) {
+			// A rejected switch must not leave the editor pointing to an unsaved draft.
+			if (entry.activeVersionId === versionId && !this.writer.pending(entryId)) Object.assign(entry, previous);
+			throw error;
+		}
 	}
 
 	async renameVersion(versionId: string, name: string): Promise<void> {

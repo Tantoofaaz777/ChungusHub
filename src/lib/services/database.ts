@@ -222,6 +222,10 @@ class DatabaseService {
 
 	// ===== CHARACTER VERSIONS =====
 	getAllCharacterVersions(): Promise<CharacterVersion[]> { return this.call('getAllCharacterVersions'); }
+	getCharacterVersionsByEntry(entryId: string): Promise<CharacterVersion[]> { return this.call('getCharacterVersionsByEntry', entryId); }
+	forkPersonaVersion(entryId: string, name: string, expectedActive: string | null): Promise<CharacterVersion[]> {
+		return this.call('forkPersonaVersion', entryId, name, expectedActive);
+	}
 	getCharacterVersion(id: string): Promise<CharacterVersion | null> { return this.call('getCharacterVersion', id); }
 	insertCharacterVersion(version: CharacterVersion): Promise<void> { return this.call('insertCharacterVersion', version); }
 	renameCharacterVersion(id: string, name: string): Promise<void> { return this.call('renameCharacterVersion', id, name); }

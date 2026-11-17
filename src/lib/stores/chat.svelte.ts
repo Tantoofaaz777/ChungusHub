@@ -11,7 +11,7 @@ import { db } from '#lib/services/database.ts';
 import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
 import { llmStatus, stopGeneration } from '#lib/services/transport.ts';
 import { findActivePath } from '#lib/utils/message-tree.ts';
-import { chatPersonaClaim } from '#lib/utils/chat-setup.ts';
+import { chatPersonaClaim, chatPersonaVersionClaim } from '#lib/utils/chat-setup.ts';
 import { formatDate } from '#lib/utils/date.ts';
 import { toastStore } from '#lib/stores/toast.svelte.ts';
 import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
@@ -160,7 +160,7 @@ class ChatStore {
 	 *
 	 *  `personaId` is the New chat flow's persona step saying who this story is played by.
 	 *  Other creation entry points ask once after creating the chat. */
-	async createChat(options: { characterId: string; personaId?: string }): Promise<string> {
+	async createChat(options: { characterId: string; personaId?: string; personaVersionId?: string }): Promise<string> {
 		const now = Date.now();
 		const { characterId } = options;
 		const entry = characterLibraryStore.entries.find((e) => e.id === characterId);
@@ -173,6 +173,7 @@ class ChatStore {
 		if (personaId && !characterLibraryStore.personas.some((p) => p.id === personaId)) {
 			throw new Error('Choose a persona from your library.');
 		}
+		const personaVersion = personaId ? this.personaVersionForSelection(personaId, options.personaVersionId) : undefined;
 		const connectionId = entry?.defaultConnectionId ?? null;
 		const presetId = entry?.defaultPresetId ?? null;
 		const backgroundPath = entry ? characterLibraryStore.dataForVersion(entry, characterVersionId).cardMetadata?.backgroundPath : undefined;
@@ -194,6 +195,7 @@ class ChatStore {
 					? JSON.stringify({
 							...DEFAULT_CHAT_FEATURE_STATE,
 							persona: personaId,
+							...(personaVersion ? { personaVersion } : {}),
 							connection: connectionId,
 							preset: presetId,
 							...(backgroundPath ? { scene: { enabled: true, background: { path: backgroundPath, dim: 0.35, blur: 0 } } } : {})
@@ -364,16 +366,27 @@ class ChatStore {
 	}
 
 	/** Save only this chat's persona. Historical message attribution stays intact. */
-	async choosePersona(chatId: string, personaId: string): Promise<void> {
+	async choosePersona(chatId: string, personaId: string, versionId?: string): Promise<void> {
 		if (!characterLibraryStore.personas.some((p) => p.id === personaId)) {
 			throw new Error('That persona is no longer in your library.');
 		}
 		const selection = this.selectionTicket;
-		await this.updateChatFeatureState(chatId, { persona: personaId });
+		const personaVersion = this.personaVersionForSelection(personaId, versionId);
+		await this.updateChatFeatureState(chatId, { persona: personaId, personaVersion });
+		const active = this.currentChatState;
+		if (active?.chat.id === chatId) void this.refreshMemory(active.chat, active.allMessages);
 		if (selection === this.selectionTicket && this.personaSelectionChatId === chatId) {
 			this.personaSelectionChatId = null;
 			uiStore.clearNewChat();
 		}
+	}
+
+	private personaVersionForSelection(personaId: string, versionId?: string): string | undefined {
+		const versions = characterLibraryStore.versionsFor(personaId);
+		if (versionId && !versions.some(version => version.id === versionId)) {
+			throw new Error('That version does not belong to this persona.');
+		}
+		return versionId ?? versions[0]?.id;
 	}
 
 	/**
@@ -628,7 +641,8 @@ class ChatStore {
 				leafId: chat.activeLeafId,
 				characterId: chat.characterId,
 				characterVersionId: chat.characterVersionId,
-				personaId: chatPersonaClaim(chat)
+				personaId: chatPersonaClaim(chat),
+				personaVersionId: chatPersonaVersionClaim(chat)
 			});
 		} catch (e) {
 			console.error('[memory] refresh failed:', e);

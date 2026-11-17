@@ -120,6 +120,8 @@ export interface ChatFeatureState {
 	 *  a choice is required before generation. Only creating a new conversation asks;
 	 *  reopening an existing chat keeps its choice. The New chat wizard supplies it at birth. */
 	persona: string | null;
+	/** The description variant selected for this persona. Older chats follow its first variant. */
+	personaVersion?: string;
 	/** The preset this story's prompt is built from, or null to follow the app's active one.
 	 *  A preset is one document, so the claim carries all of it: the items, the controls the
 	 *  macros expand against, the regex rules it ships and its own prompt options. Stamped at
@@ -219,13 +221,16 @@ export function normalizeChatFeatureState(raw: unknown): ChatFeatureState {
 	}
 	const obj = value as Record<string, unknown>;
 	const memoryReminder = normalizeReminderProgress(obj.memoryReminder);
+	const persona = normalizeClaimedId(obj.persona);
+	const personaVersion = persona ? normalizeClaimedId(obj.personaVersion) : null;
 	return {
 		...(memoryReminder ? { memoryReminder } : {}),
 		authorsNote: normalizeAuthorsNote(obj.authorsNote),
 		steeringHistory: normalizeSteeringHistory(obj.steeringHistory),
 		scene: normalizeChatScene(obj.scene),
 		connection: normalizeClaimedId(obj.connection),
-		persona: normalizeClaimedId(obj.persona),
+		persona,
+		...(personaVersion ? { personaVersion } : {}),
 		preset: normalizeClaimedId(obj.preset),
 		lorebooks: normalizeClaimedIds(obj.lorebooks),
 		mutedLorebooks: normalizeClaimedIds(obj.mutedLorebooks)

@@ -44,6 +44,7 @@
 		chatLorebookClaim,
 		chatMutedLorebookClaim,
 		chatPersonaClaim,
+		chatPersonaVersionClaim,
 		chatPersonaEntry,
 		chatPreset,
 		chatPresetClaim,
@@ -61,7 +62,7 @@
 	 *  the import plan's group filter. */
 	const SEARCH_FROM = 8;
 
-	type CategoryId = 'persona' | 'preset' | 'connection' | 'version' | 'lorebook';
+	type CategoryId = 'persona' | 'persona-version' | 'preset' | 'connection' | 'version' | 'lorebook';
 
 	interface SetupOption {
 		id: string;
@@ -127,6 +128,11 @@
 	let personas = $derived(characterLibraryStore.personas);
 	let claimedPersona = $derived(chatPersonaClaim(chat));
 	let persona = $derived(chatPersonaEntry(chat));
+	let personaVersions = $derived(persona ? characterLibraryStore.versionsFor(persona.id) : []);
+	let claimedPersonaVersion = $derived(chatPersonaVersionClaim(chat));
+	let personaVersion = $derived(claimedPersonaVersion
+		? personaVersions.find(version => version.id === claimedPersonaVersion)
+		: personaVersions[0]);
 
 	// ===== Preset =====
 
@@ -278,6 +284,16 @@
 				pick: pickConnection
 			}
 		];
+		if (persona && (personaVersions.length > 1 || claimedPersonaVersion && !personaVersion)) {
+			list.splice(1, 0, {
+				id: 'persona-version', label: 'Persona version', noun: 'versions',
+				value: personaVersion?.name ?? 'Unknown', diverged: false,
+				lost: personaVersion ? null : 'Choose another persona version for this conversation.',
+				options: personaVersions.map(version => ({ id: version.id, name: version.name })),
+				picked: only(personaVersion?.id ?? null), multi: false, app: null, faces: false,
+				pick: id => id && claimedPersona && pickPersona(claimedPersona, id)
+			});
+		}
 		// Nothing to choose between on an unversioned character, so the row would be a drill
 		// into a list of one. The old version chip hid itself the same way.
 		if (versions.length > 0) {
@@ -407,13 +423,13 @@
 		else close();
 	}
 
-	async function pickPersona(id: string | null) {
+	async function pickPersona(id: string | null, versionId?: string) {
 		if (!chat || busy || !id) return;
 		close();
-		if (id === claimedPersona) return;
+		if (id === claimedPersona && (!versionId || versionId === personaVersion?.id)) return;
 		busy = true;
 		try {
-			await chatStore.choosePersona(chat.id, id);
+			await chatStore.choosePersona(chat.id, id, versionId);
 		} catch (error) {
 			toastStore.failed('change who you play as in this chat', error);
 		} finally {

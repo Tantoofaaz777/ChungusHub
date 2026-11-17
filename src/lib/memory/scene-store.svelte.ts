@@ -20,6 +20,7 @@ export interface SceneChatContext {
 	characterId: string | null;
 	characterVersionId: string | null;
 	personaId: string | null;
+	personaVersionId?: string | null;
 }
 
 interface Draft {
@@ -196,7 +197,7 @@ export class SceneMemoryStore {
 				const messages = source.filter((m) => m && !m.excludedFromPrompt);
 				const entry = characterLibraryStore.entries.find((e) => e.id === this.ctx?.characterId);
 				const character = entry ? toPromptCharacter(entry, characterLibraryStore.dataForVersion(entry, this.ctx?.characterVersionId ?? null)) : null;
-				const persona = toPromptCharacter(personaEntryFor(this.ctx?.personaId ?? null));
+				const persona = toPromptCharacter(personaEntryFor(this.ctx?.personaId ?? null, this.ctx?.personaVersionId ?? null));
 				const charName = character?.name || 'Narrator', userName = persona?.name || 'User';
 				transcript = messages.map((m) => `[${m!.role === 'assistant' ? charName : m!.role === 'user' ? userName : 'System'}]\n${expandSelfRefs(m!.content, charName, userName, persona?.pronouns ?? {})}`).join('\n\n');
 			} else {

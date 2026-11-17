@@ -9,6 +9,7 @@
  * exactly once, tracked in the _migrations table. No "IF NOT EXISTS" guesswork.
  */
 import { Database } from 'bun:sqlite';
+import { personaVersionData, readPersonaVersionClaim } from '../shared/persona-version';
 import { ConversationStorage, ConversationRecoveryError, CONVERSATION_SCHEMA, variantPayload, VARIANT_COLUMNS } from './conversation-storage';
 import { isContinuationContext, type ContinuationContext, type ConversationPlacement, type VariantSelection, type VariantBookmark, type VariantContent } from '../shared/conversation';
 import type { RecoveredGeneration } from '../shared/recovered-generation';
@@ -811,6 +812,7 @@ class ServerDatabase {
 	}
 
 	insertChat(chat: NewChatRow): void {
+		this.validatePersonaVersionClaim(chat.featureState);
 		this.execute(
 			`INSERT INTO chats (id, title, created_at, updated_at, root_message_id, active_leaf_id, canon_leaf_id, settings_json, character_id, character_version_id, feature_state, is_favorite, conversation_version)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1153,8 +1155,7 @@ class ServerDatabase {
 			values.push(chat.characterVersionId ?? null);
 		}
 		if (chat.featureState !== undefined) {
-			// Opaque passthrough, like settings.value: the caller already sends a
-			// JSON string (or null); this never parses or re-serializes it.
+			this.validatePersonaVersionClaim(chat.featureState, chat.id);
 			updates.push('feature_state = ?');
 			values.push(chat.featureState ?? null);
 		}
@@ -2595,6 +2596,17 @@ class ServerDatabase {
 				[entry.id]
 			)[0];
 			const payload = this.libraryPayload(entry);
+			if (stored?.type === 'persona') {
+				const current = JSON.parse(stored.data_json);
+				if (current.activeVersionId && !entry.activeVersionId) {
+					throw new Error('This persona has versions now. Reload its editor and try again.');
+				}
+				if (entry.activeVersionId && !this.select<{ id: string }[]>(
+					'SELECT id FROM character_versions WHERE id = ? AND entry_id = ?', [entry.activeVersionId, entry.id]
+				)[0]) {
+					throw new Error('That persona version no longer exists.');
+				}
+			}
 			// Card editors can hold old snapshots. Only the dedicated private-note
 			// mutation may change this field; a normal card/version save preserves it.
 			const privateNote = stored?.type === 'character'
@@ -2612,7 +2624,7 @@ class ServerDatabase {
 			if (entry.activeVersionId) {
 				this.execute(
 					'UPDATE character_versions SET data_json = ?, updated_at = ? WHERE id = ? AND entry_id = ?',
-					[JSON.stringify(entry.data), Date.now(), entry.activeVersionId, entry.id]
+					[JSON.stringify(stored?.type === 'persona' ? personaVersionData(entry.data) : entry.data), Date.now(), entry.activeVersionId, entry.id]
 				);
 			}
 			return stored ? this.refreshSeededGreetings(entry, stored) : [];
@@ -2849,7 +2861,7 @@ class ServerDatabase {
 
 	// ===== CHARACTER VERSIONS =====
 
-	private mapCharacterVersion(row: { id: string; entry_id: string; name: string; data_json: string; created_at: number; updated_at: number }): unknown {
+	private mapCharacterVersion(row: { id: string; entry_id: string; name: string; data_json: string; created_at: number; updated_at: number }) {
 		return {
 			id: row.id,
 			entryId: row.entry_id,
@@ -2876,9 +2888,9 @@ class ServerDatabase {
 	}
 
 	/** All variant rows of one entry, oldest first. The entry delete cascades them away. */
-	getCharacterVersionsByEntry(entryId: string): unknown[] {
+	getCharacterVersionsByEntry(entryId: string) {
 		const rows = this.select<{ id: string; entry_id: string; name: string; data_json: string; created_at: number; updated_at: number }[]>(
-			'SELECT * FROM character_versions WHERE entry_id = ? ORDER BY created_at ASC',
+			'SELECT * FROM character_versions WHERE entry_id = ? ORDER BY created_at ASC, rowid ASC',
 			[entryId]
 		);
 		return rows.map((r) => this.mapCharacterVersion(r));
@@ -2892,12 +2904,67 @@ class ServerDatabase {
 		);
 	}
 
+	/** Create the baseline and the fork in the same transaction as the editor pointer. */
+	forkPersonaVersion(entryId: string, name: string, expectedActive: string | null) {
+		if (typeof name !== 'string' || !name.trim() || name.trim().length > 60) throw new Error('Enter a version name up to 60 characters.');
+		return this.inTransaction(() => {
+			const stored = this.select<{ data_json: string }[]>(
+				"SELECT data_json FROM character_library WHERE id = ? AND type = 'persona'", [entryId]
+			)[0];
+			if (!stored) throw new Error('That persona no longer exists.');
+			const entry = JSON.parse(stored.data_json);
+			if ((entry.activeVersionId ?? null) !== expectedActive) throw new Error('The editing version changed. Reload the persona and try again.');
+			const versions = this.getCharacterVersionsByEntry(entryId);
+			const now = Math.max(Date.now(), (versions.at(-1)?.createdAt ?? 0) + 1);
+			const makeVersion = (label: string, time: number) => ({
+				id: randomUUID(), entryId, name: label, data: personaVersionData(entry.data), createdAt: time, updatedAt: time
+			});
+			const added = versions.length ? [] : [makeVersion('Original', now)];
+			const fork = makeVersion(name.trim(), now + added.length);
+			added.push(fork);
+			for (const version of added) this.insertCharacterVersion(version);
+			entry.activeVersionId = fork.id;
+			this.execute('UPDATE character_library SET data_json = ?, updated_at = ? WHERE id = ?',
+				[JSON.stringify(entry), fork.updatedAt, entryId]);
+			return added;
+		});
+	}
+
+	private validatePersonaVersionClaim(raw: unknown, chatId?: string): void {
+		const claim = readPersonaVersionClaim(raw);
+		if (!claim?.version) return;
+		const valid = this.select<{ id: string }[]>(`SELECT v.id FROM character_versions v
+			JOIN character_library p ON p.id = v.entry_id AND p.type = 'persona'
+			WHERE v.id = ? AND v.entry_id = ?`, [claim.version, claim.persona])[0];
+		if (valid) return;
+		const prior = chatId ? readPersonaVersionClaim(this.select<{ feature_state: string | null }[]>(
+			'SELECT feature_state FROM chats WHERE id = ?', [chatId]
+		)[0]?.feature_state) : null;
+		if (prior?.persona === claim.persona && prior.version === claim.version) return;
+		throw new Error('Choose a version that belongs to this persona.');
+	}
+
 	renameCharacterVersion(id: string, name: string): void {
 		this.execute('UPDATE character_versions SET name = ?, updated_at = ? WHERE id = ?', [name, Date.now(), id]);
 	}
 
 	deleteCharacterVersion(id: string): void {
-		this.execute('DELETE FROM character_versions WHERE id = ?', [id]);
+		this.inTransaction(() => {
+			const persona = this.select<{ id: string; data_json: string }[]>(`SELECT p.id, p.data_json FROM character_versions v
+				JOIN character_library p ON p.id = v.entry_id AND p.type = 'persona' WHERE v.id = ?`, [id])[0];
+			if (persona) {
+				const originalId = this.getCharacterVersionsByEntry(persona.id)[0]?.id;
+				const used = this.select<{ feature_state: string }[]>(
+					'SELECT feature_state FROM chats WHERE feature_state IS NOT NULL'
+				).some(row => {
+					const claim = readPersonaVersionClaim(row.feature_state);
+					return claim?.persona === persona.id && (claim.version ?? originalId) === id;
+				});
+				if (used) throw new Error('Choose another persona version in the chats using this one before deleting it.');
+				if (JSON.parse(persona.data_json).activeVersionId === id) throw new Error('Switch to another version before deleting this one.');
+			}
+			this.execute('DELETE FROM character_versions WHERE id = ?', [id]);
+		});
 	}
 
 	/** Pin every not-yet-pinned chat of a character to the given version. Runs once,
@@ -3436,6 +3503,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	updateLibraryEntryFavorite: 'library',
 	deleteLibraryEntry: 'library',
 	insertCharacterVersion: 'library',
+	forkPersonaVersion: 'library',
 	renameCharacterVersion: 'library',
 	deleteCharacterVersion: 'library',
 	pinUnpinnedChatsToVersion: 'chats',
@@ -3465,7 +3533,7 @@ const READ_METHODS = [
 	'getChatListStats', 'getChatContentGroups', 'searchChatMessages', 'getChatMemoryFootprint',
 	'getMessage', 'getNextSiblingIndex', 'getSetting', 'getAllSettings', 'getChatDraft', 'getInputHistory', 'getConnectionCredentials',
 	'getAllLibraryEntries', 'getLibraryEntry',
-	'getAllCharacterVersions', 'getCharacterVersion',
+	'getAllCharacterVersions', 'getCharacterVersion', 'getCharacterVersionsByEntry',
 	'getAllLorebooks', 'getLorebook',
 	'getAllSteeringNotes', 'getMemoryScenes', 'getThreadsData'
 ];

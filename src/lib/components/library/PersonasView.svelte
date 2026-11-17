@@ -10,6 +10,7 @@
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import Spinner from '#lib/components/ui/Spinner.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import Toggle from '#lib/components/ui/Toggle.svelte';
 	import BrowsePopover from './BrowsePopover.svelte';
 	import LibraryCompactCard from './LibraryCompactCard.svelte';
@@ -161,19 +162,26 @@
 
 	// ---- Entry actions ----
 	let selectingPersona = $state(false);
+	let personaToVersion = $state<string | null>(null);
+	let selectableVersions = $derived(personaToVersion ? characterLibraryStore.versionsFor(personaToVersion) : []);
 	// The same shelf chooses before creating a chat or for a newly created chat.
-	async function handleSelectEntry(id: string) {
+	async function handleSelectEntry(id: string, versionId?: string) {
 		if (selectingPersona) return;
 		const characterId = uiStore.newChatStep === 'persona' ? uiStore.newChatCharacterId : null;
 		if (!characterId) {
 			handleEditEntry(id);
 			return;
 		}
+		if (!versionId && characterLibraryStore.versionsFor(id).length > 1) {
+			personaToVersion = id;
+			return;
+		}
 		const targetChatId = uiStore.newChatTargetChatId;
 		selectingPersona = true;
 		try {
-			if (targetChatId) await chatStore.choosePersona(targetChatId, id);
-			else await chatStore.createChat({ characterId, personaId: id });
+			if (targetChatId) await chatStore.choosePersona(targetChatId, id, versionId);
+			else await chatStore.createChat({ characterId, personaId: id, personaVersionId: versionId });
+			personaToVersion = null;
 			if (!uiStore.newChatStep && !chatStore.personaSelectionChatId &&
 				(!targetChatId || chatStore.activeChatId === targetChatId)) uiStore.closeLibrary();
 		} catch (error) {
@@ -542,6 +550,16 @@
 		{/if}
 	</div>
 </div>
+
+<Dialog open={personaToVersion !== null} onClose={() => { if (!selectingPersona) personaToVersion = null; }} title="Choose a persona version" size="sm">
+	<div class="flex max-h-64 flex-col gap-2 overflow-y-auto">
+		{#each selectableVersions as version (version.id)}
+			<Button variant="secondary" disabled={selectingPersona} onclick={() => personaToVersion && handleSelectEntry(personaToVersion, version.id)}>
+				{version.name}
+			</Button>
+		{/each}
+	</div>
+</Dialog>
 
 <ConfirmDialog
 	open={deleteTargetId !== null}
