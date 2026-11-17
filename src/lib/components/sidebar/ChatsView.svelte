@@ -17,9 +17,8 @@
 	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
 	import ChatAvatars from './ChatAvatars.svelte';
 	import ChatListRow from './ChatListRow.svelte';
-	import DuplicateChatDialog from './DuplicateChatDialog.svelte';
-	import { duplicateAsksAboutMemory } from '#lib/types/chat.ts';
-	import type { Chat, ChatListStats, ChatMemoryFootprint } from '#lib/types/chat.ts';
+	import ChatRowActions, { type ChatRowMenuTarget } from './ChatRowActions.svelte';
+	import type { Chat, ChatListStats } from '#lib/types/chat.ts';
 	import { db } from '#lib/services/database.ts';
 	import { displaySelfRefs } from '#lib/macros.ts';
 	import { storyRoleName } from '#lib/types/library.ts';
@@ -28,7 +27,6 @@
 	import { messageStore } from '#lib/stores/messages.svelte.ts';
 	import { uiStore, type ChatsScope } from '#lib/stores/ui.svelte.ts';
 	import { viewport } from '#lib/stores/viewport.svelte.ts';
-	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { chatCastStore, type ChatCastMember } from '#lib/stores/chatCast.svelte.ts';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
@@ -95,7 +93,7 @@
 	let keyboardActive = $state(false);
 
 	let renamingChatId = $state<string | null>(null);
-	let menu = $state<{ chatId: string; left: number; top: number; anchorTop: number } | null>(null);
+	let menu = $state.raw<ChatRowMenuTarget | null>(null);
 	let litTwinGroup = $state<string | null>(null);
 
 	// ===== Server-side aggregates =====
@@ -322,49 +320,9 @@
 
 	// ===== Row actions =====
 
-	/** The panel is a backdrop-filtered, overflow-hidden surface, which makes it the
-	 *  containing block for `position: fixed` children AND clips them, so a menu placed
-	 *  from viewport coordinates has to leave the panel entirely. Same reason and same
-	 *  shape as the message editor's action menu. Body-portaled nodes also sit outside
-	 *  the workspace element, so Workspace's click-away leaves them alone. */
-	function portalToBody(node: HTMLElement) {
-		document.body.appendChild(node);
-		return { destroy: () => node.remove() };
-	}
-
 	function openRowMenu(chatId: string, anchor: DOMRect) {
-		if (menu?.chatId === chatId) {
-			menu = null;
-			return;
-		}
-		// Placed below the button, then corrected against its REAL height once it has
-		// rendered (see the effect below): a guessed height either flips a menu that had
-		// room or leaves a flipped one hanging in the air above its own button.
-		const width = 190;
-		const left = Math.max(EDGE, Math.min(anchor.right - width, window.innerWidth - width - EDGE));
-		menu = { chatId, left, top: anchor.bottom + 6, anchorTop: anchor.top };
+		menu = menu?.chatId === chatId ? null : { chatId, anchor };
 	}
-
-	const EDGE = 8;
-	let menuEl: HTMLElement | null = $state(null);
-
-	$effect(() => {
-		const el = menuEl;
-		const current = menu;
-		if (!el || !current) return;
-		const height = el.offsetHeight;
-		const fits = current.top + height + EDGE <= window.innerHeight;
-		const top = fits ? current.top : Math.max(EDGE, current.anchorTop - height - 6);
-		// Only write when it actually moves: this effect reads `menu`, so an
-		// unconditional write would loop.
-		if (Math.abs(top - current.top) > 0.5) menu = { ...current, top };
-	});
-
-	// A menu whose chat vanished (a sync, or another device's delete) leaves nothing on
-	// screen but still swallows the next Escape.
-	$effect(() => {
-		if (menu && !chats.some((c) => c.id === menu?.chatId)) menu = null;
-	});
 
 	function startRename(chatId: string) {
 		menu = null;
@@ -381,39 +339,6 @@
 	async function commitRename(chatId: string, title: string) {
 		endRename();
 		await chatStore.updateChatTitle(chatId, title);
-	}
-
-	async function toggleFavorite(chatId: string) {
-		menu = null;
-		await chatStore.toggleChatFavorite(chatId);
-	}
-
-	// ===== Delete =====
-
-	let deleteTarget = $state<Chat | null>(null);
-	// The dialog states the real numbers of what goes, from the stats already loaded for
-	// the rows; past the hold threshold the confirm becomes a press-and-hold (the
-	// destructive-act ladder, architecture/ui-shell-settings.md). Deletion is immediate
-	// and final once confirmed: there is no undo anywhere in the app.
-	let deleteStats = $derived(deleteTarget ? (stats[deleteTarget.id] ?? null) : null);
-	let deleteMessage = $derived.by(() => {
-		if (!deleteTarget) return '';
-		const name = `"${deleteTarget.title}"`;
-		if (!deleteStats) return `Delete ${name} and every message in it? This cannot be undone.`;
-		const n = deleteStats.total;
-		const versions = deleteStats.versions;
-		return `Delete ${name} and its ${n} turn${n === 1 ? '' : 's'}${versions === undefined ? '' : ` (${versions} saved version${versions === 1 ? '' : 's'})`}? This cannot be undone.`;
-	});
-
-	function deleteChat(chatId: string) {
-		menu = null;
-		deleteTarget = chats.find((c) => c.id === chatId) ?? null;
-	}
-
-	function confirmDeleteChat() {
-		const target = deleteTarget;
-		deleteTarget = null;
-		if (target) void chatStore.deleteChat(target.id);
 	}
 
 	// ===== Selecting several =====
@@ -470,69 +395,6 @@
 		await chatStore.deleteChats(ids);
 	}
 
-	// ===== Duplicate =====
-
-	let duplicateTarget = $state<{ chat: Chat; footprint: ChatMemoryFootprint } | null>(null);
-	// True for the whole flow, memory lookup included, not just the copy itself. Two
-	// fast clicks would otherwise run two copies concurrently, both naming themselves
-	// against a list that holds neither yet: two rows called "X (copy)", which is exactly
-	// what the counting in copyTitle exists to prevent.
-	let duplicating = $state(false);
-
-	function reportDuplicateFailure(chat: Chat, e: unknown) {
-		console.error('Duplicate failed:', e);
-		// The one failure worth explaining: the source's memory still points at messages
-		// that have been deleted, a state the chat repairs itself the next time it is
-		// opened (architecture/memory.md). Anything else gets the plain message.
-		const stale = e instanceof Error && e.message.includes('mem-copy-stale');
-		if (stale) {
-			toastStore.error(
-				`"${chat.title}" has memory pointing at deleted messages. Open the chat once to let it repair itself, or duplicate the story on its own.`
-			);
-		} else {
-			toastStore.failed(`duplicate "${chat.title}"`, e);
-		}
-	}
-
-	/** Only ever asks about memory when there is memory to ask about: a chat with none
-	 *  is copied on the spot. */
-	async function handleDuplicate(chatId: string) {
-		menu = null;
-		if (duplicating) return;
-		const chat = chats.find((c) => c.id === chatId);
-		if (!chat) return;
-		duplicating = true;
-		try {
-			const footprint = await db.getChatMemoryFootprint(chatId);
-			if (!duplicateAsksAboutMemory(footprint)) {
-				await runDuplicate(chat, false);
-				return;
-			}
-			duplicateTarget = { chat, footprint };
-		} catch (e) {
-			reportDuplicateFailure(chat, e);
-		} finally {
-			// Released here so the dialog's own buttons are live; the copy re-raises it.
-			duplicating = false;
-		}
-	}
-
-	async function runDuplicate(chat: Chat, includeMemory: boolean) {
-		duplicating = true;
-		try {
-			await chatStore.duplicateChat(chat.id, { includeMemory });
-			toastStore.success(includeMemory ? 'Chat duplicated with its memory' : 'Chat duplicated');
-			// The selection is deliberately left where it was: the copy's position is not
-			// knowable yet (it settles when the refreshed stats give it its real activity
-			// time), and moving the cursor to a guessed index is worse than not moving it.
-			duplicateTarget = null;
-		} catch (e) {
-			reportDuplicateFailure(chat, e);
-		} finally {
-			duplicating = false;
-		}
-	}
-
 	// ===== Keyboard =====
 
 	function scrollToSelected() {
@@ -573,7 +435,7 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (uiStore.activeOverlay !== 'chats') return;
+		if (e.defaultPrevented || uiStore.activeOverlay !== 'chats') return;
 		// A modal Dialog owns the keyboard while its portal is mounted and closes itself
 		// on Escape. Same guard Workspace and LorebookView use, or one press would shut
 		// the dialog AND the panel behind it.
@@ -797,71 +659,11 @@
 	</div>
 </div>
 
-{#if menu}
-	{@const menuChat = chats.find((c) => c.id === menu?.chatId)}
-	{#if menuChat}
-		<div
-			use:portalToBody
-			class="chats-scrim chats-scrim-portaled"
-			onclick={() => (menu = null)}
-			onkeydown={(e) => {
-				if (e.key === 'Escape') {
-					e.preventDefault();
-					e.stopPropagation();
-					menu = null;
-				}
-			}}
-			role="button"
-			tabindex="-1"
-			aria-label="Close menu"
-		></div>
-		<div
-			bind:this={menuEl}
-			use:portalToBody
-			class="chats-row-menu surface-float"
-			role="menu"
-			style="left: {menu.left}px; top: {menu.top}px;"
-		>
-			<button type="button" role="menuitem" class="chats-menu-item" onclick={() => selectChat(menuChat.id)}>
-				<Icon name="chat" class="w-4 h-4" />
-				<span>Open</span>
-			</button>
-			<button type="button" role="menuitem" class="chats-menu-item" onclick={() => startRename(menuChat.id)}>
-				<Icon name="pencil" class="w-4 h-4" />
-				<span>Rename</span>
-			</button>
-			<button type="button" role="menuitem" class="chats-menu-item" onclick={() => handleDuplicate(menuChat.id)}>
-				<Icon name="copy" class="w-4 h-4" />
-				<span>Duplicate…</span>
-			</button>
-			<button type="button" role="menuitem" class="chats-menu-item" onclick={() => toggleFavorite(menuChat.id)}>
-				<Icon name="heart" class="w-4 h-4 {menuChat.isFavorite ? 'fill-current' : ''}" />
-				<span>{menuChat.isFavorite ? 'Remove from favorites' : 'Add to favorites'}</span>
-			</button>
-			<div class="chats-menu-sep"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="chats-menu-item is-danger"
-				onclick={() => deleteChat(menuChat.id)}
-			>
-				<Icon name="trash" class="w-4 h-4" />
-				<span>Delete</span>
-			</button>
-		</div>
-	{/if}
-{/if}
-
-<ConfirmDialog
-	open={deleteTarget !== null}
-	title="Delete chat"
-	message={deleteMessage}
-	confirmLabel="Delete"
-	variant="danger"
-	destructive
-	holdMs={holdMsForBlast(deleteStats?.versions ?? deleteStats?.total ?? 0)}
-	onConfirm={confirmDeleteChat}
-	onCancel={() => (deleteTarget = null)}
+<ChatRowActions
+	{menu} {chats} {stats}
+	onClose={() => (menu = null)}
+	onOpen={selectChat}
+	onRename={chat => startRename(chat.id)}
 />
 
 <ConfirmDialog
@@ -875,22 +677,6 @@
 	onConfirm={confirmBulkDelete}
 	onCancel={() => (bulkDeleteOpen = false)}
 />
-
-{#if duplicateTarget}
-	<DuplicateChatDialog
-		open={true}
-		title={duplicateTarget.chat.title}
-		footprint={duplicateTarget.footprint}
-		busy={duplicating}
-		onConfirm={(includeMemory) => duplicateTarget && runDuplicate(duplicateTarget.chat, includeMemory)}
-		onCancel={() => {
-			// Escape and the backdrop reach this too, so the busy check belongs here and
-			// not only on the Cancel button: dismissing a copy that is already running
-			// wouldn't stop it, it would just hide it.
-			if (!duplicating) duplicateTarget = null;
-		}}
-	/>
-{/if}
 
 <style>
 	.chats-view {
@@ -1074,73 +860,6 @@
 		border-color: var(--color-border);
 	}
 
-	/* ===== Menus ===== */
-	/* Click-away layer shared by the sort menu and the per-row menu. */
-	.chats-scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 10;
-	}
-
-	/* The portaled pair sits on <body>, above every panel. It shares the composer's token
-	   popup ceiling for the same reason (architecture/chat-sessions.md). */
-	.chats-scrim-portaled {
-		z-index: 1000;
-	}
-
-	/* Fixed and portaled: the row it belongs to lives in a scroll container inside a
-	   backdrop-filtered panel, which both clips fixed children and makes itself their
-	   containing block (the message editor's Save menu has the same problem). */
-	.chats-row-menu {
-		position: fixed;
-		z-index: 1001;
-		width: 190px;
-		padding: 0.3rem;
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-lg);
-	}
-
-	.chats-menu-item {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		width: 100%;
-		padding: 0.45rem 0.6rem;
-		border: 0;
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: var(--color-text-secondary);
-		font-family: var(--font-ui);
-		font-size: 0.8rem;
-		font-weight: 600;
-		text-align: left;
-		cursor: pointer;
-		transition: background-color 120ms ease, color 120ms ease;
-	}
-
-	.chats-menu-item span {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.chats-menu-item:hover {
-		background: var(--color-bg-tertiary);
-		color: var(--color-text-primary);
-	}
-
-	.chats-menu-item.is-danger:hover {
-		background: color-mix(in srgb, var(--color-error) 14%, transparent);
-		color: var(--color-error);
-	}
-
-	.chats-menu-sep {
-		height: 1px;
-		margin: 0.25rem 0.3rem;
-		background: var(--color-border-subtle);
-	}
 	.chats-scroll::-webkit-scrollbar {
 		width: 6px;
 	}

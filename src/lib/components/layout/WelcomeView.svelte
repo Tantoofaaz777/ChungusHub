@@ -1,9 +1,14 @@
 <script lang="ts">
 	import ChatBrowserControls from '#lib/components/sidebar/ChatBrowserControls.svelte';
+	import ChatRowActions, { type ChatRowMenuTarget } from '#lib/components/sidebar/ChatRowActions.svelte';
+	import { contextPress } from '#lib/actions/contextPress.ts';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
 	import { db } from '#lib/services/database.ts';
-	import type { ChatListStats } from '#lib/types/chat.ts';
+	import type { Chat, ChatListStats } from '#lib/types/chat.ts';
 	import { chatTwinCounts, chatActivityAt, filterAndSortChats, type SortKey, type SortDir, type FilterMode } from '#lib/utils/chat-browser.ts';
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import ChatAvatars from '#lib/components/sidebar/ChatAvatars.svelte';
@@ -11,6 +16,7 @@
 	import { chatStore } from '#lib/stores/chat.svelte.ts';
 	import { chatCastStore } from '#lib/stores/chatCast.svelte.ts';
 	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { failureText } from '#lib/stores/toast.svelte.ts';
 	import { lorebookStore } from '#lib/lorebook/store.svelte.ts';
 
 	let chats = $derived(chatStore.sortedChats);
@@ -30,6 +36,11 @@
 	let filterMode = $state<FilterMode>('all');
 	let stats = $state<Record<string, ChatListStats>>({});
 	let twinGroups = $state<Record<string, string>>({});
+	let menu = $state.raw<ChatRowMenuTarget | null>(null);
+	let renameTarget = $state<Chat | null>(null);
+	let renameTitle = $state('');
+	let renameError = $state('');
+	let renaming = $state(false);
 	$effect(() => {
 		void chats;
 		let cancelled = false;
@@ -65,6 +76,7 @@
 		else if (expanded) visibleCount = Math.min(filteredChats.length, visibleCount + CHAT_BATCH_SIZE);
 	}
 	function scrollChats(event: Event) {
+		menu = null;
 		const list = event.currentTarget as HTMLDivElement;
 		if (hasMoreChats && list.scrollHeight - list.scrollTop - list.clientHeight < 200) loadMoreChats();
 	}
@@ -76,6 +88,7 @@
 		`Delete ${selectedCount} chat${selectedCount === 1 ? '' : 's'} and ${bulkDeleteStats} message${bulkDeleteStats === 1 ? '' : 's'} in total? This cannot be undone.`
 	);
 	function toggleSelecting() {
+		menu = null;
 		selecting = !selecting;
 		if (!selecting) selectedIds = new Set();
 	}
@@ -116,6 +129,37 @@
 	function continueStory(chatId: string) {
 		if (selecting) toggleSelect(chatId);
 		else chatStore.selectChat(chatId);
+	}
+
+	function startRename(chat: Chat) {
+		renameTitle = chat.title;
+		renameError = '';
+		renameTarget = chat;
+	}
+
+	function closeRename() {
+		if (!renaming) renameTarget = null;
+	}
+
+	async function commitRename(event: SubmitEvent) {
+		event.preventDefault();
+		const chat = renameTarget;
+		const title = renameTitle.trim();
+		if (!chat || !title || renaming) return;
+		if (title === chat.title) {
+			closeRename();
+			return;
+		}
+		renaming = true;
+		renameError = '';
+		try {
+			await chatStore.updateChatTitle(chat.id, title);
+			renameTarget = null;
+		} catch (error) {
+			renameError = failureText(`rename "${chat.title}"`, error);
+		} finally {
+			renaming = false;
+		}
 	}
 
 	// The two-step New chat flow: the Library opens on Characters, then Personas,
@@ -165,7 +209,16 @@
 							{@const cast = chatCastStore.charactersForChat(chat.id)}
 							{@const persona = chatCastStore.personaForChat(chat.id)}
 							{@const pathCount = stats[chat.id]?.path ?? 0}
-							<button type="button" class="recent-card" class:is-selected={selecting && selectedIds.has(chat.id)} aria-pressed={selecting ? selectedIds.has(chat.id) : undefined} onclick={() => continueStory(chat.id)}>
+							<button
+								type="button"
+								class="recent-card"
+								class:is-selected={selecting && selectedIds.has(chat.id)}
+								aria-pressed={selecting ? selectedIds.has(chat.id) : undefined}
+								aria-haspopup={selecting ? undefined : 'menu'}
+								aria-expanded={selecting ? undefined : menu?.chatId === chat.id}
+								use:contextPress={selecting ? null : anchor => (menu = { chatId: chat.id, anchor })}
+								onclick={() => continueStory(chat.id)}
+							>
 								{#if selecting}
 									<span class="selection-check" class:is-checked={selectedIds.has(chat.id)} aria-hidden="true">
 										{#if selectedIds.has(chat.id)}<Icon name="check" class="w-3.5 h-3.5" />{/if}
@@ -216,6 +269,27 @@
 		<div class="welcome-grow" bind:clientHeight={spareHeight} aria-hidden="true"></div>
 	</div>
 </div>
+
+<ChatRowActions
+	{menu} {chats} {stats}
+	onClose={() => (menu = null)}
+	onOpen={continueStory}
+	onRename={startRename}
+/>
+
+<Dialog open={renameTarget !== null} onClose={closeRename} title="Rename chat">
+	<form class="flex flex-col gap-3" onsubmit={commitRename}>
+		<label class="flex flex-col gap-1.5">
+			<span class="section-label">Chat name</span>
+			<input class="input-base px-3 py-2" bind:value={renameTitle} data-dialog-initial-focus onfocus={event => event.currentTarget.select()} />
+		</label>
+		<Alert message={renameError} />
+		<div class="flex justify-end gap-2">
+			<Button variant="ghost" onclick={closeRename} disabled={renaming}>Cancel</Button>
+			<Button type="submit" variant="primary" disabled={!renameTitle.trim() || renaming}>Rename</Button>
+		</div>
+	</form>
+</Dialog>
 
 <ConfirmDialog
 	open={bulkDeleteOpen}
@@ -433,6 +507,11 @@
 		background: color-mix(in srgb, var(--color-card-bg) 72%, transparent);
 		cursor: pointer;
 		transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+	}
+
+	.recent-card[aria-haspopup='menu'] {
+		user-select: none;
+		-webkit-touch-callout: none;
 	}
 
 	.recent-card:hover {
