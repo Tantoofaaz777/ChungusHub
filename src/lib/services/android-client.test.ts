@@ -147,6 +147,16 @@ test('invalid and excessively escaped speech never reaches the Android bridge', 
 	expect(h.messages).toHaveLength(0);
 });
 
+test('the Android bridge sends only valid English Edge choices and keeps system reading compatible', async () => {
+	const h = harness(), client = h.window.ChungusAndroidClient;
+	expect(client.readingEdgeTts).toBe(true);
+	await client.readAloud('A short sentence.', 'Chat', 'edge-1', { voice: 'en-GB-SoniaNeural', rate: 1.2 });
+	expect(h.messages.at(-1)).toMatchObject({ type: 'speech.start', edge: { voice: 'en-GB-SoniaNeural', rate: 1.2 } });
+	await expect(client.readAloud('A short sentence.', 'Chat', 'edge-2', { voice: 'pt-BR-FranciscaNeural', rate: 1 })).rejects.toThrow();
+	await client.readAloud('A short sentence.', 'Chat', 'system-1');
+	expect(h.messages.at(-1)).not.toHaveProperty('edge');
+});
+
 test('sentence highlighting carries a bounded reading identity and preserves optional preferences', async () => {
  const h = harness(), client = h.window.ChungusAndroidClient;
  expect(client.readingHighlights).toBe(true);

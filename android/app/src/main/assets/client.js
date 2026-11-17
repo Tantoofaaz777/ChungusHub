@@ -172,10 +172,16 @@
     shareText,
     shareFile,
     readingHighlights: true,
-    readAloud: async (text, title, requestId) => {
+    readingEdgeTts: true,
+    readAloud: async (text, title, requestId, edge) => {
       if (typeof text !== 'string' || !text.trim() || text.length > 80000) throw Error('The message is empty or too long to read (maximum 80,000 characters).');
       if (requestId !== undefined && (typeof requestId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(requestId))) throw Error('Invalid reading request.');
       const payload = { text, title: String(title).slice(0, 180), ...(requestId !== undefined ? { requestId } : {}) };
+      if (edge !== undefined) {
+        if (!edge || typeof edge.voice !== 'string' || !/^en-(US|GB)-[a-zA-Z]{1,64}Neural$/.test(edge.voice) ||
+            typeof edge.rate !== 'number' || !Number.isFinite(edge.rate) || edge.rate < 0.5 || edge.rate > 2) throw Error('Invalid Edge TTS options.');
+        payload.edge = { voice: edge.voice, rate: edge.rate };
+      }
       // Bound the complete escaped JSON, not just its source string.
       if (JSON.stringify(payload).length > 99000) throw Error('The message is too large to send to the reader.');
       await request('speech.start', payload, 10000);

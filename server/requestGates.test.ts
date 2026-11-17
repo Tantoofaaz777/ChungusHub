@@ -267,9 +267,12 @@ describe('password authentication through a local tunnel', () => {
 		await exchange('POST', '/api/security/password', ours(), JSON.stringify({ password }));
 		try {
 			expect((await exchange('GET', '/api/config', ours())).status).toBe(200);
-			for (const path of ['/api/config', '/files/images/characters/gate.PNG', '/ws']) {
+			for (const path of ['/api/config', '/api/tts/voices', '/files/images/characters/gate.PNG', '/ws']) {
 				expect((await exchange('GET', path, visitor)).status, path).toBe(401);
 			}
+			const unread = await exchange('POST', '/api/tts/synthesize', visitor,
+				JSON.stringify({ text: 'A short sentence.', voice: 'en-US-AriaNeural', rate: 1 }));
+			expect(unread.status).toBe(401);
 			const page = await exchange('GET', '/', visitor);
 			expect(page.status).toBe(302);
 			expect(page.headers.location).toBe('/unlock');

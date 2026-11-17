@@ -1336,11 +1336,17 @@ describe('dev prebundle (architecture/build-packaging.md #8)', () => {
 	// done and the page is then force-reloaded under an app that has already started booting.
 	// Nothing in a build or a type check says a name is missing here, and a warm cache hides
 	// it locally, so the drift surfaces on somebody else's fresh clone or nowhere at all.
-	test('every runtime dependency is named in optimizeDeps.include', () => {
-		const listed = scan(
-			block(read('vite.config.ts'), /optimizeDeps: \{[\s\S]*?\n\t\},/, 'optimizeDeps.include'),
+	test('browser dependencies are prebundled and server-only dependencies are excluded', () => {
+		const config = block(read('vite.config.ts'), /optimizeDeps: \{[\s\S]*?\n\t\},/, 'optimizeDeps');
+		const included = scan(
+			block(config, /include: \[[\s\S]*?\]/, 'optimizeDeps.include'),
 			/'([^']+)'/g,
 			'prebundled dependencies'
+		);
+		const excluded = scan(
+			block(config, /exclude: \[[\s\S]*?\]/, 'optimizeDeps.exclude'),
+			/'([^']+)'/g,
+			'server-only dependencies'
 		);
 		const deps = Object.keys(
 			(JSON.parse(read('package.json')) as { dependencies: Record<string, string> }).dependencies
@@ -1349,8 +1355,10 @@ describe('dev prebundle (architecture/build-packaging.md #8)', () => {
 		// A package is covered by its own name or by the subpaths actually imported, which is
 		// what a package with per-entry exports (gpt-tokenizer's encodings) needs.
 		const covers = (entry: string, dep: string) => entry === dep || entry.startsWith(`${dep}/`);
+		const listed = [...included, ...excluded];
 		expect(deps.filter((dep) => !listed.some((entry) => covers(entry, dep)))).toEqual([]);
 		expect(listed.filter((entry) => !deps.some((dep) => covers(entry, dep)))).toEqual([]);
+		expect(excluded.filter((dep) => included.some((entry) => covers(entry, dep)))).toEqual([]);
 	});
 });
 

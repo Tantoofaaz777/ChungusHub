@@ -59,6 +59,17 @@ global de toque do restante do app: rolar verticalmente não ajusta a velocidade
 configurações do Android. Uma voz removida precisa ser substituída ou voltar ao padrão.
 Esta página exige atualizar a interface na VPS e instalar o APK 0.1.9 ou posterior.
 
+### Vozes do Edge (0.1.14)
+
+Com o servidor atualizado e o APK 0.1.14, **Settings → TTS** oferece **Android system**
+e vozes do **Edge TTS** em inglês americano e britânico. No Brave e em outros navegadores
+de desktop, **Read aloud** usa o catálogo do Edge, com Aria como voz inicial. A escolha de
+voz e velocidade é guardada neste dispositivo.
+
+Ao escolher Edge TTS, a VPS envia à Microsoft somente o trecho preparado para leitura. No
+Android, as regras de texto continuam sendo aplicadas antes desse envio. A leitura continua
+no player nativo com a tela bloqueada. O servidor devolve o áudio sem gravá-lo no disco.
+
 **Voltar:** primeiro fecha o teclado. Depois, fecha o diálogo/editor/painel mais interno,
 volta à home e, por último, deixa o app em segundo plano. A integração completa depende
 de publicar também os arquivos do frontend desta mudança na VPS. Com um frontend antigo,

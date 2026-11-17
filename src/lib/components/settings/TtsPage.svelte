@@ -7,18 +7,56 @@
 	import { rangeReset } from '#lib/actions/rangeReset.ts';
 	import { isAndroidClient } from '#lib/services/android-client.ts';
 	import { speechSettingsStore as speech } from '#lib/stores/speech-settings.svelte.ts';
+	import { edgeSpeechSettings as edge } from '#lib/stores/edge-speech-settings.svelte.ts';
+	import { DEFAULT_EDGE_SPEECH_VOICE } from '#shared/edge-speech.ts';
 	let language = $state('');
+	const native = isAndroidClient();
+	const edgeAvailable = !native || window.ChungusAndroidClient?.readingEdgeTts === true;
+	const edgeVoice = $derived(edge.voice || (native ? '' : DEFAULT_EDGE_SPEECH_VOICE));
+	const edgeLanguages = [['en-US', 'American English'], ['en-GB', 'British English']] as const;
 	const languages = $derived([...new Map((speech.data?.voices ?? []).map(voice => [voice.language, voice.languageLabel])).entries()].sort((a, b) => a[1].localeCompare(b[1])));
 	const voices = $derived((speech.data?.voices ?? []).filter(voice => !language || voice.language === language));
-	onMount(() => { void speech.load(); });
+	onMount(() => { if (edgeAvailable) void edge.load(); if (native) void speech.load(); });
 </script>
 
 <div class="tts-page" data-setting="tts">
-	{#if !speech.available}
-		<p class="help">{isAndroidClient() ? 'Install Android app 0.1.9 or newer to choose a voice and reading speed.' : 'Voice settings are available in the Android app.'}</p>
+	{#if edgeAvailable}
+		<section class="card">
+			<div class="card-head"><span class="card-title">Read aloud voice</span><span class="scope">This device</span></div>
+			<div class="card-body">
+				<div class="field">
+					<label for="tts-edge-voice" class="slider-label">Voice</label>
+					<Select id="tts-edge-voice" value={edgeVoice} onchange={event => edge.update({ voice: event.currentTarget.value })}>
+						{#if native}<option value="">Android system</option>{/if}
+						{#if edgeVoice && !edge.voices.some(voice => voice.id === edgeVoice)}
+							<option value={edgeVoice}>{edgeVoice.slice(6, -6)}</option>
+						{/if}
+						{#each edgeLanguages as [id, label] (id)}
+							{@const group = edge.voices.filter(voice => voice.language === id)}
+							{#if group.length}<optgroup label={label}>
+								{#each group as voice (voice.id)}<option value={voice.id}>{voice.name} · Edge TTS</option>{/each}
+							</optgroup>{/if}
+						{/each}
+					</Select>
+				</div>
+				{#if edge.loading}<p class="help" role="status">Loading Edge voices…</p>{/if}
+				{#if edge.error}<div class="error" role="alert"><p>{edge.error}</p><Button variant="secondary" size="sm" onclick={() => edge.load()}>Retry</Button></div>{/if}
+				{#if edgeVoice}
+					<div class="slider-top"><label for="tts-edge-rate" class="slider-label">Speed</label><span class="slider-value">{edge.rate.toFixed(2)}×</span></div>
+					<input id="tts-edge-rate" type="range" class="slider" min="0.5" max="2" step="0.05" value={edge.rate}
+						oninput={event => edge.update({ rate: Number(event.currentTarget.value) })}
+						use:rangeReset={{ defaultValue: 1, apply: rate => edge.update({ rate }) }} />
+					<p class="help">Edge TTS sends the text you choose to read to Microsoft. Voice and speed changes apply to the next reading.</p>
+				{/if}
+			</div>
+		</section>
+	{/if}
+	{#if native && !speech.available}
+		<p class="help">Install Android app 0.1.9 or newer to choose a voice and reading speed.</p>
 	{:else if speech.loading}
 		<p class="help" role="status">Loading voices…</p>
 	{:else if speech.data}
+		{#if !edgeAvailable || !edgeVoice}
 		<section class="card">
 			<div class="card-head"><span class="card-title">Voice</span><span class="scope">This device</span></div>
 			<div class="card-body">
@@ -49,6 +87,7 @@
 				<p class="help">1.00× is normal speed. Double-click the slider to reset.</p>
 			</div>
 		</section>
+		{/if}
 		<section class="card">
 			<div class="card-head"><span class="card-title">Audio playback</span><span class="scope">This device</span></div>
 			<div class="card-body">

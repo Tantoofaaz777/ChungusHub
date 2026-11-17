@@ -11,6 +11,8 @@ import { serveStaticAsset } from './static';
 import { FontLibrary } from './fonts';
 import { parseReasoningRetention } from '../shared/reasoning-retention';
 import { renderUnlockPage } from './unlock-page';
+import { edgeSpeechVoices, synthesizeEdgeSpeech } from './edge-speech';
+import { EDGE_SPEECH_AUDIO_PATH, EDGE_SPEECH_VOICES_PATH } from '../shared/edge-speech';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import type { ServerWebSocket } from 'bun';
@@ -529,6 +531,8 @@ async function handleApi(req: Request, url: URL, clientIp: string | null): Promi
 	// `dataAhead` rides along because it is the same kind of fact: something happened to this
 	// data folder that the running app cannot undo and the reader has to be told about.
 	if (path === '/api/config') return json({ dataEpoch, dataAhead });
+	if (path === EDGE_SPEECH_VOICES_PATH && req.method === 'GET') return edgeSpeechVoices();
+	if (path === EDGE_SPEECH_AUDIO_PATH && req.method === 'POST') return synthesizeEdgeSpeech(req);
 
 	// ----- Shared prompt debug log -----
 	// Backfill the panel when a device opens it (the live feed rides the WebSocket).

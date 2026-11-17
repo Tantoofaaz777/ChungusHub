@@ -29,10 +29,13 @@ import android.os.PowerManager
 import android.util.Log
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.webkit.CookieManager
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import java.util.Locale
+import java.util.concurrent.Executors
 
 /** Owns speech independently of the WebView. Only the explicit, non-exported service
  * receives text; the OS media session receives transport commands, never credentials. */
@@ -44,10 +47,13 @@ class ReadAloudService : Service() {
     private lateinit var cache: File
     private lateinit var preparingLock: PowerManager.WakeLock
     private var tts: TextToSpeech? = null
-    private var ttsReady = false
+    private var speechReady = false
     private var boundEngine = ""
     private var defaultVoice: android.speech.tts.Voice? = null
     private var options = SpeechOptions()
+    private var edgeChoice: EdgeSpeechChoice? = null
+    private var edgeError: Pair<Int, String>? = null
+    private val downloads = Executors.newSingleThreadExecutor()
     private var initialization = 0
     private val speechOwner = Any()
     private var startup: JSONObject? = null
@@ -66,7 +72,7 @@ class ReadAloudService : Service() {
     private var player: MediaPlayer? = null
     private var playerReady = false
     private val files = mutableMapOf<Int, File>()
-    private data class Pending(val id: String, val index: Int, val file: File)
+    private data class Pending(val id: String, val index: Int, val file: File, val download: EdgeSpeechDownload?)
     private var pending: Pending? = null
     private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
@@ -138,7 +144,11 @@ class ReadAloudService : Service() {
         else startForeground(NOTIFICATION, notification())
         try {
             resetAudio()
-            parts = SpeechText.parts(intent.getStringExtra("text").orEmpty(), minOf(3000, TextToSpeech.getMaxSpeechInputLength()))
+            val edge = intent.getStringExtra("edgeVoice")?.let { EdgeSpeechChoice(it, intent.getFloatExtra("edgeRate", 1f)) }
+            edgeChoice = edge
+            val text = intent.getStringExtra("text").orEmpty()
+            parts = if (edge == null) SpeechText.parts(text, minOf(3000, TextToSpeech.getMaxSpeechInputLength()))
+                else SpeechText.parts(text, 3000, Locale.forLanguageTag(edge.voice.take(5)))
             requestId = intent.getStringExtra("requestId").orEmpty()
             spokenIndex = null
             index = 0
@@ -150,8 +160,12 @@ class ReadAloudService : Service() {
             focus = createAudioFocus(options.mixAudio)
             startup = null
             // The pool checks the current default engine and measures warm/cold acquisition.
-            ttsReady = false
-            initializeSpeech()
+            speechReady = false
+            if (edge == null) initializeSpeech() else {
+                initialization++
+                releaseSpeech()
+                speechReady = true
+            }
             play()
         } catch (e: Exception) { fail(e.message ?: "Could not start reading.") }
         return START_NOT_STICKY
@@ -178,7 +192,7 @@ class ReadAloudService : Service() {
                 override fun onError(utteranceId: String?) { main.post { synthesisFailed(utteranceId) } }
                 override fun onError(utteranceId: String?, errorCode: Int) { main.post { synthesisFailed(utteranceId) } }
             })
-            ttsReady = true
+            speechReady = true
             try { configureSpeech() } catch (e: Exception) { fail(e.message ?: "Could not configure the voice."); return@acquire }
             if (wantsPlay && hasFocus) ensureAudio()
         }
@@ -236,7 +250,8 @@ class ReadAloudService : Service() {
     }
 
     private fun ensureAudio() {
-        if (closed || !wantsPlay || !ttsReady || phase == "error") return
+        if (closed || !wantsPlay || !speechReady || phase == "error") return
+        edgeError?.takeIf { it.first == index }?.let { fail(it.second); return }
         val file = files[index]
         if (player == null && file != null) {
             val current = MediaPlayer()
@@ -264,17 +279,31 @@ class ReadAloudService : Service() {
         // Keep only the current sentence and one ahead. No whole-message audio file.
         if (pending == null) {
             val needed = if (file == null) index else index + 1
-            if (needed < parts.size && files[needed] == null) synthesize(needed)
+            if (needed < parts.size && files[needed] == null && edgeError?.first != needed) synthesize(needed)
         }
     }
 
     private fun synthesize(part: Int) {
         val id = UUID.randomUUID().toString()
-        val file = File(cache, "$id.wav")
-        pending = Pending(id, part, file)
+        val edge = edgeChoice
+        val file = File(cache, if (edge == null) "$id.wav" else "$id.mp3")
+        val download = edge?.let {
+            val url = EdgeSpeechDownload.url(origin)
+            EdgeSpeechDownload(url, CookieManager.getInstance().getCookie(url))
+        }
+        pending = Pending(id, part, file, download)
         preparingLock.acquire(45000)
         main.postDelayed(synthesisTimeout, 45000)
-        if (tts?.synthesizeToFile(parts[part].text, Bundle(), file, id) != TextToSpeech.SUCCESS) synthesisFailed(id)
+        if (edge != null && download != null) {
+            val text = parts[part].text
+            downloads.execute {
+                val result = runCatching { download.save(text, edge, file) }
+                main.post {
+                    if (closed || pending?.id != id) file.delete()
+                    else result.fold({ synthesized(id) }, { edgeSynthesisFailed(id, it) })
+                }
+            }
+        } else if (tts?.synthesizeToFile(parts[part].text, Bundle(), file, id) != TextToSpeech.SUCCESS) synthesisFailed(id)
     }
 
     private fun synthesized(id: String?) {
@@ -294,10 +323,21 @@ class ReadAloudService : Service() {
         fail("Could not generate speech. Check the installed voice and its network requirements.")
     }
 
+    private fun edgeSynthesisFailed(id: String, cause: Throwable) {
+        val task = pending?.takeIf { it.id == id && !closed } ?: return
+        task.file.delete()
+        val message = (cause as? EdgeSpeechFailure)?.message ?: "Could not get Edge TTS audio from ChungusHub. Check your connection."
+        pending = null
+        main.removeCallbacks(synthesisTimeout)
+        releasePreparationLock()
+        if (task.index == index) fail(message) else edgeError = task.index to message
+    }
+
     private fun releasePreparationLock() { if (preparingLock.isHeld) preparingLock.release() }
     private fun cancelSynthesis() {
         val task = pending
         pending = null // Invalidate before stop callbacks can arrive from the engine.
+        task?.download?.cancel()
         tts?.stop()
         task?.file?.delete()
         main.removeCallbacks(synthesisTimeout)
@@ -306,7 +346,7 @@ class ReadAloudService : Service() {
     private fun releasePlayer() { player?.release(); player = null; playerReady = false }
     private fun releaseSpeech(invalid: Boolean = false) {
         tts?.setOnUtteranceProgressListener(null)
-        tts = null; ttsReady = false
+        tts = null; speechReady = false
         SpeechEnginePool.release(speechOwner)
         if (invalid) SpeechEnginePool.invalidate()
     }
@@ -316,6 +356,7 @@ class ReadAloudService : Service() {
         main.removeCallbacks(idleTimeout)
         releasePlayer()
         cancelSynthesis()
+        edgeError = null
         files.values.forEach { it.delete() }; files.clear()
         abandonFocus()
     }
@@ -323,7 +364,7 @@ class ReadAloudService : Service() {
         if (closed) return
         resetAudio()
         initialization++
-        releaseSpeech(invalid = true)
+        releaseSpeech(invalid = edgeChoice == null)
         phase = "error"; error = message
         publish()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -396,6 +437,7 @@ class ReadAloudService : Service() {
         main.removeCallbacksAndMessages(null)
         initialization++
         releaseSpeech()
+        downloads.shutdownNow()
         session.release()
         unregisterReceiver(noisy)
         cache.listFiles()?.forEach { it.delete() }
@@ -415,11 +457,12 @@ class ReadAloudService : Service() {
             observers.add(callback)
             return { observers.remove(callback) }
         }
-        fun start(context: Context, origin: String, text: String, title: String, requestId: String = "") {
+        fun start(context: Context, origin: String, text: String, title: String, requestId: String = "", edge: EdgeSpeechChoice? = null) {
             require(text.isNotBlank() && text.length <= SpeechText.MAX_TEXT) { "The message is empty or too long to read (maximum 80,000 characters)." }
             require(requestId.length <= 80 && requestId.all { it.isLetterOrDigit() || it == '-' }) { "Invalid reading request." }
             ContextCompat.startForegroundService(context, Intent(context, ReadAloudService::class.java).setAction(START)
-                .putExtra("origin", origin).putExtra("text", text).putExtra("title", title.take(180)).putExtra("requestId", requestId))
+                .putExtra("origin", origin).putExtra("text", text).putExtra("title", title.take(180)).putExtra("requestId", requestId)
+                .apply { if (edge != null) putExtra("edgeVoice", edge.voice).putExtra("edgeRate", edge.rate) })
         }
         fun snapshot(origin: String): JSONObject = instance?.takeIf { !it.closed && it.origin == origin }?.status()
             ?: JSONObject().put("phase", "idle")

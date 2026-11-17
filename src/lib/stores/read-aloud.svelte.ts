@@ -1,4 +1,6 @@
-import { canReadAloud, type AndroidReadingState, type ReadingCommand } from '#lib/services/android-client.ts';
+import { canReadAloud, isAndroidClient, type AndroidReadingState, type ReadingCommand } from '#lib/services/android-client.ts';
+import { BrowserSpeechPlayer } from '#lib/services/edge-speech.ts';
+import { edgeSpeechSettings } from './edge-speech-settings.svelte';
 
 import { prepareSpeechProcessing, processSpeechText, suspendSpeechProcessing, type SpeechProcessingTiming } from '#lib/services/speech-rules.ts';
 
@@ -11,6 +13,10 @@ class ReadAloudStore {
 	lastProcessingTiming = $state<(SpeechProcessingTiming & { rulesFetchMs: number }) | null>(null);
 	private revision = 0;
 	private source = $state<{ key: string; requestId: string; original: string; text: string; offsets: number[] } | null>(null);
+	private browser = new BrowserSpeechPlayer(state => {
+		if (state.phase === 'idle' || state.phase === 'error') this.source = null;
+		this.state = state;
+	});
 	get sourceKey() { return this.source?.key ?? null; }
 	get highlight() {
 		const { phase, requestId, range, highlightSpeech } = this.state;
@@ -23,11 +29,12 @@ class ReadAloudStore {
 	suspend() { suspendSpeechProcessing(); }
 
 	async refresh() {
-		this.available = canReadAloud();
-		if (this.available && window.ChungusAndroidClient?.readingRules && window.ChungusAndroidClient.foreground !== false &&
+		const native = canReadAloud();
+		this.available = native || (!isAndroidClient() && typeof Audio === 'function' && typeof Intl.Segmenter === 'function');
+		if (native && window.ChungusAndroidClient?.readingRules && window.ChungusAndroidClient.foreground !== false &&
 			(typeof document === 'undefined' || document.visibilityState !== 'hidden')) prepareSpeechProcessing();
 		else suspendSpeechProcessing();
-		if (!this.available || this.busy) return;
+		if (!native || this.busy) return;
 		const revision = this.revision;
 		const state = await window.ChungusAndroidClient!.readingState!();
 		if (revision === this.revision && !this.busy) {
@@ -38,17 +45,18 @@ class ReadAloudStore {
 	}
 	async start(text: string, title: string, sourceKey?: string) {
 		if (this.busy) return;
-		if (!canReadAloud()) throw new Error('Update the Android app to read messages aloud.');
+		const native = canReadAloud();
+		if (!native && isAndroidClient()) throw new Error('Update the Android app to read messages aloud.');
 		this.busy = true;
 		this.lastProcessingTiming = null;
 		this.revision++;
 		try {
-			const client = window.ChungusAndroidClient!;
+			const client = native ? window.ChungusAndroidClient : undefined;
 			const original = text;
-			const requestId = client.readingHighlights ? crypto.randomUUID() : undefined;
+			const requestId = !client || client.readingHighlights ? crypto.randomUUID() : undefined;
 			const trackOffsets = !!requestId && !!sourceKey;
 			let offsets = trackOffsets ? Array.from({ length: text.length }, (_, i) => i) : [];
-			if (client.readingRules) {
+			if (client?.readingRules) {
 				const at = performance.now();
 				const rules = await client.readingRules();
 				const rulesFetchMs = performance.now() - at;
@@ -61,15 +69,19 @@ class ReadAloudStore {
 				if (trackOffsets) offsets = processed.offsets ?? [];
 				if (!text.trim()) throw new Error('Nothing remains to read after applying your text processing rules.');
 			}
-			await client.readAloud!(text, title, requestId);
+			const choice = edgeSpeechSettings.selection(native);
+			if (!client) this.browser.start(text, title, requestId!, choice);
+			else if (client.readingEdgeTts && choice.voice) await client.readAloud!(text, title, requestId, choice);
+			else await client.readAloud!(text, title, requestId);
 			this.source = sourceKey && requestId && offsets.length === text.length ? { key: sourceKey, requestId, original, text, offsets } : null;
 			// Service startup is asynchronous; the next native snapshot confirms playback.
-			this.state = { phase: 'preparing', title };
+			if (native) this.state = { phase: 'preparing', title };
 		} finally { this.busy = false; }
 		await this.refresh();
 	}
 	async command(command: ReadingCommand) {
 		if (this.busy || !this.available) return;
+		if (!isAndroidClient()) { this.browser.command(command); return; }
 		this.busy = true;
 		this.revision++;
 		try { this.state = await window.ChungusAndroidClient!.readingCommand!(command); if (command === 'stop') this.source = null; }

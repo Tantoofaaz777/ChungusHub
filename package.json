@@ -26,6 +26,7 @@
     "icons": "bun scripts/icons.ts"
   },
   "dependencies": {
+    "@andresaya/edge-tts": "1.9.1",
     "dompurify": "^3.2.0",
     "gpt-tokenizer": "^3.4.0",
     "marked": "^15.0.0",

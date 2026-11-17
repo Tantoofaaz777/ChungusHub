@@ -213,7 +213,7 @@ export default defineConfig(({ command }) => ({
 		allowlistGate()
 	],
 	clearScreen: false,
-	// Every runtime dependency, so the prebundle happens at server startup. Left to be
+	// Every browser runtime dependency, so the prebundle happens at server startup. Left to be
 	// discovered, a bare import is found mid page load: Vite holds those requests until
 	// the dependency optimizer is done and then force-reloads the page under whatever was already running.
 	optimizeDeps: {
@@ -225,7 +225,8 @@ export default defineConfig(({ command }) => ({
 			'svelte-dnd-action',
 			'yauzl',
 			'yazl'
-		]
+		],
+		exclude: ['@andresaya/edge-tts'] // The Bun server owns Edge synthesis.
 	},
 	server: {
 		port: 1420,

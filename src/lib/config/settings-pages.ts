@@ -15,7 +15,6 @@ import { ENGINES } from '#lib/engines/registry.ts';
 import { backupStore } from '#lib/stores/backups.svelte.ts';
 import { advancedSettingsStore } from '#lib/stores/advanced-settings.svelte.ts';
 import { APP_VERSION } from '#lib/version.ts';
-import { isAndroidClient } from '#lib/services/android-client.ts';
 
 export type SettingsPage =
 	// Connection
@@ -104,7 +103,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
 		rows: [
 			{ page: 'general', label: 'General', icon: 'settings' },
 			{ page: 'engines', label: 'Engines', icon: 'bolt', preview: enginesSummary },
-			{ page: 'tts', label: 'TTS', icon: 'volume', shown: isAndroidClient },
+			{ page: 'tts', label: 'TTS', icon: 'volume' },
 			{ page: 'security', label: 'Security', icon: 'shield' },
 			{ page: 'backups', label: 'Backups', icon: 'archive', preview: backupsSummary },
 		]

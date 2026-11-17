@@ -39,13 +39,14 @@ The frontend extracts plain story text from the original message after identity 
 resolution, independently of display-scope regex and its rendered widgets. Markdown and
 HTML formatting are stripped; comments, reasoning, toolbar content, images and link destinations
 are not sent. Speech text is bounded to 80,000 UTF-16 characters and the fully escaped bridge request
-stays below its existing 100,000-character limit. No speech state or audio is stored on the VPS.
+stays below its existing 100,000-character limit. Playback state stays on the client.
 
 `ReadAloudService` is a non-exported foreground `mediaPlayback` service with a platform
 `MediaSession`, media notification and explicit immutable transport PendingIntents targeting
 a non-exported receiver. It uses the device's default TTS engine and selected voice/rate to synthesize bounded
-sentences to private temporary WAV files. `MediaPlayer` plays them, preserving the exact audio
-position on pause. Previous/next navigate sentences (very long sentences use bounded fragments).
+sentences to private temporary WAV files when the system voice is selected. `MediaPlayer` plays
+them, preserving the exact audio position on pause. Previous/next navigate sentences (very
+long sentences use bounded fragments).
 Only the current sentence and one ahead are retained; stopped or replaced sessions discard
 their files. Random synthesis IDs reject late callbacks from cancelled work. Initialization
 and synthesis have timeouts; a paused session expires after ten minutes. Process death does
@@ -108,6 +109,15 @@ APK 0.1.10 adds optional `name` metadata to each speech rule, bounded to 120 UTF
 
 
 The Threads feed offers Read aloud on Android beside Copy and Share. It uses exactly Copy's `serializeFeedAsPlainText(activeThreadsFeed(round))` source, preserving title, usernames, post and nested reply order for the selected version instead of speaking the stored JSON. No display regex or extra Markdown conversion runs on that source. Device-local TTS rules, voice, speed and the shared native player still apply. The button is disabled while a reading request is pending, and startup errors reach the normal toast channel.
+
+### Edge TTS
+
+APK 0.1.14 adds the `readingEdgeTts` bridge capability. The frontend shares the VPS catalog of
+US and UK English voices with the desktop reader. On Android the system engine stays selected
+until an Edge voice is chosen. The reader sends the selected voice, rate, and filtered text to
+the native service. The service requests one MP3 clip at a time from the selected HTTPS origin
+with its WebView cookies, and keeps the current and next clip in private temporary files.
+Desktop browsers use the same endpoint with a bounded in-memory buffer and HTML audio.
 
 ### Read-aloud startup latency
 
