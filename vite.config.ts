@@ -58,7 +58,7 @@ function isAllowed(ip: string | undefined): boolean {
 // sliding idle window live in security.json, written only by the Bun process.
 // This just reads it per navigation. The idle window, its default and its 0-means-never
 // rule all mirror server/security.ts.
-const DEFAULT_SESSION_IDLE_MINUTES = 60;
+const DEFAULT_SESSION_IDLE_MINUTES = 0;
 
 function needsUnlock(req: { headers: Record<string, string | string[] | undefined>; socket: { remoteAddress?: string } }): boolean {
 	const ip = req.socket.remoteAddress;

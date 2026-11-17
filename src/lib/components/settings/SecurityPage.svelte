@@ -92,8 +92,8 @@
 	// The idle window, in minutes, 0 meaning never. The field is a draft rather than the
 	// value: the 5s poll below would otherwise overwrite a number while it is being typed,
 	// so it only follows the server while the two still agree.
-	let idleMinutes = $state(60);
-	let idleInput = $state('60');
+	let idleMinutes = $state(0);
+	let idleInput = $state('0');
 	let idleDirty = $derived(idleInput.trim() !== String(idleMinutes));
 	let idleValid = $derived(/^\d+$/.test(idleInput.trim()));
 
@@ -510,7 +510,9 @@
 				{/if}
 			</div>
 		</section>
+	{/if}
 
+	{#if networkEnabled || passwordSet}
 		<section class="security-card" data-setting="password-lock">
 			<header class="card-head">
 				<div class="card-heading">
@@ -586,7 +588,7 @@
 						<span class="row-label">Ask again when idle</span>
 						<span class="row-desc">
 							{#if idleMinutes === 0}
-								Other devices stay unlocked until the password changes.
+								Signed-in devices stay unlocked while their session cookie is valid.
 							{:else}
 								A device left alone this long is asked for the password again. Set 0 to stop
 								asking.

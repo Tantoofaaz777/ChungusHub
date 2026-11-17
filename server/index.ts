@@ -1510,6 +1510,8 @@ if (alreadyRunning) {
 	]);
 }
 
+security.initializeSecurity();
+
 // A marker means a restore was claimed, or was cut short part-way through. Either way the
 // swap runs HERE and only here: nothing has opened a database yet, which is the one moment
 // this process is able to replace its own database file at all (backup/restore.ts).

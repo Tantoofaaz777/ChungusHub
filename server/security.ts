@@ -5,7 +5,7 @@
  * gate: it decides where the listening socket is opened (index.ts `bindHostname`),
  * so while it is off the port exists on loopback alone and a device on the
  * network has nothing to reach rather than something that turns it away. The
- * other two are gates, and only ever apply once the socket is open wide:
+ * other two are gates for non-loopback clients, including those coming through a proxy:
  *  - the IP allowlist itself can be turned off (open LAN access), and
  *  - a single shared password can be required from non-loopback devices.
  *    The password hash survives the lock being switched off, so it can be
@@ -15,8 +15,8 @@
  * login mints a random session token delivered as an HttpOnly cookie.
  * Sessions use a sliding idle window: every gated request refreshes the
  * token's last-seen time, so a device in active use is never interrupted,
- * and one left alone re-locks once `sessionIdleMinutes` has passed (an hour
- * by default, 0 meaning never). Everything persists in
+ * and one left alone re-locks once `sessionIdleMinutes` has passed. The default
+ * is 0, which disables expiry by inactivity. Everything persists in
  * security.json under the data directory. Deleting that file restores the
  * defaults (network access off, allowlist on, no password), which is also the
  * lockout recovery path. Loopback is exempt from every gate here and is the one
@@ -31,11 +31,10 @@ import { watchDataFile } from './watch-file';
 const SESSION_COOKIE = 'chungus_session';
 // The idle window a device gets when the file says nothing. Its default, and the rule
 // that 0 means never, are mirrored in vite.config.ts's dev gate: keep the two in sync.
-const DEFAULT_SESSION_IDLE_MINUTES = 60;
-// Deliberately the longest a browser will keep a cookie (Chrome caps it at 400 days):
-// the server-side last-seen check is the only thing that decides, and a cookie dying
-// first would re-prompt a device whose session is still good, which is exactly what an
-// idle window of "never" is set to prevent. A dead token in a live cookie just re-prompts.
+const DEFAULT_SESSION_IDLE_MINUTES = 0;
+const LEGACY_SESSION_IDLE_MINUTES = 60;
+// A long-lived cookie lets a session survive closing the browser. The server
+// independently enforces the configured inactivity limit and password changes.
 const COOKIE_MAX_AGE_S = 400 * 24 * 60 * 60;
 // last-seen writes are throttled to spare security.json a write per request.
 const PERSIST_EVERY_MS = 60_000;
@@ -51,6 +50,7 @@ interface SecurityState {
 	passwordHash: string | null;
 	/** How long a device may go untouched before it must unlock again. 0 = never. */
 	sessionIdleMinutes: number;
+	sessionIdleDefaultMigrated: boolean;
 	/** token → last-seen time (ms). Persisted so a server restart keeps active devices in. */
 	sessions: Record<string, number>;
 }
@@ -98,7 +98,7 @@ function sessionsField(raw: Record<string, unknown>): Record<string, number> {
 	return sessions;
 }
 
-function load(): SecurityState {
+function load(migrateLegacyDefault = false): SecurityState {
 	if (!existsSync(SECURITY_PATH)) {
 		return {
 			networkAccessEnabled: false,
@@ -106,6 +106,7 @@ function load(): SecurityState {
 			passwordEnabled: false,
 			passwordHash: null,
 			sessionIdleMinutes: DEFAULT_SESSION_IDLE_MINUTES,
+			sessionIdleDefaultMigrated: true,
 			sessions: {}
 		};
 	}
@@ -124,6 +125,9 @@ function load(): SecurityState {
 		unusable('"passwordHash" must be a string or null');
 	}
 	const passwordHash = typeof hash === 'string' ? hash : null;
+	const sessionIdleDefaultMigrated = boolField(raw, 'sessionIdleDefaultMigrated') ?? false;
+	const defaultIdleMinutes = migrateLegacyDefault && !sessionIdleDefaultMigrated
+		? LEGACY_SESSION_IDLE_MINUTES : DEFAULT_SESSION_IDLE_MINUTES;
 	return {
 		// Opening the app to the network is a deliberate act, so an absent switch
 		// keeps it shut.
@@ -132,12 +136,13 @@ function load(): SecurityState {
 		// Files written before the switch existed imply "a hash means it's on".
 		passwordEnabled: boolField(raw, 'passwordEnabled') ?? passwordHash !== null,
 		passwordHash,
-		sessionIdleMinutes: minutesField(raw, 'sessionIdleMinutes') ?? DEFAULT_SESSION_IDLE_MINUTES,
+		sessionIdleMinutes: minutesField(raw, 'sessionIdleMinutes') ?? defaultIdleMinutes,
+		sessionIdleDefaultMigrated,
 		sessions: sessionsField(raw)
 	};
 }
 
-const state = load();
+let state: SecurityState;
 
 /** Write to a temporary file and rename over the real one. A crash partway through a
  *  plain write leaves JSON that `load` refuses, and the only cure for that is deleting
@@ -151,12 +156,6 @@ function persist(): void {
 	renameSync(temp, SECURITY_PATH);
 }
 
-// First boot writes the defaults out rather than leaving them implicit in this file.
-// That is what makes the switches reachable on a machine with nothing to browse from:
-// the settings page needs a browser on the host, the file needs only a text editor.
-// Written only when absent, so an upgrade or a restart never overwrites real settings.
-if (!existsSync(SECURITY_PATH)) persist();
-
 /** The live idle window. "Never" is Infinity rather than a flag, so every comparison
  *  below stays one expression. */
 function sessionIdleMs(): number {
@@ -165,14 +164,27 @@ function sessionIdleMs(): number {
 
 function pruneSessions(): void {
 	const now = Date.now();
-	let changed = false;
+	const idleMs = sessionIdleMs();
 	for (const [token, lastSeen] of Object.entries(state.sessions)) {
-		if (now - lastSeen > sessionIdleMs()) {
+		if (now - lastSeen > idleMs) {
 			delete state.sessions[token];
-			changed = true;
 		}
 	}
-	if (changed) persist();
+}
+
+/** Load only after claiming the data directory. Write the settings on first boot
+ * or once when migrating the former default, so 60 remains a valid choice afterwards. */
+export function initializeSecurity(): void {
+	const configured = existsSync(SECURITY_PATH);
+	state = load(true);
+	if (configured && state.sessionIdleDefaultMigrated) return;
+	if (!state.sessionIdleDefaultMigrated && state.sessionIdleMinutes === LEGACY_SESSION_IDLE_MINUTES) {
+		// Revoke sessions already expired under the old limit before removing it.
+		pruneSessions();
+		state.sessionIdleMinutes = DEFAULT_SESSION_IDLE_MINUTES;
+	}
+	state.sessionIdleDefaultMigrated = true;
+	persist();
 }
 
 // ===== Switches =====

@@ -1318,10 +1318,9 @@ describe('theme custom properties (architecture/ui-shell-settings.md)', () => {
 
 describe('dev password gate (architecture/server-core.md #3, architecture/build-packaging.md #1)', () => {
 	// Vite serves the app itself in dev and every proxied request reaches Bun as loopback,
-	// so the idle window is enforced twice from one stored value. Vite cannot import the
-	// server's state module (it writes the data dir at import), so the default is written
-	// out on both sides, and a default that moved on one alone re-locks a device in dev at
-	// a time the app it is talking to still considers it unlocked.
+	// so the idle window is enforced twice from one stored value. Vite reads the live
+	// security file without initializing the server's security state. If only one default
+	// changes, the two gates can disagree on whether the device stays unlocked.
 	test('the dev gate mirrors the default idle window', () => {
 		const window = (where: string, ...file: string[]) =>
 			scan(read(...file), /const DEFAULT_SESSION_IDLE_MINUTES = (\d+)/g, where);

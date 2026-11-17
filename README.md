@@ -178,6 +178,8 @@ The setup command configures the hostname, disables automatic browser opening, k
 
 In your existing tunnel, route the hostname to `http://127.0.0.1:4242` (or the local service printed by setup), set HTTP Host Header to the public hostname, and leave Protect with Access off and the route path empty. Open the public address and sign in with the ChungusHub password. No inbound app port needs to be opened.
 
+ChungusHub sessions stay signed in by default while their cookie is valid. The first startup after updating changes the former 60-minute inactivity limit to `0` and retains other configured limits. You can set an inactivity limit under **Settings → Security → Password Lock**.
+
 Cloudflare Access is optional. To use it instead of setting a ChungusHub password, run setup with `--access`, create an Access self-hosted application that allows only your email, and enable Protect with Access on the tunnel route before publishing. This mode preserves existing password settings and sessions.
 
 This command configures ChungusHub only; it does not change your Cloudflare account or install a service to keep the app running after SSH disconnects. If `cloudflared` runs in a container, its origin address must reach the host instead of the container's own loopback.
