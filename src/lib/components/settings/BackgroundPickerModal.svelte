@@ -9,13 +9,10 @@
 	import { apiGet, fileUrl } from '#lib/services/transport.ts';
 	import { imageService } from '#lib/services/imageService.ts';
 	import { backgroundStore } from '#lib/stores/background.svelte.ts';
+	import type { BackgroundEntry } from '#shared/backgrounds.ts';
 
 	const panelActive = panelActivity();
-	interface BackgroundEntry {
-		path: string;
-		name: string;
-		source: 'default' | 'custom';
-	}
+	const EAGER_PREVIEW_LIMIT = 72;
 
 	interface Props {
 		open: boolean;
@@ -24,13 +21,16 @@
 
 	let { open, onClose }: Props = $props();
 
-	let backgrounds = $state<BackgroundEntry[]>([]);
+	let backgrounds = $state.raw<BackgroundEntry[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let uploading = $state(false);
 	let fileInput = $state<HTMLInputElement | undefined>(undefined);
 
 	let selectedPath = $derived(backgroundStore.config.path);
+	// Warm the bundled catalog and a few uploads without eagerly fetching full-size fallbacks.
+	const eagerPreviews = $derived(new Set(backgrounds.filter(entry => entry.previewPath)
+		.slice(0, EAGER_PREVIEW_LIMIT).map(entry => entry.path)));
 
 	async function refresh(): Promise<void> {
 		loading = true;
@@ -93,8 +93,8 @@
 	}
 </script>
 
-<Dialog {open} {onClose} title="Workspace Background" size="xl">
-	<div class="space-y-3">
+<Dialog {open} {onClose} title="Workspace Background" size="xl" bare>
+	<div class="picker-content panel-scroll overscroll-contain space-y-3">
 		<Alert message={error} />
 
 		{#if loading && backgrounds.length === 0}
@@ -126,7 +126,12 @@
 						onclick={() => select(entry.path)}
 					>
 						<span class="bg-tile-image">
-							<img src={fileUrl(entry.path)} alt={entry.name} loading="lazy" />
+							<img
+								src={fileUrl(entry.previewPath ?? entry.path)}
+								alt=""
+								loading={eagerPreviews.has(entry.path) ? 'eager' : 'lazy'}
+								decoding="async"
+							/>
 							{#if selectedPath === entry.path}
 								<span class="bg-tile-check"><Icon name="check" class="w-3.5 h-3.5" /></span>
 							{/if}
@@ -169,9 +174,6 @@
 		{/if}
 	</div>
 
-	<!-- Sticky footer: the upload action stays visible no matter how long the grid
-	     scrolls. Negative margins cancel the dialog's content padding so the bar
-	     hugs the panel's edges. -->
 	<div class="picker-footer">
 		<span class="picker-note font-ui">PNG, JPG, JFIF, WebP, GIF or AVIF.</span>
 		<Button variant="secondary" size="sm" disabled={uploading} onclick={() => fileInput?.click()}>
@@ -201,6 +203,11 @@
 />
 
 <style>
+	.picker-content {
+		min-height: 0;
+		padding: 1.25rem;
+	}
+
 	.picker-note {
 		font-size: 0.78rem;
 		color: var(--color-text-muted);
@@ -318,22 +325,13 @@
 		color: var(--color-accent);
 	}
 
-	/* Sticky action bar at the bottom of the dialog's scroll area. The negative
-	   margins cancel the dialog's p-5 content padding so the bar spans edge to
-	   edge and sits flush with the panel's bottom. Tiles scroll beneath it, so it
-	   carries the float tier + blur instead of a plain translucent token. */
 	.picker-footer {
-		position: sticky;
-		bottom: 0;
 		display: flex;
+		flex-shrink: 0;
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		margin: 0.9rem -1.25rem -1.25rem;
 		padding: 0.7rem 1.25rem;
-		background: var(--color-float-bg);
-		backdrop-filter: var(--backdrop-blur) saturate(140%);
-		-webkit-backdrop-filter: var(--backdrop-blur) saturate(140%);
 		border-top: 1px solid var(--glass-border);
 		border-radius: 0 0 calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px);
 	}

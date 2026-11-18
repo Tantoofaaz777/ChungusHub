@@ -17,6 +17,7 @@ import {
 } from 'node:fs';
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { bundledBackgroundPreviewPath, type BackgroundEntry } from '../shared/backgrounds';
 import {
 	DEFAULT_BACKGROUNDS_DIR,
 	DEFAULT_PRESETS_DIR,
@@ -298,15 +299,6 @@ export async function saveThumbnail(relativePath: string, thumb: Blob): Promise<
 
 // ===== BACKGROUNDS =====
 
-export interface BackgroundEntry {
-	/** File-URL path relative to /files/, what the client stores and renders. */
-	path: string;
-	/** Display name derived from the filename. */
-	name: string;
-	/** Bundled default vs user-uploaded. Only custom ones can be deleted. */
-	source: 'default' | 'custom';
-}
-
 function backgroundName(filename: string): string {
 	return filename
 		.replace(IMAGE_EXT_RE, '')
@@ -315,23 +307,27 @@ function backgroundName(filename: string): string {
 		.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function listBackgroundDirectory(dir: string, source: BackgroundEntry['source']): BackgroundEntry[] {
+	if (!existsSync(dir)) return [];
+	const previewDir = join(dir, 'thumbnails');
+	const previews = new Set(existsSync(previewDir)
+		? readdirSync(previewDir, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => entry.name)
+		: []);
+	const prefix = source === 'default' ? 'backgrounds' : 'images/backgrounds';
+	return readdirSync(dir).filter(name => IMAGE_EXT_RE.test(name)).sort().map(filename => {
+		const path = `${prefix}/${filename}`;
+		const previewPath = source === 'default' ? bundledBackgroundPreviewPath(filename) : thumbnailFor(path);
+		return { path, name: backgroundName(filename), source,
+			...(previews.has(basename(previewPath)) ? { previewPath } : {}) };
+	});
+}
+
 /** Every available workspace background: bundled defaults + user uploads. */
 export function listBackgrounds(): BackgroundEntry[] {
-	const out: BackgroundEntry[] = [];
-	if (existsSync(DEFAULT_BACKGROUNDS_DIR)) {
-		for (const name of readdirSync(DEFAULT_BACKGROUNDS_DIR).sort()) {
-			if (!IMAGE_EXT_RE.test(name)) continue;
-			out.push({ path: `backgrounds/${name}`, name: backgroundName(name), source: 'default' });
-		}
-	}
-	const customDir = join(IMAGES_ROOT, 'backgrounds');
-	if (existsSync(customDir)) {
-		for (const name of readdirSync(customDir).sort()) {
-			if (!IMAGE_EXT_RE.test(name)) continue;
-			out.push({ path: `images/backgrounds/${name}`, name: backgroundName(name), source: 'custom' });
-		}
-	}
-	return out;
+	return [
+		...listBackgroundDirectory(DEFAULT_BACKGROUNDS_DIR, 'default'),
+		...listBackgroundDirectory(join(IMAGES_ROOT, 'backgrounds'), 'custom')
+	];
 }
 
 // ===== PRESETS =====

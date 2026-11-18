@@ -30,6 +30,7 @@
 	import { viewport } from '#lib/stores/viewport.svelte.ts';
 	import { desktopLayoutStore } from '#lib/stores/desktop-layout.svelte.ts';
 	import { backgroundStore } from '#lib/stores/background.svelte.ts';
+	import { imageService } from '#lib/services/imageService.ts';
 	import { chatSceneStore } from '#lib/stores/chatScene.svelte.ts';
 	import { DEFAULT_BACKGROUND } from '#lib/types/background.ts';
 	import { rangeReset } from '#lib/actions/rangeReset.ts';
@@ -151,7 +152,7 @@
 	/* --- Background --- */
 
 	let background = $derived(backgroundStore.config);
-	let backgroundUrl = $derived(backgroundStore.url);
+	let backgroundUrl = $derived(imageService.thumbnailUrl(background.path ?? undefined));
 	let backgroundPickerOpen = $state(false);
 
 	/* --- Restore defaults --- */
@@ -416,7 +417,7 @@
 
 			<div class="bg-hero" class:bg-hero-unset={!backgroundUrl}>
 				{#if backgroundUrl}
-					<img class="bg-hero-img" src={backgroundUrl} alt="Current workspace background" />
+					<img class="bg-hero-img" src={backgroundUrl} alt="Current workspace background" decoding="async" />
 					<div class="bg-hero-scrim">
 						<span class="bg-hero-name">{backgroundName}</span>
 						<div class="bg-hero-actions">

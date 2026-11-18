@@ -368,12 +368,20 @@ function imageHeaders(type: string, cacheControl = 'no-cache'): Record<string, s
 }
 
 function serveDefaultBackground(pathname: string): Response {
-	// pathname like /files/backgrounds/<file>. Bundled defaults, served from the repo.
+	// Bundled previews keep the original extension in their name so two local files
+	// with the same stem can have different thumbnails.
 	const rel = requestedFilePath(pathname, '/files/backgrounds/');
-	const filePath = join(DEFAULT_BACKGROUNDS_DIR, rel);
+	const thumbnail = /^thumbnails\/([^/]+)\.webp$/.exec(rel);
+	let filePath = join(DEFAULT_BACKGROUNDS_DIR, rel);
+	const hasThumbnail = thumbnail !== null && existsSync(filePath) && statSync(filePath).isFile();
+	if (thumbnail && !hasThumbnail) {
+		// A wallpaper dropped into defaults/backgrounds can be browsed without a sidecar.
+		filePath = join(DEFAULT_BACKGROUNDS_DIR, thumbnail[1]);
+	}
 	const type = imageContentType(filePath);
 	if (type && existsSync(filePath) && statSync(filePath).isFile()) {
-		return new Response(Bun.file(filePath), { headers: imageHeaders(type) });
+		const cacheControl = hasThumbnail ? 'private, max-age=3600' : undefined;
+		return new Response(Bun.file(filePath), { headers: imageHeaders(type, cacheControl) });
 	}
 	return new Response('Not found', { status: 404 });
 }

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -255,6 +255,32 @@ describe('/files/', () => {
 		expect(bundled.headers['content-security-policy']).toBe("default-src 'none'; sandbox");
 		expect(bundled.headers['cross-origin-resource-policy']).toBe('same-origin');
 		expect(bundled.headers['cache-control']).toBe('no-cache');
+	});
+
+	test('wallpaper previews serve small WebP files without changing the saved paths', async () => {
+		const uploads = join(scratch, 'data', 'images', 'backgrounds');
+		mkdirSync(join(uploads, 'thumbnails'), { recursive: true });
+		writeFileSync(join(uploads, 'picker-upload.jpg'), 'original upload');
+		writeFileSync(join(uploads, 'thumbnails', 'picker-upload.webp'), 'small');
+		writeFileSync(join(uploads, 'picker-legacy.jpg'), 'legacy upload with no preview');
+		const { backgrounds } = JSON.parse((await exchange('GET', '/api/backgrounds', ours())).body) as {
+			backgrounds: { path: string; source: string; previewPath?: string }[];
+		};
+		expect(backgrounds.every(({ path }) => !path.includes('/thumbnails/'))).toBe(true);
+		const { path, previewPath } = backgrounds.find(entry => entry.source === 'default' && entry.previewPath)!;
+		const originalName = path.slice('backgrounds/'.length);
+		expect(previewPath).toBe(`backgrounds/thumbnails/${originalName}.webp`);
+		expect(backgrounds.find(entry => entry.path === 'images/backgrounds/picker-upload.jpg')?.previewPath)
+			.toBe('images/backgrounds/thumbnails/picker-upload.webp');
+		expect(backgrounds.find(entry => entry.path === 'images/backgrounds/picker-legacy.jpg'))
+			.toEqual({ path: 'images/backgrounds/picker-legacy.jpg', name: 'Picker Legacy', source: 'custom' });
+		const preview = await exchange('GET', `/files/${previewPath}`, ours());
+		const original = await exchange('GET', `/files/${path}`, ours());
+		expect(preview.status).toBe(200);
+		expect(preview.headers['content-type']).toBe('image/webp');
+		expect(preview.headers['cache-control']).toBe('private, max-age=3600');
+		expect(preview.headers['cross-origin-resource-policy']).toBe('same-origin');
+		expect(Number(preview.headers['content-length'])).toBeLessThan(Number(original.headers['content-length']));
 	});
 });
 

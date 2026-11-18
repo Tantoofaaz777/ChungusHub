@@ -6,6 +6,7 @@
  * shares the same character art. Same public API as before.
  */
 import { apiGet, apiSend, apiUpload, fileUrl, getClientId } from '#lib/services/transport.ts';
+import { bundledBackgroundPreviewPath } from '#shared/backgrounds.ts';
 
 /** Which entity an image belongs to. Decides its images/<category>/ folder server-side. */
 export type ImageCategory =
@@ -254,7 +255,9 @@ class ImageService {
 	private getThumbnailPath(originalPath: string): string {
 		const idx = originalPath.lastIndexOf('/');
 		const dir = originalPath.slice(0, idx); // images/<category>
-		const nameWithoutExt = originalPath.slice(idx + 1).replace(/\.[^.]+$/, '');
+		const filename = originalPath.slice(idx + 1);
+		if (dir === 'backgrounds') return bundledBackgroundPreviewPath(filename);
+		const nameWithoutExt = filename.replace(/\.[^.]+$/, '');
 		return `${dir}/thumbnails/${nameWithoutExt}${THUMBNAIL_EXTENSION}`;
 	}
 
