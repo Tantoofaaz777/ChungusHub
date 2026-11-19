@@ -59,14 +59,21 @@ export const SAMPLING_SLIDERS: SamplingSlider[] = [
 
 /**
  * The knobs a BYO endpoint's owner can declare their endpoint accepts, in card
- * order: every non-base slider plus `seed`. Temperature has its own send toggle.
+ * order: every sampling slider plus `seed`.
  * Derived from SAMPLING_SLIDERS so a new slider joins the
  * declaration vocabulary for free instead of drifting out of a hand-kept list.
  */
 export const DECLARABLE_PARAMS: { key: string; label: string; info: string }[] = [
-	...SAMPLING_SLIDERS.filter((p) => !p.base).map((p) => ({ key: p.supportedKey, label: p.label, info: p.info })),
+	...SAMPLING_SLIDERS.map((p) => ({ key: p.supportedKey, label: p.label, info: p.info })),
 	{ key: 'seed', label: 'Seed', info: 'A fixed seed makes the same prompt reproduce the same output.' }
 ];
+
+/** Temperature predates declarations, so its saved send preference remains authoritative. */
+export function declaredSamplingParams(declared: string[], generation: Pick<GenerationSettings, 'sendTemperature'>): string[] {
+	return DECLARABLE_PARAMS.filter(p => p.key === 'temperature'
+		? generation.sendTemperature !== false
+		: declared.includes(p.key)).map(p => p.key);
+}
 
 /**
  * Collapse a provider's declared policy into one the visibility helpers and param

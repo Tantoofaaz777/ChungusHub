@@ -35,6 +35,7 @@
 		SERVICE_TIERS,
 		EFFORT_LABELS,
 		DECLARABLE_PARAMS,
+		declaredSamplingParams,
 		REASONING_DIALECTS,
 		resolveParamPolicy,
 		resolveReasoningPolicy,
@@ -121,11 +122,13 @@
 	// policy is 'declared' and the connection carries its owner's own list. Every
 	// other provider's real policy is known and passes through untouched.
 	const declaresParams = $derived(meta?.paramPolicy === 'declared');
-	const declared = $derived(conn?.samplingParams ?? []);
+	const declared = $derived(declaredSamplingParams(conn?.samplingParams ?? [], gen));
 	const samplingPolicy = $derived(resolveParamPolicy(meta?.paramPolicy ?? 'base-only', declared));
 
 	// The numeric fields mirror exactly what this connection sends ("visible === sent").
-	const visibleSampling = $derived(SAMPLING_SLIDERS.filter((p) => sliderVisible(p, modelInfo, samplingPolicy)));
+	const temperatureSupported = $derived(sliderVisible(SAMPLING_SLIDERS[0], modelInfo, samplingPolicy));
+	const visibleSampling = $derived(SAMPLING_SLIDERS.filter(p => sliderVisible(p, modelInfo, samplingPolicy)
+		&& (p.key !== 'temperature' || gen.sendTemperature !== false)));
 
 	// A BYO endpoint's reasoning dialect is unknowable from here, so that provider's
 	// profile says 'declared' and the connection names it. Every other provider's real
@@ -358,14 +361,22 @@
 	/** Flip one declared param, keeping the stored list in card order. */
 	function toggleDeclared(key: string): void {
 		if (!conn) return;
-		const on = new Set(conn.samplingParams);
+		const on = new Set(declared);
 		if (on.has(key)) on.delete(key);
 		else on.add(key);
-		connectionStore.update(id, { samplingParams: DECLARABLE_PARAMS.filter((p) => on.has(p.key)).map((p) => p.key) });
+		setDeclared(DECLARABLE_PARAMS.filter(p => on.has(p.key)).map(p => p.key));
 	}
 
 	function declareAll(on: boolean): void {
-		connectionStore.update(id, { samplingParams: on ? DECLARABLE_PARAMS.map((p) => p.key) : [] });
+		setDeclared(on ? DECLARABLE_PARAMS.map(p => p.key) : []);
+	}
+
+	function setDeclared(params: string[]): void {
+		if (!conn) return;
+		connectionStore.update(id, {
+			samplingParams: params,
+			generation: { ...conn.generation, sendTemperature: params.includes('temperature') }
+		});
 	}
 
 	// ===== Context warnings =====
@@ -785,7 +796,7 @@
 						<div class="declare-head">
 							<span class="section-label">Accepted by this endpoint</span>
 							<InfoTip
-								text="There is no way to ask your server what it accepts, so turn on what it takes. Temperature has its own send switch below."
+								text="Turn on the parameters your endpoint accepts. Turn off a parameter to omit it from requests."
 							/>
 							<div class="declare-actions">
 								<button type="button" class="micro-btn" onclick={() => declareAll(true)}>all</button>
@@ -808,8 +819,14 @@
 							{/each}
 						</div>
 						{#if declared.length === 0}
-						<p class="declare-hint">No optional parameters declared. Use the Temperature switch below to control whether it is sent.</p>
+							<p class="declare-hint">No sampling parameters selected. The model uses its own defaults.</p>
 						{/if}
+					</div>
+				{:else if temperatureSupported}
+					<div class="chips">
+						<button type="button" class="chip" class:is-active-tint={gen.sendTemperature !== false}
+							aria-pressed={gen.sendTemperature !== false} title="Send temperature with requests"
+							onclick={() => updateGen('sendTemperature', gen.sendTemperature === false)}>temperature</button>
 					</div>
 				{/if}
 
@@ -820,22 +837,15 @@
 								<label for={`gen-${p.key}`} class="slider-label">{p.label}</label>
 								<InfoTip text={p.info} />
 							</div>
-							{#if p.key === 'temperature'}
-								<Toggle checked={gen.sendTemperature !== false} onchange={(value) => updateGen('sendTemperature', value)} label="Send temperature" size="sm" />
-							{/if}
 							{#if gen[p.key] !== DEFAULT_GENERATION_SETTINGS[p.key]}
 								<button type="button" class="field-action" aria-label={`Reset ${p.label}`}
 									title={`Reset to ${DEFAULT_GENERATION_SETTINGS[p.key]} (default)`}
 									onclick={() => updateGen(p.key, DEFAULT_GENERATION_SETTINGS[p.key])}>reset</button>
 							{/if}
 						</div>
-						{#if p.key !== 'temperature' || gen.sendTemperature !== false}
-							<SliderValueInput id={`gen-${p.key}`} value={gen[p.key]} min={p.min} max={p.max} step={p.step}
-								label={`${p.label} value`} onchange={(value) => updateGen(p.key, value)} />
-						{:else}
-							<span class="slider-note">Temperature is omitted. The model uses its own default.</span>
-						{/if}
-						{#if p.key === 'temperature' && gen.sendTemperature !== false && modelInfo?.defaultTemperature != null}
+						<SliderValueInput id={`gen-${p.key}`} value={gen[p.key]} min={p.min} max={p.max} step={p.step}
+							label={`${p.label} value`} onchange={(value) => updateGen(p.key, value)} />
+						{#if p.key === 'temperature' && modelInfo?.defaultTemperature != null}
 							<span class="slider-note">This model suggests {modelInfo.defaultTemperature.toFixed(2)}.</span>
 						{/if}
 					</div>

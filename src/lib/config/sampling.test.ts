@@ -1,8 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 import { DEFAULT_GENERATION_SETTINGS, type GenerationSettings, type ResolvedParamPolicy } from '#lib/types/llm.ts';
-import { buildGenerationParams } from './sampling';
+import { buildGenerationParams, declaredSamplingParams, resolveParamPolicy } from './sampling';
 
 describe('optional temperature', () => {
+	test('temperature pills preserve the old send preference and control request omission', () => {
+		const settings = { ...DEFAULT_GENERATION_SETTINGS, temperature: 0.7, sendTemperature: false };
+		const off = declaredSamplingParams(['temperature', 'top_p'], settings);
+		expect(off).toEqual(['top_p']);
+		expect(buildGenerationParams(settings, undefined, resolveParamPolicy('declared', off), 'test-model', false))
+			.not.toHaveProperty('temperature');
+		const enabled = { ...settings, sendTemperature: true };
+		const on = declaredSamplingParams([], enabled);
+		expect(on).toEqual(['temperature']);
+		expect(buildGenerationParams(enabled, undefined, resolveParamPolicy('declared', on), 'test-model', false).temperature).toBe(0.7);
+	});
 	for (const policy of ['base-only', 'reported', ['top_p', 'max_tokens']] as ResolvedParamPolicy[]) {
 		test(`omits disabled temperature under ${JSON.stringify(policy)}`, () => {
 			const settings = { ...DEFAULT_GENERATION_SETTINGS, temperature: 0.7, sendTemperature: false, topP: 0.9 };
