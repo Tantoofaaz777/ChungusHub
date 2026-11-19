@@ -309,7 +309,7 @@ class LLMService {
 			model,
 			messages,
 			maxTokens: options.maxTokens,
-			temperature: options.temperature,
+			temperature: conn.generation.sendTemperature === false ? undefined : options.temperature,
 			params,
 			customBody: conn.customBody,
 			tuning,

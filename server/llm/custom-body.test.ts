@@ -2,6 +2,8 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { OpenAICompatibleProvider } from './openai-compatible';
 import { AnthropicNativeProvider } from './anthropic-native';
 import { anthropic } from './providers/anthropic';
+import { buildGenerationParams } from '../../src/lib/config/sampling';
+import { DEFAULT_GENERATION_SETTINGS } from '../../src/lib/types/llm';
 
 const requests: Record<string, unknown>[] = [];
 const endpoint = Bun.serve({
@@ -54,6 +56,23 @@ describe('custom body on the actual provider request', () => {
 				expect(sent.model).toBe('test-model');
 				expect(sent.messages).toEqual(native ? [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }] : [{ role: 'user', content: 'hello' }]);
 				expect(Boolean(sent.stream)).toBe(streaming);
+			});
+			test(`omitted temperature stays absent on ${native ? 'Anthropic' : 'OpenAI compatible'} ${streaming ? 'streams' : 'completions'}`, async () => {
+				const provider = native ? new AnthropicNativeProvider(anthropic) : new OpenAICompatibleProvider({
+					name: 'optional-temperature-test', displayName: 'Optional temperature test', defaultBaseUrl: '',
+					requiresApiKey: false, baseUrlEditable: false
+				});
+				provider.configure({ apiKey: 'local-test-only', baseUrl: `http://127.0.0.1:${endpoint.port}/v1` });
+				const params = buildGenerationParams({
+					...DEFAULT_GENERATION_SETTINGS, temperature: 0.7, sendTemperature: false, topP: 0.9
+				}, undefined, ['top_p'], 'test-model', false);
+				const result = await provider.complete({
+					model: 'test-model', messages: [{ role: 'user', content: 'hello' }], params,
+					onToken: streaming ? () => {} : undefined
+				});
+				expect(result.content).toBe('ok');
+				expect(requests.at(-1)).not.toHaveProperty('temperature');
+				expect(requests.at(-1)?.top_p).toBe(0.9);
 			});
 		}
 	}

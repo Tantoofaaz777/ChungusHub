@@ -785,7 +785,7 @@
 						<div class="declare-head">
 							<span class="section-label">Accepted by this endpoint</span>
 							<InfoTip
-								text="There is no way to ask your server what it accepts, so turn on what it takes. Those become the fields below, and temperature is always sent."
+								text="There is no way to ask your server what it accepts, so turn on what it takes. Temperature has its own send switch below."
 							/>
 							<div class="declare-actions">
 								<button type="button" class="micro-btn" onclick={() => declareAll(true)}>all</button>
@@ -808,7 +808,7 @@
 							{/each}
 						</div>
 						{#if declared.length === 0}
-							<p class="declare-hint">Nothing declared: only temperature is sent.</p>
+						<p class="declare-hint">No optional parameters declared. Use the Temperature switch below to control whether it is sent.</p>
 						{/if}
 					</div>
 				{/if}
@@ -820,15 +820,22 @@
 								<label for={`gen-${p.key}`} class="slider-label">{p.label}</label>
 								<InfoTip text={p.info} />
 							</div>
+							{#if p.key === 'temperature'}
+								<Toggle checked={gen.sendTemperature !== false} onchange={(value) => updateGen('sendTemperature', value)} label="Send temperature" size="sm" />
+							{/if}
 							{#if gen[p.key] !== DEFAULT_GENERATION_SETTINGS[p.key]}
 								<button type="button" class="field-action" aria-label={`Reset ${p.label}`}
 									title={`Reset to ${DEFAULT_GENERATION_SETTINGS[p.key]} (default)`}
 									onclick={() => updateGen(p.key, DEFAULT_GENERATION_SETTINGS[p.key])}>reset</button>
 							{/if}
 						</div>
-						<SliderValueInput id={`gen-${p.key}`} value={gen[p.key]} min={p.min} max={p.max} step={p.step}
-							label={`${p.label} value`} onchange={(value) => updateGen(p.key, value)} />
-						{#if p.key === 'temperature' && modelInfo?.defaultTemperature != null}
+						{#if p.key !== 'temperature' || gen.sendTemperature !== false}
+							<SliderValueInput id={`gen-${p.key}`} value={gen[p.key]} min={p.min} max={p.max} step={p.step}
+								label={`${p.label} value`} onchange={(value) => updateGen(p.key, value)} />
+						{:else}
+							<span class="slider-note">Temperature is omitted. The model uses its own default.</span>
+						{/if}
+						{#if p.key === 'temperature' && gen.sendTemperature !== false && modelInfo?.defaultTemperature != null}
 							<span class="slider-note">This model suggests {modelInfo.defaultTemperature.toFixed(2)}.</span>
 						{/if}
 					</div>

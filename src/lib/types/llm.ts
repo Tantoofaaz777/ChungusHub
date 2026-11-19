@@ -302,6 +302,8 @@ export type SamplingParamKey =
 
 export interface GenerationSettings {
 	temperature: number;
+	/** Omit temperature from requests when false, keeping the configured value. */
+	sendTemperature: boolean;
 	maxTokens: number;
 	topP: number;
 	topK: number;
@@ -340,6 +342,7 @@ export interface GenerationSettings {
 
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
 	temperature: 1.0,
+	sendTemperature: true,
 	maxTokens: 6144,
 	topP: 1,
 	topK: 0,

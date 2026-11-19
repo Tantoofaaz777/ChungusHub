@@ -104,7 +104,10 @@ function normalizeConnection(raw: Partial<Connection> | null): Connection | null
 		routing: raw.routing ?? null,
 		samplingParams: normalizeSamplingParams(raw.samplingParams),
 		reasoningDialect: dialect,
-		generation: { ...DEFAULT_GENERATION_SETTINGS, ...(raw.generation ?? {}) },
+		generation: {
+			...DEFAULT_GENERATION_SETTINGS, ...(raw.generation ?? {}),
+			sendTemperature: raw.generation?.sendTemperature !== false
+		},
 		customBody: raw.customBody && !customBodyError(raw.customBody) ? raw.customBody : undefined
 	};
 }

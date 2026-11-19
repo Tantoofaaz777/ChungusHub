@@ -39,7 +39,7 @@ export interface SamplingSlider {
 	int?: boolean;
 	/** Value at which the knob is a no-op: omitted from the request when equal. */
 	neutral: number;
-	/** Always send when the model supports it (temperature has no neutral). */
+	/** Send even at the neutral value when enabled and supported. */
 	alwaysSend?: boolean;
 	/** Shown even when the model reports no `supportedParameters` (universal knob). */
 	base?: boolean;
@@ -59,9 +59,8 @@ export const SAMPLING_SLIDERS: SamplingSlider[] = [
 
 /**
  * The knobs a BYO endpoint's owner can declare their endpoint accepts, in card
- * order: every non-base slider plus `seed`. Temperature is absent on purpose:
- * it is the universal knob every OpenAI-compatible surface takes, always sent
- * and never declarable. Derived from SAMPLING_SLIDERS so a new slider joins the
+ * order: every non-base slider plus `seed`. Temperature has its own send toggle.
+ * Derived from SAMPLING_SLIDERS so a new slider joins the
  * declaration vocabulary for free instead of drifting out of a hand-kept list.
  */
 export const DECLARABLE_PARAMS: { key: string; label: string; info: string }[] = [
@@ -240,7 +239,7 @@ export function buildGenerationParams(
 
 	if (policy === 'base-only') {
 		out.max_tokens = g.maxTokens;
-		out.temperature = g.temperature;
+		if (g.sendTemperature !== false) out.temperature = g.temperature;
 		return out;
 	}
 
@@ -248,6 +247,7 @@ export function buildGenerationParams(
 	emitMaxTokens(out, cap, g.maxTokens);
 
 	for (const p of SAMPLING_SLIDERS) {
+		if (p.key === 'temperature' && g.sendTemperature === false) continue;
 		// reported: send unless explicitly unsupported (null = cold cache, still send).
 		// allow-list: base knobs always, others only when documented.
 		const send = cap.reported ? cap.supports(p.supportedKey) !== false : !!p.base || cap.listed(p.supportedKey);
