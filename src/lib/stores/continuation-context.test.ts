@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, expect, mock, test } from 'bun:test';
 import type { ChatState, Message } from '#lib/types/chat.ts';
 import type { ContinuationContext } from '#shared/conversation.ts';
-import type { BuiltPrompt } from '#lib/utils/prompt-builder.ts';
+import type { BuiltPrompt, PromptBuildContext } from '#lib/utils/prompt-builder.ts';
 
 const identity = <T>(value: T) => value;
 (globalThis as any).$state = Object.assign(identity, { raw: identity });
@@ -37,6 +37,7 @@ let validationFailure: Error | null = null;
 let validated: ContinuationContext[] = [], sent: any[] = [], saved: any[] = [], errors: unknown[] = [];
 let starts = 0, spent = 0, touches = 0, builds = 0;
 let history: string[][] = [], appends: any[] = [];
+let promptContexts: PromptBuildContext[] = [];
 const chat = {
 	activeChatId: 'chat', currentChatState: state(), stream: null as unknown, visibleLiveElsewhere: null,
 	freshSnapshot: async () => ({ chat: chat.currentChatState.chat, messages: turns, rev: 2 }),
@@ -54,7 +55,9 @@ mock.module('#lib/services/database.ts', () => ({ ...realDb, db: {
 	touchChatActivity: async () => { touches++; }
 } }));
 mock.module('#lib/stores/chat.svelte.ts', () => ({ ...realChat, chatStore: chat }));
-mock.module('#lib/utils/prompt-builder.ts', () => ({ ...realBuilder, buildPromptMessages: async () => { builds++; return built; } }));
+mock.module('#lib/utils/prompt-builder.ts', () => ({ ...realBuilder, buildPromptMessages: async (context: PromptBuildContext) => {
+	builds++; promptContexts.push(context); return built;
+} }));
 mock.module('#lib/stores/promptHold.svelte.ts', () => ({ ...realHold, promptHoldStore: { holding: false, review: () => review.promise } }));
 mock.module('#lib/stores/steering.svelte.ts', () => ({ ...realSteering, steeringStore: { flush: async () => {}, consumeById: async () => { spent++; return new Set(['once']); } } }));
 mock.module('#lib/stores/featurePrompts.svelte.ts', () => ({ ...realFeatures, featurePromptsStore: { steeringEnabled: true } }));
@@ -79,7 +82,7 @@ beforeEach(() => {
 	review = deferred(); generated = deferred(); appendWrite = deferred(); placementRevision = 2; validationFailure = null;
 	validated = []; sent = []; saved = []; errors = []; starts = 0; spent = 0; touches = 0; builds = 0;
 	chat.activeChatId = 'chat'; chat.currentChatState = state(); chat.stream = null;
-	history = []; appends = [];
+	history = []; appends = []; promptContexts = [];
 });
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const completion = { content: 'Continued', thinking: 'Thought', model: 'test', usage: { promptTokens: 1, completionTokens: 2 }, finishReason: 'stop', reasoningMs: null, committedMessageId: 'reply', spentSteeringIds: ['once'] };
@@ -134,4 +137,51 @@ test('a successful send releases the draft exactly once after its insert succeed
 	await settle(); review.resolve(built.messages); await settle(); expect(released).toBe(0);
 	appendWrite.resolve({ expectedLeafId: 'new-turn' }); generated.resolve(completion); await work;
 	expect(released).toBe(1); expect(errors).toEqual([]);
+});
+
+test.each([1, 2])('steering-only send appends a reply without a user turn in conversation v%i', async version => {
+	chat.currentChatState.chat.conversationVersion = version;
+	let released = 0;
+	const work = messageStore.sendMessage(' \n ', undefined, () => { released++; });
+	await settle();
+	expect(promptContexts[0]).toMatchObject({ requireSteering: true, chatMessages: turns });
+	expect(appends).toEqual([]);
+	expect(sent).toEqual([]);
+	review.resolve(built.messages); await settle();
+	expect(sent[0].commit).toMatchObject({
+		chatId: 'chat', parentId: 'reply', expectedLeafId: 'reply', claimsRoot: false, spendSteeringIds: ['once']
+	});
+	expect(sent[0].messages).toEqual(built.messages);
+	expect(released).toBe(0);
+	generated.resolve({ ...completion, committedMessageId: 'next-reply' }); await work;
+	expect(released).toBe(1); expect(appends).toEqual([]); expect(spent).toBe(0);
+	expect(history).toEqual([['Guidance']]); expect(errors).toEqual([]);
+});
+
+test('cancelling a steering-only send leaves guidance and the draft available', async () => {
+	let released = 0;
+	const work = messageStore.sendMessage('', undefined, () => { released++; });
+	await settle(); review.resolve(null); await work;
+	expect(released).toBe(0); expect(appends).toEqual([]); expect(sent).toEqual([]);
+	expect(history).toEqual([]); expect(spent).toBe(0);
+});
+
+test('steering-only sends can create the first assistant turn in an empty chat', async () => {
+	chat.currentChatState.chat.activeLeafId = null;
+	chat.currentChatState.activePath = [];
+	const work = messageStore.sendMessage('');
+	await settle(); review.resolve(built.messages); await settle();
+	expect(promptContexts[0].chatMessages).toEqual([]);
+	expect(sent[0].commit).toMatchObject({ parentId: null, expectedLeafId: null, claimsRoot: true });
+	generated.resolve({ ...completion, committedMessageId: 'opening' }); await work;
+	expect(appends).toEqual([]); expect(errors).toEqual([]);
+});
+
+test('a failed steering-only generation leaves guidance and the draft available', async () => {
+	let released = 0;
+	const work = messageStore.sendMessage('', undefined, () => { released++; });
+	await settle(); review.resolve(built.messages); await settle();
+	generated.reject(new Error('Provider unavailable')); await work;
+	expect(released).toBe(0); expect(appends).toEqual([]);
+	expect(history).toEqual([]); expect(spent).toBe(0); expect(errors).toHaveLength(1);
 });

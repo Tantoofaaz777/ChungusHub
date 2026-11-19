@@ -38,7 +38,7 @@ export interface GenerationCommit {
 	/** The chat's leaf as the request leaves. The commit moves the leaf only if it still
 	 *  reads that, so a reader who walked to another branch meanwhile is left where they are. */
 	expectedLeafId: string | null;
-	/** Claim `rootMessageId` when the chat holds none. Opening scene only. */
+	/** Claim `rootMessageId` for the first assistant turn of an empty chat. */
 	claimsRoot: boolean;
 	/** The lorebook scan that shaped this turn, stored on the row it produces. */
 	lorebook: unknown;

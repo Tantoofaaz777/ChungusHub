@@ -95,7 +95,7 @@ class MessageStore {
 	}
 
 	/**
-	 * Send the composer's draft as a user turn and generate the reply to it.
+	 * Send a draft as a user turn, or generate from steering when the composer is empty.
 	 *
 	 * `onCommit` releases the draft only after its turn is persisted. Prompt cancellation,
 	 * context conflicts and failed writes keep both text and attachments in the composer.
@@ -108,6 +108,22 @@ class MessageStore {
 		try {
 			const state = chatStore.currentChatState;
 			if (!state) throw new Error('No active chat');
+
+			if (!content.trim() && !attachments?.length) {
+				const parentId = state.chat.activeLeafId;
+				const placement = state.chat.conversationVersion === 2
+					? await db.getConversationPlacement(state.chat.id, 'append') : undefined;
+				const path = parentId ? findActivePath(await chatStore.freshMessages(state.chat.id), parentId) : [];
+				const prompt = await this.prepare('send', {
+					chatId: state.chat.id, chatMessages: path, requireSteering: true, lorebookTrigger: 'normal'
+				});
+				if (!prompt || chatStore.activeChatId !== state.chat.id) return;
+				const messageId = await this.generateResponse(state.chat.id, parentId, prompt, {
+					expectedLeafId: parentId, conversationPlacement: placement ?? undefined
+				});
+				if (messageId) onCommit?.();
+				return;
+			}
 
 			// The turn is BUILT here and inserted further down, after the hold releases: a
 			// review the reader cancels has to leave the chat exactly as they found it, and a
@@ -178,7 +194,7 @@ class MessageStore {
 	 *  message's id, or to null when nothing was streamed to keep (no message is created). A
 	 *  stop mid-stream still persists what streamed, so it returns an id like any other
 	 *  reply. Other failures throw. */
-	async generateResponse(chatId: string, parentId: string, prompt: BuiltPrompt,
+	async generateResponse(chatId: string, parentId: string | null, prompt: BuiltPrompt,
 		placement?: { expectedLeafId: string | null; replaceMessageIds?: string[]; replacingMessageId?: string; conversationPlacement?: ConversationPlacement }): Promise<string | null> {
 		const { messages, target: callTarget, lorebook, oneShotSteering } = prompt;
 		this.abortController = new AbortController();
@@ -210,7 +226,7 @@ class MessageStore {
 					parentId,
 					expectedLeafId: placement ? placement.expectedLeafId : parentId,
 					replaceMessageIds: placement?.replaceMessageIds,
-					claimsRoot: false,
+					claimsRoot: parentId === null,
 					lorebook,
 					spendSteeringIds: oneShotSteering.map((note) => note.id)
 				}

@@ -100,7 +100,7 @@
 
 	let content = $state('');
 	$effect(() => {
-		promptTokensStore.draft = { chatId: chatStore.activeChatId, text: content };
+		promptTokensStore.draft = { chatId: chatStore.activeChatId, text: content, hasAttachments: pendingImages.length > 0 };
 	});
 	let textareaElement: HTMLTextAreaElement;
 
@@ -184,6 +184,7 @@
 	let steeringTarget = $derived(steeringTargetForChat(chatStore.activeChat));
 	let activeSteering = $derived(steeringStore.activeFor(steeringTarget));
 	let steeringActive = $derived(activeSteering.length > 0);
+	let canSendSteering = $derived(featurePromptsStore.steeringEnabled && !!chatStore.activeChatId && steeringActive);
 	let steeringTitle = $derived.by(() => {
 		if (activeSteering.length === 0) return 'Steering: guide the next reply';
 		const first = noteLabel(activeSteering[0]);
@@ -698,7 +699,7 @@
 		// every other refused mutation say the same thing.
 		if (isStreaming && messageStore.warnIfBusy()) return;
 		const trimmed = content.trim();
-		if ((trimmed || pendingImages.length) && !isStreaming && !uploadingImages) {
+		if ((trimmed || pendingImages.length || canSendSteering) && !isStreaming && !uploadingImages) {
 			const attachments: MessageAttachment[] = pendingImages.map((img) => ({ kind: 'image', path: img.path }));
 			// The box empties when the send COMMITS, not when it is asked for. With a prompt
 			// hold on this gate those are different moments, and a review the reader cancels
@@ -928,7 +929,7 @@
 							onclick={handleSubmit}
 							disabled={uploadingImages > 0 ||
 							transformOpen ||
-							(commandOpen ? !commandReady : !content.trim() && !pendingImages.length)}
+							(commandOpen ? !commandReady : !content.trim() && !pendingImages.length && !canSendSteering)}
 							class="flex items-center justify-center w-9 h-9 rounded-full
 						       bg-accent text-on-accent
 						       hover:bg-accent-hover

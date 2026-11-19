@@ -21,7 +21,7 @@ import { chatAuthorsNote } from '#lib/types/chat.ts';
 /** The composer and inspector share one estimate, assembled by the real send pipeline. */
 class PromptTokensStore {
 	// Independent of draft persistence: the inspector also works with Save drafts off.
-	draft = $state<{ chatId: string | null; text: string } | null>(null);
+	draft = $state<{ chatId: string | null; text: string; hasAttachments?: boolean } | null>(null);
 	private chat = $derived(chatStore.activeChat);
 	private currentPreset = $derived(chatPreset(this.chat));
 	private persona = $derived(chatPersonaEntry(this.chat));
@@ -34,9 +34,12 @@ class PromptTokensStore {
 	private target = $derived(resolvePromptTarget(this.chat));
 	private activePath = $derived(chatStore.currentChatState?.activePath ?? []);
 
-	// Sending inserts a user turn first. Price the same history/trim with an empty
+	// Text/image sends insert a user turn first. Price the same history/trim with an empty
 	// placeholder; the draft's own tokens remain the separate "your message" count.
 	private pricedPath = $derived.by<Message[]>(() => {
+		if (this.steering && this.draft?.chatId === this.chat?.id && !this.draft?.text.trim() && !this.draft?.hasAttachments) {
+			return this.activePath;
+		}
 		const last = this.activePath.at(-1);
 		if (!last) return this.activePath;
 		return [...this.activePath, {

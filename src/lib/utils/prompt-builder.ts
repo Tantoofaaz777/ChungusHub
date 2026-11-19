@@ -37,6 +37,8 @@ import { withTokenizers } from '#lib/tokenizer/loader.ts';
 
 export interface PromptBuildContext {
 	chatId: string | null;
+	/** Empty-composer sends require fresh, applicable steering before dispatch. */
+	requireSteering?: boolean;
 	chatMessages: Message[]; // Full chat path for history and last_message macros
 	/** Fresh inputs already read by this action, never a persistent cache. */
 	snapshot?: { chat: Chat; scenes: MemoryScene[] };
@@ -164,6 +166,9 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 		steeringTarget,
 		featurePromptsStore.steeringDefaults
 	);
+	if (context.requireSteering && !resolvedSteering.length) {
+		throw new Error('Add or enable steering before sending an empty message.');
+	}
 	// The one-shots by id, from the same rows and the same gate as the stack above, because
 	// what a turn spends must be what a turn sent. The pure resolver deliberately drops ids
 	// (assembly has no use for them), so the set is taken again rather than threaded through it.
