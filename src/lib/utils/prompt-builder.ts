@@ -37,7 +37,7 @@ import { withTokenizers } from '#lib/tokenizer/loader.ts';
 
 export interface PromptBuildContext {
 	chatId: string | null;
-	/** Empty-composer sends require fresh, applicable steering before dispatch. */
+	/** Empty-composer sends require fresh steering and place it at the end of the history. */
 	requireSteering?: boolean;
 	chatMessages: Message[]; // Full chat path for history and last_message macros
 	/** Fresh inputs already read by this action, never a persistent cache. */
@@ -199,7 +199,10 @@ export async function buildPromptMessages(context: PromptBuildContext): Promise<
 		regexRules: regexRulesStore.effectiveFor(preset),
 		continuation: context.continuation,
 		steering: resolvedSteering.length
-			? { notes: resolvedSteering, wrapper: featurePromptsStore.promptFor('steeringWrapper') }
+			? {
+				notes: resolvedSteering, wrapper: featurePromptsStore.promptFor('steeringWrapper'),
+				atHistoryEnd: context.requireSteering
+			}
 			: undefined
 	}));
 

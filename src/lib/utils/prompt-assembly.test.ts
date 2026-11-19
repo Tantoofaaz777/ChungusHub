@@ -1079,6 +1079,30 @@ describe('assemblePrompt: steering', () => {
 	}
 	const TARGET = msg('a9', 'assistant', 'The knight drew his blade and');
 
+	test.each([0, 1, 6])('steering-only send ends the history even with saved depth %i', depth => {
+		const steering = {
+			notes: [
+				{ text: 'Continue.', depth, role: 'user' as const },
+				{ text: 'Bring in the storm.', depth: depth + 1, role: 'user' as const }
+			],
+			wrapper: WRAPPER,
+			atHistoryEnd: true
+		};
+		const a = assemblePrompt(input(preset([
+			item('Rules.'), item('{{chatHistory}}'), item('Post-history.'), item('Final instructions.')
+		]), {
+			chatMessages: [...CHAT, TARGET], postProcessing: { mode: 'none' }, steering
+		}));
+		expect(a.messages.slice(-4)).toEqual([
+			{ role: 'assistant', content: TARGET.content },
+			{ role: 'user', content: '[Guidance: Continue.\n\nBring in the storm.]' },
+			{ role: 'system', content: 'Post-history.' },
+			{ role: 'system', content: 'Final instructions.' }
+		]);
+		expect(a.messages.filter(m => m.role !== 'system').at(-1)?.role).toBe('user');
+		expect(steering.notes.map(note => note.depth)).toEqual([depth, depth + 1]);
+	});
+
 	test('depth 0 lands right after the newest turn, ahead of the post-history items and the tail', () => {
 		const a = assemblePrompt(
 			input(preset([item('Rules.'), item('{{chatHistory}}'), item('Post-history.')], { continuePrompt: 'Continue now.' }), {

@@ -120,7 +120,13 @@ export interface AssembleInput {
 	 *  Unlike `continuation` (a one-shot action the meters never pass), steering IS
 	 *  standing prompt state, so the chat meter passes it too, under the same engine
 	 *  gate as prompt-builder, or the meter would price a block the send won't send. */
-	steering?: { notes: ResolvedSteeringNote[]; wrapper: string };
+	steering?: {
+		notes: ResolvedSteeringNote[];
+		wrapper: string;
+		/** Steering-only sends put all guidance after the latest history turn,
+		 *  overriding saved depths for this request only. */
+		atHistoryEnd?: boolean;
+	};
 }
 
 /** One item's contribution to the final prompt, with tokens attributed by provenance:
@@ -447,10 +453,11 @@ function buildSteeringMessages(input: AssembleInput, ctx: MacroContext, model?: 
 	const groups = new Map<string, { role: SteeringRole; depth: number; texts: string[] }>();
 	for (const note of steering.notes) {
 		if (!note.text.trim()) continue;
-		const key = `${note.role} ${note.depth}`;
+		const depth = steering.atHistoryEnd ? 0 : note.depth;
+		const key = `${note.role} ${depth}`;
 		const group = groups.get(key);
 		if (group) group.texts.push(note.text);
-		else groups.set(key, { role: note.role, depth: note.depth, texts: [note.text] });
+		else groups.set(key, { role: note.role, depth, texts: [note.text] });
 	}
 
 	const builds: DepthSplice[] = [];

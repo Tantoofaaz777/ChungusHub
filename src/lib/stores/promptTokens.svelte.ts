@@ -33,11 +33,13 @@ class PromptTokensStore {
 		: null);
 	private target = $derived(resolvePromptTarget(this.chat));
 	private activePath = $derived(chatStore.currentChatState?.activePath ?? []);
+	private steeringOnly = $derived(!!this.draft && this.draft.chatId === this.chat?.id
+		&& !this.draft.text.trim() && !this.draft.hasAttachments);
 
 	// Text/image sends insert a user turn first. Price the same history/trim with an empty
 	// placeholder; the draft's own tokens remain the separate "your message" count.
 	private pricedPath = $derived.by<Message[]>(() => {
-		if (this.steering && this.draft?.chatId === this.chat?.id && !this.draft?.text.trim() && !this.draft?.hasAttachments) {
+		if (this.steering && this.steeringOnly) {
 			return this.activePath;
 		}
 		const last = this.activePath.at(-1);
@@ -50,7 +52,9 @@ class PromptTokensStore {
 	private steering = $derived.by(() => {
 		if (!featurePromptsStore.steeringEnabled) return undefined;
 		const notes = steeringStore.resolveForPrompt(steeringTargetForChat(this.chat));
-		return notes.length ? { notes, wrapper: featurePromptsStore.promptFor('steeringWrapper') } : undefined;
+		return notes.length ? {
+			notes, wrapper: featurePromptsStore.promptFor('steeringWrapper'), atHistoryEnd: this.steeringOnly
+		} : undefined;
 	});
 	private assembly = $derived(this.chat && this.currentPreset ? tokenEstimate(() => assemblePrompt({
 		authorsNote: chatAuthorsNote(this.chat),
