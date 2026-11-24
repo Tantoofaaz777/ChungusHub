@@ -1272,9 +1272,10 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 	let firstTokenAt: number | null = null;
 	let thinkingFirstAt: number | null = null;
 	let thinkingLastAt: number | null = null;
+	let result: LlmCompletionResult | undefined;
 
 	try {
-		const result = await complete(msg.connectionId, msg.provider, {
+		result = await complete(msg.connectionId, msg.provider, {
 			model: msg.model,
 			messages: msg.messages,
 			maxTokens: msg.maxTokens,
@@ -1309,25 +1310,31 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 					}
 				: undefined
 		});
+		const completionError = result.finishReason === 'error'
+			? result.error ?? 'The provider reported a generation error without further details.'
+			: undefined;
 		// The debug log records the GENERATION, and it is filed before the commit on purpose:
 		// the model answered and was paid whether or not the reply found a home, so a commit
 		// that throws (a parent deleted mid-write) must not turn this into an error row with
 		// no usage, no finish reason and none of the text it is the only place to read.
 		if (capture) {
 			const res: promptLog.PromptLogResult = {
-				// A stopped generation RESOLVES with everything it streamed (see
-				// architecture/llm-providers.md), so the status has to come from the finish
-				// reason: recording it as 'done' would file a cancelled request as a clean one.
-				status: result.finishReason === 'cancelled' ? 'cancelled' : 'done',
+				status: completionError ? 'error' : result.finishReason === 'cancelled' ? 'cancelled' : 'done',
 				endedAt: Date.now(),
 				usage: result.usage,
 				finishReason: result.finishReason,
+				error: completionError,
 				model: result.model,
 				provider: result.provider,
 				responseContent: result.content || undefined,
 				responseThinking: result.thinking ?? undefined
 			};
 			if (promptLog.patchResult(msg.id, res)) broadcastPromptLog({ type: 'result', id: msg.id, result: res });
+		}
+		if (completionError) {
+			emitGeneration(gen, { t: 'llm-error', id: msg.id, message: completionError });
+			settleGeneration(msg.id, gen, { error: completionError });
+			return;
 		}
 		// Before the frame that announces it, so a page told the turn is done can read it.
 		const landed = msg.commit
@@ -1363,7 +1370,9 @@ async function handleLlm(ws: ServerWebSocket<SocketData>, msg: {
 			const res: promptLog.PromptLogResult = {
 				status: controller.signal.aborted ? 'cancelled' : 'error',
 				endedAt: Date.now(),
-				error: message
+				error: message,
+				responseContent: result ? undefined : gen.content || undefined,
+				responseThinking: result ? undefined : gen.thinking || undefined
 			};
 			if (promptLog.patchResult(msg.id, res)) broadcastPromptLog({ type: 'result', id: msg.id, result: res });
 		}

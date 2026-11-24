@@ -18,7 +18,7 @@ const USAGE = '{"usage":{"prompt_tokens":5,"completion_tokens":7,"total_tokens":
 /** Scripted responses, selected by the requested model id. */
 const SCENARIOS: Record<
 	string,
-	{ stream?: string[]; json?: unknown; hangs?: boolean; silent?: boolean; delayMs?: number }
+	{ stream?: string[]; json?: unknown; status?: number; hangs?: boolean; silent?: boolean; delayMs?: number }
 > = {
 	'split-tags': {
 		stream: [
@@ -54,6 +54,17 @@ const SCENARIOS: Record<
 			})
 		]
 	},
+	'content-filter': {
+		stream: [JSON.stringify({ choices: [{ delta: {}, finish_reason: 'content_filter' }] }), USAGE, '[DONE]'],
+		json: { choices: [{ message: { content: null }, finish_reason: 'content_filter' }] }
+	},
+	'json-error': {
+		json: { error: { message: 'The model is temporarily unavailable.', code: 503 } }
+	},
+	'rate-limited': {
+		status: 429,
+		json: { detail: { error: { message: 'The key exceeded its request budget.', code: 'budget_exceeded' } } }
+	},
 	// A truncated / early-closed stream: usage may arrive but no content and NO finish_reason
 	// (a slow local endpoint hanging up mid-generation). Must fail loud, not read as a stop.
 	'truncated': { stream: [USAGE, '[DONE]'] },
@@ -78,6 +89,13 @@ const SCENARIOS: Record<
 	}
 };
 
+for (const reason of ['tool_calls', 'function_call', 'error', 'custom_reason']) {
+	SCENARIOS[reason] = {
+		stream: [JSON.stringify({ choices: [{ delta: {}, finish_reason: reason }] }), '[DONE]'],
+		json: { choices: [{ message: { content: null }, finish_reason: reason }] }
+	};
+}
+
 const server = Bun.serve({
 	port: 0,
 	async fetch(req) {
@@ -86,8 +104,8 @@ const server = Bun.serve({
 		if (!scenario) return new Response('unknown scenario', { status: 500 });
 		if (scenario.silent) return new Promise<Response>(() => {});
 		if (scenario.delayMs) await Bun.sleep(scenario.delayMs);
-		if (body.stream) {
-			const sse = (scenario.stream ?? []).map((d) => `data: ${d}\n\n`).join('');
+		if (body.stream && scenario.stream) {
+			const sse = scenario.stream.map((d) => `data: ${d}\n\n`).join('');
 			const headers = { 'Content-Type': 'text/event-stream' };
 			if (!scenario.hangs) return new Response(sse, { headers });
 			// Deliberately never closed: the request stays open until the caller aborts it.
@@ -100,7 +118,7 @@ const server = Bun.serve({
 				{ headers }
 			);
 		}
-		return Response.json(scenario.json);
+		return Response.json(scenario.json, { status: scenario.status });
 	}
 });
 
@@ -239,7 +257,7 @@ describe('OpenAICompatibleProvider slow endpoints', () => {
 	});
 });
 
-describe('OpenAICompatibleProvider mid-stream failures fail loud', () => {
+describe('OpenAICompatibleProvider completion failures', () => {
 	test('streaming: an error event throws with the unwrapped upstream message', async () => {
 		expect(
 			provider.complete({ model: 'stream-error', messages: USER, onToken: () => {} })
@@ -257,6 +275,51 @@ describe('OpenAICompatibleProvider mid-stream failures fail loud', () => {
 		expect(result.content).toBe('');
 		expect(result.finishReason).toBe('stop');
 	});
+
+	test.each([true, false])('content filtering is reported with its finish reason (stream: %s)', async (stream) => {
+		const result = await provider.complete({
+			model: 'content-filter',
+			messages: USER,
+			onToken: stream ? () => {} : undefined
+		});
+		expect(result.finishReason).toBe('error');
+		expect(result.error).toContain('finish_reason: content_filter');
+	});
+
+	test('a non-streamed error envelope keeps the provider message and code', async () => {
+		await expect(provider.complete({ model: 'json-error', messages: USER })).rejects.toThrow(
+			'The model is temporarily unavailable. (503)'
+		);
+	});
+
+	test('a JSON error returned to a streaming request keeps the provider message and code', async () => {
+		await expect(provider.complete({ model: 'json-error', messages: USER, onToken: () => {} })).rejects.toThrow(
+			'The model is temporarily unavailable. (503)'
+		);
+	});
+
+	test('a non-2xx response keeps the HTTP status and nested provider code', async () => {
+		await expect(provider.complete({ model: 'rate-limited', messages: USER })).rejects.toThrow(
+			'HTTP 429: The key exceeded its request budget. (budget_exceeded)'
+		);
+	});
+
+	test.each([
+		['tool_calls', 'requested a tool call'],
+		['function_call', 'requested a tool call'],
+		['error', 'reported a generation error'],
+		['custom_reason', 'generation ended with']
+	])(
+		'keeps the original finish reason for %s',
+		async (reason, description) => {
+			for (const onToken of [undefined, () => {}]) {
+				const result = await provider.complete({ model: reason, messages: USER, onToken });
+				expect(result.finishReason).toBe('error');
+				expect(result.error).toContain(`finish_reason: ${reason}`);
+				expect(result.error).toContain(description);
+			}
+		}
+	);
 });
 
 /**

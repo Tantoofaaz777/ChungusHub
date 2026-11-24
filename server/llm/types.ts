@@ -155,6 +155,7 @@ export interface LLMCompletionResult {
 	content: string;
 	thinking: string | null;
 	finishReason: 'stop' | 'length' | 'error' | 'cancelled';
+	error?: string;
 	usage: {
 		promptTokens: number;
 		completionTokens: number;

@@ -356,10 +356,15 @@ export class OpenAICompatibleProvider implements ChatProvider {
 			MAX_COMPLETION_BODY_BYTES,
 			`${this.displayName} completion response`
 		)) as Record<string, any>;
-		const message = data.choices?.[0]?.message;
-		if (!message) {
+		const providerError = this.responseError(data);
+		if (providerError) throw new Error(`${this.displayName}: ${providerError}`);
+
+		const choice = data?.choices?.[0];
+		const finish = this.completionFinish(choice?.finish_reason);
+		if (!choice || (!choice.message && finish.finishReason !== 'error')) {
 			throw new Error(`${this.displayName} returned a completion with no choices`);
 		}
+		const message = choice.message ?? {};
 
 		let thinking: string | null = null;
 		let content = message.content ?? '';
@@ -388,7 +393,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 		return {
 			content,
 			thinking,
-			finishReason: this.mapFinishReason(data.choices[0].finish_reason),
+			...finish,
 			usage: {
 				promptTokens: data.usage?.prompt_tokens ?? 0,
 				completionTokens: data.usage?.completion_tokens ?? 0,
@@ -417,12 +422,23 @@ export class OpenAICompatibleProvider implements ChatProvider {
 			throw new Error(await this.extractErrorMessage(response));
 		}
 
+		const mediaType = response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase();
+		if (mediaType === 'application/json') {
+			const data = (await readJsonCapped(
+				response,
+				MAX_ERROR_BODY_BYTES,
+				`${this.displayName} stream response`
+			)) as Record<string, unknown>;
+			const error = this.responseError(data);
+			throw new Error(error
+				? `${this.displayName}: ${error}`
+				: `${this.displayName} returned JSON when an event stream was requested.`);
+		}
+
 		let content = '';
 		let thinking = '';
-		let finishReason: LLMCompletionResult['finishReason'] = 'stop';
-		// A default 'stop' misreports a stream that closed early as a
-		// clean finish, so track whether the provider ever actually signalled one.
-		let sawFinishReason = false;
+		let providerFinishReason: string | null = null;
+		let cancelled = false;
 		let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 };
 
 		const emitThinking = (t: string) => {
@@ -452,7 +468,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 
 				// A mid-stream error event ends the generation: fail loud, never return
 				// the partial accumulation as a quietly "successful" completion.
-				const streamError = this.streamEventError(parsed);
+				const streamError = this.responseError(parsed);
 				if (streamError) throw new Error(`${this.displayName}: ${streamError}`);
 
 				const choice = parsed.choices?.[0];
@@ -471,9 +487,8 @@ export class OpenAICompatibleProvider implements ChatProvider {
 					else emitContent(contentDelta);
 				}
 
-				if (choice?.finish_reason) {
-					finishReason = this.mapFinishReason(choice.finish_reason);
-					sawFinishReason = true;
+				if (typeof choice?.finish_reason === 'string' && choice.finish_reason) {
+					providerFinishReason = choice.finish_reason;
 				}
 
 				if (parsed.usage) {
@@ -487,7 +502,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 			}
 		} catch (error) {
 			if (error instanceof Error && error.name === 'AbortError') {
-				finishReason = 'cancelled';
+				cancelled = true;
 			} else {
 				throw error;
 			}
@@ -499,16 +514,19 @@ export class OpenAICompatibleProvider implements ChatProvider {
 		// A stream that closed with no content and no finish signal is truncated, not
 		// empty-by-choice, so fail loud instead of rendering a blank message (same guard +
 		// rationale described above).
-		if (!sawFinishReason && !content.trim() && finishReason !== 'cancelled') {
+		if (!providerFinishReason && !content.trim() && !cancelled) {
 			throw new Error(
 				`${this.displayName}: the response stream closed before the model produced any output, and without a finish signal. The endpoint likely ended the connection early (for a local server, often during prompt processing or without keepalives). Try again, or raise the endpoint's idle/read limit.`
 			);
 		}
 
+		const finish = cancelled
+			? { finishReason: 'cancelled' as const }
+			: this.completionFinish(providerFinishReason ?? 'stop');
 		return {
 			content: inlineParser ? stripResidualMarkers(content) : content.trim(),
 			thinking: stripResidualMarkers(thinking) || null,
-			finishReason,
+			...finish,
 			usage,
 			model: body.model as string,
 			provider: this.name
@@ -717,62 +735,69 @@ export class OpenAICompatibleProvider implements ChatProvider {
 		return `${this.displayName}: no OpenAI-compatible /models endpoint at ${candidates.join(' or ')}.${seen} If the API is mounted somewhere else, enter its full base URL.`;
 	}
 
-	private mapFinishReason(reason: string): LLMCompletionResult['finishReason'] {
+	private completionFinish(reason: unknown): Pick<LLMCompletionResult, 'finishReason' | 'error'> {
 		switch (reason) {
 			case 'stop':
-				return 'stop';
 			case 'length':
-				return 'length';
+				return { finishReason: reason };
+			case 'content_filter':
+				return {
+					finishReason: 'error',
+					error: `${this.displayName}: generation stopped because of the provider's content filter (finish_reason: content_filter).`
+				};
+			case 'tool_calls':
+			case 'function_call':
+				return {
+					finishReason: 'error',
+					error: `${this.displayName}: the model requested a tool call. This chat supports text replies (finish_reason: ${reason}).`
+				};
+			case 'error':
+				return {
+					finishReason: 'error',
+					error: `${this.displayName} reported a generation error without further details (finish_reason: error).`
+				};
 			default:
-				return 'error';
+				return {
+					finishReason: 'error',
+					error: typeof reason === 'string' && reason.trim()
+						? `${this.displayName}: generation ended with finish_reason: ${reason.slice(0, 120)}.`
+						: `${this.displayName}: the completion did not include a finish_reason.`
+				};
 		}
 	}
 
-	/**
-	 * A mid-stream failure event: OpenRouter (and other gateways) answer 200, start the
-	 * SSE stream, and deliver upstream errors as a `{"error": {...}}` event with no
-	 * choices before ending the stream. Ignoring it (the pre-fix behavior) turned real
-	 * provider failures into empty "successful" completions: the assistant's infamous
-	 * bare "No reply.". Returns the human message, or null when the event is not an error.
-	 */
-	private streamEventError(parsed: Record<string, unknown>): string | null {
-		const err = parsed.error;
+	/** Some gateways return an error object with HTTP 200, including in SSE events. */
+	private responseError(parsed: Record<string, unknown> | null): string | null {
+		const err = parsed?.error;
+		if (typeof err === 'string') return this.toErrorString(err);
 		if (!err || typeof err !== 'object') return null;
 		const e = err as Record<string, unknown>;
 		const metadata = e.metadata as Record<string, unknown> | undefined;
 		const raw = this.unwrapRaw(metadata?.raw);
-		let msg = this.toErrorString(e.message) ?? raw ?? this.toErrorString(e) ?? 'stream error';
+		let msg = this.toErrorString(e.message) ?? raw ?? this.toErrorString(e) ?? 'provider error';
 		// OpenRouter masks upstream failures behind a generic "Provider returned error";
 		// the real reason lives in metadata.raw, so prefer it over the mask.
 		if (raw && /provider returned error/i.test(msg)) msg = raw;
 		const provider = this.toErrorString(metadata?.provider_name);
-		const code = e.code != null ? ` (${String(e.code)})` : '';
-		return `${provider ? `${provider}: ` : ''}${msg}${code}`;
+		const code = typeof e.code === 'string' || typeof e.code === 'number' ? e.code : this.toErrorString(e.type);
+		return `${provider ? `${provider}: ` : ''}${msg}${code != null ? ` (${code})` : ''}`;
 	}
 
 	private async extractErrorMessage(response: Response): Promise<string> {
 		const text = await readBodyCapped(response, MAX_ERROR_BODY_BYTES, `${this.displayName} error response`).catch(
 			() => ''
 		);
+		const status = `HTTP ${response.status}`;
 		try {
 			const body = JSON.parse(text);
-			const raw = this.unwrapRaw(body?.error?.metadata?.raw);
-			let msg = this.toErrorString(body?.error?.message)
-				?? raw
-				?? this.toErrorString(body?.detail?.error?.message)
+			const message = this.responseError(body)
+				?? this.responseError(body?.detail)
 				?? this.toErrorString(body?.message)
-				?? this.toErrorString(body?.detail)
-				?? this.toErrorString(body?.error);
-			// OpenRouter masks upstream failures behind a generic "Provider returned error";
-			// the real reason lives in metadata.raw, so prefer it over the mask.
-			if (raw && msg && /provider returned error/i.test(msg)) msg = raw;
-			if (msg) {
-				const provider = this.toErrorString(body?.error?.metadata?.provider_name);
-				return provider ? `${provider}: ${msg}` : msg;
-			}
+				?? this.toErrorString(body?.detail);
+			if (message) return `${status}: ${message}`;
 		} catch { /* not JSON */ }
-		if (text && !text.startsWith('<')) return text.slice(0, 300);
-		return this.httpStatusMessage(response.status);
+		if (text && !text.trimStart().startsWith('<')) return `${status}: ${text.slice(0, 300)}`;
+		return `${status}: ${this.httpStatusMessage(response.status)}`;
 	}
 
 	// OpenRouter's metadata.raw is often a JSON-encoded upstream error body; unwrap it to the
@@ -821,7 +846,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
 			case 429: return 'Rate limited, try again shortly';
 			case 500: return 'Server error, try again later';
 			case 503: return 'Service temporarily unavailable';
-			default: return `API error (${status})`;
+			default: return 'The API returned an error';
 		}
 	}
 }

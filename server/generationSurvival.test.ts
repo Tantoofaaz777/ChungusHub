@@ -49,6 +49,23 @@ const model = Bun.serve({
 		if (path !== '/v1/chat/completions') return new Response('Not found', { status: 404 });
 		modelRequests++;
 
+		const request = (await req.json()) as { model: string };
+		if (request.model === 'filtered') {
+			return new Response(
+				sse({ choices: [{ delta: {}, finish_reason: 'content_filter' }] }) +
+					sse({ usage: { prompt_tokens: 5, completion_tokens: 0, total_tokens: 5 } }) +
+					'data: [DONE]\n\n',
+				{ headers: { 'Content-Type': 'text/event-stream' } }
+			);
+		}
+		if (request.model === 'stream-failure') {
+			return new Response(
+				sse({ choices: [{ delta: { content: 'Partial reply', reasoning_content: 'Partial reasoning' } }] }) +
+					sse({ error: { message: 'The upstream connection closed.', code: 'upstream_closed' } }),
+				{ headers: { 'Content-Type': 'text/event-stream' } }
+			);
+		}
+
 		const stream = new ReadableStream<Uint8Array>({
 			async start(controller) {
 				const encode = (s: string) => controller.enqueue(new TextEncoder().encode(s));
@@ -464,6 +481,67 @@ describe('a generation outlives its socket (architecture/server-core.md, WebSock
 		// Clocked by the side that saw the frames, so a turn nobody watched still reports how
 		// long it took.
 		expect(reply?.generationMs).toBeGreaterThan(0);
+	}, 30_000);
+
+	test.each([
+		{
+			model: 'filtered',
+			reason: 'finish_reason: content_filter',
+			details: {
+				finishReason: 'error',
+				usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5, cachedTokens: 0 }
+			}
+		},
+		{
+			model: 'stream-failure',
+			reason: 'The upstream connection closed. (upstream_closed)',
+			details: { responseContent: 'Partial reply', responseThinking: 'Partial reasoning' }
+		}
+	])('$model reaches the chat and Prompt Debug as an error without committing a turn', async ({ model, reason, details }) => {
+		const { chatId, userTurnId } = await seedChat();
+		const id = crypto.randomUUID();
+		const request = JSON.parse(generateRequest(id, {
+			chatId,
+			placement: await rpc('getConversationPlacement', [chatId, 'append']),
+			parentId: userTurnId,
+			expectedLeafId: userTurnId,
+			claimsRoot: false,
+			spendSteeringIds: []
+		}));
+		const socket = await openSocket();
+		try {
+			const completion = collect(socket, (frames) => frames.some(
+				(frame) => frame.id === id && (frame.t === 'llm-error' || frame.t === 'llm-done')
+			) && frames.some((frame) => {
+				const event = frame.event as { type?: string; id?: string } | undefined;
+				return frame.t === 'prompt-log' && event?.type === 'result' && event.id === id;
+			}));
+			socket.send(JSON.stringify({ t: 'debug', on: true }));
+			socket.send(JSON.stringify({ ...request, model }));
+			const frames = await completion;
+			const error = frames.find((frame) => frame.t === 'llm-error');
+
+			expect(error).toMatchObject({
+				t: 'llm-error',
+				id,
+				message: expect.stringContaining(reason)
+			});
+			expect(frames).toContainEqual(expect.objectContaining({
+				t: 'prompt-log',
+				event: {
+					type: 'result',
+					id,
+					result: expect.objectContaining({
+						status: 'error',
+						error: error?.message,
+						...details
+					})
+				}
+			}));
+			expect(await rpc('getMessagesByChat', [chatId])).toEqual([expect.objectContaining({ id: userTurnId })]);
+		} finally {
+			socket.close();
+		}
 	}, 30_000);
 
 	test('a second reply for the same chat is refused while the first is still being written', async () => {

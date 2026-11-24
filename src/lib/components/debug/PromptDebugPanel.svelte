@@ -103,9 +103,9 @@
 	let emptyResponseNote = $derived.by(() => {
 		if (!selected) return '';
 		if (selected.status === 'pending') return 'Still in flight: the provider has not answered yet.';
-		if (selected.status === 'error') return 'Nothing was received; the request failed (see the error above).';
+		if (selected.status === 'error') return 'No response text or reasoning was recorded. See the error above.';
 		if (selected.status === 'cancelled') return 'Stopped before the provider sent anything.';
-		return 'The provider returned an empty response body.';
+		return 'No response text or reasoning was recorded.';
 	});
 
 	function responseText(entry: PromptLogEntry): string {

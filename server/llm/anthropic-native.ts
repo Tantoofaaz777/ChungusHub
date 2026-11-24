@@ -444,11 +444,13 @@ export class AnthropicNativeProvider implements ChatProvider {
 				onText: options.onToken,
 				onThinking: options.onThinkingToken
 			});
-			this.assertNotEmptyRefusal(s.stopReason, s.text, s.refusalExplanation);
+			const finish = s.cancelled
+				? { finishReason: 'cancelled' as const }
+				: this.completionFinish(s.stopReason, s.refusalExplanation);
 			return {
 				content: s.text,
 				thinking: s.thinking || null,
-				finishReason: s.cancelled ? 'cancelled' : this.mapStopReason(s.stopReason),
+				...finish,
 				usage: s.usage,
 				model: options.model,
 				provider: this.name
@@ -466,11 +468,11 @@ export class AnthropicNativeProvider implements ChatProvider {
 		const thinkingText = blocks.filter((b) => b.type === 'thinking').map((b) => String(b.thinking ?? '')).join('\n');
 		const stopReason = typeof data.stop_reason === 'string' ? data.stop_reason : null;
 		const details = data.stop_details as { explanation?: string } | undefined;
-		this.assertNotEmptyRefusal(stopReason, content, details?.explanation ?? null);
+		const explanation = typeof details?.explanation === 'string' ? details.explanation : null;
 		return {
 			content,
 			thinking: thinkingText.trim() ? thinkingText : null,
-			finishReason: this.mapStopReason(stopReason),
+			...this.completionFinish(stopReason, explanation),
 			usage: this.usageFrom(data.usage as Record<string, unknown> | undefined),
 			model: options.model,
 			provider: this.name
@@ -481,15 +483,6 @@ export class AnthropicNativeProvider implements ChatProvider {
 	private assertConfigured(model: string, hint: string): void {
 		if (!this.apiKey) throw new Error(`${this.displayName} API key not configured`);
 		if (!model) throw new Error(`${this.displayName}: no model selected. ${hint}`);
-	}
-
-	/** A refusal with no usable output must fail loudly, not render an empty reply. */
-	private assertNotEmptyRefusal(stopReason: string | null, content: string, explanation: string | null): void {
-		if (stopReason === 'refusal' && !content.trim()) {
-			throw new Error(
-				`${this.displayName} declined the request (safety refusal${explanation ? `: ${explanation}` : ''})`
-			);
-		}
 	}
 
 	private async controlRequest(path: string): Promise<Response> {
@@ -622,19 +615,36 @@ export class AnthropicNativeProvider implements ChatProvider {
 		return { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, cachedTokens };
 	}
 
-	private mapStopReason(reason: string | null): LLMCompletionResult['finishReason'] {
+	private completionFinish(reason: string | null, explanation: string | null): Pick<LLMCompletionResult, 'finishReason' | 'error'> {
 		switch (reason) {
 			case 'end_turn':
 			case 'stop_sequence':
-				return 'stop';
+				return { finishReason: 'stop' };
 			case 'max_tokens':
 			case 'model_context_window_exceeded':
-				return 'length';
+				return { finishReason: 'length' };
+			case 'refusal':
+				return {
+					finishReason: 'error',
+					error: `${this.displayName} declined the request (stop_reason: refusal).${explanation ? ` ${explanation}` : ''}`
+				};
+			case 'tool_use':
+				return {
+					finishReason: 'error',
+					error: `${this.displayName}: the model requested a tool call. This chat supports text replies (stop_reason: tool_use).`
+				};
+			case 'pause_turn':
+				return {
+					finishReason: 'error',
+					error: `${this.displayName} paused the turn before completing the reply (stop_reason: pause_turn).`
+				};
 			default:
-				// refusal (with partial content), pause_turn (an incomplete turn we
-				// have no resume path for) and anything unknown surface as error,
-				// never as a fake successful stop.
-				return 'error';
+				return {
+					finishReason: 'error',
+					error: reason?.trim()
+						? `${this.displayName}: generation ended with stop_reason: ${reason.slice(0, 120)}.`
+						: `${this.displayName}: the completion did not include a stop_reason.`
+				};
 		}
 	}
 
