@@ -3,6 +3,14 @@ package app.chungushub.android
 import android.content.Context
 import kotlin.math.round
 
+data class AndroidVoiceChoice(val engine: String, val voice: String) {
+    init {
+        require(engine.isNotBlank() && engine.length <= 512 && voice.isNotBlank() && voice.length <= 512) {
+            "Invalid Android voice selection."
+        }
+    }
+}
+
 /** Device-local synthesis choices, captured once per reading, never synced to a server. */
 data class SpeechOptions(val engine: String = "", val voice: String = "", val rate: Float = 1f, val mixAudio: Boolean = false, val highlightSpeech: Boolean = true) {
     companion object {

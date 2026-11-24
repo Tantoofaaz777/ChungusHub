@@ -4,6 +4,7 @@ import type { AndroidReadingState } from '#lib/services/android-client.ts';
 // State-transition tests, as in new-chat-flow.test.ts; reactivity is exercised in the browser.
 (globalThis as unknown as { $state: <T>(v: T) => T }).$state = value => value;
 const { readAloudStore: reader } = await import('./read-aloud.svelte');
+const { edgeSpeechSettings } = await import('./edge-speech-settings.svelte');
 const previousWindow = globalThis.window;
 afterEach(() => { reader.suspend(); globalThis.window = previousWindow; reader.state = { phase: 'idle' }; reader.busy = false; reader.available = false; });
 
@@ -14,6 +15,29 @@ function client(overrides: Partial<NonNullable<Window['ChungusAndroidClient']>> 
 		readingCommand: async () => ({ phase: 'paused' }), ...overrides
 	} } as Window & typeof globalThis;
 }
+
+test('a chat voice uses the native engine for that reading on supported APKs', async () => {
+	const voice = { engine: 'com.example.tts', voice: 'pt-br-voice' };
+	const calls: unknown[][] = [];
+	const previousVoice = edgeSpeechSettings.voice;
+	edgeSpeechSettings.voice = 'en-GB-SoniaNeural';
+	try {
+		client({
+			readingEdgeTts: true,
+			readingNativeVoice: true,
+			readAloud: async (...args) => { calls.push(args); }
+		});
+		await reader.start('Olá.', 'Chat', undefined, voice);
+		window.ChungusAndroidClient = { ...window.ChungusAndroidClient!, readingNativeVoice: false };
+		await reader.start('Olá.', 'Chat', undefined, voice);
+
+		expect(calls[0]).toEqual(['Olá.', 'Chat', undefined, undefined, voice]);
+		expect(calls[1]).toEqual(['Olá.', 'Chat', undefined, { voice: 'en-GB-SoniaNeural', rate: 1 }]);
+		expect(edgeSpeechSettings.voice).toBe('en-GB-SoniaNeural');
+	} finally {
+		edgeSpeechSettings.voice = previousVoice;
+	}
+});
 
 test('highlight follows the exact filtered range and request identity, including repeated sentences', async () => {
  let current: AndroidReadingState = { phase: 'idle' };

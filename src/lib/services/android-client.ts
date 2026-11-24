@@ -1,5 +1,6 @@
 import type { SpeechRule } from '../utils/speech-rules';
 import type { EdgeSpeechChoice } from '#shared/edge-speech.ts';
+import type { AndroidVoiceChoice } from '#shared/android-speech.ts';
 
 /** A staged character file, held privately by Android until import or cancellation. */
 export interface AndroidSharedFile { id: string; name: string; mime: string; size: number }
@@ -45,8 +46,9 @@ declare global {
 			/** Available since APK 0.1.5. Resolution means the Sharesheet opened. */
 			shareText?(text: string): Promise<void>;
 			/** Available since APK 0.1.8. Playback belongs to the native media service. */
-			readAloud?(text: string, title: string, requestId?: string, edge?: EdgeSpeechChoice): Promise<void>;
+			readAloud?(text: string, title: string, requestId?: string, edge?: EdgeSpeechChoice, androidVoice?: AndroidVoiceChoice): Promise<void>;
 			readonly readingEdgeTts?: boolean;
+			readonly readingNativeVoice?: boolean;
 			/** APK 0.1.12: playback ranges and the sentence-highlight preference. */
 			readonly readingHighlights?: boolean;
 			readingState?(): Promise<AndroidReadingState>;

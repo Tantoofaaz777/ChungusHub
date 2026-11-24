@@ -309,7 +309,13 @@
 	function handleReadAloud() {
 		// Display-only regex may turn hidden comments into visible widgets. Speech uses
 		// the stored message, resolving identities without inheriting that presentation.
-		return readAloudStore.start(speechText, `${chatStore.activeChat?.title || 'Chat'} · #${ordinal}`, `message:${message.chatId}:${message.id}`);
+		const androidVoice = message.role === 'assistant' ? chatStore.featureState(message.chatId).androidVoice : undefined;
+		return readAloudStore.start(
+			speechText,
+			`${chatStore.activeChat?.title || 'Chat'} · #${ordinal}`,
+			`message:${message.chatId}:${message.id}`,
+			androidVoice
+		);
 	}
 
 	const isUser = $derived(message.role === 'user');

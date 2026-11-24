@@ -6,6 +6,7 @@
 	import { connectionStore } from '#lib/stores/connections.svelte.ts';
 	import { presetService } from '#lib/services/presets.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { speechSettingsStore as speech } from '#lib/stores/speech-settings.svelte.ts';
 	import EntryFormFields from './EntryFormFields.svelte';
 	import CharacterVersionMenu from './CharacterVersionMenu.svelte';
 	import LibraryEditorHeader from './LibraryEditorHeader.svelte';
@@ -15,7 +16,7 @@
 	import { countCharacterTokens, type CharacterTokenCounts } from '#lib/utils/character-token-counts.ts';
 	import { llmService } from '#lib/services/llm/provider.ts';
 	import { withTokenizers } from '#lib/tokenizer/loader.ts';
-	import type { CharacterTraits, ChatDefaultKey } from '#lib/types/library.ts';
+	import type { CharacterTraits, ChatDefaultKey, LibraryEntry } from '#lib/types/library.ts';
 
 	interface Props {
 		entryId: string;
@@ -60,7 +61,7 @@
 		void characterLibraryStore.updateData(entry.id, { lorebookIds: ids });
 	}
 
-	function handleChatDefaultChange(key: ChatDefaultKey, value: string | null) {
+	function handleChatDefaultChange<K extends ChatDefaultKey>(key: K, value: LibraryEntry[K] | null) {
 		if (!entry) return;
 		characterLibraryStore
 			.setChatDefault(entry.id, key, value)
@@ -70,10 +71,16 @@
 	// Closed by default and per open editor: what a chat starts on is set once and then left
 	// alone, so it costs the pane nothing until somebody comes looking for it.
 	let defaultsOpen = $state(false);
+	const androidVoiceAvailable = speech.available && window.ChungusAndroidClient?.readingNativeVoice === true;
+
+	function toggleDefaults() {
+		defaultsOpen = !defaultsOpen;
+		if (defaultsOpen && androidVoiceAvailable && !speech.unsaved) void speech.load(true);
+	}
 
 	/** One row of the New Chat Defaults panel. A fifth seed is one more entry here. */
 	interface ChatDefaultRow {
-		key: ChatDefaultKey;
+		key: Exclude<ChatDefaultKey, 'defaultAndroidVoice'>;
 		label: string;
 		/** The app's own answer, as this row calls it. */
 		fallback: string;
@@ -310,7 +317,7 @@
 				<button
 					type="button"
 					class="group w-full flex items-center gap-1.5 py-1 text-text-muted transition-colors"
-					onclick={() => (defaultsOpen = !defaultsOpen)}
+					onclick={toggleDefaults}
 					aria-expanded={defaultsOpen}
 				>
 					<Icon
@@ -342,6 +349,38 @@
 								/>
 							</div>
 						{/each}
+						{#if androidVoiceAvailable}
+							<div>
+								<span id="android-voice-{entryId}-label" class="slider-label block mb-1">Android TTS voice</span>
+								{#if speech.loading}
+									<p class="text-xs text-text-muted" role="status">Loading Android voices…</p>
+								{:else if speech.error && !speech.unsaved}
+									<p class="text-xs text-warning">{speech.error}</p>
+									<button type="button" class="text-xs underline" onclick={() => void speech.load(true)}>Retry</button>
+								{:else if speech.data}
+									{@const catalog = speech.data}
+									{@const stored = entry.defaultAndroidVoice}
+									{@const options = catalog.voices.map((voice) => ({
+										id: voice.id,
+										name: `${voice.languageLabel} · ${voice.id}`
+									}))}
+									{@const lost = !!stored && (stored.engine !== catalog.engine || !options.some((option) => option.id === stored.voice))}
+									{#if lost}
+										<p class="mb-1 text-xs text-warning">That voice is unavailable on this device. Playback uses the device's Android voice here.</p>
+									{/if}
+									<ChatDefaultSelect
+										id="android-voice-{entryId}"
+										value={stored?.voice ?? null}
+										fallbackLabel="Device settings"
+										fallbackDetail={null}
+										groupLabel={catalog.engineLabel || 'Android voices'}
+										{options}
+										{lost}
+										onpick={(voice) => handleChatDefaultChange('defaultAndroidVoice', voice ? { engine: catalog.engine, voice } : null)}
+									/>
+								{/if}
+							</div>
+						{/if}
 						<p class="text-xs font-ui leading-relaxed text-text-muted">
 							Only new chats; the ones already going keep what they have. Nothing here is written
 							into an exported card.

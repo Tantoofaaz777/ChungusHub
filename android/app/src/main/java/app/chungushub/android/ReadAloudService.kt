@@ -51,6 +51,7 @@ class ReadAloudService : Service() {
     private var boundEngine = ""
     private var defaultVoice: android.speech.tts.Voice? = null
     private var options = SpeechOptions()
+    private var androidVoice: AndroidVoiceChoice? = null
     private var edgeChoice: EdgeSpeechChoice? = null
     private var edgeError: Pair<Int, String>? = null
     private val downloads = Executors.newSingleThreadExecutor()
@@ -146,6 +147,9 @@ class ReadAloudService : Service() {
             resetAudio()
             val edge = intent.getStringExtra("edgeVoice")?.let { EdgeSpeechChoice(it, intent.getFloatExtra("edgeRate", 1f)) }
             edgeChoice = edge
+            androidVoice = intent.getStringExtra("androidVoice")?.let {
+                AndroidVoiceChoice(intent.getStringExtra("androidVoiceEngine").orEmpty(), it)
+            }
             val text = intent.getStringExtra("text").orEmpty()
             parts = if (edge == null) SpeechText.parts(text, minOf(3000, TextToSpeech.getMaxSpeechInputLength()))
                 else SpeechText.parts(text, 3000, Locale.forLanguageTag(edge.voice.take(5)))
@@ -200,9 +204,13 @@ class ReadAloudService : Service() {
 
     private fun configureSpeech() {
         val engine = tts ?: return
-        val voice = if (options.voice.isNotBlank()) {
+        fun findVoice(id: String) = engine.voices.orEmpty().find {
+            it.name == id && !it.features.orEmpty().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+        }
+        val chatVoice = androidVoice?.takeIf { it.engine == boundEngine }?.let { findVoice(it.voice) }
+        val voice = chatVoice ?: if (options.voice.isNotBlank()) {
             check(options.engine == boundEngine) { "The Android speech engine changed. Choose a voice again in Settings → TTS." }
-            engine.voices.orEmpty().find { it.name == options.voice && !it.features.orEmpty().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+            findVoice(options.voice)
                 ?: error("The selected voice is no longer available. Choose another in Settings → TTS.")
         } else defaultVoice
         if (voice != null) check(engine.setVoice(voice) == TextToSpeech.SUCCESS) { "The speech engine could not use this voice. Choose another in Settings → TTS." }
@@ -457,12 +465,19 @@ class ReadAloudService : Service() {
             observers.add(callback)
             return { observers.remove(callback) }
         }
-        fun start(context: Context, origin: String, text: String, title: String, requestId: String = "", edge: EdgeSpeechChoice? = null) {
+        fun start(
+            context: Context, origin: String, text: String, title: String, requestId: String = "",
+            edge: EdgeSpeechChoice? = null, androidVoice: AndroidVoiceChoice? = null
+        ) {
             require(text.isNotBlank() && text.length <= SpeechText.MAX_TEXT) { "The message is empty or too long to read (maximum 80,000 characters)." }
             require(requestId.length <= 80 && requestId.all { it.isLetterOrDigit() || it == '-' }) { "Invalid reading request." }
+            require(edge == null || androidVoice == null) { "Choose one voice for this reading." }
             ContextCompat.startForegroundService(context, Intent(context, ReadAloudService::class.java).setAction(START)
                 .putExtra("origin", origin).putExtra("text", text).putExtra("title", title.take(180)).putExtra("requestId", requestId)
-                .apply { if (edge != null) putExtra("edgeVoice", edge.voice).putExtra("edgeRate", edge.rate) })
+                .apply {
+                    if (edge != null) putExtra("edgeVoice", edge.voice).putExtra("edgeRate", edge.rate)
+                    if (androidVoice != null) putExtra("androidVoiceEngine", androidVoice.engine).putExtra("androidVoice", androidVoice.voice)
+                })
         }
         fun snapshot(origin: String): JSONObject = instance?.takeIf { !it.closed && it.origin == origin }?.status()
             ?: JSONObject().put("phase", "idle")

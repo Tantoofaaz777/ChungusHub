@@ -532,6 +532,21 @@ describe('choosing a persona only when creating a conversation', () => {
 });
 
 describe('the defaults are seeds and stop deciding at birth', () => {
+	test('new chats keep the card’s Android voice through later card and chat edits', async () => {
+		const entryId = await character();
+		const oldChat = await chatStore.createChat({ characterId: entryId });
+		const voice = { engine: 'com.example.tts', voice: 'pt-br-voice' };
+		await characterLibraryStore.setChatDefault(entryId, 'defaultAndroidVoice', voice);
+		const chat = await chatStore.createChat({ characterId: entryId });
+
+		await characterLibraryStore.setChatDefault(entryId, 'defaultAndroidVoice', null);
+		await chatStore.updateChatFeatureState(chat, { authorsNote: { text: 'Stay in character.' } });
+
+		expect(claims(chat).androidVoice).toEqual(voice);
+		expect(claims(oldChat).androidVoice).toBeUndefined();
+		expect(claims(await chatStore.createChat({ characterId: entryId })).androidVoice).toBeUndefined();
+	});
+
 	test('moving a character default leaves a story already under way exactly where it was', async () => {
 		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION, defaultPresetId: OWN_PRESET });
 		const first = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });

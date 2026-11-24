@@ -62,7 +62,7 @@
 
 	function choose(next: string | null) {
 		open = false;
-		if (next !== value) onpick(next);
+		if (next !== value || lost) onpick(next);
 	}
 
 	function scrollHighlightedIntoView() {

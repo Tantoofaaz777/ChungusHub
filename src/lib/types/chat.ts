@@ -4,6 +4,7 @@ import type { LorebookTrace } from '#lib/lorebook/types.ts';
 import type { BackgroundConfig } from '#lib/types/background.ts';
 import { normalizeBackgroundConfig } from '#lib/types/background.ts';
 import { normalizeReminderProgress } from '#lib/memory/reminders.ts';
+import { normalizeAndroidVoice, type AndroidVoiceChoice } from '#shared/android-speech.ts';
 
 export interface Chat {
 	conversationVersion?: number;
@@ -128,6 +129,8 @@ export interface ChatFeatureState {
 	 *  birth from the character's defaultPresetId seed and otherwise only from the setup chip.
 	 *  Resolved like `connection`: a deleted preset reads as no claim. */
 	preset: string | null;
+	/** The character's native Android voice at the time this chat was created. */
+	androidVoice?: AndroidVoiceChoice;
 	/** Lorebooks this story attached for itself, claimed from the setup chip. **The one claim
 	 *  that ADDS rather than replaces**: these ride on top of the books the shelf switched into
 	 *  every chat and the ones this chat's character and persona link, so an empty list is a
@@ -223,6 +226,7 @@ export function normalizeChatFeatureState(raw: unknown): ChatFeatureState {
 	const memoryReminder = normalizeReminderProgress(obj.memoryReminder);
 	const persona = normalizeClaimedId(obj.persona);
 	const personaVersion = persona ? normalizeClaimedId(obj.personaVersion) : null;
+	const androidVoice = normalizeAndroidVoice(obj.androidVoice);
 	return {
 		...(memoryReminder ? { memoryReminder } : {}),
 		authorsNote: normalizeAuthorsNote(obj.authorsNote),
@@ -232,6 +236,7 @@ export function normalizeChatFeatureState(raw: unknown): ChatFeatureState {
 		persona,
 		...(personaVersion ? { personaVersion } : {}),
 		preset: normalizeClaimedId(obj.preset),
+		...(androidVoice ? { androidVoice } : {}),
 		lorebooks: normalizeClaimedIds(obj.lorebooks),
 		mutedLorebooks: normalizeClaimedIds(obj.mutedLorebooks)
 	};

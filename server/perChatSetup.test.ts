@@ -61,14 +61,15 @@ function readBack(id: string): Record<string, unknown> {
 
 /** Every seed the New Chat Defaults card writes. Each is tested the same way because each
  *  makes the same three promises about the payload it lands in. */
-const SEED_KEYS = [
-	'defaultPersonaId',
-	'defaultConnectionId',
-	'defaultPresetId',
-	'defaultVersionId'
+const SEEDS = [
+	['defaultPersonaId', 'persona'],
+	['defaultConnectionId', 'connection'],
+	['defaultPresetId', 'preset'],
+	['defaultVersionId', 'version'],
+	['defaultAndroidVoice', { engine: 'com.example.tts', voice: 'pt-br-voice' }]
 ] as const;
 
-for (const key of SEED_KEYS) {
+for (const [key, seed] of SEEDS) {
 	describe(key, () => {
 		test('an entry that carries none stores no key at all', () => {
 			// Not merely falsy: a stored `null` would be a payload byte that was not there
@@ -82,17 +83,16 @@ for (const key of SEED_KEYS) {
 		});
 
 		test('a set seed round-trips as a sibling of data, never inside it', () => {
-			const seed = crypto.randomUUID();
 			const entry = makeCharacter({ [key]: seed });
 			serverDb.insertLibraryEntry(entry);
 
 			const read = readBack(entry.id as string);
-			expect(read[key]).toBe(seed);
+			expect(read[key]).toEqual(seed);
 			expect(read.data).not.toHaveProperty(key);
 		});
 
 		test('clearing it drops the key rather than storing an empty one', () => {
-			const entry = makeCharacter({ [key]: crypto.randomUUID() });
+			const entry = makeCharacter({ [key]: seed });
 			serverDb.insertLibraryEntry(entry);
 
 			delete entry[key];
@@ -104,7 +104,7 @@ for (const key of SEED_KEYS) {
 			// A version row is one variant's content. Who plays a story, and where it is sent,
 			// are not properties of a variant, so a fork or a switch must never carry them along.
 			const versionId = crypto.randomUUID();
-			const entry = makeCharacter({ activeVersionId: versionId, [key]: crypto.randomUUID() });
+			const entry = makeCharacter({ activeVersionId: versionId, [key]: seed });
 			serverDb.insertLibraryEntry(entry);
 			serverDb.insertCharacterVersion({
 				id: versionId,

@@ -395,7 +395,10 @@ class MainActivity : AppCompatActivity() {
                             val edge = if (message.has("edge")) message.getJSONObject("edge").let {
                                 EdgeSpeechChoice(it.getString("voice"), it.getDouble("rate").toFloat())
                             } else null
-                            ReadAloudService.start(this, selected.origin, message.getString("text"), message.getString("title"), message.optString("requestId", ""), edge)
+                            val androidVoice = if (message.has("androidVoice")) message.getJSONObject("androidVoice").let {
+                                AndroidVoiceChoice(it.getString("engine"), it.getString("voice"))
+                            } else null
+                            ReadAloudService.start(this, selected.origin, message.getString("text"), message.getString("title"), message.optString("requestId", ""), edge, androidVoice)
                         }
                         else {
                             val command = message.getString("command")

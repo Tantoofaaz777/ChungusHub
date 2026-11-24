@@ -157,6 +157,21 @@ test('the Android bridge sends only valid English Edge choices and keeps system 
 	expect(h.messages.at(-1)).not.toHaveProperty('edge');
 });
 
+test('the Android bridge sends native voice identifiers only for the requested reading', async () => {
+	const h = harness(), client = h.window.ChungusAndroidClient;
+	const choice = { engine: 'com.example.tts', voice: 'pt-br-voice' };
+	expect(client.readingNativeVoice).toBe(true);
+	await client.readAloud('Olá.', 'Chat', 'reading-1', undefined, choice);
+	expect(h.messages.at(-1)).toMatchObject({ type: 'speech.start', androidVoice: choice });
+	await client.readAloud('Olá.', 'Chat', 'reading-2');
+	expect(h.messages.at(-1)).not.toHaveProperty('androidVoice');
+
+	await expect(client.readAloud('Olá.', 'Chat', undefined, undefined, { ...choice, engine: ' ' })).rejects.toThrow();
+	await expect(client.readAloud('Olá.', 'Chat', undefined, undefined, { ...choice, voice: 'x'.repeat(513) })).rejects.toThrow();
+	await expect(client.readAloud('Olá.', 'Chat', undefined, { voice: 'en-GB-SoniaNeural', rate: 1 }, choice)).rejects.toThrow();
+	expect(h.messages).toHaveLength(2);
+});
+
 test('sentence highlighting carries a bounded reading identity and preserves optional preferences', async () => {
  const h = harness(), client = h.window.ChungusAndroidClient;
  expect(client.readingHighlights).toBe(true);

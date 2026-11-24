@@ -141,7 +141,8 @@ const CHAT_DEFAULT_KEYS = [
 	'defaultPersonaId',
 	'defaultConnectionId',
 	'defaultPresetId',
-	'defaultVersionId'
+	'defaultVersionId',
+	'defaultAndroidVoice'
 ] as const;
 
 /** A chat row as a caller hands it in, shared by the two doors that create one. */

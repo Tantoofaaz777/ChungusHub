@@ -2,6 +2,7 @@
 import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
 import type { CharacterCardMetadata } from './character-card';
 import type { CharacterAuthorsNote } from '../../../shared/character-authors-note';
+import type { AndroidVoiceChoice } from '#shared/android-speech.ts';
 
 /** Type discriminator for library entries */
 export type LibraryEntryType = 'character' | 'persona';
@@ -102,7 +103,7 @@ export interface LibraryEntry {
 	 * Personas are always chosen explicitly. `defaultVersionId` is the exception, because a version pin
 	 * is not optional the way the others are: absent there means the first version ever made.
 	 *
-	 * All four are deliberately siblings of `data` rather than fields inside it, so they
+	 * These are deliberately siblings of `data` rather than fields inside it, so they
 	 * never mirror into a version row and never reach a card export.
 	 */
 	/** Legacy field kept for import compatibility; new chats ignore it. */
@@ -110,6 +111,7 @@ export interface LibraryEntry {
 	defaultConnectionId?: string;
 	defaultPresetId?: string;
 	defaultVersionId?: string;
+	defaultAndroidVoice?: AndroidVoiceChoice;
 	/** Private note shared by all chats with this character, outside card/version data. */
 	characterAuthorsNote?: CharacterAuthorsNote;
 	isFavorite: boolean;
@@ -123,7 +125,8 @@ export type ChatDefaultKey =
 	| 'defaultPersonaId'
 	| 'defaultConnectionId'
 	| 'defaultPresetId'
-	| 'defaultVersionId';
+	| 'defaultVersionId'
+	| 'defaultAndroidVoice';
 
 /**
  * One named variant in the library ("pirate", "castle guard", "calmer take", …).

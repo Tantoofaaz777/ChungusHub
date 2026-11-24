@@ -1,6 +1,7 @@
 import { canReadAloud, isAndroidClient, type AndroidReadingState, type ReadingCommand } from '#lib/services/android-client.ts';
 import { BrowserSpeechPlayer } from '#lib/services/edge-speech.ts';
 import { edgeSpeechSettings } from './edge-speech-settings.svelte';
+import type { AndroidVoiceChoice } from '#shared/android-speech.ts';
 
 import { prepareSpeechProcessing, processSpeechText, suspendSpeechProcessing, type SpeechProcessingTiming } from '#lib/services/speech-rules.ts';
 
@@ -43,7 +44,7 @@ class ReadAloudStore {
 			this.state = state;
 		}
 	}
-	async start(text: string, title: string, sourceKey?: string) {
+	async start(text: string, title: string, sourceKey?: string, androidVoice?: AndroidVoiceChoice) {
 		if (this.busy) return;
 		const native = canReadAloud();
 		if (!native && isAndroidClient()) throw new Error('Update the Android app to read messages aloud.');
@@ -71,6 +72,7 @@ class ReadAloudStore {
 			}
 			const choice = edgeSpeechSettings.selection(native);
 			if (!client) this.browser.start(text, title, requestId!, choice);
+			else if (client.readingNativeVoice && androidVoice) await client.readAloud!(text, title, requestId, undefined, androidVoice);
 			else if (client.readingEdgeTts && choice.voice) await client.readAloud!(text, title, requestId, choice);
 			else await client.readAloud!(text, title, requestId);
 			this.source = sourceKey && requestId && offsets.length === text.length ? { key: sourceKey, requestId, original, text, offsets } : null;

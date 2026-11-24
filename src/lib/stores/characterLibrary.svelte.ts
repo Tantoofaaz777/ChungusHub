@@ -501,7 +501,7 @@ class CharacterLibraryStore {
 	/** Set (or clear, with null) one of what a new chat with this character starts on. Each
 	 *  key is a sibling of `data`, so none of them mirrors into a version row: who plays a
 	 *  story and where it is sent are not properties of one variant of the character. */
-	async setChatDefault(id: string, key: ChatDefaultKey, value: string | null): Promise<void> {
+	async setChatDefault<K extends ChatDefaultKey>(id: string, key: K, value: LibraryEntry[K] | null): Promise<void> {
 		const entry = this.getEntryById(id);
 		if (!entry) throw new Error('That entry no longer exists.');
 		if (value) entry[key] = value;

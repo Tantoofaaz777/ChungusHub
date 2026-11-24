@@ -23,6 +23,7 @@ import { trackReasoning } from '#lib/utils/reasoning-time.ts';
 import { CoalescedTask } from '#lib/utils/coalesced-task.ts';
 import { nextMemoryReminder, type ReminderCount } from '#lib/memory/reminders.ts';
 import type { SceneMessage } from '#shared/memory-scenes.ts';
+import { normalizeAndroidVoice } from '#shared/android-speech.ts';
 
 /** A reply being written for a chat by someone other than this page. */
 type ForeignGeneration = { chatId: string; requestId: string; startedAt: number };
@@ -176,6 +177,7 @@ class ChatStore {
 		const personaVersion = personaId ? this.personaVersionForSelection(personaId, options.personaVersionId) : undefined;
 		const connectionId = entry?.defaultConnectionId ?? null;
 		const presetId = entry?.defaultPresetId ?? null;
+		const androidVoice = normalizeAndroidVoice(entry?.defaultAndroidVoice);
 		const backgroundPath = entry ? characterLibraryStore.dataForVersion(entry, characterVersionId).cardMetadata?.backgroundPath : undefined;
 		const chat: Chat = {
 			conversationVersion: 2,
@@ -191,13 +193,14 @@ class ChatStore {
 			characterVersionId,
 			isFavorite: false,
 			featureState:
-				personaId || connectionId || presetId || backgroundPath
+				personaId || connectionId || presetId || backgroundPath || androidVoice
 					? JSON.stringify({
 							...DEFAULT_CHAT_FEATURE_STATE,
 							persona: personaId,
 							...(personaVersion ? { personaVersion } : {}),
 							connection: connectionId,
 							preset: presetId,
+							...(androidVoice ? { androidVoice } : {}),
 							...(backgroundPath ? { scene: { enabled: true, background: { path: backgroundPath, dim: 0.35, blur: 0 } } } : {})
 						})
 					: null
