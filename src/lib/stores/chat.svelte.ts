@@ -24,6 +24,9 @@ import { CoalescedTask } from '#lib/utils/coalesced-task.ts';
 import { nextMemoryReminder, type ReminderCount } from '#lib/memory/reminders.ts';
 import type { SceneMessage } from '#shared/memory-scenes.ts';
 import { normalizeAndroidVoice } from '#shared/android-speech.ts';
+import { presetService } from '#lib/services/presets.svelte.ts';
+import type { NewChatChoices } from '#lib/utils/new-chat-setup.ts';
+import type { LibraryEntryData } from '#lib/types/library.ts';
 
 /** A reply being written for a chat by someone other than this page. */
 type ForeignGeneration = { chatId: string; requestId: string; startedAt: number };
@@ -156,29 +159,30 @@ class ChatStore {
 		memoryStore.clear();
 	}
 
-	/** Create a chat bound to a library character (ST-style). Always a fresh
-	 *  chat: a story never exists without a character, so the id is required.
-	 *
-	 *  `personaId` is the New chat flow's persona step saying who this story is played by.
-	 *  Other creation entry points ask once after creating the chat. */
-	async createChat(options: { characterId: string; personaId?: string; personaVersionId?: string }): Promise<string> {
+	/** Create a fresh chat with the selections collected by the New chat flow. */
+	async createChat(options: { characterId: string; personaId?: string } & NewChatChoices): Promise<string> {
 		const now = Date.now();
 		const { characterId } = options;
 		const entry = characterLibraryStore.entries.find((e) => e.id === characterId);
-		// The story keeps the exact variant it was born on, however far the character moves
-		// on afterwards.
-		const characterVersionId = characterLibraryStore.chatVersionSeed(characterId);
-		// Legacy persona defaults are ignored. Only the person choosing for this chat can
-		// supply its persona; connection and preset still use the character's seeds.
+		if (!entry || entry.type !== 'character') throw new Error('Choose a character from your library.');
+		const versions = characterLibraryStore.versionsFor(characterId);
+		const characterVersionId = options.characterVersionId ?? versions[0]?.id ?? null;
+		if (characterVersionId && !versions.some((version) => version.id === characterVersionId)) {
+			throw new Error('Choose an available version of this card.');
+		}
 		const personaId = options.personaId ?? null;
 		if (personaId && !characterLibraryStore.personas.some((p) => p.id === personaId)) {
 			throw new Error('Choose a persona from your library.');
 		}
 		const personaVersion = personaId ? this.personaVersionForSelection(personaId, options.personaVersionId) : undefined;
-		const connectionId = entry?.defaultConnectionId ?? null;
-		const presetId = entry?.defaultPresetId ?? null;
-		const androidVoice = normalizeAndroidVoice(entry?.defaultAndroidVoice);
-		const backgroundPath = entry ? characterLibraryStore.dataForVersion(entry, characterVersionId).cardMetadata?.backgroundPath : undefined;
+		const connectionId = entry.defaultConnectionId ?? null;
+		const presetId = options.presetId ?? null;
+		if (presetId && !presetService.getCommitted(presetId)) {
+			throw new Error('Choose an available preset.');
+		}
+		const androidVoice = normalizeAndroidVoice(entry.defaultAndroidVoice);
+		const characterData = characterLibraryStore.dataForVersion(entry, characterVersionId);
+		const backgroundPath = characterData.cardMetadata?.backgroundPath;
 		const chat: Chat = {
 			conversationVersion: 2,
 			id: crypto.randomUUID(),
@@ -211,7 +215,7 @@ class ChatStore {
 		chatCastStore.setForChat(chat.id, characterId);
 		// The chat opens on its greeting: the First Message becomes message 1 and any
 		// alternate greetings become its sibling branches (swipeable).
-		await this.seedCharacterGreetings(chat, characterId);
+		await this.seedCharacterGreetings(chat, characterData);
 		await this.selectChat(chat.id);
 		if (!personaId && this.activeChatId === chat.id && this.currentChatState?.chat.id === chat.id) {
 			this.requestPersonaSelection(chat.id);
@@ -226,13 +230,8 @@ class ChatStore {
 	 *  card, and a later card edit reaches it (architecture/chat-sessions.md). That record is
 	 *  written even for a character with no greetings at all: the empty claim is what lets a
 	 *  card that later gains an opening reach the empty chat. */
-	private async seedCharacterGreetings(chat: Chat, characterId: string): Promise<void> {
-		const entry = characterLibraryStore.entries.find(
-			(e) => e.id === characterId && e.type === 'character'
-		);
-		if (!entry) return;
-
-		const greetings = [entry.data.traits.firstMessage ?? '', ...(entry.data.alternateGreetings ?? [])]
+	private async seedCharacterGreetings(chat: Chat, data: LibraryEntryData): Promise<void> {
+		const greetings = [data.traits.firstMessage ?? '', ...(data.alternateGreetings ?? [])]
 			.map((g) => g.trim())
 			.filter((g) => g.length > 0);
 		if (chat.conversationVersion === 2) {

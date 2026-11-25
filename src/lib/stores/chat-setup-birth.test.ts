@@ -116,7 +116,7 @@ mock.module('#lib/services/database.ts', () => ({
 			if (at < 0) throw new Error(`updateLibraryEntry: no entry ${entry.id}`);
 			server.entries[at] = copy(entry);
 			const active = server.versions.find(row => row.id === entry.activeVersionId && row.entryId === entry.id);
-			if (active && entry.type === 'persona') active.data = personaVersionData(entry.data);
+			if (active) active.data = entry.type === 'persona' ? personaVersionData(entry.data) : copy(entry.data);
 		},
 		deleteLibraryEntry: async (id: string) => {
 			server.entries = server.entries.filter((e) => e.id !== id);
@@ -343,30 +343,32 @@ test('changing pronouns in a persona fork updates Original and every other versi
 });
 
 describe('a chat born from the composer', () => {
-	test('legacy persona defaults are ignored while other defaults still apply', async () => {
+	test('old persona, preset and version defaults are ignored at birth', async () => {
 		const versionId = crypto.randomUUID();
+		const originalId = crypto.randomUUID();
 		const entryId = await character({
 			defaultPersonaId: otherPersonaId,
 			defaultConnectionId: OWN_CONNECTION,
 			defaultPresetId: OWN_PRESET,
 			defaultVersionId: versionId
 		});
+		server.versions.push({ id: originalId, entryId, name: 'Original', data: { traits: {} }, createdAt: clock - 1, updatedAt: clock - 1 });
 		server.versions.push({ id: versionId, entryId, name: 'Pirate', data: { traits: {} }, createdAt: clock, updatedAt: clock });
 		await characterLibraryStore.refresh();
 
 		const chatId = await chatStore.createChat({ characterId: entryId });
 
-		expect(stored(chatId).characterVersionId).toBe(versionId);
+		expect(stored(chatId).characterVersionId).toBe(originalId);
 		expect(claims(chatId)).toMatchObject({
 			persona: null,
 			connection: OWN_CONNECTION,
-			preset: OWN_PRESET
+			preset: null
 		});
 		// The claims are not merely stored: every surface resolves the story to them.
 		expect(chatPersonaEntry(asChat(chatId))).toBeNull();
 		expect(chatStore.personaSelectionChatId).toBe(chatId);
 		expect(chatConnectionId(asChat(chatId))).toBe(OWN_CONNECTION);
-		expect(chatPreset(asChat(chatId))?.id).toBe(OWN_PRESET);
+		expect(chatPreset(asChat(chatId))?.id).toBe(APP_PRESET);
 		expect(resolvePromptTarget(asChat(chatId)).model).toBe('anthropic/own-model');
 	});
 
@@ -386,17 +388,18 @@ describe('a chat born from the composer', () => {
 		expect(resolvePromptTarget(asChat(chatId)).model).toBe('openai/app-model');
 	});
 
-	test('the New chat flow supplies the explicit choice without asking twice', async () => {
-		// Somebody just chose this persona for this story, one press ago. The seed is what the
-		// character answers when nobody asked.
+	test('the New chat flow saves the selected preset and persona without asking twice', async () => {
 		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION });
-		const chatId = await chatStore.createChat({ characterId: entryId, personaId: appPersonaId });
+		const version = await characterLibraryStore.createVersion(appPersonaId, 'Explorer');
+		const chatId = await chatStore.createChat({
+			characterId: entryId, personaId: appPersonaId, personaVersionId: version!.id, presetId: OWN_PRESET
+		});
 
-		expect(claims(chatId).persona).toBe(appPersonaId);
+		expect(claims(chatId)).toMatchObject({
+			persona: appPersonaId, personaVersion: version!.id, preset: OWN_PRESET, connection: OWN_CONNECTION
+		});
 		expect(chatStore.personaSelectionChatId).toBeNull();
 		expect(uiStore.newChatTargetChatId).toBeNull();
-		// The other seeds are untouched by the flow: it asks about a persona and nothing else.
-		expect(claims(chatId).connection).toBe(OWN_CONNECTION);
 	});
 
 	test('a flow persona on a character with no seeds stamps the persona and nothing else', async () => {
@@ -548,26 +551,25 @@ describe('the defaults are seeds and stop deciding at birth', () => {
 	});
 
 	test('moving a character default leaves a story already under way exactly where it was', async () => {
-		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION, defaultPresetId: OWN_PRESET });
-		const first = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
+		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION });
+		const first = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId, presetId: OWN_PRESET });
 		const bornWith = stored(first).featureState;
 
 		await characterLibraryStore.setChatDefault(entryId, 'defaultPersonaId', appPersonaId);
 		await characterLibraryStore.setChatDefault(entryId, 'defaultConnectionId', APP_CONNECTION);
-		await characterLibraryStore.setChatDefault(entryId, 'defaultPresetId', APP_PRESET);
 
 		expect(stored(first).featureState).toBe(bornWith);
 		expect(chatPersonaEntry(asChat(first))?.id).toBe(otherPersonaId);
 
 		const second = await chatStore.createChat({ characterId: entryId });
-		expect(claims(second)).toMatchObject({ persona: null, connection: APP_CONNECTION, preset: APP_PRESET });
+		expect(claims(second)).toMatchObject({ persona: null, connection: APP_CONNECTION, preset: null });
 	});
 
 	test('clearing every default stops stamping without disturbing the chats already born', async () => {
-		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION, defaultPresetId: OWN_PRESET });
-		const first = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
+		const entryId = await character({ defaultPersonaId: otherPersonaId, defaultConnectionId: OWN_CONNECTION });
+		const first = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId, presetId: OWN_PRESET });
 
-		for (const key of ['defaultPersonaId', 'defaultConnectionId', 'defaultPresetId'] as const) {
+		for (const key of ['defaultPersonaId', 'defaultConnectionId'] as const) {
 			await characterLibraryStore.setChatDefault(entryId, key, null);
 		}
 
@@ -577,11 +579,11 @@ describe('the defaults are seeds and stop deciding at birth', () => {
 
 	test('a cleared default leaves no key behind on the entry', async () => {
 		// A stored empty string would read as a claim on nothing and stamp one at the next birth.
-		const entryId = await character({ defaultPresetId: OWN_PRESET });
-		await characterLibraryStore.setChatDefault(entryId, 'defaultPresetId', null);
+		const entryId = await character({ defaultConnectionId: OWN_CONNECTION });
+		await characterLibraryStore.setChatDefault(entryId, 'defaultConnectionId', null);
 
 		const row = server.entries.find((e) => e.id === entryId)!;
-		expect('defaultPresetId' in row).toBe(false);
+		expect('defaultConnectionId' in row).toBe(false);
 	});
 });
 
@@ -603,27 +605,27 @@ describe('the version a new chat starts on', () => {
 		expect(stored(await chatStore.createChat({ characterId: entryId })).characterVersionId).toBe(original.id);
 	});
 
-	test('a defaultVersionId outranks the first version made', async () => {
+	test('the selected card version overrides the editing version and supplies the greeting', async () => {
 		const entryId = await character();
 		const pirate = await fork(entryId, 'Pirate');
-		await characterLibraryStore.setChatDefault(entryId, 'defaultVersionId', pirate!.id);
+		await characterLibraryStore.updateTraits(entryId, { firstMessage: 'Welcome aboard.' });
+		await characterLibraryStore.flushEntry(entryId);
+		const original = characterLibraryStore.versionsFor(entryId)[0];
+		await characterLibraryStore.switchActiveVersion(entryId, original.id);
 
-		expect(stored(await chatStore.createChat({ characterId: entryId })).characterVersionId).toBe(pirate!.id);
+		const chatId = await chatStore.createChat({ characterId: entryId, characterVersionId: pirate!.id });
+		expect(stored(chatId).characterVersionId).toBe(pirate!.id);
+		expect(chatStore.currentChatState?.activePath[0]?.content).toBe('Welcome aboard.');
 	});
 
-	test('a defaultVersionId naming a deleted version falls back to the first, and is never swept', async () => {
-		// Same rule as every other claim: the seed stays put, so restoring the version restores
-		// what new chats start on rather than silently having lost it.
+	test('a version or preset removed while setup was open cannot create a chat', async () => {
 		const entryId = await character();
 		const pirate = await fork(entryId, 'Pirate');
-		await characterLibraryStore.setChatDefault(entryId, 'defaultVersionId', pirate!.id);
-		const original = characterLibraryStore.versionsFor(entryId)[0];
-
 		await characterLibraryStore.deleteVersion(pirate!.id);
-
-		expect(characterLibraryStore.chatVersionSeed(entryId)).toBe(original.id);
-		expect(stored(await chatStore.createChat({ characterId: entryId })).characterVersionId).toBe(original.id);
-		expect(server.entries.find((e) => e.id === entryId)!.defaultVersionId).toBe(pirate!.id);
+		const count = chatStore.chats.length;
+		await expect(chatStore.createChat({ characterId: entryId, characterVersionId: pirate!.id })).rejects.toThrow('available version');
+		await expect(chatStore.createChat({ characterId: entryId, presetId: 'unknown' })).rejects.toThrow('available preset');
+		expect(chatStore.chats).toHaveLength(count);
 	});
 
 	test('an unversioned character pins nothing and follows its live data', async () => {
@@ -739,10 +741,9 @@ describe('a claim outlives the thing it names', () => {
 	async function claimedChat(): Promise<string> {
 		const entryId = await character({
 			defaultPersonaId: otherPersonaId,
-			defaultConnectionId: OWN_CONNECTION,
-			defaultPresetId: OWN_PRESET
+			defaultConnectionId: OWN_CONNECTION
 		});
-		return chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
+		return chatStore.createChat({ characterId: entryId, personaId: otherPersonaId, presetId: OWN_PRESET });
 	}
 
 	test('deleting the claimed connection sends on the app and keeps the id for its return', async () => {
@@ -796,11 +797,10 @@ describe('a claim outlives the thing it names', () => {
 		// Who plays it, where it sends and what it is built from are the reader's and survive.
 		const entryId = await character({
 			defaultPersonaId: otherPersonaId,
-			defaultConnectionId: OWN_CONNECTION,
-			defaultPresetId: OWN_PRESET
+			defaultConnectionId: OWN_CONNECTION
 		});
 		const pirate = await characterLibraryStore.createVersion(entryId, 'Pirate');
-		const chatId = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId });
+		const chatId = await chatStore.createChat({ characterId: entryId, personaId: otherPersonaId, presetId: OWN_PRESET });
 		expect(stored(chatId).characterVersionId).not.toBe(pirate!.id);
 
 		await characterLibraryStore.deleteEntry(entryId);
@@ -820,7 +820,7 @@ describe('a claim outlives the thing it names', () => {
 
 describe('one blob, every feature', () => {
 	test('the four claims and the composer state share it without disturbing each other', async () => {
-		const chatId = await chatStore.createChat({ characterId: await character({ defaultPresetId: OWN_PRESET }) });
+		const chatId = await chatStore.createChat({ characterId: await character(), presetId: OWN_PRESET });
 
 		await chatStore.updateChatFeatureState(chatId, { connection: OWN_CONNECTION });
 		await chatStore.pushSteeringHistory(chatId, ['Colder.', 'Slower.']);

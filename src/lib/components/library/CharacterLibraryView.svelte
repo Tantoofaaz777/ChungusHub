@@ -344,7 +344,8 @@
 		if (latest) {
 			await chatStore.selectChat(latest);
 		} else {
-			await chatStore.createChat({ characterId: id });
+			uiStore.startNewChat(undefined, id);
+			return;
 		}
 		uiStore.closeOverlay();
 		if (!viewport.canDockSettings && !chatStore.personaSelectionChatId) uiStore.closeLibrary();

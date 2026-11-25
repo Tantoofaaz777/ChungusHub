@@ -99,18 +99,16 @@ export interface LibraryEntry {
 	 * after that, so moving one never touches a story already under way, and what a chat is
 	 * actually played with is its own state alone.
 	 *
-	 * Absent means the app answers: the connection Primary routes to and the active preset.
-	 * Personas are always chosen explicitly. `defaultVersionId` is the exception, because a version pin
-	 * is not optional the way the others are: absent there means the first version ever made.
+	 * Unset defaults follow the app's Primary connection and the device's TTS settings.
 	 *
 	 * These are deliberately siblings of `data` rather than fields inside it, so they
 	 * never mirror into a version row and never reach a card export.
 	 */
-	/** Legacy field kept for import compatibility; new chats ignore it. */
+	/** Legacy settings kept for compatibility with older library data. */
 	defaultPersonaId?: string;
-	defaultConnectionId?: string;
 	defaultPresetId?: string;
 	defaultVersionId?: string;
+	defaultConnectionId?: string;
 	defaultAndroidVoice?: AndroidVoiceChoice;
 	/** Private note shared by all chats with this character, outside card/version data. */
 	characterAuthorsNote?: CharacterAuthorsNote;
@@ -124,8 +122,6 @@ export interface LibraryEntry {
 export type ChatDefaultKey =
 	| 'defaultPersonaId'
 	| 'defaultConnectionId'
-	| 'defaultPresetId'
-	| 'defaultVersionId'
 	| 'defaultAndroidVoice';
 
 /**

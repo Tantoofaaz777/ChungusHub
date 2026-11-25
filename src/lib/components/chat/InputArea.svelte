@@ -156,7 +156,7 @@
 		if (messageStore.warnIfBusy()) return;
 		const entry = activeCharacterEntry;
 		if (!entry) throw new Error('New chat: this story has no library character');
-		void chatStore.createChat({ characterId: entry.id });
+		uiStore.startNewChat(undefined, entry.id);
 	}
 
 	// Raises the find-in-chat bar over the message list (MessageList owns the mount).

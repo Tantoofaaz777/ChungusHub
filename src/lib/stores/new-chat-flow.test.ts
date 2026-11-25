@@ -11,6 +11,7 @@
  * `$effect`, this file fails loudly instead of testing stale values.
  */
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { planNewChatSetup } from '#lib/utils/new-chat-setup.ts';
 
 (globalThis as unknown as { $state: <T>(v?: T) => T | undefined }).$state = (v) => v;
 
@@ -49,6 +50,16 @@ afterEach(() => {
 });
 
 describe('startNewChat', () => {
+	test('opens the persona picker when a New chat action already names a character', () => {
+		uiStore.startNewChat(undefined, 'chosen-card');
+
+		expect(uiStore.libraryOpen).toBe(true);
+		expect(uiStore.libraryTab).toBe('personas');
+		expect(uiStore.newChatStep).toBe('persona');
+		expect(uiStore.newChatCharacterId).toBe('chosen-card');
+		expect(uiStore.newChatTargetChatId).toBeNull();
+	});
+
 	test('arms the flow and stages the Library on Characters', () => {
 		uiStore.startNewChat();
 
@@ -102,6 +113,28 @@ describe('startNewChat', () => {
 		expect(uiStore.newChatStep).toBeNull();
 		expect(uiStore.libraryOpen).toBe(false);
 		expect(uiStore.guardPulse).toBe(pulseBefore + 1);
+	});
+});
+
+describe('new chat options', () => {
+	const one = { id: 'one', name: 'One' };
+	const two = { id: 'two', name: 'Two' };
+
+	test('asks for the preset, card version and persona version in order', () => {
+		const options = [one, two];
+		const plan = planNewChatSetup(options, options, options);
+		expect(plan.steps.map(({ key }) => key)).toEqual(['presetId', 'characterVersionId', 'personaVersionId']);
+		expect(plan.choices).toEqual({});
+	});
+
+	test('skips a single option between two choices and records its ID', () => {
+		const plan = planNewChatSetup([one, two], [one], [one, two]);
+		expect(plan.steps.map(({ key }) => key)).toEqual(['presetId', 'personaVersionId']);
+		expect(plan.choices).toEqual({ characterVersionId: one.id });
+	});
+
+	test('the chat opens directly with the only preset and no version rows', () => {
+		expect(planNewChatSetup([one], [], [])).toEqual({ steps: [], choices: { presetId: one.id } });
 	});
 });
 

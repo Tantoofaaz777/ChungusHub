@@ -297,25 +297,9 @@
 		close();
 	}
 
-	// The button follows the scope switch, because a list that says "every character"
-	// cannot have a New chat button that silently means one of them. Scoped to a
-	// character it means "another chat with them", created directly, greeting and all;
-	// createChat opens it, which dismisses the panel. Scoped to everything there is no
-	// character to inherit, so it hands off to the New chat flow instead (opening the
-	// Library drops this overlay on its own).
-	// The direct branch is refused mid-generation, same guard and same reason as the
-	// composer's own New chat row: createChat opens the chat it makes, and the stream
-	// appends into whichever chat state is current. The New chat branch only raises the
-	// Library, so it takes no guard: the pick that eventually creates a chat is several
-	// steps and a whole panel away.
-	async function handleNewChat() {
-		if (scopedCharacterId) {
-			if (messageStore.warnIfBusy()) return;
-			await chatStore.createChat({ characterId: scopedCharacterId });
-			close();
-		} else {
-			uiStore.startNewChat(() => lorebookStore.flush());
-		}
+	function handleNewChat() {
+		if (scopedCharacterId && messageStore.warnIfBusy()) return;
+		uiStore.startNewChat(() => lorebookStore.flush(), scopedCharacterId ?? undefined);
 	}
 
 	// ===== Row actions =====

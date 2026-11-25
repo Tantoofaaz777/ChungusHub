@@ -5,6 +5,9 @@
 	import { LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
 	import { uiStore } from '#lib/stores/ui.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
+	import { messageStore } from '#lib/stores/messages.svelte.ts';
+	import { presetService } from '#lib/services/presets.svelte.ts';
+	import { planNewChatSetup, type NewChatChoices } from '#lib/utils/new-chat-setup.ts';
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
@@ -18,6 +21,7 @@
 	import LibraryListRow from './LibraryListRow.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import LibraryPager from './LibraryPager.svelte';
+	import NewChatSetup from './NewChatSetup.svelte';
 	import {
 		SORT_OPTIONS,
 		PER_PAGE_OPTIONS,
@@ -164,7 +168,18 @@
 	let selectingPersona = $state(false);
 	let personaToVersion = $state<string | null>(null);
 	let selectableVersions = $derived(personaToVersion ? characterLibraryStore.versionsFor(personaToVersion) : []);
-	// The same shelf chooses before creating a chat or for a newly created chat.
+	let setup = $state<{
+		characterId: string;
+		personaId: string;
+		plan: ReturnType<typeof planNewChatSetup>;
+	} | null>(null);
+
+	$effect(() => {
+		if (!uiStore.newChatTargetChatId) personaToVersion = null;
+		if (setup && (uiStore.newChatStep !== 'persona' || uiStore.newChatTargetChatId ||
+			uiStore.newChatCharacterId !== setup.characterId)) setup = null;
+	});
+
 	async function handleSelectEntry(id: string, versionId?: string) {
 		if (selectingPersona) return;
 		const characterId = uiStore.newChatStep === 'persona' ? uiStore.newChatCharacterId : null;
@@ -172,20 +187,37 @@
 			handleEditEntry(id);
 			return;
 		}
-		if (!versionId && characterLibraryStore.versionsFor(id).length > 1) {
+		const targetChatId = uiStore.newChatTargetChatId;
+		const personaVersions = characterLibraryStore.versionsFor(id);
+		if (!targetChatId) {
+			const plan = planNewChatSetup(
+				presetService.getAllPresets(),
+				characterLibraryStore.versionsFor(characterId),
+				personaVersions
+			);
+			if (plan.steps.length) setup = { characterId, personaId: id, plan };
+			else await finishSelection(characterId, id, plan.choices);
+			return;
+		}
+		if (!versionId && personaVersions.length > 1) {
 			personaToVersion = id;
 			return;
 		}
-		const targetChatId = uiStore.newChatTargetChatId;
+		await finishSelection(characterId, id, { personaVersionId: versionId }, targetChatId);
+	}
+
+	async function finishSelection(characterId: string, personaId: string, choices: NewChatChoices, targetChatId?: string) {
+		if (selectingPersona || messageStore.warnIfBusy()) return;
 		selectingPersona = true;
 		try {
-			if (targetChatId) await chatStore.choosePersona(targetChatId, id, versionId);
-			else await chatStore.createChat({ characterId, personaId: id, personaVersionId: versionId });
+			if (targetChatId) await chatStore.choosePersona(targetChatId, personaId, choices.personaVersionId);
+			else await chatStore.createChat({ characterId, personaId, ...choices });
 			personaToVersion = null;
+			setup = null;
 			if (!uiStore.newChatStep && !chatStore.personaSelectionChatId &&
 				(!targetChatId || chatStore.activeChatId === targetChatId)) uiStore.closeLibrary();
 		} catch (error) {
-			toastStore.failed('select the persona for this chat', error);
+			toastStore.failed(targetChatId ? 'select the persona for this chat' : 'start the new chat', error);
 		} finally {
 			selectingPersona = false;
 		}
@@ -550,6 +582,17 @@
 		{/if}
 	</div>
 </div>
+
+{#if setup}
+	{@const { characterId, personaId, plan } = setup}
+	<NewChatSetup
+		steps={plan.steps}
+		initialChoices={plan.choices}
+		busy={selectingPersona}
+		onClose={() => (setup = null)}
+		onStart={(choices) => void finishSelection(characterId, personaId, choices)}
+	/>
+{/if}
 
 <Dialog open={personaToVersion !== null} onClose={() => { if (!selectingPersona) personaToVersion = null; }} title="Choose a persona version" size="sm">
 	<div class="flex max-h-64 flex-col gap-2 overflow-y-auto">

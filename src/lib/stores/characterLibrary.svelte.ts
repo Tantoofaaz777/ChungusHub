@@ -701,26 +701,6 @@ class CharacterLibraryStore {
 		return this._versions.filter((v) => v.entryId === entryId);
 	}
 
-	/**
-	 * The version a chat with this character is born pinned to: the character's own default
-	 * while that version still exists, else the first one ever made. Null for an unversioned
-	 * character, which pins nothing and follows live data.
-	 *
-	 * Deliberately NOT the active version. That pointer says which variant the library is
-	 * editing, and letting it decide what new chats start on means opening another variant in
-	 * the editor quietly changes what every story started afterwards is played against.
-	 *
-	 * Every door that mints a chat asks here, because a version pin is not optional the way a
-	 * persona or connection claim is: something has to answer it. The assistant's `create_chat`
-	 * spells the same rule server-side, where this cannot be imported.
-	 */
-	chatVersionSeed(entryId: string): string | null {
-		const versions = this.versionsFor(entryId);
-		const seed = this.getEntryById(entryId)?.defaultVersionId;
-		if (seed && versions.some((v) => v.id === seed)) return seed;
-		return versions[0]?.id ?? null;
-	}
-
 	getVersion(versionId: string): CharacterVersion | null {
 		return this._versions.find((v) => v.id === versionId) ?? null;
 	}

@@ -2,7 +2,7 @@
 	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import type { Snippet } from 'svelte';
 	import { scrimMotion, surfaceMotion } from './surface-motion';
-	import Icon from './Icon.svelte';
+	import Icon, { type IconName } from './Icon.svelte';
 
 	const panelActive = panelActivity();
 	type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
@@ -25,6 +25,7 @@
 		 *  The X and backdrop still use onClose. */
 		onEscape?: (event: KeyboardEvent) => void;
 		title?: string;
+		titleIcon?: IconName;
 		size?: DialogSize;
 		titleAlign?: 'center' | 'left';
 		titleDivider?: boolean;
@@ -57,6 +58,7 @@
 		onClose,
 		onEscape,
 		title,
+		titleIcon,
 		size = 'md',
 		titleAlign = 'center',
 		titleDivider = true,
@@ -225,10 +227,15 @@
 					<div class="dialog-heading px-5 py-3 border-border-subtle" class:border-b={titleDivider}>
 						<h2
 							id={titleId}
-							class="dialog-title text-lg font-ui font-semibold text-text-primary"
+							class="dialog-title text-lg font-ui font-semibold text-text-primary {titleIcon ? 'flex items-center gap-2.5' : ''}"
 							class:text-left={titleAlign === 'left'}
 							class:text-center={titleAlign === 'center'}
+							class:justify-center={!!titleIcon && titleAlign === 'center'}
+							class:pr-8={!!titleIcon && titleAlign === 'left' && dismissible}
 						>
+							{#if titleIcon}
+								<Icon name={titleIcon} class="h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+							{/if}
 							{title}
 						</h2>
 					</div>

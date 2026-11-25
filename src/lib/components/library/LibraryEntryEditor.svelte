@@ -4,7 +4,6 @@
 	import ChatDefaultSelect from './ChatDefaultSelect.svelte';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 	import { connectionStore } from '#lib/stores/connections.svelte.ts';
-	import { presetService } from '#lib/services/presets.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { speechSettingsStore as speech } from '#lib/stores/speech-settings.svelte.ts';
 	import EntryFormFields from './EntryFormFields.svelte';
@@ -78,65 +77,7 @@
 		if (defaultsOpen && androidVoiceAvailable && !speech.unsaved) void speech.load(true);
 	}
 
-	/** One row of the New Chat Defaults panel. A fifth seed is one more entry here. */
-	interface ChatDefaultRow {
-		key: Exclude<ChatDefaultKey, 'defaultAndroidVoice'>;
-		label: string;
-		/** The app's own answer, as this row calls it. */
-		fallback: string;
-		/** What that answer resolves to right now, named under it so it cannot be read as one
-		 *  more thing somebody made: an install genuinely has a connection called Default. */
-		detail: string | null;
-		/** Heading over the rows that come from the library. */
-		group: string;
-		options: { id: string; name: string }[];
-		/** Said when the stored id names something that no longer exists. */
-		gone: string;
-	}
-
-	let chatDefaults = $derived.by<ChatDefaultRow[]>(() => {
-		if (!entry) return [];
-		const versions = characterLibraryStore.versionsFor(entry.id);
-		const rows: ChatDefaultRow[] = [
-			{
-				key: 'defaultConnectionId',
-				label: 'Connection',
-				// Not "Default" here: a connection can BE named Default (a fresh install's is), and
-				// an option naming one of the rows under it is a trap.
-				fallback: 'Global',
-				detail: connectionStore.connectionFor('primary')?.name ?? 'No connection',
-				group: 'Connections',
-				options: connectionStore.list().map((c) => ({ id: c.id, name: c.name })),
-				gone: "That connection is gone, so new chats send on the app's."
-			},
-			{
-				key: 'defaultPresetId',
-				// Not "Default" either, and for the connection row's reason: a preset can be
-				// named Default, and an option naming one of the rows under it is a trap.
-				label: 'Preset',
-				fallback: 'Global',
-				detail: presetService.getActiveEffectivePreset()?.name ?? 'No preset',
-				group: 'Presets',
-				options: presetService.getAllPresets().map((p) => ({ id: p.id, name: p.name })),
-				gone: "That preset is gone, so new chats run the app's."
-			}
-		];
-		// Nothing to choose between on an unversioned character, and its chats pin nothing.
-		if (versions.length > 0) {
-			rows.push({
-				key: 'defaultVersionId',
-				label: 'Version',
-				// Which one that is carries the Default badge in the header's version menu too, so
-				// the answer is the same wherever the reader meets it.
-				fallback: 'Default',
-				detail: versions[0].name,
-				group: 'Versions',
-				options: versions.map((v) => ({ id: v.id, name: v.name })),
-				gone: 'That version is gone, so new chats start on the first one made.'
-			});
-		}
-		return rows;
-	});
+	let connectionOptions = $derived(connectionStore.list().map(({ id, name }) => ({ id, name })));
 
 	const typeLabel = 'Character';
 	const typeLabelLower = 'character';
@@ -328,27 +269,25 @@
 				</button>
 
 				{#if defaultsOpen}
+					{@const connectionId = entry.defaultConnectionId ?? null}
+					{@const connectionLost = !!connectionId && !connectionOptions.some((option) => option.id === connectionId)}
 					<div class="mt-2 space-y-3">
-						{#each chatDefaults as row (row.key)}
-							{@const stored = entry[row.key]}
-							{@const lost = !!stored && !row.options.some((option) => option.id === stored)}
-							<div>
-								<span id="{row.key}-{entryId}-label" class="slider-label block mb-1">{row.label}</span>
-								{#if lost}
-									<p class="mb-1 text-xs font-ui text-warning">{row.gone}</p>
-								{/if}
-								<ChatDefaultSelect
-									id="{row.key}-{entryId}"
-									value={stored ?? null}
-									fallbackLabel={row.fallback}
-									fallbackDetail={row.detail}
-									groupLabel={row.group}
-									options={row.options}
-									{lost}
-									onpick={(next) => handleChatDefaultChange(row.key, next)}
-								/>
-							</div>
-						{/each}
+						<div>
+							<span id="defaultConnectionId-{entryId}-label" class="slider-label block mb-1">Connection</span>
+							{#if connectionLost}
+								<p class="mb-1 text-xs font-ui text-warning">That connection is gone. New chats use the app's connection.</p>
+							{/if}
+							<ChatDefaultSelect
+								id="defaultConnectionId-{entryId}"
+								value={connectionId}
+								fallbackLabel="Global"
+								fallbackDetail={connectionStore.connectionFor('primary')?.name ?? 'No connection'}
+								groupLabel="Connections"
+								options={connectionOptions}
+								lost={connectionLost}
+								onpick={(next) => handleChatDefaultChange('defaultConnectionId', next)}
+							/>
+						</div>
 						{#if androidVoiceAvailable}
 							<div>
 								<span id="android-voice-{entryId}-label" class="slider-label block mb-1">Android TTS voice</span>

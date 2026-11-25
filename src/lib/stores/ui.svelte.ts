@@ -214,21 +214,21 @@ class UiStore {
 		this.cancelNewChat();
 	}
 
-	/** Begin the New chat flow: the Library opens on Characters, a character pick
-	 *  advances to Personas, a persona pick creates the fresh chat. The flow ends
+	/** Begin the New chat flow on the first shelf that still needs a choice. The flow ends
 	 *  when the Library closes or any chat opens (chatStore.selectChat clears it). */
-	startNewChat(flushFn?: () => void) {
+	startNewChat(flushFn?: () => void, characterId?: string) {
 		if (this.navBlocked()) return;
 		this.cancelNewChat();
-		if (this.libraryTab !== 'characters') {
+		const tab = characterId ? 'personas' : 'characters';
+		if (this.libraryTab !== tab) {
 			flushFn?.();
-			this.libraryTab = 'characters';
+			this.libraryTab = tab;
 		}
 		// The wizard presents the browse list, so dismiss any open editor.
 		this.openEditor(null, null);
 		this.openLibrary(flushFn);
-		this.newChatStep = 'character';
-		this.newChatCharacterId = null;
+		this.newChatStep = characterId ? 'persona' : 'character';
+		this.newChatCharacterId = characterId ?? null;
 	}
 
 	/** Step 2 of the New chat flow: lock in the character pick, flip to Personas. */

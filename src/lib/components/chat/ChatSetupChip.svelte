@@ -166,10 +166,6 @@
 	// A null pin on a versioned character reads as the active variant, which is exactly
 	// what generation does with it.
 	let pinnedVersionId = $derived(chat?.characterVersionId ?? entry?.activeVersionId ?? null);
-	// What a chat with this character is born on. The pill compares against this and not the
-	// active version, so it answers "has this story broken away from what a new one would get"
-	// rather than "is the library editing another variant right now".
-	let versionSeed = $derived(entry ? characterLibraryStore.chatVersionSeed(entry.id) : null);
 
 	// ===== Lorebooks =====
 
@@ -302,7 +298,7 @@
 				label: 'Version',
 				noun: 'versions',
 				value: versions.find((v) => v.id === pinnedVersionId)?.name ?? 'Unknown',
-				diverged: !!chat?.characterVersionId && chat.characterVersionId !== versionSeed,
+				diverged: false,
 				// The one claim with no app value to fall back on, so this row says what the
 				// others cannot: the story stops sending until it is repinned, which is the
 				// throw the next send raises (utils/prompt-builder.ts) said before it happens.

@@ -210,10 +210,8 @@ export const COMMANDS: CommandDef[] = [
 		unavailable: (ctx) =>
 			ctx.characterEntryId ? null : "This story's character is gone from the library",
 		run: (_arg, ctx) => {
-			// Same guard as the menu row: createChat opens the chat it makes, which swaps out
-			// the state a running stream writes into.
 			if (messageStore.warnIfBusy()) return;
-			void chatStore.createChat({ characterId: ctx.characterEntryId! });
+			uiStore.startNewChat(undefined, ctx.characterEntryId!);
 		}
 	},
 	{

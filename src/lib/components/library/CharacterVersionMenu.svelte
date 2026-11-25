@@ -22,10 +22,6 @@
 	let entry = $derived(characterLibraryStore.entries.find((e) => e.id === entryId));
 	let versions = $derived(characterLibraryStore.versionsFor(entryId));
 	let activeVersion = $derived(versions.find((v) => v.id === entry?.activeVersionId) ?? null);
-	// The variant new chats are born on, which is the first one made until the editor's New
-	// Chat Defaults names another. Badged here because that panel's Version row calls it
-	// "Default" without naming it, and this list is where a reader finds out which one it is.
-	let defaultVersionId = $derived(characterLibraryStore.chatVersionSeed(entryId));
 	let persona = $derived(entry?.type === 'persona');
 
 	let open = $state(false);
@@ -78,6 +74,7 @@
 		busy = true;
 		try {
 			await characterLibraryStore.switchActiveVersion(entryId, versionId);
+			closeMenu();
 		} catch (error) {
 			toastStore.failed('switch to that version', error);
 		} finally {
@@ -179,7 +176,14 @@
 									maxlength="60"
 									autofocus
 								/>
-								<button type="button" class="version-action" title="Save name" onclick={handleRename}>
+								<button
+									type="button"
+									class="version-action"
+									title="Save name"
+									aria-label="Save name"
+									disabled={!renameValue.trim() || busy}
+									onclick={handleRename}
+								>
 									<Icon name="check" class="w-3.5 h-3.5" />
 								</button>
 							{:else}
@@ -194,9 +198,6 @@
 										<Icon name="check" class="w-3.5 h-3.5" />
 									</span>
 									<span class="version-name">{version.name}</span>
-									{#if version.id === defaultVersionId}
-										<span class="version-default">Default</span>
-									{/if}
 									{#if pinned > 0}
 										<span class="version-usage">{pinned} chat{pinned === 1 ? '' : 's'}</span>
 									{/if}
@@ -205,6 +206,8 @@
 									type="button"
 									class="version-action"
 									title="Rename"
+									aria-label={`Rename "${version.name}"`}
+									disabled={busy}
 									onclick={() => startRename(version.id, version.name)}
 								>
 									<Icon name="pencil" class="w-3.5 h-3.5" />
@@ -212,7 +215,7 @@
 								{#if versions.length > 1}
 									<button
 										type="button"
-										class="version-action"
+										class="version-action version-delete"
 										class:is-confirming={confirmingDeleteId === version.id}
 										title={pinned > 0
 											? `${pinned} chat${pinned === 1 ? ' is' : 's are'} pinned to this version`
@@ -319,13 +322,12 @@
 		padding-right: 0.4rem;
 	}
 
-	/* Row actions stay invisible until the row is hovered: the list reads as names. */
-	.version-row .version-action {
+	.version-delete {
 		opacity: 0;
 	}
 
-	.version-row:hover .version-action,
-	.version-row:focus-within .version-action {
+	.version-row:hover .version-delete,
+	.version-row:focus-within .version-delete {
 		opacity: 1;
 	}
 
@@ -380,18 +382,6 @@
 		flex-shrink: 0;
 		font-size: 0.62rem;
 		color: var(--color-text-muted);
-	}
-
-	/* The same accent pill the library wears on the persona new chats start as, since it
-	   answers the same question about a different thing. */
-	.version-default {
-		flex-shrink: 0;
-		padding: 0.05rem 0.35rem;
-		border-radius: var(--radius-full);
-		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-		font-size: 0.62rem;
-		font-weight: 600;
-		color: var(--color-accent);
 	}
 
 	.version-action {
