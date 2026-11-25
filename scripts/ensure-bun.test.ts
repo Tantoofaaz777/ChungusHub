@@ -30,12 +30,13 @@ async function fixture(options: FixtureOptions = {}) {
 	for (const dir of ['scripts', 'fakebin', 'home']) mkdirSync(join(root, dir), { recursive: true });
 	const target = options.target ?? (options.windows ? 'windows-x64' : 'linux-x64');
 	const filename = `bun-${target}`;
-	const body = options.windows ? options.version ?? '1.4.4' : `#!/usr/bin/env bash\nprintf '%s\\n' '${options.version ?? '1.4.4'}'\n`;
+	const archiveVersion = options.version ?? MINIMUM_BUN_VERSION;
+	const body = options.windows ? archiveVersion : `#!/usr/bin/env bash\nprintf '%s\\n' '${archiveVersion}'\n`;
 	const zip = options.corruptArchive ? Buffer.from('not a zip') : await archive(`${filename}/bun${options.windows ? '.exe' : ''}`, body);
 	writeFileSync(join(root, 'download.zip'), zip);
-	writeFileSync(join(root, 'scripts/bun-runtime.txt'), `minimum 1.4.4\nversion 1.4.4\n${target} ${filename}.zip ${createHash('sha256').update(zip).digest('hex')}\n`);
+	writeFileSync(join(root, 'scripts/bun-runtime.txt'), `minimum ${MINIMUM_BUN_VERSION}\nversion ${MINIMUM_BUN_VERSION}\n${target} ${filename}.zip ${createHash('sha256').update(zip).digest('hex')}\n`);
 	copyFileSync(resolve(`scripts/ensure-bun.${options.windows ? 'ps1' : 'sh'}`), join(root, `scripts/ensure-bun.${options.windows ? 'ps1' : 'sh'}`));
-	const cached = options.windows ? join(root, `cache/bun-1.4.4/${filename}/bun.exe`) : join(root, 'cache/bin/bun');
+	const cached = options.windows ? join(root, `cache/bun-${MINIMUM_BUN_VERSION}/${filename}/bun.exe`) : join(root, 'cache/bin/bun');
 	if (options.cachedVersion) {
 		mkdirSync(join(cached, '..'), { recursive: true });
 		writeFileSync(cached, options.windows ? options.cachedVersion : `#!/usr/bin/env bash\necho '${options.cachedVersion}'\n`, { mode: 0o755 });
@@ -55,7 +56,7 @@ function Find-ChungusSystemBun {
     return $null
 }
 function Save-ChungusBunArchive([string]$Url, [string]$Path) {
-    if ($Url -notmatch '^https://github[.]com/oven-sh/bun/releases/download/bun-v1[.]4[.]4/bun-windows-(x64|aarch64)[.]zip$') { throw 'Unexpected download URL' }
+    if ($Url -ne 'https://github.com/oven-sh/bun/releases/download/bun-v${MINIMUM_BUN_VERSION}/${filename}.zip') { throw 'Unexpected download URL' }
     [IO.File]::AppendAllText((Join-Path $Fixture 'downloads.log'), $Url + "\n")
     if ($Mode -eq 'network') { throw 'Simulated network failure' }
     if ($Mode -eq 'checksum') { [IO.File]::WriteAllText($Path, 'wrong bytes') }

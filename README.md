@@ -112,7 +112,7 @@ This project is **not** a fork of SillyTavern and shares none of its code.
 
 ### Requirements
 
-[Bun](https://bun.sh/) 1.4.4 or newer. CI and release builds use 1.4.4. Earlier versions are affected by [CVE-2026-111497](https://github.com/oven-sh/bun/security/advisories/GHSA-663w-cv8g-jj2p).
+[Bun](https://bun.sh/) 1.4.5 or newer. CI and release builds use [Bun 1.4.5](https://bun.com/blog/bun-v1.4.5) for its HTTP, TLS and DNS security fixes.
 The server and portable packaging refuse unsupported or prerelease runtimes before creating files or opening the database.
 
 For an existing installation, update the Bun executable used to start the server and restart it.

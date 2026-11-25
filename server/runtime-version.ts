@@ -1,5 +1,5 @@
 /** Security floor shared by startup and portable packaging. */
-export const MINIMUM_BUN_VERSION = '1.4.4';
+export const MINIMUM_BUN_VERSION = '1.4.5';
 
 export function unsupportedBunReason(version: string | undefined): string | null {
 	// Require a stable release. Build metadata is allowed; canary/prerelease builds
@@ -16,7 +16,7 @@ export function unsupportedBunReason(version: string | undefined): string | null
 	}
 	return [
 		`ChungusHub requires stable Bun ${MINIMUM_BUN_VERSION} or newer; detected ${version ? `Bun ${version}` : 'a runtime other than Bun'}.`,
-		'Earlier Bun versions are affected by CVE-2026-111497.',
+		'Bun 1.4.5 includes security fixes for HTTP, TLS and DNS. See https://bun.com/blog/bun-v1.4.5 for details.',
 		'Update the Bun executable used by your service or launcher, then restart. Portable servers must be rebuilt with the corrected Bun runtime.'
 	].join('\n');
 }

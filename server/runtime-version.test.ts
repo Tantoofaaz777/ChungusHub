@@ -7,16 +7,16 @@ import { MINIMUM_BUN_VERSION, unsupportedBunReason } from './runtime-version';
 import { removeDatabaseFixture } from './test-fixtures';
 
 test('runtime floor rejects affected, missing, malformed and prerelease versions', () => {
-	for (const version of [undefined, '', '1.3.9', '1.4.3', '0.99.99', '1.4.4-canary', '1.5.0-beta.1', '1.04.4', '1.4', 'garbage']) {
+	for (const version of [undefined, '', '1.3.9', '1.4.4', '0.99.99', '1.4.5-canary', '1.5.0-beta.1', '1.04.5', '1.4', 'garbage']) {
 		const reason = unsupportedBunReason(version);
 		expect(reason).toContain(`requires stable Bun ${MINIMUM_BUN_VERSION}`);
-		expect(reason).toContain('CVE-2026-111497');
+		expect(reason).toContain('security fixes');
 		expect(reason).toContain('Portable servers must be rebuilt');
 	}
 });
 
 test('runtime floor accepts the fixed release and compares newer versions numerically', () => {
-	for (const version of ['1.4.4', '1.4.4+build.1', '1.4.10', '1.10.0', '2.0.0', '10.0.0']) {
+	for (const version of [MINIMUM_BUN_VERSION, `${MINIMUM_BUN_VERSION}+build.1`, '1.4.10', '1.10.0', '2.0.0', '10.0.0']) {
 		expect(unsupportedBunReason(version)).toBeNull();
 	}
 });
@@ -35,7 +35,7 @@ for (const entry of ['server/index.ts', 'scripts/package.ts']) {
 			const built = await Bun.build({
 				entrypoints: [fileURLToPath(new URL(`../${entry}`, import.meta.url))],
 				target: 'bun',
-				define: { 'Bun.version': JSON.stringify('1.4.3') }
+				define: { 'Bun.version': JSON.stringify('1.4.4') }
 			});
 			expect(built.success).toBe(true);
 			const bundle = join(root, 'entry.js');
@@ -49,7 +49,7 @@ for (const entry of ['server/index.ts', 'scripts/package.ts']) {
 			const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
 			expect(code).toBe(1);
 			expect(stdout).toBe('');
-			expect(stderr).toContain('detected Bun 1.4.3');
+			expect(stderr).toContain('detected Bun 1.4.4');
 			expect(stderr).toContain(`requires stable Bun ${MINIMUM_BUN_VERSION}`);
 			expect(existsSync(join(root, 'data'))).toBe(false);
 			expect(readdirSync(root)).toEqual(['entry.js']);

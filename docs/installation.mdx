@@ -13,8 +13,8 @@ To produce a portable desktop server build locally, use `bun run package` as des
 
 ## Prerequisites
 
-[Bun](https://bun.sh) **1.4.4 or newer**. CI and release builds use 1.4.4. The database is SQLite.
-Earlier Bun versions are affected by [CVE-2026-111497](https://github.com/oven-sh/bun/security/advisories/GHSA-663w-cv8g-jj2p).
+[Bun](https://bun.sh) **1.4.5 or newer**. CI and release builds use [Bun 1.4.5](https://bun.com/blog/bun-v1.4.5)
+for its HTTP, TLS and DNS security fixes. The database is SQLite.
 The server and portable packaging refuse unsupported or prerelease runtimes before writing files.
 
 When upgrading, check the executable configured in your service and update script, not just
