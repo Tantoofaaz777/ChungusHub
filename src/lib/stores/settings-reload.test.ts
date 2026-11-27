@@ -9,11 +9,12 @@ let writes: string[] = [];
 mock.module('#lib/services/transport.ts', () => ({ ...realTransport, dbRpc: async (method: string, args: unknown[]) => {
 	if (method === 'getSetting') return new Promise((resolve, reject) => reads.push({ key: String(args[0]), resolve, reject }));
 	if (method === 'setSetting') { writes.push(String(args[0])); return; }
+	if (method === 'deleteConnectionCredentials') return;
 	throw new Error(`Unexpected test RPC: ${method}`);
 } }));
 const { generalSettingsStore } = await import('./general-settings.svelte');
 const { personaStore } = await import('./persona.svelte');
-const { connectionStore } = await import('./connections.svelte');
+const { connectionStore, THREADS_SUMMARY_POINT } = await import('./connections.svelte');
 const { libraryViewPrefs, personasViewPrefs } = await import('./browseViewPrefs.svelte');
 const instantiate = <T extends object>(store: T): T => new (store.constructor as { new(): T })();
 const settle = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
@@ -57,4 +58,30 @@ test('a routing read failure cannot publish half of a connections snapshot', asy
 	expect(reads).toHaveLength(2); reads[1].reject(new Error('routing offline'));
 	expect(await failed).toEqual(new Error('routing offline'));
 	expect(store.connections).toBe(initialConnections); expect(store.assignments).toBe(initialAssignments);
+});
+
+test('Threads summaries follow the feed by default and can route to a different connection', async () => {
+	const store = instantiate(connectionStore);
+	const load = (store as any).load() as Promise<void>;
+	reads[0].resolve(JSON.stringify([{ id: 'primary' }, { id: 'feed' }, { id: 'summary' }]));
+	await settle();
+	reads[1].resolve(JSON.stringify({ primary: 'primary', threads: 'feed' }));
+	await load;
+	const target = { engine: THREADS_SUMMARY_POINT };
+	expect(store.assignmentFor(THREADS_SUMMARY_POINT)).toBe('');
+	expect(store.connectionFor(target)?.id).toBe('feed');
+	store.setAssignment('threads', 'primary');
+	expect(store.connectionFor(target)?.id).toBe('primary');
+	store.setAssignment('threads', 'feed');
+	store.setAssignment(THREADS_SUMMARY_POINT, 'summary');
+	expect(store.connectionFor(target)?.id).toBe('summary');
+	expect(store.connectionFor({ engine: 'threads' })?.id).toBe('feed');
+	expect(store.assignedPoints('summary')).toEqual([THREADS_SUMMARY_POINT]);
+	store.setAssignment(THREADS_SUMMARY_POINT, '');
+	expect(store.connectionFor(target)?.id).toBe('feed');
+	store.setAssignment(THREADS_SUMMARY_POINT, 'summary');
+	store.remove('summary');
+	expect(store.assignmentFor(THREADS_SUMMARY_POINT)).toBe('');
+	expect(store.connectionFor(target)?.id).toBe('feed');
+	await settle();
 });

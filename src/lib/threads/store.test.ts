@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, test, expect, mock } from 'bun:test';
 import { emptyAo3Information } from '#shared/threads/ao3.ts';
 import type { SaveThreadsRound, ThreadsData, ThreadsRound, ThreadsFeed } from '#shared/threads/types.ts';
 import { DEFAULT_THREADS_CONFIG, DEFAULT_THREADS_INSTRUCTIONS } from '#shared/threads/model.ts';
+import type { CallTarget } from '#lib/types/llm.ts';
 const identity = <T>(value:T)=>value;
 (globalThis as any).$state = Object.assign(identity,{raw:identity,snapshot:structuredClone});
 (globalThis as any).$derived = Object.assign(identity,{by:(fn:()=>unknown)=>fn()});
@@ -9,18 +10,20 @@ const realDb={...await import('#lib/services/database.ts')};
 const realChat={...await import('#lib/stores/chat.svelte.ts')};
 const realLlm={...await import('#lib/services/llm/provider.ts')};
 const realTokenizer={...await import('#lib/tokenizer/index.ts')};
+const { THREADS_SUMMARY_POINT } = await import('#lib/stores/connections.svelte.ts');
 afterAll(()=>{
 	mock.module('#lib/services/database.ts',()=>realDb);mock.module('#lib/stores/chat.svelte.ts',()=>realChat);
 	mock.module('#lib/services/llm/provider.ts',()=>realLlm);mock.module('#lib/tokenizer/index.ts',()=>realTokenizer);
 });
 let reads: {chatId:string; resolve:(data:ThreadsData)=>void; reject:(error:Error)=>void}[]=[];
-let calls: {source:string; messages:{content:string}[]; signal:AbortSignal; onToken:(text:string)=>void; onThinkingToken:(text:string)=>void; resolve:(result:{content:string;thinking?:string})=>void}[]=[];
+let calls: {target:CallTarget; source:string; messages:{content:string}[]; signal:AbortSignal; onToken:(text:string)=>void; onThinkingToken:(text:string)=>void; resolve:(result:{content:string;thinking?:string})=>void}[]=[];
 let saved:SaveThreadsRound[]=[], failSave=false;
 let savedSummaries: { id: string; summary: string }[] = [];
 let resetGate: Promise<void> | null = null;
 let resets: {chatId:string; expected:{id:string;revision:number}[]}[]=[];
 let notesGate: Promise<void> | null = null;
 let tokenCalls: { text:string; model:string }[]=[];
+let summaryModel = 'test', summaryBudget = 100_000;
 const path=Array.from({length:5},(_,i)=>({id:String(i+1),parentId:i ? String(i) : null,role:'assistant',content:`Turn ${i+1}`,excludedFromPrompt:i===1}));
 const fakeChat:any={activeChat:{id:'a'},currentChatState:{chat:{id:'a'},activePath:path,allMessages:path}};
 const empty=():ThreadsData=>({rounds:[],notes:'',ao3:emptyAo3Information(),promptId:null});
@@ -43,7 +46,12 @@ mock.module('#lib/services/database.ts',()=>({...realDb,db:{
 	saveThreadsRound:async(input:SaveThreadsRound):Promise<ThreadsRound>=>{saved.push(input);if(failSave)throw new Error('Disconnected');return {...input,revision:1,createdAt:1,activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed:input.feed}]};}
 }}));
 mock.module('#lib/stores/chat.svelte.ts',()=>({...realChat,chatStore:fakeChat}));
-mock.module('#lib/services/llm/provider.ts',()=>({...realLlm,llmService:{modelFor:()=> 'test',getPromptTokenBudget:()=>100000,complete:(_target:unknown,options:any)=>new Promise(resolve=>calls.push({...options,resolve}))}}));
+const isSummaryTarget = (target: CallTarget) => typeof target === 'object' && 'engine' in target && target.engine === THREADS_SUMMARY_POINT;
+mock.module('#lib/services/llm/provider.ts',()=>({...realLlm,llmService:{
+	modelFor: (target: CallTarget) => isSummaryTarget(target) ? summaryModel : 'test',
+	getPromptTokenBudget: (target: CallTarget) => isSummaryTarget(target) ? summaryBudget : 100_000,
+	complete: (target: CallTarget, options: any) => new Promise(resolve => calls.push({ target, ...options, resolve }))
+}}));
 mock.module('#lib/tokenizer/index.ts',()=>({...realTokenizer,countTokens:(text:string,model:string)=>{tokenCalls.push({text,model});return 100;}}));
 const {ThreadsStore}=await import('./store.svelte');
 const {threadsConfigStore}=await import('./config.svelte');
@@ -51,6 +59,7 @@ const {featurePromptsStore}=await import('#lib/stores/featurePrompts.svelte.ts')
 const initialFeatureState=structuredClone(featurePromptsStore.state);
 let store:InstanceType<typeof ThreadsStore>;
 beforeEach(()=>{featurePromptsStore.state=structuredClone(initialFeatureState);reads=[];calls=[];saved=[];savedSummaries=[];resets=[];resetGate=null;failSave=false;notesGate=null;tokenCalls=[];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG};fakeChat.activeChat={id:'a'};fakeChat.currentChatState={chat:{id:'a'},activePath:path,allMessages:path};store=new ThreadsStore();});
+beforeEach(() => { summaryModel = 'test'; summaryBudget = 100_000; });
 async function open() {const p=store.load('a');reads.shift()!.resolve(empty());await p;}
 async function start() {store.selected=['5','2'];const p=store.generate();for(let i=0;i<100 && !calls.length;i++) await Promise.resolve();return {p};}
 function previous():ThreadsRound {return {id:'previous',chatId:'a',label:'Prior scene',revision:1,createdAt:1,messages:[{...path[0],role:'assistant',index:0,speaker:'Narrator'}],activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed}]};}
@@ -78,7 +87,7 @@ describe('Threads generation lifecycle',()=>{
 
 	test('summarizes only the story round leaving the full window and reuses it on the next generation', async () => {
 		await open();
-		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, previousMode: 'tokens', previousTokens: 0, summarizeOlderRounds: true, fandomThreads: 0 };
+		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, summarizeOlderRounds: true, fandomThreads: 0 };
 		featurePromptsStore.state.threadsSummaryPrompts = { activeId: 'summary', prompts: [{ id: 'summary', name: 'Recap', content: 'Summarize only {{lastMessage}}' }] };
 		const makeRound = (index: number) => ({ ...previous(), id: `round-${index + 1}`, label: `Episode ${index + 1}`,
 			messages: [{ ...previous().messages[0], ...path[index], role: 'assistant' as const, index }] });
@@ -124,19 +133,22 @@ describe('Threads generation lifecycle',()=>{
 
 	test('counts summary reasoning and response as they arrive and resets for each model call', async () => {
 		await open();
+		summaryModel = 'summary-test';
 		store.rounds = [previous(), { ...previous(), id: 'second', messages: [{ ...previous().messages[0], ...path[1], role: 'assistant' }] }];
 		store.selected = ['3'];
 		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, previousRounds: 1, summarizeOlderRounds: true };
 		const generation = store.generate();
 		for (let i = 0; i < 100 && calls.length < 1; i++) await Promise.resolve();
+		expect(calls[0].target).toEqual({ engine: THREADS_SUMMARY_POINT });
+		expect(tokenCalls).toContainEqual({ text: calls[0].messages[0].content, model: summaryModel });
 		expect(store.summaryProgress).toEqual({ current: 1, total: 2 });
 		calls[0].onThinkingToken('Planning recap');
 		calls[0].onToken('First ');
 		calls[0].onToken('scene');
 		await Bun.sleep(130);
 		expect(store.tokenProgress).toEqual({ reasoning: 100, response: 100 });
-		expect(tokenCalls).toContainEqual({ text: 'Planning recap', model: 'test' });
-		expect(tokenCalls).toContainEqual({ text: 'First scene', model: 'test' });
+		expect(tokenCalls).toContainEqual({ text: 'Planning recap', model: summaryModel });
+		expect(tokenCalls).toContainEqual({ text: 'First scene', model: summaryModel });
 		calls[0].resolve({ content: 'First recap' });
 		for (let i = 0; i < 100 && calls.length < 2; i++) await Promise.resolve();
 		expect(store.summaryProgress).toEqual({ current: 2, total: 2 });
@@ -145,15 +157,28 @@ describe('Threads generation lifecycle',()=>{
 		calls[1].onToken('Second scene');
 		await Bun.sleep(130);
 		expect(store.tokenProgress).toEqual({ reasoning: null, response: 100 });
-		expect(tokenCalls).toContainEqual({ text: 'Second scene', model: 'test' });
+		expect(tokenCalls).toContainEqual({ text: 'Second scene', model: summaryModel });
 		expect(tokenCalls.some(({ text }) => text.includes('Late first summary chunk'))).toBe(false);
 		calls[1].resolve({ content: 'Second recap' });
 		for (let i = 0; i < 100 && calls.length < 3; i++) await Promise.resolve();
 		expect(calls[2].source).toBe('threads');
+		expect(calls[2].target).toEqual({ engine: 'threads' });
+		expect(tokenCalls).toContainEqual({ text: calls[2].messages[0].content, model: 'test' });
 		expect(store.summaryProgress).toBeNull();
 		expect(store.tokenProgress).toEqual({ reasoning: null, response: null });
 		calls[2].resolve({ content: JSON.stringify(feed) });
 		await generation;
+	});
+
+	test('uses the summary connection context window when checking older scenes', async () => {
+		await open();
+		store.rounds = [previous()];
+		store.selected = ['2'];
+		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, previousRounds: 1, summarizeOlderRounds: true };
+		summaryBudget = 99;
+		await store.generate();
+		expect(calls).toHaveLength(0);
+		expect(store.error).toContain('summary model’s context window');
 	});
 
 	test('cancelling an in-flight summary prevents it from being saved or starting a feed call', async () => {
@@ -392,7 +417,7 @@ describe('Threads generation lifecycle',()=>{
 		expect(input.notes).toBe('A reader note');expect(input.previous).toHaveLength(1);
 		expect(calls).toHaveLength(0);expect(saved).toHaveLength(0);
 		const {threadsPrompt}=await import('#shared/threads/model.ts');
-		const expected=await threadsPrompt(input);const {p}=await start();
+		const expected=threadsPrompt(input);const {p}=await start();
 		expect(calls[0].messages[0].content).toBe(expected);
 		expect(expected).toContain('# Previous context\n\n## Prior scene\nTurn 1');
 		expect(expected).toContain('# Recent context\n\n## Current scene\nTurn 2\n\nTurn 5');
@@ -445,14 +470,15 @@ describe('Threads generation lifecycle',()=>{
 		expect(store.promptId).toBeNull();release();await writing;await store.flushNotes();expect(store.promptId).toBeNull();
 		const next=store.load('b');reads.shift()!.resolve({...empty(),promptId:'other'});await next;expect(store.promptId).toBe('other');
 	});
-	test('token continuity uses the engine model and captures the branch at generation time',async()=>{
-		await open();store.rounds=[previous()];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG,previousMode:'tokens',fandomMode:'tokens',previousTokens:150,fandomTokens:150};
-		const {p}=await start();expect(calls).toHaveLength(1);expect(tokenCalls.length).toBeGreaterThan(2);expect(tokenCalls.every(c=>c.model==='test')).toBe(true);
+	test('counts the complete prompt with the feed model and captures the branch at generation time',async()=>{
+		await open();store.rounds=[previous()];
+		const {p}=await start();expect(calls).toHaveLength(1);
+		expect(tokenCalls).toEqual([{text:calls[0].messages[0].content,model:'test'}]);
 		expect(calls[0].messages[0].content).toContain('# Previous context');expect(calls[0].messages[0].content).toContain('# Fandom continuity');
 		calls[0].resolve({content:JSON.stringify(feed)});await p;expect(saved[0].branchLeafId).toBe('5');
 	});
-	test('cancelling during token-budget assembly never starts a model call',async()=>{
-		await open();store.rounds=[previous()];store.selected=['2','5'];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG,previousMode:'tokens'};
+	test('cancelling during the final context window check never starts a model call',async()=>{
+		await open();store.rounds=[previous()];store.selected=['2','5'];
 		const p=store.generate();for(let i=0;i<100 && !tokenCalls.length;i++)await Promise.resolve();
 		expect(tokenCalls.length).toBeGreaterThan(0);store.cancel();await p;expect(calls).toHaveLength(0);expect(saved).toHaveLength(0);
 	});

@@ -3,9 +3,11 @@ import { chatStore } from '#lib/stores/chat.svelte.ts';
 import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 import { chatPersonaEntry, toPromptCharacter } from '#lib/utils/chat-setup.ts';
 import { llmService } from '#lib/services/llm/provider.ts';
+import { THREADS_SUMMARY_POINT } from '#lib/stores/connections.svelte.ts';
 import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 import { expandPromptSelfRefs, expandPromptTemplate, type MacroContext } from '#lib/macros.ts';
 import type { Message } from '#lib/types/chat.ts';
+import type { CallTarget } from '#lib/types/llm.ts';
 import { countTokens, withTokenizers } from '#lib/tokenizer/index.ts';
 import { toastStore } from '#lib/stores/toast.svelte.ts';
 import { AO3_TEXT_FIELDS, emptyAo3Information, type Ao3Information } from '#shared/threads/ao3.ts';
@@ -229,9 +231,10 @@ export class ThreadsStore {
 			await this.flushNotes();
 			if (controller.signal.aborted) return;
 			const { messages, branchLeafId, label, input, summaryPromptFor } = this.preparePrompt(round);
-			const target = { engine: 'threads' }, model = llmService.modelFor(target);
-			if (!model) throw new Error('Choose a model for Threads on Connections before generating.');
-			const completeWithProgress = async (source: 'threads' | 'threads-summary', prompt: string) => {
+			const feedTarget = { engine: 'threads' }, feedModel = llmService.modelFor(feedTarget);
+			if (!feedModel) throw new Error('Choose a model for Threads on Connections before generating.');
+			const completeWithProgress = async (target: CallTarget, model: string, source: 'threads' | typeof THREADS_SUMMARY_POINT, prompt: string) => {
+				if (llmService.modelFor(target) !== model) throw new Error('A Threads model changed during generation. Try again.');
 				this.tokenProgress = { reasoning: null, response: null };
 				let response = '', reasoning = '', done = false;
 				let progressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -260,24 +263,29 @@ export class ThreadsStore {
 					if (progressTimer !== null) clearTimeout(progressTimer);
 				}
 			};
-			const assemble = () => withTokenizers(async () => {
-				const prompt = await threadsPrompt({ ...input, countTokens: text => countTokens(text, model) });
-				if (countTokens(prompt, model) > llmService.getPromptTokenBudget(target)) {
-					throw new Error('This scene and its context exceed the connection’s context window. Select fewer messages or adjust the Threads continuity limits in Engines.');
-				}
-				return prompt;
-			});
+			const assemble = () => {
+				const prompt = threadsPrompt(input);
+				return withTokenizers(() => {
+					if (countTokens(prompt, feedModel) > llmService.getPromptTokenBudget(feedTarget)) {
+						throw new Error('This scene and its context exceed the connection’s context window. Select fewer messages or adjust the Threads continuity limits in Engines.');
+					}
+					return prompt;
+				});
+			};
 			let prompt = await assemble();
 			if (!current()) return;
 			const { older } = threadsStoryWindow(input.previous, normalizeThreadsConfig(input.config));
 			const missing = older.filter(scene => !scene.summary);
+			const summaryTarget = { engine: THREADS_SUMMARY_POINT };
+			const summaryModel = missing.length ? llmService.modelFor(summaryTarget) : '';
+			if (missing.length && !summaryModel) throw new Error('Choose a model for Threads summaries on Connections before generating.');
 			for (const [index, scene] of missing.entries()) {
 				const summaryPrompt = summaryPromptFor(scene);
-				const tokens = await withTokenizers(() => countTokens(summaryPrompt, model));
+				const tokens = await withTokenizers(() => countTokens(summaryPrompt, summaryModel));
 				if (!current()) return;
-				if (tokens > llmService.getPromptTokenBudget(target)) throw new Error('An older story round exceeds the connection’s context window for summarization.');
+				if (tokens > llmService.getPromptTokenBudget(summaryTarget)) throw new Error('An older story round exceeds the summary model’s context window. Choose a connection with a larger context window for Threads summaries.');
 				this.summaryProgress = { current: index + 1, total: missing.length };
-				const result = await completeWithProgress('threads-summary', summaryPrompt);
+				const result = await completeWithProgress(summaryTarget, summaryModel, THREADS_SUMMARY_POINT, summaryPrompt);
 				if (!current()) return;
 				const summary = result.content.trim();
 				if (!summary || summary.length > MAX_THREADS_SUMMARY_LENGTH) throw new Error('The model returned an empty or oversized Threads story summary.');
@@ -291,7 +299,7 @@ export class ThreadsStore {
 				if (!current()) return;
 				this.summaryProgress = null;
 			}
-			const result = await completeWithProgress('threads', prompt);
+			const result = await completeWithProgress(feedTarget, feedModel, 'threads', prompt);
 			if (!current()) return;
 			const feed = parseGeneratedThreadsFeed(result.content);
 			this.pending = round ? { round: structuredClone($state.snapshot(round)), versionId: crypto.randomUUID(), feed }

@@ -1,6 +1,6 @@
 /** Adapted from Tantoofaaz777/Threadverse (20ee3ca), AGPL-3.0; see architecture/threads.md. */
 import { describe, test, expect } from 'bun:test';
-import { buildThreadsPrompt, groupConsecutiveStoryRanges, installmentOrRoundLabel, selectNewestLabeledBlocksByTokenBudget, selectPreviousContextByTokenBudget } from './prompt';
+import { buildThreadsPrompt, groupConsecutiveStoryRanges, installmentOrRoundLabel } from './prompt';
 import { parseGeneratedThreadsFeed, parseThreadsFeed, serializeFeedAsPlainText, serializeFeedForContinuity } from './feed';
 import { emptyAo3Information } from './ao3';
 describe('Threads feed and context', () => {
@@ -64,42 +64,6 @@ describe('Threads feed and context', () => {
       '# Previous context\n\n## ZETA - S01E03\nScene A\n\nScene B\n\n## ZETA - S01E04\nScene C',
     )
     expect(prompt).toContain('# Recent context\n\n## ZETA - S01E05\nCurrent scene')
-  })
-
-  test('keeps the newest whole messages within the Previous Context token budget', async () => {
-    const countMessagesAsTokens = async (text: string) => text.match(/message/g)?.length ?? 0
-    const selected = await selectPreviousContextByTokenBudget([
-      { label: 'CHAPTER 1', messages: ['old message 1', 'old message 2'] },
-      { label: 'CHAPTER 2', messages: ['new message 1', 'new message 2'] },
-    ], 3, countMessagesAsTokens)
-
-    expect(selected).toEqual([
-      { label: 'CHAPTER 1', content: 'old message 2' },
-      { label: 'CHAPTER 2', content: 'new message 1\n\nnew message 2' },
-    ])
-    expect(await selectPreviousContextByTokenBudget([
-      { label: 'CHAPTER 1', messages: ['one message'] },
-    ], 0, countMessagesAsTokens)).toEqual([])
-  })
-
-  test('keeps only the newest whole fandom threads within its token budget', async () => {
-    const countThreadsAsTokens = async (text: string) => text.match(/thread/g)?.length ?? 0
-    const threads = [
-      { roundId: 'round-1', label: 'CHAPTER 1', content: 'old thread' },
-      { roundId: 'round-2', label: 'CHAPTER 2', content: 'middle thread' },
-      { roundId: 'round-3', label: 'CHAPTER 3', content: 'new thread' },
-    ]
-
-    expect(await selectNewestLabeledBlocksByTokenBudget(
-      threads,
-      2,
-      countThreadsAsTokens,
-    )).toEqual(threads.slice(-2))
-    expect(await selectNewestLabeledBlocksByTokenBudget(
-      threads,
-      0,
-      countThreadsAsTokens,
-    )).toEqual([])
   })
 
   test('uses only installment labels in fandom continuity with a legacy round fallback', () => {

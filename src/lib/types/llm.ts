@@ -366,10 +366,9 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
 
 /**
  * Who serves one model call. Routing is one flat map: every calling point
- * (`primary` = the story, plus each calling engine by id) is assigned its own
- * concrete connection in
- * `connectionStore.assignments`. There are no roles and no defaults-following: what
- * the Connections page shows is what the app routes each point to.
+ * (`primary` = the story, plus each calling engine by id) is assigned in
+ * `connectionStore.assignments`. Threads summaries can follow the Threads feed
+ * connection or use a separate assignment.
  *
  * `{ connection }` is the one target that names a connection outright instead of a
  * point in that map: a chat that has claimed its own connection sends on it, and

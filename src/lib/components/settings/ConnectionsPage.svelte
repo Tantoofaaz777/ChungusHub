@@ -6,9 +6,8 @@
 	 * Routing is one flat, always-visible list: every calling point with its own
 	 * pill select, nothing else. The point the user drives directly (Primary) sits
 	 * slightly emphasized on top; every calling engine follows right
-	 * below in the same shape. No roles, no groups, no "follows X" inheritance,
-	 * no warnings: a fresh install routes everything to the Default connection,
-	 * and re-pointing anything is the user's own, explicit choice.
+	 * below in the same shape. The Threads summaries row can use the Threads
+	 * feed connection or pick a separate one.
 	 *
 	 * This is the only place in the app that ROUTES a point, and it always speaks for the
 	 * app: the Engines page shows resolution read-only (architecture/engines.md), and a chat
@@ -20,7 +19,7 @@
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
 	import ConnectionEditor from './ConnectionEditor.svelte';
 	import { tick } from 'svelte';
-	import { connectionStore, ASSIGNMENT_IDS } from '#lib/stores/connections.svelte.ts';
+	import { connectionStore, ASSIGNMENT_IDS, ENGINE_ROUTING_POINTS, THREADS_SUMMARY_POINT } from '#lib/stores/connections.svelte.ts';
 	import ChatOverrideNotice from '#lib/components/ui/ChatOverrideNotice.svelte';
 	import { chatStore } from '#lib/stores/chat.svelte.ts';
 	import { chatConnectionId } from '#lib/utils/chat-setup.ts';
@@ -28,7 +27,6 @@
 	import { uiStore } from '#lib/stores/ui.svelte.ts';
 	import { type Connection, type ProviderName } from '#lib/types/llm.ts';
 	import { flashTarget } from '#lib/utils/flash-target.ts';
-	import { ENGINES } from '#lib/engines/registry.ts';
 
 	const connections = $derived(connectionStore.connections);
 	const editorId = $derived(uiStore.settingsConnectionId);
@@ -61,9 +59,7 @@
 		{ id: 'primary', label: 'Primary', icon: 'chat' }
 	];
 
-	// Every calling engine, registry order. Steering makes no call and is
-	// deliberately absent: there is nothing to route.
-	const ENGINE_POINTS: RoutePoint[] = ENGINES.filter((e) => e.makesCalls).map((e) => ({
+	const ENGINE_POINTS: RoutePoint[] = ENGINE_ROUTING_POINTS.map((e) => ({
 		id: e.id,
 		label: e.name,
 		icon: e.icon
@@ -134,9 +130,13 @@
 		<Select
 			variant="compact"
 			class="pill-select"
+			aria-label={point.label}
 			value={connectionStore.assignmentFor(point.id)}
 			onchange={(e) => connectionStore.setAssignment(point.id, (e.currentTarget as HTMLSelectElement).value)}
 		>
+			{#if point.id === THREADS_SUMMARY_POINT}
+				<option value="">Same as Threads · {modelShort(llmService.modelFor({ engine: 'threads' }))}</option>
+			{/if}
 			{#each connections as c (c.id)}
 				<option value={c.id}>{optionLabel(c)}</option>
 			{/each}

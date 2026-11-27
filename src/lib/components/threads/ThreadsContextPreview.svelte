@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { threadsPrompt, assembleThreadsPrompt, normalizeThreadsConfig, threadsStoryWindow } from '#shared/threads/model.ts';
+	import { threadsPrompt, normalizeThreadsConfig, threadsStoryWindow } from '#shared/threads/model.ts';
 	import { installmentOrRoundLabel } from '#shared/threads/prompt.ts';
 	import { countTokens, tokenCalibration, withTokenizers } from '#lib/tokenizer/index.ts';
 	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
@@ -9,7 +9,6 @@
 	let { count, input, model }: { count: number; input: Parameters<typeof threadsPrompt>[0] | null; model: string } = $props();
 	let fullTokens = $state<number | null>(null);
 	let calculating = $state(false);
-	let previousTitles = $state<string[] | null>(null);
 	const panelActive = panelActivity();
 	let recentTokens = $state<number | null>(null);
 	let lastKey: string | null = null;
@@ -18,20 +17,14 @@
 	const format = (value: number) => value.toLocaleString('en-US');
 	const storyWindow = $derived(input ? threadsStoryWindow(input.previous, normalizeThreadsConfig(input.config)) : null);
 	const summariesPending = $derived(storyWindow?.older.some(round => !round.summary) ?? false);
-	// Round limits need no tokenizer. Token-budget titles come from the explicit count,
-	// so opening or editing this panel never starts tokenization just for the preview.
-	const titlesByRounds = $derived.by(() => {
-		if (!input || !storyWindow) return null;
-		const config = normalizeThreadsConfig(input.config);
-		if (!input.previous.length) return [];
-		if (!config.summarizeOlderRounds && config.previousMode === 'tokens') return config.previousTokens ? null : [];
+	const shownTitles = $derived.by(() => {
+		if (!input || !storyWindow) return [];
 		const { older, full } = storyWindow;
 		const start = input.previous.length - full.length;
 		const fullTitles = full.map((round, i) => installmentOrRoundLabel(round.label, start + i + 1))
 			.filter((title, i, titles) => i === 0 || title !== titles[i - 1]);
 		return [...older.map((r, i) => `${installmentOrRoundLabel(r.label, i + 1)} (${r.summary ? 'summary' : 'summary pending'})`), ...fullTitles];
 	});
-	const shownTitles = $derived(previousTitles ?? titlesByRounds);
 	const hasCount = $derived(recentTokens !== null && fullTokens !== null);
 	$effect(() => {
 		if (!panelActive()) { revision++; calculating = false; return; }
@@ -40,7 +33,7 @@
 		if (lastKey !== key) {
 			lastKey = key;
 			revision++; calculating = false;
-			recentTokens = null; fullTokens = null; previousTitles = null;
+			recentTokens = null; fullTokens = null;
 		}
 	});
 
@@ -50,21 +43,21 @@
 		const ticket = ++revision;
 		calculating = true;
 		try {
-			const result = await withTokenizers(async () => {
+			const result = await withTokenizers(() => {
 				if (ticket !== revision || !panelActive()) return null;
 				const recent = countTokens(snapshot.messages.map(message => message.content).join('\n\n'), assignedModel);
-				const result = await assembleThreadsPrompt({ ...snapshot, countTokens: text => countTokens(text, assignedModel) });
-				return { recent, full: Math.round(countTokens(result.prompt, assignedModel) * ratio), titles: result.previousTitles };
+				const full = Math.round(countTokens(threadsPrompt(snapshot), assignedModel) * ratio);
+				return { recent, full };
 			});
 			if (result && ticket === revision) {
-				recentTokens = result.recent; fullTokens = result.full; previousTitles = result.titles;
+				recentTokens = result.recent; fullTokens = result.full;
 			}
 		} catch (error) { if (ticket === revision) toastStore.failed('count Threads tokens', error); }
 		finally { if (ticket === revision) calculating = false; }
 	}
 </script>
 
-<div class="context-row"><span class="context-label">Previous context</span><strong class="previous-titles">{shownTitles === null ? calculating ? '…' : 'Count tokens to preview' : shownTitles.length ? shownTitles.join(' • ') : 'None yet'}</strong></div>
+<div class="context-row"><span class="context-label">Previous context</span><strong class="previous-titles">{shownTitles.length ? shownTitles.join(' • ') : 'None yet'}</strong></div>
 <div class="context-row">
 	<span class="context-label">Recent context</span>
 	<span class="selection-tokens">

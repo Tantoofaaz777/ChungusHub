@@ -3,8 +3,7 @@
  * Steering, Spellcheck, Impersonate. Each engine is its own deep
  * system; this registry is their shared identity for the Engines settings
  * page: what the engine does, whether it makes model calls (every
- * calling engine is a routing point with its own concrete connection on the
- * Connections page, with no roles and no defaults-following), which editable
+ * calling engine has a routing point on the Connections page), which editable
  * templates drive it, and its app-wide on/off switch.
  *
  * Pure data plus tiny accessors: no engine logic lives here. An engine's id
@@ -56,8 +55,7 @@ export interface EngineDef {
 	/**
 	 * Whether this engine makes model calls of its own. Every calling engine is a
 	 * routing point: its connection is assigned directly and visibly on the
-	 * Connections page (`connectionStore.assignments`), with no role or default
-	 * behind it. `false` only for Steering, whose text rides the story generation
+	 * Connections page (`connectionStore.assignments`). `false` only for Steering, whose text rides the story generation
 	 * without a call of its own: it has nothing to assign.
 	 */
 	makesCalls: boolean;

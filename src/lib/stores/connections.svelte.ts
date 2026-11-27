@@ -5,12 +5,9 @@
  * half (API key + base URL) lives server-side keyed by the connection id
  * (the `connection_credentials` table), never in this object.
  *
- * Routing is ONE flat map (`assignments`), and every calling point carries its own
- * concrete connection id: `primary` (the story) and each calling engine by id.
- * There are no roles, no groups, no
- * "follows X" defaults, no pins: what the Connections page shows is literally
- * what each call rides. A fresh install binds every point to the one Default
- * connection; splitting them later is the user's own, explicit choice.
+ * Routing is one flat map (`assignments`) for the story and each calling engine.
+ * Threads summaries can use their own connection or use the Threads feed route.
+ * A fresh install uses the Default connection for every call.
  *
  * This store is the client-side source of truth for the non-secret connection
  * data and the routing map, riding the settings spine (cross-device synced).
@@ -36,12 +33,16 @@ import {
 
 const CONNECTIONS_KEY = 'connections';
 const ASSIGNMENTS_KEY = 'connectionAssignments';
+export const THREADS_SUMMARY_POINT = 'threads-summary';
 
-/** Every routing point, in display order: the story, then each
- *  calling engine (registry order). Steering makes no call and is absent. */
+const summaryPoint = { id: THREADS_SUMMARY_POINT, name: 'Threads summaries', icon: 'threads' } as const;
+export const ENGINE_ROUTING_POINTS = ENGINES.filter(engine => engine.makesCalls)
+	.flatMap(engine => engine.id === 'threads' ? [engine, summaryPoint] : [engine]);
+
+/** Every routing point in display order. */
 export const ASSIGNMENT_IDS: string[] = [
 	'primary',
-	...ENGINES.filter((e) => e.makesCalls).map((e) => e.id)
+	...ENGINE_ROUTING_POINTS.map(point => point.id)
 ];
 
 /** OpenRouter-first: a fresh connection points there until the user changes it. */
@@ -112,8 +113,7 @@ function normalizeConnection(raw: Partial<Connection> | null): Connection | null
 	};
 }
 
-/** Every point gets a valid connection id; anything missing or dangling lands on
- *  the first connection, visible in the UI immediately, never a hidden rule. */
+/** Missing connections use the first connection or, for summaries, the Threads route. */
 function normalizeAssignments(
 	raw: Partial<Record<string, string>> | null,
 	connections: Connection[]
@@ -123,14 +123,14 @@ function normalizeAssignments(
 	const out: Record<string, string> = {};
 	for (const point of ASSIGNMENT_IDS) {
 		const id = raw?.[point];
-		out[point] = id && ids.has(id) ? id : fallback;
+		out[point] = id && ids.has(id) ? id : point === THREADS_SUMMARY_POINT ? '' : fallback;
 	}
 	return out;
 }
 
 class ConnectionStore {
 	connections = $state<Connection[]>([]);
-	/** Routing point → connection id. Always complete after load. */
+	/** Routing point → connection id. An empty summary assignment uses Threads. */
 	assignments = $state<Record<string, string>>({});
 	private initialized = false;
 
@@ -212,46 +212,40 @@ class ConnectionStore {
 		this.persist();
 	}
 
-	/** Delete a connection (never the last one). Every point routed to it moves to
-	 *  the first remaining connection (visible in the UI right away) and its
-	 *  server-side credentials are dropped. */
+	/** Delete a connection (never the last one), resolve missing assignments and drop its credentials. */
 	remove(id: string): void {
 		if (this.connections.length <= 1) return;
 		this.connections = this.connections.filter((c) => c.id !== id);
-		const fallback = this.connections[0].id;
-		const next = { ...this.assignments };
-		for (const point of ASSIGNMENT_IDS) {
-			if (next[point] === id) next[point] = fallback;
-		}
-		this.assignments = next;
+		this.assignments = normalizeAssignments(this.assignments, this.connections);
 		this.persist();
 		void db.deleteConnectionCredentials(id);
 	}
 
-	/** The connection id a routing point currently uses. */
+	/** The selected option on the Connections page. */
 	assignmentFor(point: string): string {
 		return this.assignments[point] ?? '';
 	}
 
 	/** Route a point to a connection. */
 	setAssignment(point: string, connectionId: string): void {
-		if (!ASSIGNMENT_IDS.includes(point) || !this.get(connectionId)) return;
+		if (!ASSIGNMENT_IDS.includes(point)) return;
+		if (!(point === THREADS_SUMMARY_POINT && connectionId === '') && !this.get(connectionId)) return;
 		this.assignments = { ...this.assignments, [point]: connectionId };
 		this.persist();
 	}
 
-	/** The connection serving a call: a straight map lookup, or the connection a chat
-	 *  named for itself. A named connection that no longer exists is undefined here, and
+	/** Resolve a routed or explicitly named connection. A named connection that no longer exists is undefined here, and
 	 *  resolvePromptTarget is what turns that back into the routed one. */
 	connectionFor(target: CallTarget): Connection | undefined {
 		if (typeof target === 'object' && 'connection' in target) return this.get(target.connection);
 		const point = typeof target === 'object' ? target.engine : target;
-		return this.get(this.assignments[point] ?? '');
+		return this.get(this.assignmentFor(point)) ??
+			(point === THREADS_SUMMARY_POINT ? this.get(this.assignmentFor('threads')) : undefined);
 	}
 
 	/** Every routing point a connection currently serves (for the list UI's chips). */
 	assignedPoints(id: string): string[] {
-		return ASSIGNMENT_IDS.filter((point) => this.assignments[point] === id);
+		return ASSIGNMENT_IDS.filter(point => this.connectionFor(point === 'primary' ? 'primary' : { engine: point })?.id === id);
 	}
 }
 

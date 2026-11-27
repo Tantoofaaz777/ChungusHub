@@ -1,7 +1,6 @@
 import { describe, test, expect } from 'bun:test';
-import { activeThreadsFeed, selectThreadsMessages, threadsPrompt, assembleThreadsPrompt, DEFAULT_THREADS_CONFIG, normalizeThreadsConfig } from './model';
+import { activeThreadsFeed, selectThreadsMessages, threadsPrompt, DEFAULT_THREADS_CONFIG, normalizeThreadsConfig } from './model';
 import { emptyAo3Information } from './ao3';
-import { renderBlocks } from './prompt';
 import type { ThreadsRound } from './types';
 
 const path = Array.from({length:12}, (_,i) => ({ id:String(i+1), content:`Turn ${i+1}`, excludedFromPrompt:i===3 }));
@@ -16,107 +15,71 @@ describe('Threads selections and prompt boundaries', () => {
 	test('rejects missing, repeated, empty and already-used messages', () => {
 		for (const ids of [[],['1','1'],['gone'],['2']]) expect(()=>selectThreadsMessages(path,ids,new Set(['2']))).toThrow();
 	});
-	test('story context and audience continuity have independent windows, including zero', async () => {
+	test('story context and audience continuity have independent windows, including zero', () => {
 		const previous = [round('1'),round('2'),round('3')];
 		const input = {messages:round('4').messages,label:'Newest',previous,notes:'Remember the running joke',ao3:emptyAo3Information(),instructions:'Discuss only',config:{previousRounds:1,fandomThreads:2}};
-		const prompt = await threadsPrompt(input);
+		const prompt = threadsPrompt(input);
 		expect(prompt).toContain('Story 3'); expect(prompt).not.toContain('Story 2');
 		expect(prompt).toContain('Reaction 2'); expect(prompt).not.toContain('Reaction 1');
 		expect(prompt).toContain('Story 4'); expect(prompt).toContain('Remember the running joke');
-		const noContext = await threadsPrompt({...input,config:{previousRounds:0,fandomThreads:0}});
+		const noContext = threadsPrompt({...input,config:{previousRounds:0,fandomThreads:0}});
 		expect(noContext).not.toContain('# Previous context'); expect(noContext).not.toContain('# Fandom continuity');
 		expect(noContext).toContain('Story 4');
 	});
-	test('summary mode counts the current scene and retains cached summaries independently from fandom', async () => {
+	test('summary mode counts the current scene and retains cached summaries independently from fandom', () => {
 		const previous = [{ ...round('1'), summary: 'First recap' }, round('2'), round('3')];
 		const input = { messages: round('4').messages, label: 'Newest', previous, notes: '', ao3: emptyAo3Information(), instructions: 'Discuss',
-			config: { previousMode: 'tokens' as const, previousTokens: 0, previousRounds: 3, summarizeOlderRounds: true, fandomThreads: 1 } };
-		const enabled = await assembleThreadsPrompt(input);
-		expect(enabled.previousTitles).toEqual(['Episode 1 (summary)', 'Episode 2', 'Episode 3']);
-		expect(enabled.prompt).toContain('## Episode 1\nSummary:\nFirst recap\n\n## Episode 2\nStory 2');
-		expect(enabled.prompt).toContain('Reaction 3');
-		expect(enabled.prompt).not.toContain('Story 1');
-		const disabled = await assembleThreadsPrompt({ ...input, config: { ...input.config, summarizeOlderRounds: false } });
-		expect(disabled.previousTitles).toEqual([]);
-		expect(disabled.prompt).not.toContain('First recap');
+			config: { previousRounds: 3, summarizeOlderRounds: true, fandomThreads: 1 } };
+		const enabled = threadsPrompt(input);
+		expect(enabled).toContain('## Episode 1\nSummary:\nFirst recap\n\n## Episode 2\nStory 2');
+		expect(enabled).toContain('Reaction 3');
+		expect(enabled).not.toContain('Story 1');
+		expect(enabled).not.toContain('Reaction 2');
+		const disabled = threadsPrompt({ ...input, config: { ...input.config, summarizeOlderRounds: false } });
+		expect(disabled).toContain('## Episode 1\nStory 1');
+		expect(disabled).not.toContain('First recap');
 	});
-	test('story sections have episode headings and only message content separated by blank lines', async () => {
+	test('story sections have episode headings and only message content separated by blank lines', () => {
 		const old=round('old');
 		old.messages.push({...old.messages[0],id:'reply',role:'user',speaker:'Private persona name',index:25,content:'Old user reply'});
 		const current=round('current').messages;
 		current.push({...current[0],id:'current-reply',role:'user',speaker:'Private persona name',index:42,content:'Current user reply'});
-		const prompt=await threadsPrompt({messages:current,label:'Private scene label',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:1,fandomThreads:0}});
+		const prompt=threadsPrompt({messages:current,label:'Private scene label',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:1,fandomThreads:0}});
 		expect(prompt.split('\n\n# Instructions')[0]).toBe('# Previous context\n\n## Episode old\nStory old\n\nOld user reply\n\n# Recent context\n\n## Private scene label\nStory current\n\nCurrent user reply');
 	});
-	test('only the active feed version reaches audience continuity', async () => {
+	test('only the active feed version reaches audience continuity', () => {
 		const r = round('1');
 		r.versions.push({id:'alternate',createdAt:2,feed:{...r.versions[0].feed,post:{username:'new',body:'A new theory',score:1}}});
 		r.activeVersionId = 'alternate'; expect(activeThreadsFeed(r).post.body).toBe('A new theory');
-		const prompt = await threadsPrompt({messages:round('2').messages,label:'Next',previous:[r],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:DEFAULT_THREADS_CONFIG});
+		const prompt = threadsPrompt({messages:round('2').messages,label:'Next',previous:[r],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:DEFAULT_THREADS_CONFIG});
 		expect(prompt).toContain('A new theory'); expect(prompt).not.toContain('Reaction 1');
 	});
-	test('groups matching consecutive episode titles in both count and token modes', async () => {
+	test('groups matching consecutive episode titles', () => {
 		const previous=[round('1'),round('2'),round('3')];
 		previous[0].label=previous[1].label='Chapter 1'; previous[2].label='Chapter 2';
-		for (const previousMode of ['rounds','tokens'] as const) {
-			const result=await assembleThreadsPrompt({messages:round('4').messages,label:'Chapter 3',previous,notes:'',ao3:emptyAo3Information(),instructions:'Discuss',
-				config:{previousMode,previousRounds:3,previousTokens:1000,fandomThreads:0},countTokens:text=>text.length});
-			expect(result.prompt.split('\n\n# Instructions')[0]).toBe('# Previous context\n\n## Chapter 1\nStory 1\n\nStory 2\n\n## Chapter 2\nStory 3\n\n# Recent context\n\n## Chapter 3\nStory 4');
-			expect(result.previousTitles).toEqual(['Chapter 1','Chapter 2']);
-		}
+		const prompt=threadsPrompt({messages:round('4').messages,label:'Chapter 3',previous,notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:3,fandomThreads:0}});
+		expect(prompt.split('\n\n# Instructions')[0]).toBe('# Previous context\n\n## Chapter 1\nStory 1\n\nStory 2\n\n## Chapter 2\nStory 3\n\n# Recent context\n\n## Chapter 3\nStory 4');
 	});
-	test('uses the original untitled range and round fallbacks rather than generated feed titles', async () => {
+	test('uses the original untitled range and round fallbacks rather than generated feed titles', () => {
 		const old=round('old');old.label='';
-		const prompt=await threadsPrompt({messages:round('new').messages,label:'',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:DEFAULT_THREADS_CONFIG});
+		const prompt=threadsPrompt({messages:round('new').messages,label:'',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:DEFAULT_THREADS_CONFIG});
 		expect(prompt).toContain('# Previous context\n\n## ROUND 1\nStory old');
 		expect(prompt).toContain('# Recent context\n\n## CURRENT RANGE\nStory new');
 		expect(prompt).toContain('# Fandom continuity\n\n## ROUND 1\n');
 		expect(prompt).not.toContain('## Feed old');
 	});
-	test('a historical message fits only if its episode heading also fits the budget', async () => {
-		const old=round('old'), block=renderBlocks([{label:old.label,content:old.messages[0].content}]);
-		const input={messages:round('new').messages,label:'Next',previous:[old],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',
-			config:{previousMode:'tokens' as const,previousTokens:block.length,fandomThreads:0},countTokens:(text:string)=>text.length};
-		expect((await assembleThreadsPrompt(input)).previousTitles).toEqual([old.label]);
-		expect((await assembleThreadsPrompt({...input,config:{...input.config,previousTokens:block.length-1}})).previousTitles).toEqual([]);
-	});
-	test('previous episode titles follow the same chronological count and token limits as the prompt', async () => {
-		const previous=[round('1'),round('2'),round('3')];previous.forEach((r,i)=>r.label=`Chapter ${i+1}`);
-		const input={messages:round('current').messages,label:'Next',previous,notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousRounds:3,fandomThreads:0},countTokens:(text:string)=>text.length};
-		const all=await assembleThreadsPrompt(input);
-		expect(all.previousTitles).toEqual(['Chapter 1','Chapter 2','Chapter 3']);expect(all.prompt).toBe(await threadsPrompt(input));
-		expect((await assembleThreadsPrompt({...input,config:{previousRounds:2}})).previousTitles).toEqual(['Chapter 2','Chapter 3']);
-		expect((await assembleThreadsPrompt({...input,config:{previousMode:'tokens',previousTokens:renderBlocks([{label:'Chapter 3',content:'Story 3'}]).length}})).previousTitles).toEqual(['Chapter 3']);
-		expect((await assembleThreadsPrompt({...input,config:{previousRounds:0}})).previousTitles).toEqual([]);
-	});
 	test('normalizes imported limits', () => {
 		expect(normalizeThreadsConfig({previousRounds:-5,fandomThreads:Infinity})).toMatchObject({previousRounds:0,fandomThreads:3});
 		expect(normalizeThreadsConfig({previousRounds:100,fandomThreads:1.9})).toMatchObject({previousRounds:50,fandomThreads:1});
 	});
-	test('token budgets retain newest whole source messages and full active feeds, including episode headings in the budget', async () => {
-		const older=round('old'), latest=round('new');
-		latest.messages.push({...latest.messages[0],id:'new-b',index:1,content:'Newest source'});
-		const sourceText='Newest source';
-		const storyBudget=renderBlocks([{label:latest.label,content:sourceText}]).length;
-		const {serializeFeedForContinuity}=await import('./feed');
-		const fandomBudget=renderBlocks([{label:latest.label,content:serializeFeedForContinuity(activeThreadsFeed(latest))}]).length;
-		const recent=round('current').messages;recent[0].content='CURRENT SCENE '.repeat(100);
-		const prompt=await threadsPrompt({messages:recent,label:'Now',previous:[older,latest],notes:'Keep notes',ao3:emptyAo3Information(),instructions:'Discuss',
-			config:{previousMode:'tokens',previousTokens:storyBudget,fandomMode:'tokens',fandomTokens:fandomBudget},countTokens:text=>text.length});
-		expect(prompt).toContain(sourceText);expect(prompt).not.toContain('Story new');expect(prompt).not.toContain('Story old');
-		expect(prompt).toContain('Reaction new');expect(prompt).not.toContain('Reaction old');
-		expect(prompt).toContain(recent[0].content.trim());expect(prompt).toContain('Keep notes');
-	});
-	test('tiny and zero token budgets omit whole blocks rather than truncate them', async () => {
-		const input={messages:round('current').messages,label:'Now',previous:[round('old')],notes:'',ao3:emptyAo3Information(),instructions:'Discuss',config:{previousMode:'tokens' as const,previousTokens:1,fandomMode:'tokens' as const,fandomTokens:1},countTokens:(text:string)=>text.length};
-		const prompt=await threadsPrompt(input);expect(prompt).not.toContain('# Previous context');expect(prompt).not.toContain('# Fandom continuity');expect(prompt).toContain('Story current');
-		const zero=await threadsPrompt({...input,config:{...input.config,previousTokens:0,fandomTokens:0},countTokens:()=>{throw new Error('A zero budget must not count');}});
-		expect(zero).toContain('Story current');
-	});
-	test('old settings keep count mode, modes retain inactive values, malformed budgets are normalized', () => {
-		expect(normalizeThreadsConfig({previousRounds:7,fandomThreads:4})).toEqual({...DEFAULT_THREADS_CONFIG,previousRounds:7,fandomThreads:4});
-		expect(normalizeThreadsConfig({previousMode:'tokens',previousRounds:7,previousTokens:100.9,fandomTokens:-3})).toMatchObject({previousMode:'tokens',previousRounds:7,previousTokens:100,fandomTokens:0});
-		expect(normalizeThreadsConfig({previousTokens:Infinity,fandomTokens:9000000})).toMatchObject({previousTokens:8000,fandomTokens:2000000});
+	test('old token-mode settings use the stored round and feed counts', () => {
+		const legacy = { previousMode: 'tokens', previousTokens: 0, previousRounds: 1, fandomMode: 'tokens', fandomTokens: 0, fandomThreads: 0 };
+		expect(normalizeThreadsConfig(legacy)).toEqual({ ...DEFAULT_THREADS_CONFIG, previousRounds: 1, fandomThreads: 0 });
+		const prompt = threadsPrompt({ messages: round('3').messages, label: 'Now', previous: [round('1'), round('2')], notes: '', ao3: emptyAo3Information(), instructions: 'Discuss', config: legacy });
+		expect(prompt).toContain('## Episode 2\nStory 2');
+		expect(prompt).not.toContain('Story 1');
+		expect(prompt).not.toContain('# Fandom continuity');
+		expect(normalizeThreadsConfig(null)).toEqual(DEFAULT_THREADS_CONFIG);
 	});
 
 });
