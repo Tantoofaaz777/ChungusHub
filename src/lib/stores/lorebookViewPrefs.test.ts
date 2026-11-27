@@ -48,10 +48,10 @@ describe('normalizeLorebookViewState: everything else the key can hold', () => {
 			expect(normalizeLorebookViewState({ cardSize, order: 'updated', viewMode: 'grid' }))
 				.toEqual({ ...LOREBOOK_VIEW_DEFAULTS, order: 'updated', viewMode: 'grid', gridColumns: 2 });
 		}
-		for (const gridColumns of [1, 2, 3]) {
+		for (const gridColumns of [1, 2, 3, 4]) {
 			expect(normalizeLorebookViewState({ gridColumns }).gridColumns).toBe(gridColumns);
 		}
-		for (const gridColumns of [0, 4, 1.5, '3', NaN, Infinity, null]) {
+		for (const gridColumns of [0, 5, 1.5, '3', NaN, Infinity, null]) {
 			expect(normalizeLorebookViewState({ gridColumns }).gridColumns).toBe(2);
 		}
 	});
@@ -83,11 +83,16 @@ describe('normalizeLorebookViewState: everything else the key can hold', () => {
 	test('a whole blob survives the trip it is written and read through', () => {
 		const stored = {
 			order: 'oldest',
-			viewMode: 'gallery',
+			viewMode: 'grid',
 			gridColumns: 3,
 			perPage: 25,
 			listCovers: false
 		} as const;
 		expect(normalizeLorebookViewState(JSON.parse(JSON.stringify(stored)))).toEqual(stored);
+	});
+
+	test('a saved Gallery layout opens in List and keeps the other preferences', () => {
+		const stored = { order: 'oldest', viewMode: 'gallery', gridColumns: 4, perPage: 25, listCovers: false };
+		expect(normalizeLorebookViewState(stored)).toEqual({ ...stored, viewMode: 'list' });
 	});
 });

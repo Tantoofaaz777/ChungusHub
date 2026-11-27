@@ -6,7 +6,7 @@
  * ride the settings spine so a choice on one device follows the user to the others.
  * One packed settings key per surface.
  */
-import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, CHARACTER_SORT_OPTIONS, type SortOption, type ViewMode } from '#lib/components/library/browse.ts';
+import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, normalizeViewMode, PER_PAGE_OPTIONS, CHARACTER_SORT_OPTIONS, type SortOption, type ViewMode } from '#lib/components/library/browse.ts';
 import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 
 interface BrowseViewState {
@@ -30,11 +30,9 @@ export const DEFAULTS: BrowseViewState = {
 	gridTags: false
 };
 
-const VIEW_MODES: ViewMode[] = ['grid', 'list', 'gallery'];
-
 /** Coerce a raw settings blob into a valid state, dropping anything out of range. */
 function normalize(raw: Partial<BrowseViewState> | null): BrowseViewState {
-	const viewMode = VIEW_MODES.includes(raw?.viewMode as ViewMode) ? (raw!.viewMode as ViewMode) : DEFAULTS.viewMode;
+	const viewMode = normalizeViewMode(raw?.viewMode);
 	const gridColumns = normalizeGridColumns(raw?.gridColumns);
 	// Validate against the characters superset: personas simply never offer the extras.
 	const sort = CHARACTER_SORT_OPTIONS.some((o) => o.id === raw?.sort) ? (raw!.sort as SortOption) : DEFAULTS.sort;

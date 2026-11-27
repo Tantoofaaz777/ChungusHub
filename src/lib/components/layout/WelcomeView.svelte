@@ -21,9 +21,9 @@
 
 	let chats = $derived(chatStore.sortedChats);
 	// Only chats that have actually been written in are worth resuming: a fresh
-	// blank chat (rootMessageId === null) isn't. Newest first, six until expanded.
+	// blank chat (rootMessageId === null) isn't. Show the most recent first.
 	let resumable = $derived(chats.filter((c) => c.rootMessageId !== null));
-	const INITIAL_CHAT_COUNT = 6;
+	const INITIAL_CHAT_COUNT = 3;
 	let expanded = $state(false);
 	let visibleCount = $state(INITIAL_CHAT_COUNT);
 	const CHAT_BATCH_SIZE = 50;

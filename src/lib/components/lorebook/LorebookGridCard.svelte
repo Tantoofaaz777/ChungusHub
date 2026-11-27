@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
-	 * One book as a compact grid tile: the name overlays the cover with Gallery's fade.
-	 * Entry and link counts belong to the larger Gallery cards and list rows.
+	 * A compact grid tile with the book's name over the cover.
+	 * List rows show entry and link counts.
 	 */
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import LibraryEntryMenu from '#lib/components/library/LibraryEntryMenu.svelte';
@@ -76,7 +76,7 @@
 			</div>
 		{/if}
 
-		<!-- Match Gallery's fade while keeping the grid's compact identity. -->
+		<!-- The fade keeps the name legible over the cover. -->
 		<div class="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/55 to-transparent pointer-events-none"></div>
 
 		{#if !selectionMode}

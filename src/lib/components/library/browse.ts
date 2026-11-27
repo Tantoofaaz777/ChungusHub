@@ -5,7 +5,11 @@
  */
 import type { LibraryEntry } from '#lib/types/library.ts';
 
-export type ViewMode = 'grid' | 'list' | 'gallery';
+export type ViewMode = 'grid' | 'list';
+
+export function normalizeViewMode(value: unknown): ViewMode {
+	return value === 'grid' ? 'grid' : 'list';
+}
 
 export type SortOption =
 	| 'a-z'

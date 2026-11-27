@@ -77,7 +77,7 @@
 	aria-pressed={selectionMode ? selected : undefined}
 	class="group flex items-center gap-3 px-4 py-3 rounded-[var(--radius-md)] cursor-pointer transition-colors {selected ? 'bg-accent/10 hover:bg-accent/15' : 'hover:bg-bg-tertiary/55'}"
 >
-	<div class="relative size-[60px] shrink-0 rounded-full bg-bg-tertiary overflow-hidden" class:self-start={entry.type === 'character'}>
+	<div class="relative size-[52px] shrink-0 rounded-full bg-bg-tertiary overflow-hidden" class:self-start={entry.type === 'character'}>
 		{#if resolvedImageUrl}
 			<img
 				src={resolvedImageUrl}

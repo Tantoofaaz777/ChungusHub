@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * Lorebook rows use the same 60px circular thumbnail and spacing as the Library list.
+	 * Lorebook rows use the same circular thumbnail and spacing as the Library list.
 	 * Books without a cover show the book icon in that frame.
 	 *
 	 * The meta line answers the two questions a shelf is scanned for: how big the book is,
@@ -69,7 +69,7 @@
 	<!-- When covers are hidden, the selection indicator occupies its own space. -->
 	{#if showCover}
 		<div
-			class="relative size-[60px] shrink-0 self-start grid place-items-center rounded-full bg-bg-tertiary text-text-muted overflow-hidden"
+			class="relative size-[52px] shrink-0 self-start grid place-items-center rounded-full bg-bg-tertiary text-text-muted overflow-hidden"
 		>
 			{#if cover}
 				<img

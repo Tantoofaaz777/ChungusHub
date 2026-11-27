@@ -14,10 +14,8 @@
 	import Spinner from '#lib/components/ui/Spinner.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
 	import Dialog from '#lib/components/ui/Dialog.svelte';
-	import Toggle from '#lib/components/ui/Toggle.svelte';
 	import BrowsePopover from './BrowsePopover.svelte';
 	import LibraryCompactCard from './LibraryCompactCard.svelte';
-	import LibraryGalleryCard from './LibraryGalleryCard.svelte';
 	import LibraryListRow from './LibraryListRow.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import LibraryPager from './LibraryPager.svelte';
@@ -365,7 +363,7 @@
 				<div class="brw-sec-head">
 					<span class="brw-sec-title">Layout</span>
 				</div>
-				<div class="brw-opts brw-opts--3" role="group" aria-label="View mode">
+				<div class="brw-opts" role="group" aria-label="View mode">
 					<button
 						type="button"
 						class="brw-opt"
@@ -375,16 +373,6 @@
 					>
 						<Icon name="grid" class="w-3.5 h-3.5" />
 						Grid
-					</button>
-					<button
-						type="button"
-						class="brw-opt"
-						class:is-active={viewMode === 'gallery'}
-						onclick={() => setViewMode('gallery')}
-						aria-pressed={viewMode === 'gallery'}
-					>
-						<Icon name="gallery" class="w-3.5 h-3.5" />
-						Gallery
 					</button>
 					<button
 						type="button"
@@ -419,13 +407,6 @@
 							aria-valuetext={`${gridColumns} ${gridColumns === 1 ? 'column' : 'columns'}`}
 						/>
 						<span class="text-xs text-text-secondary tabular-nums">{gridColumns}</span>
-					</div>
-				</div>
-				<div class="brw-sec">
-					<div class="flex items-center justify-between gap-2">
-						<span class="brw-sec-title">Show Tags</span>
-						<Toggle size="sm" checked={personasViewPrefs.gridTags}
-							onchange={(value) => personasViewPrefs.setGridTags(value)} label="Show tags on grid cards" />
 					</div>
 				</div>
 			{/if}
@@ -502,24 +483,6 @@
 				>
 					{#each paginatedEntries as entry (entry.id)}
 						<LibraryCompactCard
-							{entry}
-							showTags={personasViewPrefs.gridTags}
-							onSelect={handleSelectEntry}
-							onDuplicate={handleDuplicate}
-							onDelete={(id) => (deleteTargetId = id)}
-						{deleteBlockedReason}
-							onToggleFavorite={handleToggleFavorite}
-							onConvert={(id) => (convertId = id)}
-						/>
-					{/each}
-				</div>
-			{:else if viewMode === 'gallery'}
-				<div
-					class="brw-grid"
-					style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));"
-				>
-					{#each paginatedEntries as entry (entry.id)}
-						<LibraryGalleryCard
 							{entry}
 							onSelect={handleSelectEntry}
 							onDuplicate={handleDuplicate}

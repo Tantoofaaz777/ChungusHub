@@ -88,7 +88,7 @@
 			</div>
 		{/if}
 
-		<!-- The same fade as Gallery keeps the name legible over any portrait. -->
+		<!-- The fade keeps the name legible over the portrait. -->
 		<div class="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/55 to-transparent pointer-events-none"></div>
 
 		{#if !selectionMode}

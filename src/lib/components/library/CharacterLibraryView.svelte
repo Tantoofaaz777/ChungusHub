@@ -21,7 +21,6 @@
 	import type { ImportResult } from '#lib/services/sillyTavernImport.ts';
 	import BrowsePopover from './BrowsePopover.svelte';
 	import LibraryCompactCard from './LibraryCompactCard.svelte';
-	import LibraryGalleryCard from './LibraryGalleryCard.svelte';
 	import LibraryListRow from './LibraryListRow.svelte';
 	import LibraryPager from './LibraryPager.svelte';
 	import ExportDialog from './ExportDialog.svelte';
@@ -800,7 +799,7 @@
 					<div class="brw-sec-head">
 						<span class="brw-sec-title">Layout</span>
 					</div>
-					<div class="brw-opts brw-opts--3" role="group" aria-label="View mode">
+					<div class="brw-opts" role="group" aria-label="View mode">
 						<button
 							type="button"
 							class="brw-opt"
@@ -810,16 +809,6 @@
 						>
 							<Icon name="grid" class="w-3.5 h-3.5" />
 							Grid
-						</button>
-						<button
-							type="button"
-							class="brw-opt"
-							class:is-active={viewMode === 'gallery'}
-							onclick={() => setViewMode('gallery')}
-							aria-pressed={viewMode === 'gallery'}
-						>
-							<Icon name="gallery" class="w-3.5 h-3.5" />
-							Gallery
 						</button>
 						<button
 							type="button"
@@ -1188,27 +1177,6 @@
 						<LibraryCompactCard
 							{entry}
 							showTags={libraryViewPrefs.gridTags}
-							{selectionMode}
-							selected={selectedIds.has(entry.id)}
-							onToggleSelect={toggleSelect}
-							onSelect={handleSelectEntry}
-							onEdit={handleEditEntry}
-							onDuplicate={handleDuplicate}
-							onDelete={handleDelete}
-							onToggleFavorite={handleToggleFavorite}
-							onExport={handleExport}
-							onConvert={(id) => (convertId = id)}
-						/>
-					{/each}
-				</div>
-			{:else if viewMode === 'gallery'}
-				<div
-					class="brw-grid"
-					style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));"
-				>
-					{#each paginatedEntries as entry (entry.id)}
-						<LibraryGalleryCard
-							{entry}
 							{selectionMode}
 							selected={selectedIds.has(entry.id)}
 							onToggleSelect={toggleSelect}

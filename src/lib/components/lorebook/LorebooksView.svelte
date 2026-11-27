@@ -21,7 +21,6 @@
 	import LibraryPager from '#lib/components/library/LibraryPager.svelte';
 	import { foldForSearch, MAX_GRID_COLUMNS, PER_PAGE_OPTIONS } from '#lib/components/library/browse.ts';
 	import LorebookShelfRow from './LorebookShelfRow.svelte';
-	import LorebookGalleryCard from './LorebookGalleryCard.svelte';
 	import LorebookGridCard from './LorebookGridCard.svelte';
 	import LorebookActivationPanel from './LorebookActivationPanel.svelte';
 	import { rangeReset } from '#lib/actions/rangeReset.ts';
@@ -435,7 +434,7 @@
 
 				<div class="brw-sec">
 					<div class="brw-sec-head"><span class="brw-sec-title">Layout</span></div>
-					<div class="brw-opts brw-opts--3" role="group" aria-label="View mode">
+					<div class="brw-opts" role="group" aria-label="View mode">
 						<button
 							type="button"
 							class="brw-opt"
@@ -445,16 +444,6 @@
 						>
 							<Icon name="grid" class="w-3.5 h-3.5" />
 							Grid
-						</button>
-						<button
-							type="button"
-							class="brw-opt"
-							class:is-active={lorebookViewPrefs.viewMode === 'gallery'}
-							onclick={() => lorebookViewPrefs.setViewMode('gallery')}
-							aria-pressed={lorebookViewPrefs.viewMode === 'gallery'}
-						>
-							<Icon name="gallery" class="w-3.5 h-3.5" />
-							Gallery
 						</button>
 						<button
 							type="button"
@@ -777,23 +766,6 @@
 				{/each}
 			</div>
 			{@render pager()}
-		{:else if lorebookViewPrefs.viewMode === 'gallery'}
-			<div class="brw-grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
-				{#each paged as book (book.id)}
-					<LorebookGalleryCard
-						{book}
-						links={links.get(book.id) ?? 0}
-						{selectionMode}
-						selected={selectedIds.has(book.id)}
-						onToggleSelect={toggleSelect}
-						onOpen={open}
-						onExport={exportOne}
-						onDuplicate={duplicateOne}
-						onDelete={(id) => (deleteId = id)}
-					/>
-				{/each}
-			</div>
-			{@render pager()}
 		{:else}
 			<div class="flex flex-col divide-y divide-border-subtle">
 				{#each paged as book (book.id)}
@@ -816,8 +788,7 @@
 	</div>
 </div>
 
-<!-- Drawn under all three layouts, so the way to page a shelf is in the same place whichever
-     shape it is wearing. -->
+<!-- Both layouts share the same pagination. -->
 {#snippet pager()}
 	{#if totalPages > 1}
 		<div class="brw-pager">

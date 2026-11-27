@@ -16,7 +16,7 @@
  * order to decide what reaches the prompt first (`sortLorebooks` in lorebook/types.ts).
  */
 import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
-import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, PER_PAGE_OPTIONS, type ViewMode } from '#lib/components/library/browse.ts';
+import { DEFAULT_GRID_COLUMNS, normalizeGridColumns, normalizeViewMode, PER_PAGE_OPTIONS, type ViewMode } from '#lib/components/library/browse.ts';
 import type { LorebookSortOrder } from '#lib/lorebook/types.ts';
 
 const SETTINGS_KEY = 'lorebookSort';
@@ -32,8 +32,6 @@ export const LOREBOOK_SORT_OPTIONS: { id: LorebookSortOrder; label: string }[] =
 	{ id: 'most-entries', label: 'Most entries' },
 	{ id: 'fewest-entries', label: 'Fewest entries' }
 ];
-
-const VIEW_MODES: ViewMode[] = ['grid', 'list', 'gallery'];
 
 interface LorebookViewState {
 	order: LorebookSortOrder;
@@ -60,9 +58,7 @@ export function normalizeLorebookViewState(raw: unknown): LorebookViewState {
 	const blob = (typeof raw === 'string' ? { order: raw } : (raw ?? {})) as Partial<LorebookViewState>;
 	return {
 		order: LOREBOOK_SORT_OPTIONS.find((option) => option.id === blob.order)?.id ?? DEFAULTS.order,
-		viewMode: VIEW_MODES.includes(blob.viewMode as ViewMode)
-			? (blob.viewMode as ViewMode)
-			: DEFAULTS.viewMode,
+		viewMode: normalizeViewMode(blob.viewMode),
 		gridColumns: normalizeGridColumns(blob.gridColumns),
 		perPage: PER_PAGE_OPTIONS.includes(blob.perPage as number) ? (blob.perPage as number) : DEFAULTS.perPage,
 		listCovers: typeof blob.listCovers === 'boolean' ? blob.listCovers : DEFAULTS.listCovers
