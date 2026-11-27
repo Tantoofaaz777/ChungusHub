@@ -354,6 +354,19 @@
 				// user scrolling up, which drops the pin a frame later.
 				lastScrollTop = listElement.scrollTop;
 				hasUnseen = false;
+			} else if (isExtension && laterCount > 0 && messages[windowEnd - 1]?.id === prevLastMessageId) {
+				// The window reached the old end. Include the next turn if the reader is
+				// still on that last row, holding it in place as older rows leave the window.
+				if (nearBottom) {
+					void jumpToLatest();
+				} else {
+					hasUnseen = true;
+					const previousTail = rowAt(windowEnd - 1)?.getBoundingClientRect();
+					const viewport = listElement.getBoundingClientRect();
+					if (previousTail && previousTail.bottom > viewport.top && previousTail.top < viewport.bottom) {
+						void shiftWindow(1);
+					}
+				}
 			} else if ((isNewMessage || isStreaming) && nearBottom && !streamSettled) {
 				snapToBottom();
 			} else if (isNewMessage) {
