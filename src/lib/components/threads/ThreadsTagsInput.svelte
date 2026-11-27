@@ -120,7 +120,7 @@
 	<input {id} class="input-base new-tag" bind:this={input} bind:value={draft} onkeydown={keydown} onpaste={paste}
 		onblur={() => commit()} readonly={drag !== null} placeholder="Add a tag and press Enter…" />
 	{#if items.length}
-		<ul class="tag-list" aria-label="Additional tags" bind:this={tagList}
+		<ul class="tag-list" aria-label="Tags" bind:this={tagList}
 			use:dragHandleZone={{ items, type: 'threads-ao3-tags', flipDurationMs, dropTargetStyle: {}, dropFromOthersDisabled: true, dragDisabled: editing !== null, delayTouchStart: 180, useCursorForDetection: true }}
 			onconsider={considerReorder} onfinalize={finalizeReorder}>
 			{#each items as { id: tagId, text: tag, isDndShadowItem }, index (isDndShadowItem ? `shadow:${tagId}` : tagId)}

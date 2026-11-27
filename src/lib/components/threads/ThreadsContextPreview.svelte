@@ -81,10 +81,10 @@
 </div>
 
 <style>
-	.context-row { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:.35rem .6rem; min-width:0; }
+	.context-row { display:flex; flex-direction:column; align-items:center; gap:.15rem; min-width:0; text-align:center; }
 	.context-label { color:var(--color-text-muted); }
-	.previous-titles { flex:1; min-width:8rem; color:var(--color-accent); font-size:.72rem; font-weight:500; text-align:right; overflow-wrap:anywhere; }
-	.selection-tokens { display:inline-flex; flex-wrap:wrap; align-items:baseline; justify-content:flex-end; gap:.25rem; color:var(--color-accent); font-size:.72rem; font-weight:500; font-variant-numeric:tabular-nums; }
+	.previous-titles { max-width:100%; color:var(--color-accent); font-size:.72rem; font-weight:500; overflow-wrap:anywhere; }
+	.selection-tokens { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:center; gap:.25rem; max-width:100%; color:var(--color-accent); font-size:.72rem; font-weight:500; font-variant-numeric:tabular-nums; }
 	.token-count { display:inline-flex; align-items:center; gap:.3rem; padding:.125rem .25rem; border-radius:var(--radius-sm); color:var(--color-text-muted); font-family:var(--font-ui); font-size:.6875rem; font-variant-numeric:tabular-nums; transition:color 140ms ease, background-color 140ms ease; }
 	.token-count:hover:not(:disabled) { color:var(--color-text-primary); background:var(--color-bg-tertiary); }
 	.token-count.has-count { color:var(--color-accent); }

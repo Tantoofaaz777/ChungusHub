@@ -250,8 +250,16 @@
 					<div class="message-list" aria-label="Unused messages" onscroll={scrollMessages}>
 						{#each visibleMessages as message (message.id)}
 							<button class="message-row" class:is-selected={selected.has(message.id)} aria-pressed={selected.has(message.id)} disabled={store.busy} onclick={(event) => select(event,message.id)} onpointerdown={(event) => startTouch(event,message.id)} onpointermove={moveTouch} onpointerup={clearTouch} onpointercancel={clearTouch} oncontextmenu={(event) => event.preventDefault()}>
-								<span class="check" aria-hidden="true">{#if selected.has(message.id)}<Icon name="check" class="w-3 h-3" />{/if}</span><span class="message-number">#{message.index + 1}</span>
-								<span class="message-text"><span class="message-role">{message.role}{#if message.excludedFromPrompt}<span role="img" aria-label="Hidden message" title="Hidden message"><Icon name="eyeOff" class="w-3.5 h-3.5" aria-hidden="true" /></span>{/if}</span><span class="message-preview">{message.content || '(empty message)'}</span></span>
+								<span class="check" aria-hidden="true">{#if selected.has(message.id)}<Icon name="check" class="w-3 h-3" />{/if}</span>
+								<span class="message-text">
+									<span class="message-meta">
+										<span>#{message.index + 1}</span>
+										{#if message.excludedFromPrompt}
+											<span role="img" aria-label="Hidden message" title="Hidden message"><Icon name="eyeOff" class="w-3.5 h-3.5" aria-hidden="true" /></span>
+										{/if}
+									</span>
+									<span class="message-preview">{message.content || '(empty message)'}</span>
+								</span>
 							</button>
 						{:else}<p class="muted empty-list">{store.path.length ? 'All messages have been used. Continue the story to select a new scene.' : 'This chat has no messages yet.'}</p>{/each}
 						{#if hasMoreMessages}<div class="message-list-more"><Button variant="ghost" size="sm" disabled={store.busy} onclick={loadMoreMessages}>Load more messages</Button><span class="muted">{visibleMessages.length.toLocaleString()} / {availableMessages.length.toLocaleString()}</span></div>{/if}
@@ -329,10 +337,9 @@
 	.message-list-more { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.35rem 0; overflow-anchor:none; }
 	.message-row:disabled { opacity:.6; }
 	.check { width:1rem; height:1rem; display:flex; align-items:center; justify-content:center; border:1px solid var(--color-border); border-radius:3px; flex-shrink:0; color:var(--color-accent); }
-	.message-number { font-size:.72rem; color:var(--color-text-muted); flex-shrink:0; font-variant-numeric:tabular-nums; }
-	.message-text { display:flex; flex-direction:column; gap:.25rem; min-width:0; }
-	.message-role { display:flex; align-items:center; gap:.35rem; font-size:.64rem; color:var(--color-text-muted); }
-	.message-preview { font-size:.77rem; line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; line-clamp:3; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+	.message-text { display:flex; flex:1; flex-direction:column; gap:.25rem; min-width:0; }
+	.message-meta { display:flex; align-items:center; gap:.35rem; font-size:.72rem; color:var(--color-text-muted); font-variant-numeric:tabular-nums; }
+	.message-preview { font-size:.77rem; line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; line-clamp:4; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
 	.make-actions { flex-wrap:wrap; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
 	.make-actions > span { margin-right:auto; }
 	.empty-list { padding:1rem 0; }

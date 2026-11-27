@@ -18,7 +18,7 @@ export const AO3_TEXT_FIELDS = [
   ['title', 'Title'],
   ['fandom', 'Fandom'],
   ['relationships', 'Relationships'],
-  ['additionalTags', 'Additional Tags'],
+  ['additionalTags', 'Tags'],
 ] as const
 
 export interface Ao3Information {

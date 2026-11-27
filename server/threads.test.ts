@@ -75,7 +75,7 @@ describe('Threads persistence',()=>{
 		expect(db.select<{n:number}[]>('SELECT COUNT(*) AS n FROM threads_rounds WHERE chat_id = ?',[chatId])[0].n).toBe(0);
 		expect(db.select<{n:number}[]>('SELECT COUNT(*) AS n FROM threads_notes WHERE chat_id = ?',[chatId])[0].n).toBe(0);
 	});
-	test('multiple AO3 warnings and additional tags survive saving and reach the prompt together',()=>{
+	test('multiple AO3 warnings and tags survive saving and reach the prompt together',()=>{
 		const {chatId}=fixture();
 		const legacy={summary:'An old blurb',characters:'Alice and Bob',language:'English'};
 		const ao3={...emptyAo3Information(),enabled:true,...legacy,
@@ -89,7 +89,7 @@ describe('Threads persistence',()=>{
 		expect(saved).toMatchObject(legacy);
 		const prompt=serializeAo3Information(saved);
 		expect(prompt).toContain('Archive Warnings: Graphic Depictions Of Violence, Major Character Death');
-		expect(prompt).toContain('Additional Tags: Slow Burn, Found Family');
+		expect(prompt).toContain('Tags: Slow Burn, Found Family');
 		for (const value of Object.values(legacy)) expect(prompt).not.toContain(value);
 		expect(serializeAo3Information({...emptyAo3Information(),enabled:true,...legacy})).toBe('');
 		db.updateThreadsNotes(chatId,{ao3:{...saved,archiveWarnings:saved.archiveWarnings.slice(1),additionalTags:'Found Family'}});
