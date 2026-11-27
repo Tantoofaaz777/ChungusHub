@@ -20,6 +20,8 @@ describe('chapter → arc → volume replacement', () => {
 			const resolved = resolveScenes(rows, path);
 			expect(resolved.filter(r => r.status === 'active').map(r => r.scene.id)).toEqual([volume.id]);
 			expect(resolved.filter(r => r.status === 'covered')).toHaveLength(6);
+			expect(resolved.find(r => r.scene.id === 'a1')).toMatchObject({ status: 'covered', start: 4, end: 7 });
+			expect(resolved.find(r => r.scene.id === volume.id)).toMatchObject({ start: 0, end: 7 });
 			const history = sceneHistory(path, rows);
 			expect(history).toHaveLength(1);
 			expect(history[0].content).toBe('[1st summary]\nvolume text v\n[End of summary]');

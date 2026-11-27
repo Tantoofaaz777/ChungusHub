@@ -40,6 +40,7 @@ export interface SaveMemoryScene {
 	children?: MemoryChild[];
 }
 export type SceneStatus = 'active' | 'covered' | 'review' | 'other-branch' | 'other-version';
+/** Bounds identify a contiguous source on the current path. Status controls prompt coverage. */
 export interface ResolvedScene { scene: MemoryScene; status: SceneStatus; reason: string; start: number; end: number; coveredBy?: string }
 
 /** Present titles generated before chapters were named, preserving custom titles
@@ -81,7 +82,10 @@ export function resolveScenes(scenes: MemoryScene[], path: SceneMessage[], all: 
 	const positions = new Map(path.map((message, index) => [message.id, index]));
 	const signatures = new Map<string, string>();
 	const resolved = scenes.map((scene): ResolvedScene => {
-		const result = { scene, start: -1, end: -1 };
+		const indices = scene.source.map(source => positions.get(source.id));
+		const start = indices[0] ?? -1;
+		const contiguous = start >= 0 && indices.every((index, offset) => index === start + offset);
+		const result = { scene, start: contiguous ? start : -1, end: contiguous ? start + indices.length - 1 : -1 };
 		if (scene.reviewReason) return { ...result, status: 'review', reason: scene.reviewReason };
 		if (!MEMORY_LEVELS.includes(sceneLevel(scene))) return { ...result, status: 'review', reason: 'Unknown memory level.' };
 		if (!scene.source.length || !scene.content.trim()) return { ...result, status: 'review', reason: 'This chapter has no valid source or text.' };
@@ -92,12 +96,10 @@ export function resolveScenes(scenes: MemoryScene[], path: SceneMessage[], all: 
 			if (!signatures.has(message.id)) signatures.set(message.id, sceneSignature(message));
 			if (signatures.get(message.id) !== source.signature) return { ...result, status: 'review', reason: 'Source text, images or visibility changed.' };
 		}
-		const indices = scene.source.map((source) => positions.get(source.id));
 		if (indices.some((index) => index === undefined)) return { ...result, status: 'other-branch', reason: 'This chapter belongs to another branch.' };
-		const start = indices[0]!;
-		if (indices.some((index, offset) => index !== start + offset)) return { ...result, status: 'review', reason: 'The source range changed. Select its boundaries again.' };
-		if (!path.slice(start, start + indices.length).some((m) => !m.excludedFromPrompt)) return { ...result, status: 'review', reason: 'Every source message is hidden from the prompt.' };
-		return { scene, status: 'active', reason: '', start, end: start + indices.length - 1 };
+		if (!contiguous) return { ...result, status: 'review', reason: 'The source range changed. Select its boundaries again.' };
+		if (!path.slice(start, result.end + 1).some((m) => !m.excludedFromPrompt)) return { ...result, status: 'review', reason: 'Every source message is hidden from the prompt.' };
+		return { ...result, status: 'active', reason: '' };
 	});
 	const bySceneId = new Map(resolved.map(item => [item.scene.id, item]));
 	// Validate dependencies from the bottom up before choosing which summaries enter the prompt.

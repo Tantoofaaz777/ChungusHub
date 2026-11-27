@@ -22,7 +22,9 @@ describe('manual scene replacement', () => {
  });
  test('single-turn scenes and adjacent ranges are independent', () => {
   const a = scene([path[1]]), b = scene([path[2]], { id:'other' });
-  expect(resolveScenes([a,b],path).map((r) => r.status)).toEqual(['active','active']);
+  const resolved = resolveScenes([a,b],path);
+  expect(resolved[0]).toMatchObject({ status: 'active', start: 1, end: 1 });
+  expect(resolved[1]).toMatchObject({ status: 'active', start: 2, end: 2 });
   expect(sceneHistory(path,[a,b]).map((m) => m.id)).toEqual(['a','scene:s','scene:other','d']);
  });
  test.each(['content', 'excludedFromPrompt', 'attachments'] as const)('a source %s change preserves the summary for review and restores source messages', (field) => {
@@ -30,20 +32,20 @@ describe('manual scene replacement', () => {
   if(field === 'content') changed[1].content = 'Changed';
   if(field === 'excludedFromPrompt') changed[1].excludedFromPrompt = true;
   if(field === 'attachments') changed[1].attachments = [{kind:'image',path:'new.png'}];
-  expect(resolveScenes([scene()],changed)[0].status).toBe('review');
+  expect(resolveScenes([scene()],changed)[0]).toMatchObject({ status: 'review', start: 1, end: 2 });
   expect(sceneHistory(changed,[scene()]).some((m) => m.memorySceneId)).toBe(false);
   expect(sceneHistory(changed,[scene()]).some((m) => m.id === 'c')).toBe(true);
  });
  test('deleted source and changed range do not hide remaining messages', () => {
-  expect(resolveScenes([scene()],path.filter((m) => m.id !== 'b'))[0].status).toBe('review');
+  expect(resolveScenes([scene()],path.filter((m) => m.id !== 'b'))[0]).toMatchObject({ status: 'review', start: -1, end: -1 });
   const inserted: SceneMessage = {id:'new',parentId:'b',role:'user',content:'New turn'};
-  expect(resolveScenes([scene()],[...path.slice(0,2),inserted,...path.slice(2)])[0].status).toBe('review');
+  expect(resolveScenes([scene()],[...path.slice(0,2),inserted,...path.slice(2)])[0]).toMatchObject({ status: 'review', start: -1, end: -1 });
  });
  test('another swipe does not receive the saved scene; the original swipe still does', () => {
   const swipe: SceneMessage = {...path[2],id:'swipe',content:'We find nothing.'};
   const all = [...path,swipe];
   const branch = scenePath(all,'swipe');
-  expect(resolveScenes([scene()],branch,all)[0].status).toBe('other-branch');
+  expect(resolveScenes([scene()],branch,all)[0]).toMatchObject({ status: 'other-branch', start: -1, end: -1 });
   expect(sceneHistory(branch,[scene()])).toEqual(branch);
   expect(resolveScenes([scene()],path,all)[0].status).toBe('active');
  });

@@ -6,14 +6,16 @@
 	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import { chapterTitle, sceneLevel, type MemoryScene, type ResolvedScene } from '../../../../shared/memory-scenes';
 
-	let { item, model, onEdit, onRemove }: {
+	let { item, model, onGoTo, onEdit, onRemove }: {
 		item: ResolvedScene;
 		model: string;
+		onGoTo?: () => void;
 		onEdit: (chapter: MemoryScene) => void;
 		onRemove: (chapter: MemoryScene) => void;
 	} = $props();
 	let title = $derived(chapterTitle(item.scene.title));
 	let level = $derived(sceneLevel(item.scene));
+	const sourceRange = $derived(item.start < 0 ? '' : `#${item.start + 1}${item.start === item.end ? '' : `-${item.end + 1}`}`);
 	let expanded = $state(false);
 	// Only saved content and the chat's model affect this count. Expanding a preview
 	// or typing in the review dialog does not tokenize the chapter again.
@@ -31,14 +33,17 @@
 
 <article class="chapter-card">
 	<details class="chapter-preview" bind:open={expanded}>
-		<summary aria-label={`Preview ${level}: ${title}`}>
+		<summary aria-label={`Preview ${level}: ${title}${sourceRange ? `, source ${sourceRange}` : ''}`}>
 			<div class="chapter-heading">
 				<h4>{title}</h4>
 				<span class="chapter-status" class:needs-review={item.status === 'review'}>{item.status === 'active' ? 'In prompt' : item.status === 'review' ? 'Needs review' : item.status === 'covered' ? 'Compacted' : item.status === 'other-version' ? 'Other response version' : 'Outside this conversation'}</span>
 				<Icon name="chevronDown" class="chapter-chevron w-4 h-4" />
 			</div>
 			<div class="chapter-meta">
-				<span>{#if level !== 'chapter'}{item.scene.children?.length ?? 0} {level === 'arc' ? 'chapters' : 'arcs'}{' · '}{/if}{item.scene.source.length} {item.scene.source.length === 1 ? 'message' : 'messages'}</span>
+				<span>
+					{#if level !== 'chapter'}{item.scene.children?.length ?? 0} {level === 'arc' ? 'chapters' : 'arcs'}{' · '}{/if}
+					{item.scene.source.length} {item.scene.source.length === 1 ? 'message' : 'messages'}{#if sourceRange}{' · '}<span class="chapter-range">{sourceRange}</span>{/if}
+				</span>
 				<span class="chapter-tokens" title={`Estimated ${level} text tokens${model ? ` · ${model}` : ''}`}># {tokens?.toLocaleString() ?? '…'} tokens</span>
 			</div>
 		</summary>
@@ -46,6 +51,8 @@
 	</details>
 	{#if item.reason}<p class="chapter-reason">{item.reason}</p>{/if}
 	<div class="chapter-actions">
+		<Button variant="ghost" size="sm" class="chapter-go-to" onclick={onGoTo} disabled={!onGoTo}
+			aria-label={`Go to the last message for ${title}`} title={onGoTo ? undefined : 'The last source message is unavailable in this conversation.'}>Go to</Button>
 		<Button variant="ghost" size="sm" onclick={() => onEdit(item.scene)}>Review / edit</Button>
 		<Button variant="ghost" size="sm" onclick={() => onRemove(item.scene)} aria-label={`Remove ${level}: ${title}`}><Icon name="trash" class="w-4 h-4" /></Button>
 	</div>
@@ -64,9 +71,11 @@
 	.chapter-heading :global(.chapter-chevron) { flex-shrink:0; color:var(--color-text-muted); transition:transform 140ms ease; }
 	details[open] :global(.chapter-chevron) { transform:rotate(180deg); }
 	.chapter-meta { display:flex; justify-content:space-between; flex-wrap:wrap; gap:.5rem; font-size:.72rem; color:var(--color-text-muted); }
+	.chapter-range { white-space:nowrap; font-variant-numeric:tabular-nums; }
 	.chapter-tokens { font-variant-numeric:tabular-nums; }
 	.chapter-content { padding:0 .9rem .9rem; }
 	.chapter-content p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.85rem; line-height:1.6; }
 	.chapter-reason { color:var(--color-text-muted); font-size:.75rem; margin:0 .9rem .7rem; }
 	.chapter-actions { display:flex; justify-content:flex-end; gap:.3rem; padding:.3rem .5rem; border-top:1px solid var(--color-border-subtle); }
+	.chapter-actions :global(.chapter-go-to) { margin-right:auto; }
 </style>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
@@ -9,6 +9,8 @@
 	import MemoryChapter from './MemoryChapter.svelte';
 	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
+	import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
 	import { uiStore } from '#lib/stores/ui.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { resolvePromptTarget } from '#lib/utils/chat-setup.ts';
@@ -18,6 +20,7 @@
 	let body = $state<HTMLDivElement | null>(null);
 	let limits = $state<Record<MemoryLevel, number>>({ chapter: BATCH_SIZE, arc: BATCH_SIZE, volume: BATCH_SIZE });
 	const sections = $derived(MEMORY_LEVELS.map(level => ({ level, items: memoryStore.resolved.filter(r => sceneLevel(r.scene) === level) })));
+	const activeMessageIds = $derived(new Set(chatStore.currentChatState?.activePath.map(message => message.id)));
 	function loadMore(level: MemoryLevel) {
 		if (!panelActive() || !memoryStore.loaded || memoryStore.saving || memoryStore.activeChatId !== chatStore.activeChatId) return;
 		const total = sections.find(section => section.level === level)?.items.length ?? 0;
@@ -40,6 +43,14 @@
 		uiStore.gotoSettingsPage('engines');
 		uiStore.settingsEngineId = 'memory';
 		uiStore.openSettings();
+	}
+	async function goToSource(chatId: string, messageId: string) {
+		if (chatStore.activeChatId !== chatId || !activeMessageIds.has(messageId)) return;
+		uiStore.closeOverlay();
+		if (uiStore.activeOverlay) return;
+		chatSearch.close();
+		await tick();
+		if (chatStore.activeChatId === chatId && activeMessageIds.has(messageId)) chatCursor.goTo(messageId, 'start');
 	}
 	async function retryLoad() {
 		const id = chatStore.activeChatId;
@@ -82,7 +93,10 @@
 							<EmptyState icon="brain" size="sm" title={`No ${level}s yet`}>{level === 'chapter' ? 'Use ↓ and ↑ in message actions to select a chapter.' : `Combine consecutive ${level === 'arc' ? 'chapters' : 'arcs'} here.`}</EmptyState>
 						{:else}
 							{#each items.slice(0, limits[level]) as item (item.scene.id)}
-								<MemoryChapter {item} {model} onEdit={(chapter) => memoryStore.editScene(chapter)} onRemove={(chapter) => removing = chapter} />
+								{@const lastSourceId = item.scene.source.at(-1)?.id}
+								<MemoryChapter {item} {model}
+									onGoTo={lastSourceId && activeMessageIds.has(lastSourceId) ? () => goToSource(item.scene.chatId, lastSourceId) : undefined}
+									onEdit={(chapter) => memoryStore.editScene(chapter)} onRemove={(chapter) => removing = chapter} />
 							{/each}
 							{#if items.length > limits[level]}
 								<div class="memory-more" use:observeMore={level}>
