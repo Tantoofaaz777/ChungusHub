@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { threadsPrompt, assembleThreadsPrompt, normalizeThreadsConfig } from '#shared/threads/model.ts';
+	import { threadsPrompt, assembleThreadsPrompt, normalizeThreadsConfig, threadsStoryWindow } from '#shared/threads/model.ts';
 	import { installmentOrRoundLabel } from '#shared/threads/prompt.ts';
 	import { countTokens, tokenCalibration, withTokenizers } from '#lib/tokenizer/index.ts';
 	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
@@ -16,16 +16,20 @@
 	let revision = 0;
 	onDestroy(() => { revision++; });
 	const format = (value: number) => value.toLocaleString('en-US');
+	const storyWindow = $derived(input ? threadsStoryWindow(input.previous, normalizeThreadsConfig(input.config)) : null);
+	const summariesPending = $derived(storyWindow?.older.some(round => !round.summary) ?? false);
 	// Round limits need no tokenizer. Token-budget titles come from the explicit count,
 	// so opening or editing this panel never starts tokenization just for the preview.
 	const titlesByRounds = $derived.by(() => {
-		if (!input) return null;
+		if (!input || !storyWindow) return null;
 		const config = normalizeThreadsConfig(input.config);
-		if (!input.previous.length || (config.previousMode === 'tokens' && !config.previousTokens)) return [];
-		if (config.previousMode === 'tokens') return null;
-		const start = Math.max(0, input.previous.length - config.previousRounds);
-		return input.previous.slice(start).map((round, i) => installmentOrRoundLabel(round.label, start + i + 1))
+		if (!input.previous.length) return [];
+		if (!config.summarizeOlderRounds && config.previousMode === 'tokens') return config.previousTokens ? null : [];
+		const { older, full } = storyWindow;
+		const start = input.previous.length - full.length;
+		const fullTitles = full.map((round, i) => installmentOrRoundLabel(round.label, start + i + 1))
 			.filter((title, i, titles) => i === 0 || title !== titles[i - 1]);
+		return [...older.map((r, i) => `${installmentOrRoundLabel(r.label, i + 1)} (${r.summary ? 'summary' : 'summary pending'})`), ...fullTitles];
 	});
 	const shownTitles = $derived(previousTitles ?? titlesByRounds);
 	const hasCount = $derived(recentTokens !== null && fullTokens !== null);
@@ -67,11 +71,11 @@
 		<span>{count} {count === 1 ? 'msg' : 'msgs'} •</span>
 		<button type="button" class="token-count" class:has-count={hasCount} onclick={measure}
 			disabled={calculating || !input || !model}
-			aria-label={hasCount ? `Selected messages: ${format(recentTokens!)} tokens. Estimated full prompt: ${format(fullTokens!)} tokens. Count again` : 'Count tokens in Threads context'}
-			title="Selected message tokens • Estimated full prompt, including instructions, continuity, notes, AO3 metadata and the output format."
+			aria-label={hasCount ? `Selected messages: ${format(recentTokens!)} tokens. ${summariesPending ? 'Estimate before new summaries' : 'Estimated full prompt'}: ${format(fullTokens!)} tokens. Count again` : 'Count tokens in Threads context'}
+			title={summariesPending ? 'Selected message tokens • Estimated prompt before generating pending summaries.' : 'Selected message tokens • Estimated full prompt, including instructions, continuity, notes, AO3 metadata and the output format.'}
 			aria-live="polite">
 			<span aria-hidden="true">#</span>
-			{calculating ? 'Counting…' : hasCount ? `${format(recentTokens!)} tok • ~${format(fullTokens!)} tok` : 'Count tokens'}
+			{calculating ? 'Counting…' : hasCount ? `${format(recentTokens!)} tok • ~${format(fullTokens!)} tok${summariesPending ? ' before new summaries' : ''}` : 'Count tokens'}
 		</button>
 	</span>
 </div>

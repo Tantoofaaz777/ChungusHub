@@ -10,6 +10,7 @@
  */
 import { normalizeThreadsPrompts, activeThreadsPrompt, addThreadsPrompt, renameThreadsPrompt, selectThreadsPrompt, updateThreadsPrompt, removeThreadsPrompt, type ThreadsPromptLibrary } from '#shared/threads/presets.ts';
 import { DEFAULT_THREADS_INSTRUCTIONS } from '#shared/threads/model.ts';
+import { DEFAULT_THREADS_SUMMARY_INSTRUCTIONS } from '#shared/threads/summary.ts';
 import { readSetting, writeSetting, registerSettingsReload, reloadSettings } from '#lib/services/syncedSetting.ts';
 import { DEFAULT_PREVIOUS_SUMMARIES, normalizePreviousSummaries } from '#lib/memory/generation-context.ts';
 import { DEFAULT_MEMORY_REMINDER_INTERVAL, normalizeReminderInterval } from '#lib/memory/reminders.ts';
@@ -17,8 +18,10 @@ import { clampSteeringDepth, STEERING_ROLES, type SteeringDefaults, type Steerin
 
 const SETTINGS_KEY = 'featurePrompts';
 
+export type ThreadsPromptKey = 'threads' | 'threadsSummary';
+
 export type FeaturePromptKey =
-	| 'threads'
+	| ThreadsPromptKey
 	| 'openingScene'
 	| 'memoryScene'
 	| 'memoryArc'
@@ -49,6 +52,7 @@ Guidance: {{draft}}]`;
 /** Shipped default template per feature: the fallback when the user hasn't overridden it. */
 export const FEATURE_PROMPT_DEFAULTS: Record<FeaturePromptKey, string> = {
 	threads: DEFAULT_THREADS_INSTRUCTIONS,
+	threadsSummary: DEFAULT_THREADS_SUMMARY_INSTRUCTIONS,
 	openingScene: DEFAULT_OPENING_SCENE_PROMPT,
 	memoryScene: `Analyze the following roleplay scene and return a structured summary as JSON.
 
@@ -91,6 +95,7 @@ Return ONLY the JSON, no other text.`,
 
 interface FeaturePromptsState {
 	threadsPrompts: ThreadsPromptLibrary;
+	threadsSummaryPrompts: ThreadsPromptLibrary;
 	/** Only true deviations from the shipped defaults. */
 	overrides: Partial<Record<FeaturePromptKey, string>>;
 	/** App-wide engine switches. */
@@ -113,6 +118,7 @@ interface FeaturePromptsState {
 export function normalizeFeaturePrompts(raw: Partial<FeaturePromptsState> | null): FeaturePromptsState {
 	return {
 		threadsPrompts: normalizeThreadsPrompts(raw?.threadsPrompts, typeof raw?.overrides?.threads === 'string' ? raw.overrides.threads : DEFAULT_THREADS_INSTRUCTIONS),
+		threadsSummaryPrompts: normalizeThreadsPrompts(raw?.threadsSummaryPrompts, DEFAULT_THREADS_SUMMARY_INSTRUCTIONS),
 		overrides: Object.fromEntries(Object.entries(raw?.overrides ?? {}).filter(([key]) => Object.hasOwn(FEATURE_PROMPT_DEFAULTS, key))),
 		threadsEnabled: raw?.threadsEnabled ?? true,
 		memoryEnabled: raw?.memoryEnabled ?? true,
@@ -133,6 +139,7 @@ export function normalizeFeaturePrompts(raw: Partial<FeaturePromptsState> | null
 class FeaturePromptsStore {
 	state = $state<FeaturePromptsState>({
 		threadsPrompts: normalizeThreadsPrompts(null, DEFAULT_THREADS_INSTRUCTIONS),
+		threadsSummaryPrompts: normalizeThreadsPrompts(null, DEFAULT_THREADS_SUMMARY_INSTRUCTIONS),
 		overrides: {},
 		threadsEnabled: true,
 		memoryEnabled: true,
@@ -176,19 +183,23 @@ class FeaturePromptsStore {
 
 	get threadsPrompts(): ThreadsPromptLibrary { return this.state.threadsPrompts; }
 	get activeThreadsPrompt() { return activeThreadsPrompt(this.state.threadsPrompts); }
-	private saveThreadsPrompts(library: ThreadsPromptLibrary): void {
-		const content = activeThreadsPrompt(library).content, overrides = { ...this.state.overrides };
-		if (content === DEFAULT_THREADS_INSTRUCTIONS) delete overrides.threads; else overrides.threads = content;
-		this.state = { ...this.state, threadsPrompts: library, overrides };
+	threadsPromptLibrary(key: ThreadsPromptKey): ThreadsPromptLibrary { return this.state[`${key}Prompts`]; }
+	private saveThreadsPrompts(key: ThreadsPromptKey, library: ThreadsPromptLibrary): void {
+		const overrides = { ...this.state.overrides };
+		if (key === 'threads') {
+			const content = activeThreadsPrompt(library).content;
+			if (content === DEFAULT_THREADS_INSTRUCTIONS) delete overrides.threads; else overrides.threads = content;
+		}
+		this.state = { ...this.state, [`${key}Prompts`]: library, overrides };
 		this.persist();
 	}
-	createThreadsPrompt(name: string, content: string): void {
-		this.saveThreadsPrompts(addThreadsPrompt(this.threadsPrompts, { id: crypto.randomUUID(), name, content }));
+	createThreadsPrompt(key: ThreadsPromptKey, name: string, content: string): void {
+		this.saveThreadsPrompts(key, addThreadsPrompt(this.threadsPromptLibrary(key), { id: crypto.randomUUID(), name, content }));
 	}
-	renameThreadsPrompt(id: string, name: string): void { this.saveThreadsPrompts(renameThreadsPrompt(this.threadsPrompts, id, name)); }
-	selectThreadsPrompt(id: string): void { this.saveThreadsPrompts(selectThreadsPrompt(this.threadsPrompts, id)); }
-	updateThreadsPrompt(id: string, content: string): void { this.saveThreadsPrompts(updateThreadsPrompt(this.threadsPrompts, id, content)); }
-	deleteThreadsPrompt(id: string): void { this.saveThreadsPrompts(removeThreadsPrompt(this.threadsPrompts, id)); }
+	renameThreadsPrompt(key: ThreadsPromptKey, id: string, name: string): void { this.saveThreadsPrompts(key, renameThreadsPrompt(this.threadsPromptLibrary(key), id, name)); }
+	selectThreadsPrompt(key: ThreadsPromptKey, id: string): void { this.saveThreadsPrompts(key, selectThreadsPrompt(this.threadsPromptLibrary(key), id)); }
+	updateThreadsPrompt(key: ThreadsPromptKey, id: string, content: string): void { this.saveThreadsPrompts(key, updateThreadsPrompt(this.threadsPromptLibrary(key), id, content)); }
+	deleteThreadsPrompt(key: ThreadsPromptKey, id: string): void { this.saveThreadsPrompts(key, removeThreadsPrompt(this.threadsPromptLibrary(key), id)); }
 
 	get threadsEnabled(): boolean { return this.state.threadsEnabled; }
 	setThreadsEnabled(value: boolean): void { this.state = { ...this.state, threadsEnabled: value }; this.persist(); }
@@ -241,20 +252,20 @@ class FeaturePromptsStore {
 
 	/** The effective template for a feature: the user's override or the shipped default. */
 	promptFor(key: FeaturePromptKey): string {
-		if (key === 'threads') return this.activeThreadsPrompt.content;
+		if (key === 'threads' || key === 'threadsSummary') return activeThreadsPrompt(this.threadsPromptLibrary(key)).content;
 		return this.state.overrides[key] ?? FEATURE_PROMPT_DEFAULTS[key];
 	}
 
 	/** Whether the user has edited this feature's template away from its shipped default. */
 	isCustomized(key: FeaturePromptKey): boolean {
-		if (key === 'threads') return this.promptFor(key) !== DEFAULT_THREADS_INSTRUCTIONS;
+		if (key === 'threads' || key === 'threadsSummary') return this.promptFor(key) !== FEATURE_PROMPT_DEFAULTS[key];
 		const ov = this.state.overrides[key];
 		return ov !== undefined && ov !== FEATURE_PROMPT_DEFAULTS[key];
 	}
 
 	/** Save an edited template, or drop the override when it matches the default again. */
 	setPrompt(key: FeaturePromptKey, value: string): void {
-		if (key === 'threads') { this.updateThreadsPrompt(this.threadsPrompts.activeId, value); return; }
+		if (key === 'threads' || key === 'threadsSummary') { this.updateThreadsPrompt(key, this.threadsPromptLibrary(key).activeId, value); return; }
 		const overrides = { ...this.state.overrides };
 		if (value === FEATURE_PROMPT_DEFAULTS[key]) delete overrides[key];
 		else overrides[key] = value;
@@ -263,7 +274,7 @@ class FeaturePromptsStore {
 	}
 
 	resetPrompt(key: FeaturePromptKey): void {
-		if (key === 'threads') { this.setPrompt(key, DEFAULT_THREADS_INSTRUCTIONS); return; }
+		if (key === 'threads' || key === 'threadsSummary') { this.setPrompt(key, FEATURE_PROMPT_DEFAULTS[key]); return; }
 		const overrides = { ...this.state.overrides };
 		delete overrides[key];
 		this.state = { ...this.state, overrides };

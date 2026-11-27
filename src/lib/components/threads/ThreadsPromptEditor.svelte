@@ -6,26 +6,28 @@
 	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
 	import PromptDialog from '#lib/components/ui/PromptDialog.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
-	import { featurePromptsStore, FEATURE_PROMPT_DEFAULTS } from '#lib/stores/featurePrompts.svelte.ts';
+	import { featurePromptsStore, FEATURE_PROMPT_DEFAULTS, type ThreadsPromptKey } from '#lib/stores/featurePrompts.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import type { EnginePromptField } from '#lib/engines/registry.ts';
-	import type { ThreadsPromptPreset } from '#shared/threads/presets.ts';
+	import { activeThreadsPrompt, type ThreadsPromptPreset } from '#shared/threads/presets.ts';
 
-	let { field }: { field: EnginePromptField } = $props();
+	let { field, promptKey }: { field: EnginePromptField; promptKey: ThreadsPromptKey } = $props();
 	let draftId = $state('');
 	let draft = $state('');
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let naming = $state<{ kind: 'new' | 'rename'; target: ThreadsPromptPreset } | null>(null);
 	let removing = $state<ThreadsPromptPreset | null>(null);
-	const active = $derived(featurePromptsStore.activeThreadsPrompt);
-	const library = $derived(featurePromptsStore.threadsPrompts);
-	const modified = $derived(draft !== FEATURE_PROMPT_DEFAULTS.threads);
+	const library = $derived(featurePromptsStore.threadsPromptLibrary(promptKey));
+	const active = $derived(activeThreadsPrompt(library));
+	const defaultPrompt = $derived(FEATURE_PROMPT_DEFAULTS[promptKey]);
+	const modified = $derived(draft !== defaultPrompt);
+	const fieldId = $derived(`engine-prompt-${promptKey}`);
 
 	function flush() {
 		if (timer) clearTimeout(timer);
 		timer = null;
-		const saved = featurePromptsStore.threadsPrompts.prompts.find(p => p.id === draftId);
-		if (saved && saved.content !== draft) featurePromptsStore.updateThreadsPrompt(draftId, draft);
+		const saved = library.prompts.find(p => p.id === draftId);
+		if (saved && saved.content !== draft) featurePromptsStore.updateThreadsPrompt(promptKey, draftId, draft);
 	}
 	$effect(() => {
 		const id = active.id, content = active.content;
@@ -44,24 +46,24 @@
 	}
 	function choose(id: string) {
 		flush();
-		try { featurePromptsStore.selectThreadsPrompt(id); }
+		try { featurePromptsStore.selectThreadsPrompt(promptKey, id); }
 		catch (error) { toastStore.failed('select the Threads prompt', error); }
 	}
 	function namePrompt(kind: 'new' | 'rename') {
-		flush(); naming = { kind, target: { ...featurePromptsStore.activeThreadsPrompt } };
+		flush(); naming = { kind, target: { ...active } };
 	}
 	function confirmName(name: string) {
 		if (!naming) return;
 		try {
-			if (naming.kind === 'new') featurePromptsStore.createThreadsPrompt(name, naming.target.content);
-			else featurePromptsStore.renameThreadsPrompt(naming.target.id, name);
+			if (naming.kind === 'new') featurePromptsStore.createThreadsPrompt(promptKey, name, naming.target.content);
+			else featurePromptsStore.renameThreadsPrompt(promptKey, naming.target.id, name);
 			naming = null;
 		} catch (error) { toastStore.failed('save the Threads prompt', error); }
 	}
 	function confirmDelete() {
 		if (!removing) return;
 		flush();
-		try { featurePromptsStore.deleteThreadsPrompt(removing.id); }
+		try { featurePromptsStore.deleteThreadsPrompt(promptKey, removing.id); }
 		catch (error) { toastStore.failed('delete the Threads prompt', error); }
 		removing = null;
 	}
@@ -69,19 +71,19 @@
 
 <div class="threads-prompt-editor">
 	<div class="threads-prompt-head">
-		<label class="threads-prompt-label" for="engine-prompt-threads">{field.label}</label><InfoTip text={field.hint} />
+		<label class="threads-prompt-label" for={fieldId}>{field.label}</label><InfoTip text={field.hint} />
 		{#if modified}<span class="modified" title="Differs from the shipped default">Modified</span>{/if}
-		<button class="link-btn reset" disabled={!modified} onclick={() => { draft = FEATURE_PROMPT_DEFAULTS.threads; flush(); }}>Reset</button>
+		<button class="link-btn reset" disabled={!modified} onclick={() => { draft = defaultPrompt; flush(); }}>Reset</button>
 	</div>
 	<div class="prompt-presets">
-		<select class="input-base" aria-label="Fandom instruction prompt" value={active.id} onchange={(event) => choose(event.currentTarget.value)}>
+		<select class="input-base" aria-label={`${field.label} preset`} value={active.id} onchange={(event) => choose(event.currentTarget.value)}>
 			{#each library.prompts as prompt (prompt.id)}<option value={prompt.id}>{prompt.name}</option>{/each}
 		</select>
 		<button class="preset-action" aria-label="New prompt" title="New prompt" onclick={() => namePrompt('new')}><Icon name="plus" class="w-4 h-4" /></button>
 		<button class="preset-action" aria-label="Rename prompt" title="Rename prompt" onclick={() => namePrompt('rename')}><Icon name="pencil" class="w-4 h-4" /></button>
 		<button class="preset-action" aria-label="Delete prompt" title={library.prompts.length === 1 ? 'Keep at least one prompt' : 'Delete prompt'} disabled={library.prompts.length === 1} onclick={() => { flush(); removing = { ...active }; }}><Icon name="trash" class="w-4 h-4" /></button>
 	</div>
-	<ExpandableTextarea id="engine-prompt-threads" value={draft} onValueChange={edit} dialogTitle={`Threads · ${field.label}`} expandLabel={`Expand ${field.label} prompt`} spellcheck={false} rows={Math.min(20, Math.max(3, draft.split('\n').length + 1))} macroScope="standalone" class="input-base prompt-input" expandedClass="font-mono text-sm text-text-primary" />
+	<ExpandableTextarea id={fieldId} value={draft} onValueChange={edit} dialogTitle={`Threads · ${field.label}`} expandLabel={`Expand ${field.label} prompt`} spellcheck={false} rows={Math.min(20, Math.max(3, draft.split('\n').length + 1))} macroScope="standalone" class="input-base prompt-input" expandedClass="font-mono text-sm text-text-primary" />
 </div>
 <PromptDialog open={naming !== null} title={naming?.kind === 'rename' ? 'Rename prompt' : 'New prompt'} label="Prompt name" value={naming?.kind === 'rename' ? naming.target.name : ''} confirmLabel={naming?.kind === 'rename' ? 'Rename' : 'Create'} onConfirm={confirmName} onCancel={() => naming = null} />
 <ConfirmDialog open={removing !== null} title="Delete prompt?" message={`Delete “${removing?.name ?? ''}” and its saved instructions? Your saved Threads will be kept.`} confirmLabel="Delete prompt" variant="danger" destructive onConfirm={confirmDelete} onCancel={() => removing = null} />

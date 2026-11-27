@@ -128,8 +128,40 @@ describe('Threads persistence',()=>{
 	});
 	test('new methods participate in the RPC and live sync',async()=>{
 		const {ALLOWED_DB_METHODS,MUTATION_SCOPES}=await import('./db');
-		for(const name of ['getThreadsData','saveThreadsRound','addThreadsVersion','setThreadsVersion','deleteThreadsRound','resetThreadsContinuity','updateThreadsNotes']) expect(ALLOWED_DB_METHODS.has(name)).toBe(true);
+		for(const name of ['getThreadsData','saveThreadsRound','saveThreadsSummary','updateThreadsSummary','addThreadsVersion','setThreadsVersion','deleteThreadsRound','resetThreadsContinuity','updateThreadsNotes']) expect(ALLOWED_DB_METHODS.has(name)).toBe(true);
 		expect(MUTATION_SCOPES.saveThreadsRound).toBe('threads');
+		expect(MUTATION_SCOPES.saveThreadsSummary).toBe('threads');
+		expect(MUTATION_SCOPES.updateThreadsSummary).toBe('threads');
+	});
+	test('persists one story summary per round across competing saves, feed versions and copies', () => {
+		const { chatId, messages } = fixture();
+		const round = save(chatId, messages);
+		expect(() => db.saveThreadsSummary(chatId, round.id, '   ')).toThrow(/Invalid/);
+		const saved = db.saveThreadsSummary(chatId, round.id, '  A cached recap.  ');
+		expect(saved).toEqual({ ...round, revision: round.revision + 1, summary: 'A cached recap.' });
+		expect(db.saveThreadsSummary(chatId, round.id, 'A competing recap.')).toEqual(saved);
+		const version = db.addThreadsVersion(chatId, round.id, saved.revision, crypto.randomUUID(), feed);
+		expect(version.summary).toBe(saved.summary);
+		const copy = db.duplicateChat({ chatId, title: 'Summary copy', includeMemory: false });
+		db.closeForTests();
+		expect(db.getThreadsData(copy).rounds[0].summary).toBe(saved.summary);
+		expect(db.getThreadsData(chatId).rounds[0].summary).toBe(saved.summary);
+		db.deleteThreadsRound(chatId, round.id, version.revision);
+		expect(() => db.saveThreadsSummary(chatId, round.id, 'Late recap.')).toThrow(/removed/);
+	});
+	test('edits an existing summary without replacing feed versions or accepting a stale overwrite', () => {
+		const { chatId, messages } = fixture();
+		const round = save(chatId, messages);
+		expect(() => db.updateThreadsSummary(chatId, round.id, 'Missing', 'Edited')).toThrow(/changed/);
+		const original = db.saveThreadsSummary(chatId, round.id, 'Original');
+		const version = db.addThreadsVersion(chatId, round.id, original.revision, crypto.randomUUID(), feed);
+		const updated = db.updateThreadsSummary(chatId, round.id, 'Original', '  Edited  ');
+		expect(updated).toEqual({ ...version, revision: version.revision + 1, summary: 'Edited' });
+		expect(db.updateThreadsSummary(chatId, round.id, 'Original', 'Edited')).toEqual(updated);
+		expect(() => db.updateThreadsSummary(chatId, round.id, 'Original', 'Stale edit')).toThrow(/changed/);
+		expect(() => db.updateThreadsSummary(chatId, round.id, 'Edited', '  ')).toThrow(/Invalid/);
+		expect(db.saveThreadsSummary(chatId, round.id, 'Late generated summary')).toEqual(updated);
+		expect(db.getThreadsData(chatId).rounds).toEqual([updated]);
 	});
 	test('duplicates inherit complete scenes, versions, notes and AO3 independently of memory',()=>{
 		const {chatId,messages}=fixture();

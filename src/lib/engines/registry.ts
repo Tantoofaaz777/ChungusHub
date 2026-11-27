@@ -74,7 +74,10 @@ export const ENGINES: EngineDef[] = [
 		summary: 'Turns selected scenes into a fictional fandom feed',
 		description: 'Select individual messages in Make and generate a fictional audience discussion. Threads are saved separately from the roleplay and never change its prompt.',
 		makesCalls: true,
-		prompts: [{ key: 'threads', label: 'Fandom instructions', hint: 'Directs the audience, tone, language and discussion size. Selected messages and the JSON format are supplied automatically.' }],
+		prompts: [
+			{ key: 'threads', label: 'Fandom instructions', hint: 'Directs the audience, tone, language and discussion size. Selected messages and the JSON format are supplied automatically.' },
+			{ key: 'threadsSummary', label: 'Story summary instructions', hint: 'Used when a story round first leaves the full-text window. The saved scene is supplied automatically. Changes apply to new summaries.' }
+		],
 		enabled: { get: () => featurePromptsStore.threadsEnabled, set: (value) => featurePromptsStore.setThreadsEnabled(value) }
 	},
 	{

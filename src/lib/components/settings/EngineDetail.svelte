@@ -68,7 +68,7 @@
 	// mount on purpose: the host keys this component on the engine id.
 	const initialDrafts: Record<string, string> = {};
 	// svelte-ignore state_referenced_locally
-	for (const field of engine.prompts.filter(field => field.key !== 'threads')) initialDrafts[field.key] = featurePromptsStore.promptFor(field.key);
+	for (const field of engine.prompts.filter(field => field.key !== 'threads' && field.key !== 'threadsSummary')) initialDrafts[field.key] = featurePromptsStore.promptFor(field.key);
 	let drafts = $state<Record<string, string>>(initialDrafts);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,7 +76,7 @@
 	function commit(): void {
 		saveTimer = null;
 		for (const field of engine.prompts) {
-			if (field.key === 'threads') continue;
+			if (field.key === 'threads' || field.key === 'threadsSummary') continue;
 			const value = drafts[field.key];
 			if (value !== undefined && value !== featurePromptsStore.promptFor(field.key)) {
 				featurePromptsStore.setPrompt(field.key, value);
@@ -184,11 +184,27 @@
 			<div class="card-body">
 				<div class="threads-context">
 					<h3>Previous story context</h3>
-					<PillRow options={[{value:'rounds',label:'Rounds'},{value:'tokens',label:'Tokens'}]} current={threadsConfigStore.value.previousMode} onpick={(v) => threadsConfigStore.set('previousMode', v as 'rounds' | 'tokens')} label="Story context limit mode" />
-					{#if threadsConfigStore.value.previousMode === 'tokens'}
-						<label class="threads-limit" for="threads-previous-limit">Token budget<input id="threads-previous-limit" class="input-base" type="number" min="0" max="2000000" step="1" value={threadsConfigStore.value.previousTokens} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('previousTokens',e.currentTarget.valueAsNumber); }} /></label>
+					<div class="threads-summary-toggle" use:toggleRow>
+						<span>Summarize older story rounds</span>
+						<Toggle checked={threadsConfigStore.value.summarizeOlderRounds}
+							onchange={(value) => threadsConfigStore.set('summarizeOlderRounds', value)} label="Summarize older story rounds" />
+					</div>
+					{#if threadsConfigStore.value.summarizeOlderRounds}
+						<label class="threads-limit" for="threads-previous-limit">
+							Full story rounds, including the current round
+							<input id="threads-previous-limit" class="input-base" type="number" min="1" max="50" step="1"
+								value={Math.max(1, threadsConfigStore.value.previousRounds)}
+								oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('previousRounds', Math.max(1, e.currentTarget.valueAsNumber)); }} />
+						</label>
+						<p class="placement-note">Older scenes are summarized using the Threads model before the feed is generated. Saved summaries are reused.</p>
 					{:else}
-						<label class="threads-limit" for="threads-previous-limit">Previous story rounds<input id="threads-previous-limit" class="input-base" type="number" min="0" max="50" step="1" value={threadsConfigStore.value.previousRounds} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('previousRounds',e.currentTarget.valueAsNumber); }} /></label>
+						<PillRow options={[{value:'rounds',label:'Rounds'},{value:'tokens',label:'Tokens'}]} current={threadsConfigStore.value.previousMode} onpick={(v) => threadsConfigStore.set('previousMode', v as 'rounds' | 'tokens')} label="Story context limit mode" />
+						{#if threadsConfigStore.value.previousMode === 'tokens'}
+							<label class="threads-limit" for="threads-previous-limit">Token budget<input id="threads-previous-limit" class="input-base" type="number" min="0" max="2000000" step="1" value={threadsConfigStore.value.previousTokens} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('previousTokens',e.currentTarget.valueAsNumber); }} /></label>
+						{:else}
+							<label class="threads-limit" for="threads-previous-limit">Previous story rounds<input id="threads-previous-limit" class="input-base" type="number" min="0" max="50" step="1" value={threadsConfigStore.value.previousRounds} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('previousRounds',e.currentTarget.valueAsNumber); }} /></label>
+						{/if}
+						<p class="placement-note">Set the story context limit to 0 to omit earlier scenes.</p>
 					{/if}
 				</div>
 				<div class="threads-context">
@@ -199,8 +215,8 @@
 					{:else}
 						<label class="threads-limit" for="threads-fandom-limit">Previous fandom threads<input id="threads-fandom-limit" class="input-base" type="number" min="0" max="50" step="1" value={threadsConfigStore.value.fandomThreads} oninput={(e) => { if (Number.isFinite(e.currentTarget.valueAsNumber)) threadsConfigStore.set('fandomThreads',e.currentTarget.valueAsNumber); }} /></label>
 					{/if}
+					<p class="placement-note">Fandom continuity keeps whole threads. Set the limit to 0 to omit them.</p>
 				</div>
-				<p class="placement-note">Story context keeps the newest whole messages; fandom continuity keeps whole threads. The selected scene is never trimmed. Set a limit to 0 to omit that context.</p>
 			</div>
 		</section>
 	{/if}
@@ -297,8 +313,8 @@
 				{@const keys = flowKeys(field.key)}
 				{@const missing = (field.requires ?? []).filter((m) => !(drafts[field.key] ?? '').includes(m))}
 				<div class="prompt-field">
-					{#if field.key === 'threads'}
-						<ThreadsPromptEditor {field} />
+					{#if field.key === 'threads' || field.key === 'threadsSummary'}
+						<ThreadsPromptEditor {field} promptKey={field.key} />
 					{:else}
 					<div class="prompt-head">
 						<label class="prompt-label" for={`engine-prompt-${field.key}`}>{field.label}</label>
@@ -378,6 +394,7 @@
 	.threads-context + .threads-context { margin-top:1.2rem; }
 	.threads-context h3 { font-size:.78rem; font-weight:600; color:var(--color-text-secondary); margin-bottom:.5rem; }
 	.threads-context .threads-limit { margin-top:.7rem; }
+	.threads-summary-toggle { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.6rem; font-size:.76rem; }
 	.threads-limit input { width:7rem; padding:.4rem .6rem; }
 	.detail {
 		display: flex;

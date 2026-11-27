@@ -27,6 +27,7 @@
 	import ThreadsChapterPicker from './ThreadsChapterPicker.svelte';
 	import ThreadsEngagement from './ThreadsEngagement.svelte';
 	import ThreadsContextPreview from './ThreadsContextPreview.svelte';
+	import ThreadsSummaries from './ThreadsSummaries.svelte';
 	import ThreadsTagsInput from './ThreadsTagsInput.svelte';
 	import { llmService } from '#lib/services/llm/provider.ts';
 	import type { ThreadsComment as Comment } from '#shared/threads/types.ts';
@@ -146,7 +147,7 @@
 		{:else if store.chatId !== chatId}
 			<p class="muted">Loading threads…</p>
 		{:else}
-			<div class="tabs"><PillRow options={[{value:'feed',label:'Feed'}, {value:'make',label:'Make'}]} current={store.tab} onpick={(value) => store.tab = value as 'feed' | 'make'} label="Threads view" /></div>
+			<div class="tabs"><PillRow options={[{value:'feed',label:'Feed'}, {value:'make',label:'Make'}, {value:'summaries',label:'Summaries'}]} current={store.tab} onpick={(value) => store.tab = value as typeof store.tab} label="Threads view" /></div>
 			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} labels={chapterLabels} value={viewedRound.id} onchange={(id) => store.viewedRoundId = id} />{/if}
 			{#if store.loadError}<div class="error" role="alert">Could not {store.loaded ? 'refresh' : 'load'} threads. {store.loadError}<Button variant="secondary" size="sm" onclick={() => store.load(chatId)}>{store.loaded ? 'Retry updating' : 'Retry loading'}</Button></div>{/if}
 			{#if store.error}<div class="error" role="alert">{store.error}</div>{/if}
@@ -155,7 +156,13 @@
 			{/if}
 			{#if store.busy}
 				<div class="status">
-					{#if store.phase === 'generating'}<GenerationProgress label="Generating thread" progress={store.tokenProgress} />{:else}<span role="status">Saving thread…</span>{/if}
+					{#if store.phase === 'generating'}
+						<GenerationProgress
+							label={store.summaryProgress ? `Summarizing older story rounds (${store.summaryProgress.current}/${store.summaryProgress.total})` : 'Generating thread'}
+							progress={store.tokenProgress} />
+					{:else}
+						<span role="status">{store.phase === 'saving-summary' ? 'Saving summary…' : 'Saving thread…'}</span>
+					{/if}
 					{#if store.phase === 'generating'}<Button variant="secondary" size="sm" onclick={() => store.cancel()}>Cancel</Button>{/if}
 				</div>
 			{/if}
@@ -192,7 +199,7 @@
 						</article>
 					{/each}
 				{/if}
-			{:else if store.loaded}
+			{:else if store.loaded && store.tab === 'make'}
 				<section class="make-card">
 					<h3>Select a scene</h3>
 					<p class="muted">Tap messages to select individually. Shift-click or hold another message to select a range.</p>
@@ -253,6 +260,9 @@
 					</div>
 					<div class="make-actions"><span class="muted">{store.selectedCount} selected</span><Button variant="ghost" size="sm" disabled={store.busy || !store.selected.length} onclick={() => store.clearSelection()}>Clear</Button><Button size="sm" disabled={store.busy || !!store.pending || !store.selectedCount || !featurePromptsStore.threadsEnabled} onclick={() => store.generate()}>Generate thread</Button></div>
 				</section>
+			{/if}
+			{#if store.loaded}
+				{#key store.chatId}<ThreadsSummaries visible={store.tab === 'summaries'} labels={chapterLabels} />{/key}
 			{/if}
 		{/if}
 	</div>

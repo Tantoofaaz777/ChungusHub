@@ -27,6 +27,19 @@ describe('Threads selections and prompt boundaries', () => {
 		expect(noContext).not.toContain('# PREVIOUS CONTEXT'); expect(noContext).not.toContain('# FANDOM CONTINUITY');
 		expect(noContext).toContain('Story 4');
 	});
+	test('summary mode counts the current scene and retains cached summaries independently from fandom', async () => {
+		const previous = [{ ...round('1'), summary: 'First recap' }, round('2'), round('3')];
+		const input = { messages: round('4').messages, label: 'Newest', previous, notes: '', ao3: emptyAo3Information(), instructions: 'Discuss',
+			config: { previousMode: 'tokens' as const, previousTokens: 0, previousRounds: 3, summarizeOlderRounds: true, fandomThreads: 1 } };
+		const enabled = await assembleThreadsPrompt(input);
+		expect(enabled.previousTitles).toEqual(['Episode 1 (summary)', 'Episode 2', 'Episode 3']);
+		expect(enabled.prompt).toContain('## Episode 1\nStory summary:\nFirst recap\n\n## Episode 2\nStory 2');
+		expect(enabled.prompt).toContain('Reaction 3');
+		expect(enabled.prompt).not.toContain('Story 1');
+		const disabled = await assembleThreadsPrompt({ ...input, config: { ...input.config, summarizeOlderRounds: false } });
+		expect(disabled.previousTitles).toEqual([]);
+		expect(disabled.prompt).not.toContain('First recap');
+	});
 	test('story sections have episode headings and only message content separated by blank lines', async () => {
 		const old=round('old');
 		old.messages.push({...old.messages[0],id:'reply',role:'user',speaker:'Private persona name',index:25,content:'Old user reply'});

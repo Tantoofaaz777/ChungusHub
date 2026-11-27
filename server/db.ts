@@ -22,6 +22,7 @@ import { normalizeAo3Information, emptyAo3Information } from '../shared/threads/
 import { threadsSelectionOverlaps } from '../shared/threads/model';
 import { inheritThreadsRounds } from '../shared/threads/inheritance';
 import { parseGeneratedThreadsFeed } from '../shared/threads/feed';
+import { MAX_THREADS_SUMMARY_LENGTH } from '../shared/threads/summary';
 import type { ThreadsData, ThreadsRound, ThreadsFeed, SaveThreadsRound, ThreadsNotesPatch } from '../shared/threads/types';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs';
@@ -3370,6 +3371,29 @@ class ServerDatabase {
 				versions: [{ id: versionId, createdAt: now, feed }], activeVersionId: versionId });
 		});
 	}
+	saveThreadsSummary(chatId: string, id: string, summary: string): ThreadsRound {
+		return this.writeThreadsSummary(chatId, id, summary);
+	}
+	updateThreadsSummary(chatId: string, id: string, expectedSummary: string, summary: string): ThreadsRound {
+		if (typeof expectedSummary !== 'string' || !expectedSummary || expectedSummary.length > MAX_THREADS_SUMMARY_LENGTH) {
+			throw new Error('Invalid saved Threads summary.');
+		}
+		return this.writeThreadsSummary(chatId, id, summary, expectedSummary);
+	}
+	private writeThreadsSummary(chatId: string, id: string, summary: string, expectedSummary?: string): ThreadsRound {
+		if (typeof summary !== 'string' || !summary.trim() || summary.length > MAX_THREADS_SUMMARY_LENGTH) {
+			throw new Error('Invalid Threads story summary.');
+		}
+		const text = summary.trim();
+		return this.inTransaction(() => {
+			const row = this.select<{ data_json: string }[]>('SELECT data_json FROM threads_rounds WHERE id = ? AND chat_id = ?', [id, chatId])[0];
+			if (!row) throw new Error('This thread was removed. Refresh Threads and try again.');
+			const round: ThreadsRound = JSON.parse(row.data_json);
+			if (round.summary === text || (expectedSummary === undefined && round.summary)) return round;
+			if (expectedSummary !== undefined && round.summary !== expectedSummary) throw new Error('The saved summary changed. Review the latest version before saving.');
+			return this.writeThreadsRound({ ...round, summary: text, revision: round.revision + 1 });
+		});
+	}
 	addThreadsVersion(chatId: string, id: string, expectedRevision: number, versionId: string, feed: ThreadsFeed): ThreadsRound {
 		const parsed = parseGeneratedThreadsFeed(JSON.stringify(feed));
 		return this.inTransaction(() => {
@@ -3519,6 +3543,8 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	saveMemoryScene: 'memory',
 	deleteMemoryScene: 'memory',
 	saveThreadsRound: 'threads',
+	saveThreadsSummary: 'threads',
+	updateThreadsSummary: 'threads',
 	addThreadsVersion: 'threads',
 	setThreadsVersion: 'threads',
 	deleteThreadsRound: 'threads',

@@ -19,16 +19,19 @@ export const DEFAULT_THREADS_INSTRUCTIONS = `You must simulate a Reddit thread r
 
 export interface ThreadsConfig {
 	previousMode: 'rounds' | 'tokens'; previousRounds: number; previousTokens: number;
+	summarizeOlderRounds: boolean;
 	fandomMode: 'threads' | 'tokens'; fandomThreads: number; fandomTokens: number;
 }
 export const DEFAULT_THREADS_CONFIG: ThreadsConfig = {
 	previousMode: 'rounds', previousRounds: 3, previousTokens: 8000,
+	summarizeOlderRounds: false,
 	fandomMode: 'threads', fandomThreads: 3, fandomTokens: 8000
 };
 export function normalizeThreadsConfig(raw: Partial<ThreadsConfig> | null): ThreadsConfig {
 	const limit = (n: unknown, max: number, fallback: number) => typeof n === 'number' && Number.isFinite(n) ? Math.min(max, Math.max(0, Math.floor(n))) : fallback;
 	return {
 		previousMode: raw?.previousMode === 'tokens' ? 'tokens' : 'rounds',
+		summarizeOlderRounds: raw?.summarizeOlderRounds === true,
 		fandomMode: raw?.fandomMode === 'tokens' ? 'tokens' : 'threads',
 		previousRounds: limit(raw?.previousRounds, 50, 3), fandomThreads: limit(raw?.fandomThreads, 50, 3),
 		previousTokens: limit(raw?.previousTokens, 2_000_000, 8000), fandomTokens: limit(raw?.fandomTokens, 2_000_000, 8000)
@@ -72,6 +75,16 @@ export function selectThreadsMessages<T extends { id: string }>(path: T[], ids: 
 export function activeThreadsFeed(round: ThreadsRound) {
 	return round.versions.find(v => v.id === round.activeVersionId)!.feed;
 }
+
+export function threadsStoryWindow(previous: ThreadsRound[], config: ThreadsConfig) {
+	const fullPrevious = Math.max(0, config.previousRounds - Number(config.summarizeOlderRounds));
+	const start = Math.max(0, previous.length - fullPrevious);
+	return {
+		older: config.summarizeOlderRounds ? previous.slice(0, start) : [],
+		full: previous.slice(start)
+	};
+}
+
 export async function assembleThreadsPrompt(input: {
 	messages: ThreadsMessage[]; label: string; previous: ThreadsRound[]; notes: string;
 	ao3: Ao3Information; instructions: string; config: Partial<ThreadsConfig>;
@@ -90,18 +103,26 @@ export async function assembleThreadsPrompt(input: {
 		if (!Number.isFinite(count) || count < 0) throw new Error('Could not count Threads context tokens.');
 		return count;
 	};
-	const previousRanges = config.previousMode === 'tokens'
+	const { older, full } = threadsStoryWindow(input.previous, config);
+	const summaries = older.flatMap(r => r.summary ? [{ label: label(r), content: `Story summary:\n${r.summary}` }] : []);
+	const fullRanges = !config.summarizeOlderRounds && config.previousMode === 'tokens'
 		? await selectPreviousContextByTokenBudget(storyBlocks, config.previousTokens, counter)
-		: groupConsecutiveStoryRanges(tail(config.previousRounds).map(r => ({ label: label(r), content: r.messages.map(messageText).join('\n\n') })));
+		: groupConsecutiveStoryRanges(full.map(r => ({ label: label(r), content: r.messages.map(messageText).join('\n\n') })));
 	const fandomContinuity = config.fandomMode === 'tokens'
 		? await selectNewestLabeledBlocksByTokenBudget(input.previous.map(fandomBlock), config.fandomTokens, counter)
 		: tail(config.fandomThreads).map(fandomBlock);
 	const prompt = buildThreadsPrompt({
 		recentRange: { label: input.label.trim() || 'CURRENT RANGE', content: input.messages.map(messageText).join('\n\n') },
-		previousRanges, fandomContinuity,
+		previousRanges: [...summaries, ...fullRanges], fandomContinuity,
 		fandomNotes: input.notes, ao3Information: input.ao3, instructions: input.instructions
 	});
-	return { prompt, previousTitles: previousRanges.map(range => range.label) };
+	return {
+		prompt,
+		previousTitles: [
+			...older.map(r => `${label(r)} (${r.summary ? 'summary' : 'summary pending'})`),
+			...fullRanges.map(range => range.label)
+		]
+	};
 }
 export async function threadsPrompt(input: Parameters<typeof assembleThreadsPrompt>[0]): Promise<string> {
 	return (await assembleThreadsPrompt(input)).prompt;

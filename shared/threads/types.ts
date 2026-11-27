@@ -14,6 +14,7 @@ export interface ThreadsVersion { id: string; createdAt: number; feed: ThreadsFe
 export interface ThreadsRound {
 	id: string; chatId: string; label: string; createdAt: number; revision: number;
 	messages: ThreadsMessage[]; versions: ThreadsVersion[]; activeVersionId: string;
+	summary?: string;
 }
 export interface ThreadsNotesPatch { notes?: string; ao3?: Ao3Information; promptId?: string | null }
 export interface ThreadsData { rounds: ThreadsRound[]; notes: string; ao3: Ao3Information; promptId: string | null }

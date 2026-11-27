@@ -9,8 +9,9 @@ import type { Message } from '#lib/types/chat.ts';
 import { countTokens, withTokenizers } from '#lib/tokenizer/index.ts';
 import { toastStore } from '#lib/stores/toast.svelte.ts';
 import { AO3_TEXT_FIELDS, emptyAo3Information, type Ao3Information } from '#shared/threads/ao3.ts';
-import { selectThreadsMessages, threadsPrompt, threadsOnPath, threadsSelectionOverlaps } from '#shared/threads/model.ts';
+import { normalizeThreadsConfig, selectThreadsMessages, threadsPrompt, threadsOnPath, threadsSelectionOverlaps, threadsStoryWindow } from '#shared/threads/model.ts';
 import { parseGeneratedThreadsFeed } from '#shared/threads/feed.ts';
+import { buildThreadsSummaryPrompt, MAX_THREADS_SUMMARY_LENGTH } from '#shared/threads/summary.ts';
 import type { ThreadsFeed, ThreadsRound, ThreadsMessage, SaveThreadsRound, ThreadsNotesPatch } from '#shared/threads/types.ts';
 import { threadsConfigStore } from './config.svelte';
 import { retainLocalChanges } from '#lib/utils/retain-local-changes.ts';
@@ -29,8 +30,9 @@ export class ThreadsStore {
 	ao3 = $state<Ao3Information>(emptyAo3Information());
 	selected = $state<string[]>([]);
 	label = $state('');
-	tab = $state<'feed' | 'make'>('feed');
-	phase = $state<'idle' | 'generating' | 'saving'>('idle');
+	tab = $state<'feed' | 'make' | 'summaries'>('feed');
+	phase = $state<'idle' | 'generating' | 'saving' | 'saving-summary'>('idle');
+	summaryProgress = $state<{ current: number; total: number } | null>(null);
 	tokenProgress = $state<{ reasoning: number | null; response: number | null }>({ reasoning: null, response: null });
 	error = $state('');
 	notesError = $state('');
@@ -152,7 +154,7 @@ export class ThreadsStore {
 			if (remaining) this.notesWriting.set(chatId, remaining); else this.notesWriting.delete(chatId);
 		}
 	}
-	cancel() { this.controller?.abort(); this.controller = null; if (this.phase === 'generating') this.phase = 'idle'; }
+	cancel() { this.controller?.abort(); this.controller = null; this.summaryProgress = null; if (this.phase === 'generating') this.phase = 'idle'; }
 	private promptCast() {
 		const chat = chatStore.activeChat;
 		const entry = characterLibraryStore.entries.find(e => e.id === chat?.characterId);
@@ -206,7 +208,11 @@ export class ThreadsStore {
 			notes: expandTemplate(this.notes), ao3, instructions: expandTemplate(this.instructions),
 			config: threadsConfigStore.value
 		});
-		return { messages, branchLeafId, label, input };
+		const summaryInstructions = validate && input.config.summarizeOlderRounds ? featurePromptsStore.promptFor('threadsSummary') : '';
+		const summaryPromptFor = (scene: ThreadsRound) => buildThreadsSummaryPrompt(
+			expandPromptTemplate(summaryInstructions, this.templateContext(cast, scene.messages, pathById)), scene.label, scene.messages
+		);
+		return { messages, branchLeafId, label, input, summaryPromptFor };
 	}
 	get promptPreview(): Parameters<typeof threadsPrompt>[0] | null {
 		if (!this.loaded) return null;
@@ -217,51 +223,86 @@ export class ThreadsStore {
 		const chatId = this.chatId, controller = this.controller = new AbortController();
 		this.phase = 'generating'; this.error = '';
 		this.tokenProgress = { reasoning: null, response: null };
-		let progressTimer: ReturnType<typeof setTimeout> | null = null;
+		const current = () => !controller.signal.aborted && this.controller === controller && this.chatId === chatId;
 		try {
 			if (!featurePromptsStore.threadsEnabled) throw new Error('Enable Threads in Settings → Engines to generate a thread.');
 			await this.flushNotes();
 			if (controller.signal.aborted) return;
-			const { messages, branchLeafId, label, input } = this.preparePrompt(round);
+			const { messages, branchLeafId, label, input, summaryPromptFor } = this.preparePrompt(round);
 			const target = { engine: 'threads' }, model = llmService.modelFor(target);
 			if (!model) throw new Error('Choose a model for Threads on Connections before generating.');
-			const prompt = await withTokenizers(() => threadsPrompt({ ...input, countTokens: text => countTokens(text, model) }));
-			if (controller.signal.aborted || this.controller !== controller || this.chatId !== chatId) return;
-			const promptTokens = await withTokenizers(() => countTokens(prompt, model));
-			if (controller.signal.aborted || this.controller !== controller || this.chatId !== chatId) return;
-			if (promptTokens > llmService.getPromptTokenBudget(target)) throw new Error('This scene and its context exceed the connection’s context window. Select fewer messages or lower the Threads continuity limits in Engines.');
-			let response = '', reasoning = '';
-			const current = () => !controller.signal.aborted && this.controller === controller && this.chatId === chatId;
-			const updateProgress = (finished = false) => {
-				if (!current()) return;
-				this.tokenProgress = {
-					reasoning: reasoning || finished ? countTokens(reasoning, model) : null,
-					response: response || finished ? countTokens(response, model) : null
+			const completeWithProgress = async (source: 'threads' | 'threads-summary', prompt: string) => {
+				this.tokenProgress = { reasoning: null, response: null };
+				let response = '', reasoning = '', done = false;
+				let progressTimer: ReturnType<typeof setTimeout> | null = null;
+				const updateProgress = (final = false) => {
+					if (!current()) return;
+					this.tokenProgress = {
+						reasoning: reasoning || final ? countTokens(reasoning, model) : null,
+						response: response || final ? countTokens(response, model) : null
+					};
 				};
+				const receive = (text: string, thinking: boolean) => {
+					if (done || !current()) return;
+					if (thinking) reasoning += text; else response += text;
+					// Count accumulated text at most ten times a second.
+					if (progressTimer === null) progressTimer = setTimeout(() => { progressTimer = null; updateProgress(); }, 100);
+				};
+				try {
+					const result = await llmService.complete(target, {
+						source, signal: controller.signal, messages: [{ role: 'user', content: prompt }],
+						onToken: text => receive(text, false), onThinkingToken: text => receive(text, true)
+					});
+					response = result.content; reasoning = result.thinking ?? ''; updateProgress(true);
+					return result;
+				} finally {
+					done = true;
+					if (progressTimer !== null) clearTimeout(progressTimer);
+				}
 			};
-			// Count accumulated text at most ten times a second, rather than tokenizing each delta.
-			const receive = (text: string, thinking: boolean) => {
-				if (!current()) return;
-				if (thinking) reasoning += text; else response += text;
-				if (progressTimer === null) progressTimer = setTimeout(() => { progressTimer = null; updateProgress(); }, 100);
-			};
-			const result = await llmService.complete(target, {
-				source: 'threads', signal: controller.signal, messages: [{ role: 'user', content: prompt }],
-				onToken: text => receive(text, false), onThinkingToken: text => receive(text, true)
+			const assemble = () => withTokenizers(async () => {
+				const prompt = await threadsPrompt({ ...input, countTokens: text => countTokens(text, model) });
+				if (countTokens(prompt, model) > llmService.getPromptTokenBudget(target)) {
+					throw new Error('This scene and its context exceed the connection’s context window. Select fewer messages or adjust the Threads continuity limits in Engines.');
+				}
+				return prompt;
 			});
-			if (controller.signal.aborted || this.controller !== controller || this.chatId !== chatId) return;
-			if (progressTimer !== null) { clearTimeout(progressTimer); progressTimer = null; }
-			response = result.content; reasoning = result.thinking ?? ''; updateProgress(true);
+			let prompt = await assemble();
+			if (!current()) return;
+			const { older } = threadsStoryWindow(input.previous, normalizeThreadsConfig(input.config));
+			const missing = older.filter(scene => !scene.summary);
+			for (const [index, scene] of missing.entries()) {
+				const summaryPrompt = summaryPromptFor(scene);
+				const tokens = await withTokenizers(() => countTokens(summaryPrompt, model));
+				if (!current()) return;
+				if (tokens > llmService.getPromptTokenBudget(target)) throw new Error('An older story round exceeds the connection’s context window for summarization.');
+				this.summaryProgress = { current: index + 1, total: missing.length };
+				const result = await completeWithProgress('threads-summary', summaryPrompt);
+				if (!current()) return;
+				const summary = result.content.trim();
+				if (!summary || summary.length > MAX_THREADS_SUMMARY_LENGTH) throw new Error('The model returned an empty or oversized Threads story summary.');
+				const saved = await db.saveThreadsSummary(chatId, scene.id, summary);
+				if (!current()) return;
+				this.rounds = this.rounds.map(r => r.id === saved.id && r.revision < saved.revision ? saved : r);
+				scene.summary = saved.summary;
+			}
+			if (missing.length) {
+				prompt = await assemble();
+				if (!current()) return;
+				this.summaryProgress = null;
+			}
+			const result = await completeWithProgress('threads', prompt);
+			if (!current()) return;
 			const feed = parseGeneratedThreadsFeed(result.content);
 			this.pending = round ? { round: structuredClone($state.snapshot(round)), versionId: crypto.randomUUID(), feed }
 				: { input: { id: crypto.randomUUID(), chatId, label, messages, feed, branchLeafId } };
 			await this.saveResult();
-		} catch (error) { if (!controller.signal.aborted && this.chatId === chatId) this.error = error instanceof Error ? error.message : String(error); }
-		finally { if (progressTimer !== null) clearTimeout(progressTimer); if (this.controller === controller) { this.controller = null; this.phase = 'idle'; } }
+		} catch (error) { if (current()) this.error = error instanceof Error ? error.message : String(error); }
+		finally { if (this.controller === controller) { this.controller = null; this.summaryProgress = null; this.phase = 'idle'; } }
 	}
 	async saveResult() {
 		const pending = this.pending;
-		if (!pending || this.phase === 'saving') return;
+		if (!pending || this.phase === 'saving' || this.phase === 'saving-summary') return;
 		this.phase = 'saving'; this.error = '';
 		try {
 			const round = 'input' in pending ? await db.saveThreadsRound(pending.input)
@@ -272,6 +313,16 @@ export class ThreadsStore {
 			this.pending = null; this.clearSelection(); this.label = ''; this.tab = 'feed';
 		} catch (error) { if (this.pending === pending) this.error = error instanceof Error ? error.message : String(error); }
 		finally { if (this.pending === pending || !this.pending) this.phase = 'idle'; }
+	}
+	async updateSummary(round: ThreadsRound, expectedSummary: string, summary: string) {
+		if (this.chatId !== round.chatId || this.busy) throw new Error('Threads is busy or this chat has changed. Try again.');
+		this.phase = 'saving-summary';
+		try {
+			const saved = await db.updateThreadsSummary(round.chatId, round.id, expectedSummary, summary);
+			if (this.chatId === saved.chatId) this.rounds = this.rounds.map(r => r.id === saved.id && r.revision < saved.revision ? saved : r);
+		} finally {
+			this.phase = 'idle';
+		}
 	}
 	async chooseVersion(round: ThreadsRound, versionId: string) {
 		if (this.busy) return;

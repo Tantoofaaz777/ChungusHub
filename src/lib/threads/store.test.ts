@@ -14,8 +14,9 @@ afterAll(()=>{
 	mock.module('#lib/services/llm/provider.ts',()=>realLlm);mock.module('#lib/tokenizer/index.ts',()=>realTokenizer);
 });
 let reads: {chatId:string; resolve:(data:ThreadsData)=>void; reject:(error:Error)=>void}[]=[];
-let calls: {messages:{content:string}[]; signal:AbortSignal; onToken:(text:string)=>void; onThinkingToken:(text:string)=>void; resolve:(result:{content:string;thinking?:string})=>void}[]=[];
+let calls: {source:string; messages:{content:string}[]; signal:AbortSignal; onToken:(text:string)=>void; onThinkingToken:(text:string)=>void; resolve:(result:{content:string;thinking?:string})=>void}[]=[];
 let saved:SaveThreadsRound[]=[], failSave=false;
+let savedSummaries: { id: string; summary: string }[] = [];
 let resetGate: Promise<void> | null = null;
 let resets: {chatId:string; expected:{id:string;revision:number}[]}[]=[];
 let notesGate: Promise<void> | null = null;
@@ -29,6 +30,16 @@ mock.module('#lib/services/database.ts',()=>({...realDb,db:{
 	getThreadsData:(chatId:string)=>new Promise((resolve,reject)=>reads.push({chatId,resolve,reject})),
 	updateThreadsNotes:async()=>{ await notesGate; },
 	deleteThreadsRound:async()=>{},
+	saveThreadsSummary: async (chatId: string, id: string, summary: string) => {
+		const round = store.rounds.find(r => r.chatId === chatId && r.id === id)!;
+		savedSummaries.push({ id, summary });
+		return { ...round, summary, revision: round.revision + 1 };
+	},
+	updateThreadsSummary: async (chatId: string, id: string, expectedSummary: string, summary: string) => {
+		const round = store.rounds.find(r => r.chatId === chatId && r.id === id)!;
+		if (round.summary !== expectedSummary) throw new Error('The saved summary changed.');
+		return { ...round, summary, revision: round.revision + 1 };
+	},
 	saveThreadsRound:async(input:SaveThreadsRound):Promise<ThreadsRound>=>{saved.push(input);if(failSave)throw new Error('Disconnected');return {...input,revision:1,createdAt:1,activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed:input.feed}]};}
 }}));
 mock.module('#lib/stores/chat.svelte.ts',()=>({...realChat,chatStore:fakeChat}));
@@ -39,11 +50,131 @@ const {threadsConfigStore}=await import('./config.svelte');
 const {featurePromptsStore}=await import('#lib/stores/featurePrompts.svelte.ts');
 const initialFeatureState=structuredClone(featurePromptsStore.state);
 let store:InstanceType<typeof ThreadsStore>;
-beforeEach(()=>{featurePromptsStore.state=structuredClone(initialFeatureState);reads=[];calls=[];saved=[];resets=[];resetGate=null;failSave=false;notesGate=null;tokenCalls=[];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG};fakeChat.activeChat={id:'a'};fakeChat.currentChatState={chat:{id:'a'},activePath:path,allMessages:path};store=new ThreadsStore();});
+beforeEach(()=>{featurePromptsStore.state=structuredClone(initialFeatureState);reads=[];calls=[];saved=[];savedSummaries=[];resets=[];resetGate=null;failSave=false;notesGate=null;tokenCalls=[];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG};fakeChat.activeChat={id:'a'};fakeChat.currentChatState={chat:{id:'a'},activePath:path,allMessages:path};store=new ThreadsStore();});
 async function open() {const p=store.load('a');reads.shift()!.resolve(empty());await p;}
 async function start() {store.selected=['5','2'];const p=store.generate();for(let i=0;i<100 && !calls.length;i++) await Promise.resolve();return {p};}
 function previous():ThreadsRound {return {id:'previous',chatId:'a',label:'Prior scene',revision:1,createdAt:1,messages:[{...path[0],role:'assistant',index:0,speaker:'Narrator'}],activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed}]};}
 describe('Threads generation lifecycle',()=>{
+	test('a saved summary edit survives an older reload and reaches the next feed prompt', async () => {
+		await open();
+		const round = { ...previous(), summary: 'Original recap' };
+		store.rounds = [round];
+		store.tab = 'summaries';
+		const reload = store.load('a');
+		await store.updateSummary(round, 'Original recap', 'Corrected recap');
+		reads.shift()!.resolve({ ...empty(), rounds: [round] });
+		await reload;
+		expect(store.tab).toBe('summaries');
+		expect(store.rounds[0].summary).toBe('Corrected recap');
+		expect(calls).toHaveLength(0);
+		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, previousRounds: 1, summarizeOlderRounds: true };
+		const { p } = await start();
+		expect(calls[0].source).toBe('threads');
+		expect(calls[0].messages[0].content).toContain('Corrected recap');
+		expect(calls[0].messages[0].content).not.toContain('Original recap');
+		calls[0].resolve({ content: JSON.stringify(feed) });
+		await p;
+	});
+
+	test('summarizes only the story round leaving the full window and reuses it on the next generation', async () => {
+		await open();
+		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, previousMode: 'tokens', previousTokens: 0, summarizeOlderRounds: true, fandomThreads: 0 };
+		featurePromptsStore.state.threadsSummaryPrompts = { activeId: 'summary', prompts: [{ id: 'summary', name: 'Recap', content: 'Summarize only {{lastMessage}}' }] };
+		const makeRound = (index: number) => ({ ...previous(), id: `round-${index + 1}`, label: `Episode ${index + 1}`,
+			messages: [{ ...previous().messages[0], ...path[index], role: 'assistant' as const, index }] });
+		const archived = { ...previous(), id: 'fork', summary: 'Archived recap', messages: [{ ...previous().messages[0], id: 'outside-branch' }] };
+		store.rounds = [makeRound(0), archived, makeRound(1), makeRound(2)];
+		store.selected = ['4'];
+		const fourth = store.generate();
+		for (let i = 0; i < 100 && calls.length < 1; i++) await Promise.resolve();
+		expect(calls[0].source).toBe('threads-summary');
+		expect(calls[0].messages[0].content).toBe('Summarize only Turn 1\n\n# STORY SCENE\n\n## Episode 1\nTurn 1');
+		calls[0].resolve({ content: 'First recap' });
+		for (let i = 0; i < 100 && calls.length < 2; i++) await Promise.resolve();
+		expect(calls[1].source).toBe('threads');
+		expect(calls[1].messages[0].content).toContain('First recap\n\n## Episode 2\nTurn 2\n\n## Episode 3\nTurn 3\n\n# RECENT CONTEXT\n\n## CURRENT RANGE\nTurn 4');
+		expect(calls[1].messages[0].content).not.toContain('Archived recap');
+		calls[1].resolve({ content: JSON.stringify(feed) });
+		await fourth;
+		store.selected = ['5'];
+		const fifth = store.generate();
+		for (let i = 0; i < 100 && calls.length < 3; i++) await Promise.resolve();
+		expect(calls[2].source).toBe('threads-summary');
+		expect(calls[2].messages[0].content).toContain('## Episode 2\nTurn 2');
+		calls[2].resolve({ content: 'Second recap' });
+		for (let i = 0; i < 100 && calls.length < 4; i++) await Promise.resolve();
+		expect(calls[3].messages[0].content).toContain('First recap\n\n## Episode 2\nStory summary:\nSecond recap\n\n## Episode 3\nTurn 3');
+		expect(calls[3].messages[0].content).not.toContain('Turn 2');
+		calls[3].resolve({ content: JSON.stringify(feed) });
+		await fifth;
+		expect(savedSummaries).toEqual([{ id: 'round-1', summary: 'First recap' }, { id: 'round-2', summary: 'Second recap' }]);
+
+		const regenerate = store.generate(store.rounds.find(r => r.messages[0].id === '4')!);
+		for (let i = 0; i < 100 && calls.length < 5; i++) await Promise.resolve();
+		expect(calls[4].source).toBe('threads');
+		const regeneratedPrompt = calls[4].messages[0].content;
+		expect(regeneratedPrompt).toContain('First recap');
+		expect(regeneratedPrompt).toContain('Turn 2');
+		expect(regeneratedPrompt).not.toContain('Second recap');
+		expect(regeneratedPrompt).not.toContain('Turn 5');
+		store.cancel();
+		calls[4].resolve({ content: JSON.stringify(feed) });
+		await regenerate;
+	});
+
+	test('counts summary reasoning and response as they arrive and resets for each model call', async () => {
+		await open();
+		store.rounds = [previous(), { ...previous(), id: 'second', messages: [{ ...previous().messages[0], ...path[1], role: 'assistant' }] }];
+		store.selected = ['3'];
+		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, previousRounds: 1, summarizeOlderRounds: true };
+		const generation = store.generate();
+		for (let i = 0; i < 100 && calls.length < 1; i++) await Promise.resolve();
+		expect(store.summaryProgress).toEqual({ current: 1, total: 2 });
+		calls[0].onThinkingToken('Planning recap');
+		calls[0].onToken('First ');
+		calls[0].onToken('scene');
+		await Bun.sleep(130);
+		expect(store.tokenProgress).toEqual({ reasoning: 100, response: 100 });
+		expect(tokenCalls).toContainEqual({ text: 'Planning recap', model: 'test' });
+		expect(tokenCalls).toContainEqual({ text: 'First scene', model: 'test' });
+		calls[0].resolve({ content: 'First recap' });
+		for (let i = 0; i < 100 && calls.length < 2; i++) await Promise.resolve();
+		expect(store.summaryProgress).toEqual({ current: 2, total: 2 });
+		expect(store.tokenProgress).toEqual({ reasoning: null, response: null });
+		calls[0].onThinkingToken('Late first summary chunk');
+		calls[1].onToken('Second scene');
+		await Bun.sleep(130);
+		expect(store.tokenProgress).toEqual({ reasoning: null, response: 100 });
+		expect(tokenCalls).toContainEqual({ text: 'Second scene', model: 'test' });
+		expect(tokenCalls.some(({ text }) => text.includes('Late first summary chunk'))).toBe(false);
+		calls[1].resolve({ content: 'Second recap' });
+		for (let i = 0; i < 100 && calls.length < 3; i++) await Promise.resolve();
+		expect(calls[2].source).toBe('threads');
+		expect(store.summaryProgress).toBeNull();
+		expect(store.tokenProgress).toEqual({ reasoning: null, response: null });
+		calls[2].resolve({ content: JSON.stringify(feed) });
+		await generation;
+	});
+
+	test('cancelling an in-flight summary prevents it from being saved or starting a feed call', async () => {
+		await open();
+		store.rounds = [previous()];
+		store.selected = ['2'];
+		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, previousRounds: 1, summarizeOlderRounds: true };
+		const generation = store.generate();
+		for (let i = 0; i < 100 && !calls.length; i++) await Promise.resolve();
+		expect(calls[0].source).toBe('threads-summary');
+		calls[0].onToken('Partial summary pending');
+		store.cancel();
+		calls[0].resolve({ content: 'A late summary' });
+		await generation;
+		expect(store.tokenProgress).toEqual({ reasoning: null, response: null });
+		expect(calls[0].signal.aborted).toBe(true);
+		expect(calls).toHaveLength(1);
+		expect(savedSummaries).toHaveLength(0);
+		expect(store.selected).toEqual(['2']);
+	});
+
 	test('Threads fields resolve live macros in the preview and the request while saving raw text',async()=>{
 		const {characterLibraryStore}=await import('#lib/stores/characterLibrary.svelte.ts');
 		const entry:any={id:'threads-test-persona',type:'persona',identity:{name:'Persona card',alias:'Aster',pronouns:{subjective:'she'}},data:{traits:{}}};

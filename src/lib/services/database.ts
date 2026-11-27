@@ -253,6 +253,10 @@ class DatabaseService {
 	getThreadsData(chatId: string): Promise<ThreadsData> { return this.call('getThreadsData', chatId); }
 	updateThreadsNotes(chatId: string, patch: ThreadsNotesPatch): Promise<void> { return this.call('updateThreadsNotes', chatId, patch); }
 	saveThreadsRound(input: SaveThreadsRound): Promise<ThreadsRound> { return this.call('saveThreadsRound', input); }
+	saveThreadsSummary(chatId: string, id: string, summary: string): Promise<ThreadsRound> { return this.call('saveThreadsSummary', chatId, id, summary); }
+	updateThreadsSummary(chatId: string, id: string, expectedSummary: string, summary: string): Promise<ThreadsRound> {
+		return this.call('updateThreadsSummary', chatId, id, expectedSummary, summary);
+	}
 	addThreadsVersion(chatId: string, id: string, revision: number, versionId: string, feed: ThreadsFeed): Promise<ThreadsRound> { return this.call('addThreadsVersion', chatId, id, revision, versionId, feed); }
 	setThreadsVersion(chatId: string, id: string, revision: number, versionId: string): Promise<ThreadsRound> { return this.call('setThreadsVersion', chatId, id, revision, versionId); }
 	resetThreadsContinuity(chatId: string, expected: { id: string; revision: number }[]): Promise<void> { return this.call('resetThreadsContinuity', chatId, expected); }
