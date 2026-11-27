@@ -69,7 +69,7 @@
 	<!-- When covers are hidden, the selection indicator occupies its own space. -->
 	{#if showCover}
 		<div
-			class="relative size-[52px] shrink-0 self-start grid place-items-center rounded-full bg-bg-tertiary text-text-muted overflow-hidden"
+			class="relative size-[48px] shrink-0 self-start grid place-items-center rounded-full bg-bg-tertiary text-text-muted overflow-hidden"
 		>
 			{#if cover}
 				<img
