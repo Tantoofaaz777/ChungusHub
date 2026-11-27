@@ -7,9 +7,9 @@ import type { Ao3Information } from './ao3';
 export const DEFAULT_THREADS_INSTRUCTIONS = `You must simulate a Reddit thread reacting to this story as if it were a fanfic on AO3.
 
 [Guidelines]
-- **PREVIOUS CONTEXT** are the events from previous chapters that people have already read.
-- **RECENT CONTEXT** is the new chapter the current discussion is focusing on.
-- Use **FANDOM CONTINUITY** to preserve recurring usernames, theories, opinions, jokes, or beefs from earlier threads.
+- **Previous context** contains events from previous chapters that people have already read.
+- **Recent context** is the new chapter the current discussion is focusing on.
+- Use **Fandom continuity** to preserve recurring usernames, theories, opinions, jokes, or beefs from earlier threads.
 
 [Rules]
 - People may disagree, beef with each other, swear, have morally wrong opinions, criticize the story, etc.
@@ -104,7 +104,7 @@ export async function assembleThreadsPrompt(input: {
 		return count;
 	};
 	const { older, full } = threadsStoryWindow(input.previous, config);
-	const summaries = older.flatMap(r => r.summary ? [{ label: label(r), content: `Story summary:\n${r.summary}` }] : []);
+	const summaries = older.flatMap(r => r.summary ? [{ label: label(r), content: `Summary:\n${r.summary}` }] : []);
 	const fullRanges = !config.summarizeOlderRounds && config.previousMode === 'tokens'
 		? await selectPreviousContextByTokenBudget(storyBlocks, config.previousTokens, counter)
 		: groupConsecutiveStoryRanges(full.map(r => ({ label: label(r), content: r.messages.map(messageText).join('\n\n') })));

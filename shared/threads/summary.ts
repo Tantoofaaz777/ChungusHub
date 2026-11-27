@@ -8,5 +8,5 @@ export const MAX_THREADS_SUMMARY_LENGTH = 8_000;
 
 export function buildThreadsSummaryPrompt(instructions: string, label: string, messages: ThreadsMessage[]): string {
 	const scene = messages.map(message => message.content).join('\n\n');
-	return [instructions.trim(), '# STORY SCENE', label.trim() ? `## ${label.trim()}\n${scene}` : scene].join('\n\n');
+	return [instructions.trim(), '# Story scene', label.trim() ? `## ${label.trim()}\n${scene}` : scene].join('\n\n');
 }

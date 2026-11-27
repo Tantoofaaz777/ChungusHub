@@ -88,11 +88,11 @@ describe('Threads generation lifecycle',()=>{
 		const fourth = store.generate();
 		for (let i = 0; i < 100 && calls.length < 1; i++) await Promise.resolve();
 		expect(calls[0].source).toBe('threads-summary');
-		expect(calls[0].messages[0].content).toBe('Summarize only Turn 1\n\n# STORY SCENE\n\n## Episode 1\nTurn 1');
+		expect(calls[0].messages[0].content).toBe('Summarize only Turn 1\n\n# Story scene\n\n## Episode 1\nTurn 1');
 		calls[0].resolve({ content: 'First recap' });
 		for (let i = 0; i < 100 && calls.length < 2; i++) await Promise.resolve();
 		expect(calls[1].source).toBe('threads');
-		expect(calls[1].messages[0].content).toContain('First recap\n\n## Episode 2\nTurn 2\n\n## Episode 3\nTurn 3\n\n# RECENT CONTEXT\n\n## CURRENT RANGE\nTurn 4');
+		expect(calls[1].messages[0].content).toContain('First recap\n\n## Episode 2\nTurn 2\n\n## Episode 3\nTurn 3\n\n# Recent context\n\n## CURRENT RANGE\nTurn 4');
 		expect(calls[1].messages[0].content).not.toContain('Archived recap');
 		calls[1].resolve({ content: JSON.stringify(feed) });
 		await fourth;
@@ -103,7 +103,7 @@ describe('Threads generation lifecycle',()=>{
 		expect(calls[2].messages[0].content).toContain('## Episode 2\nTurn 2');
 		calls[2].resolve({ content: 'Second recap' });
 		for (let i = 0; i < 100 && calls.length < 4; i++) await Promise.resolve();
-		expect(calls[3].messages[0].content).toContain('First recap\n\n## Episode 2\nStory summary:\nSecond recap\n\n## Episode 3\nTurn 3');
+		expect(calls[3].messages[0].content).toContain('First recap\n\n## Episode 2\nSummary:\nSecond recap\n\n## Episode 3\nTurn 3');
 		expect(calls[3].messages[0].content).not.toContain('Turn 2');
 		calls[3].resolve({ content: JSON.stringify(feed) });
 		await fifth;
@@ -206,7 +206,7 @@ describe('Threads generation lifecycle',()=>{
 			expect(store.instructions).toBe(template);
 			const {p}=await start();
 			expect(calls[0].messages[0].content).toContain(expected);
-			expect(calls[0].messages[0].content).toContain(`# FANDOM NOTES\n\n${expandedNotes}`);
+			expect(calls[0].messages[0].content).toContain(`# Fandom notes\n\n${expandedNotes}`);
 			expect(calls[0].messages[0].content).toContain('## Aster returns');
 			expect(calls[0].messages[0].content).toContain('Summary: Aster returns.');
 			expect(calls[0].messages[0].content).toContain('Relationships: Narrator/Aster');
@@ -394,8 +394,8 @@ describe('Threads generation lifecycle',()=>{
 		const {threadsPrompt}=await import('#shared/threads/model.ts');
 		const expected=await threadsPrompt(input);const {p}=await start();
 		expect(calls[0].messages[0].content).toBe(expected);
-		expect(expected).toContain('# PREVIOUS CONTEXT\n\n## Prior scene\nTurn 1');
-		expect(expected).toContain('# RECENT CONTEXT\n\n## Current scene\nTurn 2\n\nTurn 5');
+		expect(expected).toContain('# Previous context\n\n## Prior scene\nTurn 1');
+		expect(expected).toContain('# Recent context\n\n## Current scene\nTurn 2\n\nTurn 5');
 		store.cancel();calls[0].resolve({content:JSON.stringify(feed)});await p;
 		store.clearSelection();expect(store.promptPreview?.messages).toEqual([]);expect(store.promptPreview?.previous).toHaveLength(1);
 	});
@@ -448,7 +448,7 @@ describe('Threads generation lifecycle',()=>{
 	test('token continuity uses the engine model and captures the branch at generation time',async()=>{
 		await open();store.rounds=[previous()];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG,previousMode:'tokens',fandomMode:'tokens',previousTokens:150,fandomTokens:150};
 		const {p}=await start();expect(calls).toHaveLength(1);expect(tokenCalls.length).toBeGreaterThan(2);expect(tokenCalls.every(c=>c.model==='test')).toBe(true);
-		expect(calls[0].messages[0].content).toContain('# PREVIOUS CONTEXT');expect(calls[0].messages[0].content).toContain('# FANDOM CONTINUITY');
+		expect(calls[0].messages[0].content).toContain('# Previous context');expect(calls[0].messages[0].content).toContain('# Fandom continuity');
 		calls[0].resolve({content:JSON.stringify(feed)});await p;expect(saved[0].branchLeafId).toBe('5');
 	});
 	test('cancelling during token-budget assembly never starts a model call',async()=>{

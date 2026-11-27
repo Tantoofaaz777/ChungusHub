@@ -108,18 +108,18 @@ export function buildThreadsPrompt(input: ThreadsPromptInput): string {
   const ao3Information = serializeAo3Information(input.ao3Information)
   return [
     ...(input.previousRanges.length > 0
-      ? ['# PREVIOUS CONTEXT', renderBlocks(input.previousRanges)]
+      ? ['# Previous context', renderBlocks(input.previousRanges)]
       : []),
-    '# RECENT CONTEXT',
+    '# Recent context',
     renderBlocks([input.recentRange]),
-    ...(ao3Information ? ['# AO3 INFORMATIONS', ao3Information] : []),
+    ...(ao3Information ? ['# AO3 information', ao3Information] : []),
     ...(input.fandomContinuity.length > 0
-      ? ['# FANDOM CONTINUITY', renderBlocks(input.fandomContinuity)]
+      ? ['# Fandom continuity', renderBlocks(input.fandomContinuity)]
       : []),
-    ...(fandomNotes ? ['# FANDOM NOTES', fandomNotes] : []),
-    '# INSTRUCTIONS',
+    ...(fandomNotes ? ['# Fandom notes', fandomNotes] : []),
+    '# Instructions',
     input.instructions.trim(),
-    '# OUTPUT FORMAT',
+    '# Output format',
     `You must respond with ONLY valid JSON in this exact format:
 {
   "title": "thread title",

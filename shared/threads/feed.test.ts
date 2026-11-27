@@ -2,6 +2,7 @@
 import { describe, test, expect } from 'bun:test';
 import { buildThreadsPrompt, groupConsecutiveStoryRanges, installmentOrRoundLabel, selectNewestLabeledBlocksByTokenBudget, selectPreviousContextByTokenBudget } from './prompt';
 import { parseGeneratedThreadsFeed, parseThreadsFeed, serializeFeedAsPlainText, serializeFeedForContinuity } from './feed';
+import { emptyAo3Information } from './ao3';
 describe('Threads feed and context', () => {
   test('builds story and fandom blocks in chronological order', () => {
     const prompt = buildThreadsPrompt({
@@ -15,20 +16,27 @@ describe('Threads feed and context', () => {
         { label: 'THREAD B', content: 'TB' },
       ],
       fandomNotes: 'Remember the running joke.',
+      ao3Information: { ...emptyAo3Information(), enabled: true, title: 'Example fic' },
       instructions: 'Instructions',
     })
 
     const markers = [
+      '# Previous context',
       'RANGE A',
       'RANGE B',
+      '# Recent context',
       'RANGE C',
+      '# AO3 information',
+      '# Fandom continuity',
       'THREAD A',
       'THREAD B',
-      'FANDOM NOTES',
+      '# Fandom notes',
       'Remember the running joke.',
-      'INSTRUCTIONS',
+      '# Instructions',
+      '# Output format',
     ]
     const positions = markers.map((marker) => prompt.indexOf(marker))
+    expect(positions).not.toContain(-1)
     expect(positions).toEqual([...positions].sort((a, b) => a - b))
   })
 
@@ -53,9 +61,9 @@ describe('Threads feed and context', () => {
       instructions: 'Discuss it.',
     })
     expect(prompt).toContain(
-      '# PREVIOUS CONTEXT\n\n## ZETA - S01E03\nScene A\n\nScene B\n\n## ZETA - S01E04\nScene C',
+      '# Previous context\n\n## ZETA - S01E03\nScene A\n\nScene B\n\n## ZETA - S01E04\nScene C',
     )
-    expect(prompt).toContain('# RECENT CONTEXT\n\n## ZETA - S01E05\nCurrent scene')
+    expect(prompt).toContain('# Recent context\n\n## ZETA - S01E05\nCurrent scene')
   })
 
   test('keeps the newest whole messages within the Previous Context token budget', async () => {
@@ -109,10 +117,10 @@ describe('Threads feed and context', () => {
       instructions: 'Discuss the story.',
     })
 
-    expect(prompt).not.toContain('# PREVIOUS CONTEXT')
-    expect(prompt).not.toContain('# FANDOM CONTINUITY')
-    expect(prompt).not.toContain('# FANDOM NOTES')
-    expect(prompt).toContain('# RECENT CONTEXT')
+    expect(prompt).not.toContain('# Previous context')
+    expect(prompt).not.toContain('# Fandom continuity')
+    expect(prompt).not.toContain('# Fandom notes')
+    expect(prompt).toContain('# Recent context')
   })
 
   test('asks the model for separate verbose conversation groups', () => {
@@ -122,7 +130,7 @@ describe('Threads feed and context', () => {
       fandomContinuity: [],
       instructions: 'Discuss the story.',
     })
-    const outputFormat = prompt.slice(prompt.indexOf('# OUTPUT FORMAT'))
+    const outputFormat = prompt.slice(prompt.indexOf('# Output format'))
 
     expect(outputFormat).toContain('"title"')
     expect(outputFormat).toContain('"username"')
