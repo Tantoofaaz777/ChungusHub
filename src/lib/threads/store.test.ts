@@ -208,7 +208,7 @@ describe('Threads generation lifecycle',()=>{
 			expect(calls[0].messages[0].content).toContain(expected);
 			expect(calls[0].messages[0].content).toContain(`# Fandom notes\n\n${expandedNotes}`);
 			expect(calls[0].messages[0].content).toContain('## Aster returns');
-			expect(calls[0].messages[0].content).toContain('Summary: Aster returns.');
+			expect(calls[0].messages[0].content).not.toContain('\nSummary:');
 			expect(calls[0].messages[0].content).toContain('Relationships: Narrator/Aster');
 			expect(calls[0].messages[0].content).not.toContain('{{user}}');
 			calls[0].resolve({content:JSON.stringify(feed)});await p;

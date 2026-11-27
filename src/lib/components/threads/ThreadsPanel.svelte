@@ -235,9 +235,7 @@
 							<fieldset><legend>Categories</legend><div class="categories">{#each AO3_CATEGORIES as category}<label class="check-row"><input type="checkbox" checked={store.ao3.categories.includes(category)} onchange={(e) => ao3({categories:e.currentTarget.checked ? [...store.ao3.categories,category] : store.ao3.categories.filter(v => v !== category)})} />{category}</label>{/each}</div></fieldset>
 							{#each AO3_TEXT_FIELDS as [key,label]}
 								<label class="field-label" for={`threads-ao3-${key}`}>{label}</label>
-								{#if key === 'summary'}
-									<ExpandableTextarea id={`threads-ao3-${key}`} value={store.ao3[key]} onValueChange={(value) => ao3({[key]:value})} dialogTitle="AO3 summary" rows={3} macroScope="standalone" class="input-base threads-textarea" />
-								{:else if key === 'additionalTags'}
+								{#if key === 'additionalTags'}
 									{#key store.chatId}<ThreadsTagsInput id={`threads-ao3-${key}`} value={store.ao3.additionalTags} onchange={(value) => ao3({additionalTags: value})} />{/key}
 								{:else}
 									<input id={`threads-ao3-${key}`} class="input-base field" value={store.ao3[key]} oninput={(e) => ao3({[key]:e.currentTarget.value})} />

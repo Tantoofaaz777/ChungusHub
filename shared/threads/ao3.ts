@@ -16,12 +16,9 @@ export const AO3_CATEGORIES = ['F/F', 'F/M', 'Gen', 'M/M', 'Multi', 'Other'] as 
 
 export const AO3_TEXT_FIELDS = [
   ['title', 'Title'],
-  ['summary', 'Summary'],
   ['fandom', 'Fandom'],
   ['relationships', 'Relationships'],
-  ['characters', 'Characters'],
   ['additionalTags', 'Additional Tags'],
-  ['language', 'Language'],
 ] as const
 
 export interface Ao3Information {
@@ -30,11 +27,12 @@ export interface Ao3Information {
   archiveWarnings: Array<typeof AO3_WARNINGS[number]>
   categories: Array<typeof AO3_CATEGORIES[number]>
   title: string
-  summary: string
   fandom: string
   relationships: string
-  characters: string
   additionalTags: string
+  // Retain values from older chats when saving their AO3 metadata.
+  summary: string
+  characters: string
   language: string
 }
 
@@ -53,7 +51,7 @@ export function normalizeAo3Information(value: unknown): Ao3Information {
   result.rating = AO3_RATINGS.find((rating) => rating === raw.rating) ?? null
   result.archiveWarnings = AO3_WARNINGS.filter((warning) => Array.isArray(raw.archiveWarnings) && raw.archiveWarnings.includes(warning))
   result.categories = AO3_CATEGORIES.filter((category) => Array.isArray(raw.categories) && raw.categories.includes(category))
-  for (const [key] of AO3_TEXT_FIELDS) {
+  for (const key of [...AO3_TEXT_FIELDS.map(([key]) => key), 'summary', 'characters', 'language'] as const) {
     if (typeof raw[key] === 'string') result[key] = raw[key]
   }
   return result
