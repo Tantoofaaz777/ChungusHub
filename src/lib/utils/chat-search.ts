@@ -193,6 +193,11 @@ function segmentsOf(root: Element): Segment[] {
 	return segments;
 }
 
+/** The same block boundaries as highlight ranges, without retaining detached DOM nodes. */
+export function searchTextSegments(root: Element): string[] {
+	return segmentsOf(root).map(segment => segment.text);
+}
+
 /**
  * Every match of `regex` inside `root`, as Ranges in document order, capped at `budget`.
  * A match may start in one inline element and end in another: that is the whole point of

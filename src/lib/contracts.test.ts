@@ -639,7 +639,7 @@ describe('transcript window (architecture/chat-sessions.md #14)', () => {
 	// The transcript renders a WINDOW of the branch, so a turn the reader has not loaded back
 	// has no row in the document. A surface that points at a turn by resolving `msg-<id>`
 	// itself therefore finds nothing for anything behind that window, and on screen that reads
-	// as the turn having been deleted. Search uses the transcript's `loadThrough` callback
+	// as the turn having been deleted. Search uses the transcript's `showTurn` callback
 	// before resolving and highlighting a row.
 	// The two files exempted below are the transcript itself: they own the window, so they are
 	// the only place that may reach for a row directly.

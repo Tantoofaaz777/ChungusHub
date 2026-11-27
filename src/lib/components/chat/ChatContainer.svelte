@@ -147,10 +147,7 @@
 		wheelIdle = setTimeout(() => (wheelTarget = null), 150);
 	}
 
-	/** Earlier turns loaded above the viewport and the transcript corrected `scrollTop` to
-	 *  hold the reading position. The wheel target above is an ABSOLUTE position, so it takes
-	 *  the same correction: left alone, the next notch of a wheel that just reached the top
-	 *  edge would snap back to where the content used to start, and load again. */
+	/** Keep the absolute wheel target aligned when the transcript shifts its rendered window. */
 	function handleContentShift(delta: number) {
 		if (wheelTarget !== null) wheelTarget += delta;
 	}

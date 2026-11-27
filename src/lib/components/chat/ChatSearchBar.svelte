@@ -1,234 +1,167 @@
 <script lang="ts">
-	/**
-	 * Find in chat: a floating bar over the message list.
-	 *
-	 * It replaces the browser's find for this surface, because the browser's can only ever
-	 * see what a page happens to be: it can't tell a message from the chrome around it,
-	 * can't count hits per turn, can't be reached from the composer, and can't see past the
-	 * selected versions that happen to be rendered. This one searches the rendered story text only
-	 * (`[data-search-text]` in Message.svelte), so the meta rows, token readouts and toolbars
-	 * never produce phantom hits. Matches in inactive versions open an inspector without changing the conversation.
-	 *
-	 * The transcript window is a rendering budget, not a scope: a query loads back through its
-	 * oldest match (see "Reaching past the transcript window" below), so everything the
-	 * counter and the ∧/∨ cycle say is about the whole conversation.
-	 *
-	 * Matches are DOM Ranges painted through the CSS Custom Highlight API. See
-	 * utils/chat-search.ts for why nothing here touches the message markup, and app.css
-	 * ("Find in chat") for the two ::highlight() rules.
-	 */
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
 	import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
 	import { chatStore } from '#lib/stores/chat.svelte.ts';
+	import { chatDisplay } from '#lib/stores/chat-display.svelte.ts';
 	import { responseVersionsStore } from '#lib/stores/responseVersions.svelte.ts';
 	import { inactiveResponseVersions } from '#lib/utils/response-versions.ts';
-	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
-	import { openChatSetup } from '#lib/stores/openChatSetup.svelte.ts';
-	import { displaySelfRefs } from '#lib/macros.ts';
 	import {
 		buildSearchRegex,
 		findVersionHits,
 		findMatchRanges,
+		searchTextSegments,
 		MAX_VERSION_HITS,
 		MAX_MATCHES
 	} from '#lib/utils/chat-search.ts';
+	import { renderMarkdown } from '#lib/utils/markdown.ts';
 	import type { Message } from '#lib/types/chat.ts';
-	import { storyRoleName } from '#lib/types/library.ts';
 
 	interface Props {
-		/** The message-list scroller: both the search root and what we scroll to a hit. */
 		container: HTMLElement | undefined;
-		/** The rendered transcript. Read as a change signal only: an edit, a version change
-		 *  or a new turn replaces the array, which re-runs the match pass against the DOM
-		 *  Svelte has just updated. */
 		messages: Message[];
-		/** How many turns at the START of the path the transcript window is holding back.
-		 *  0 = the whole conversation is rendered and nothing below applies. */
-		windowStart: number;
-		/** Load earlier turns until the turn at this path index is rendered. */
-		loadThrough: (index: number) => void;
+		shown: Message[];
+		showTurn: (index: number) => void;
+		streamingTurnOffset: number;
 	}
 
-	let { container, messages, windowStart, loadThrough }: Props = $props();
+	interface Hit {
+		id: string;
+		index: number;
+		occurrence: number;
+	}
 
-	/** Registry keys, paired with the ::highlight() rules in app.css. */
+	let { container, messages, shown, showTurn, streamingTurnOffset }: Props = $props();
+
 	const HL_ALL = 'chat-find';
 	const HL_CURRENT = 'chat-find-current';
 	const canHighlight = typeof CSS !== 'undefined' && !!CSS.highlights;
 
-	let matches = $state<Range[]>([]);
+	let matches = $state.raw<Hit[]>([]);
 	let current = $state(-1);
+	let pending = $state(false);
 	let inputEl = $state<HTMLInputElement | undefined>(undefined);
 	let versionListOpen = $state(false);
+	let markedMessageId: string | null = null;
+	let completedKey = '';
+	let revealNonce = 0;
+	const textCache = new Map<string, { text: string; segments: string[] }>();
 
-	// ===== Other response versions =====
-	// Same live expansion Message.svelte does, so a greeting's raw identity macros are
-	// searchable by the name actually on screen (architecture/chat-sessions.md coupling 6).
-	let selfRefChar = $derived.by(() => {
-		const entry = characterLibraryStore.entries.find(
-			(e) => e.id === chatStore.activeChat?.characterId && e.type === 'character'
-		);
-		return entry ? storyRoleName(entry.identity) || 'Character' : 'Character';
-	});
-	let selfRefUser = $derived(
-		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
-	);
-	let selfRefPronouns = $derived(
-		openChatSetup.persona ? openChatSetup.persona.identity.pronouns ?? {} : undefined
-	);
-
-	let versionHits = $derived.by(() => {
-		const regex = buildSearchRegex(chatSearch.query, {
-			matchCase: chatSearch.matchCase,
-			wholeWord: chatSearch.wholeWord
-		});
+	const regex = $derived(buildSearchRegex(chatSearch.query, {
+		matchCase: chatSearch.matchCase,
+		wholeWord: chatSearch.wholeWord
+	}));
+	const searchKey = $derived(`${chatSearch.matchCase ? 'C' : 'c'}${chatSearch.wholeWord ? 'W' : 'w'}${chatSearch.query}`);
+	const versionHits = $derived.by(() => {
 		if (!regex) return [];
 		const versions = inactiveResponseVersions(messages).map(version => ({
 			messageId: version.message.id, variantId: version.variantId!, ordinal: version.ordinal, versionIndex: version.index,
-			text: displaySelfRefs(version.message.content, selfRefChar, selfRefUser, selfRefPronouns)
+			text: chatDisplay.expand(version.message.content)
 		}));
 		return findVersionHits(versions, regex, MAX_VERSION_HITS);
 	});
-
-	let capped = $derived(matches.length >= MAX_MATCHES);
-	let countLabel = $derived.by(() => {
+	const countLabel = $derived.by(() => {
 		if (!chatSearch.query) return '';
-		if (matches.length) return `${current + 1} / ${matches.length}${capped ? '+' : ''}`;
-		// Until the scan behind the window has come back, any verdict would be a claim about
-		// turns the search has not reached yet.
-		if (!earlierChecked) return 'Searching…';
-		// "No matches" would be a lie while the version list holds some; say where they aren't.
+		if (pending) return 'Searching…';
+		if (matches.length) return `${current + 1} / ${matches.length}${matches.length >= MAX_MATCHES ? '+' : ''}`;
 		return versionHits.length ? 'None in selected versions' : 'No matches';
 	});
 
-	// ===== Reaching past the transcript window =====
-	// The window renders the newest stretch of a long conversation (architecture/chat-sessions.md
-	// coupling 14). A search that quietly stopped at its top edge would answer "no matches"
-	// about a story that has them, so a query loads back through its OLDEST match and every
-	// hit above then becomes an ordinary on-screen one, counted and cycled like the rest.
-	//
-	// The scan reads the stored rows, since an unrendered turn has no DOM: the same asymmetry
-	// the version list lives with, so a hit that exists only once a display regex rule has run
-	// is not seen from here. It is debounced because find-as-you-type walks through prefixes
-	// ("h", "ha", …) that match far more of the story than the word being typed.
-	const EARLIER_SCAN_MS = 250;
-	/** False while a scan is owed: the counter must not call a search empty before then. */
-	let earlierChecked = $state(true);
-	/** Set beside a load this bar asked for, so the pass that sees those turns knows nothing
-	 *  else has placed the view. */
-	let pendingGrowth = false;
-
+	// Use the same display rules and markdown as the transcript. Off-screen turns are
+	// searched in a reusable detached element. Only the plain text segments are cached.
 	$effect(() => {
-		const hidden = windowStart;
-		const path = messages;
-		const char = selfRefChar;
-		const user = selfRefUser;
-		const pronouns = selfRefPronouns;
-		const regex = buildSearchRegex(chatSearch.query, {
-			matchCase: chatSearch.matchCase,
-			wholeWord: chatSearch.wholeWord
-		});
-		if (!regex || hidden <= 0) {
-			earlierChecked = true;
+		const pattern = regex;
+		const key = searchKey;
+		const ticket = ++revealNonce;
+		if (!pattern) {
+			matches = [];
+			current = -1;
+			pending = false;
+			completedKey = '';
+			clearSearchMark();
 			return;
 		}
-		earlierChecked = false;
-		const timer = setTimeout(() => {
-			for (let i = 0; i < hidden; i++) {
-				// Global regex: its cursor has to be rewound per turn.
-				regex.lastIndex = 0;
-				if (regex.test(displaySelfRefs(path[i].content, char, user, pronouns))) {
-					pendingGrowth = true;
-					loadThrough(i);
-					return;
+
+		const path = messages.map((message, index) => ({
+			id: message.id,
+			text: chatDisplay.text(message.content, message.role, messages.length - 1 - index + streamingTurnOffset)
+		}));
+		const ids = new Set(path.map(turn => turn.id));
+		for (const id of textCache.keys()) {
+			if (!ids.has(id)) textCache.delete(id);
+		}
+
+		pending = true;
+		const scratch = document.createElement('div');
+		const found: Hit[] = [];
+		let index = 0;
+		let timer = setTimeout(scanBatch, 160);
+
+		function scanBatch() {
+			const deadline = performance.now() + 8;
+			while (index < path.length && found.length < MAX_MATCHES) {
+				const { id, text } = path[index];
+				let cached = textCache.get(id);
+				if (!cached || cached.text !== text) {
+					scratch.innerHTML = renderMarkdown(text);
+					cached = { text, segments: searchTextSegments(scratch) };
+					textCache.set(id, cached);
 				}
+				let occurrence = 0;
+				for (const segment of cached.segments) {
+					for (const _ of segment.matchAll(pattern!)) {
+						found.push({ id, index, occurrence: occurrence++ });
+						if (found.length >= MAX_MATCHES) break;
+					}
+					if (found.length >= MAX_MATCHES) break;
+				}
+				index++;
+				if (performance.now() >= deadline) break;
 			}
-			earlierChecked = true;
-		}, EARLIER_SCAN_MS);
+			scratch.replaceChildren();
+			if (index < path.length && found.length < MAX_MATCHES) {
+				timer = setTimeout(scanBatch, 0);
+				return;
+			}
+			if (ticket !== revealNonce) return;
+			const previous = matches[current];
+			const kept = key === completedKey && previous
+				? found.findIndex(hit => hit.id === previous.id && hit.occurrence === previous.occurrence)
+				: -1;
+			completedKey = key;
+			matches = found;
+			current = kept >= 0 ? kept : found.length ? 0 : -1;
+			pending = false;
+			if (kept < 0 && found.length) void revealHit(found[0]);
+			else if (!found.length) clearSearchMark();
+		}
 		return () => clearTimeout(timer);
 	});
 
-	// Both plain lets, not $state: bookkeeping the effect below reads, where reactivity
-	// would only buy it a redundant re-run.
-	//
-	// What the current `matches` were computed for.
-	let searchKey = '';
+	function rowOf(id: string) {
+		return document.getElementById(`msg-${id}`);
+	}
 
 	$effect(() => {
-		// Flags first, at fixed width, then the raw query: no separator can be ambiguous
-		// because the first two characters are always the flags.
-		const key = `${chatSearch.matchCase ? 'C' : 'c'}${chatSearch.wholeWord ? 'W' : 'w'}${chatSearch.query}`;
-		const root = container;
-		void messages;
-		// Earlier turns arriving is a DOM change like any other, and their hits are ours.
-		void windowStart;
-		// Nothing rendered yet. Leave searchKey alone so the first real pass still counts
-		// as a new search and jumps to its first hit.
-		if (!root) return;
-
-		// The cursor follows the HIT, not its number: turns loading above prepend ranges, so
-		// a cursor kept by index would silently slide onto an older match. The turns already
-		// on screen keep their nodes across a load (the each block is keyed and renderedHtml
-		// patches in place), so node identity is what survives.
-		const anchor = untrack(() => (current >= 0 ? (matches[current] ?? null) : null));
-
-		const regex = buildSearchRegex(chatSearch.query, {
-			matchCase: chatSearch.matchCase,
-			wholeWord: chatSearch.wholeWord
-		});
-		const found: Range[] = [];
-		if (regex) {
-			for (const turn of root.querySelectorAll('[data-search-text]')) {
-				found.push(...findMatchRanges(turn, regex, MAX_MATCHES - found.length));
-				if (found.length >= MAX_MATCHES) break;
-			}
+		const pattern = regex;
+		const active = matches[current];
+		if (!canHighlight || !pattern || pending || !container) return;
+		const ranges: Range[] = [];
+		let currentRange: Range | undefined;
+		for (const message of shown) {
+			const body = rowOf(message.id)?.querySelector('[data-search-text]');
+			if (!body) continue;
+			const hits = findMatchRanges(body, pattern, MAX_MATCHES - ranges.length);
+			if (active?.id === message.id) currentRange = hits[active.occurrence];
+			ranges.push(...hits);
+			if (ranges.length >= MAX_MATCHES) break;
 		}
-
-		const isNewSearch = key !== searchKey;
-		const anchored = anchor
-			? found.findIndex(
-					(r) => r.startContainer === anchor.startContainer && r.startOffset === anchor.startOffset
-				)
-			: -1;
-		searchKey = key;
-		matches = found;
-		// Untracked: the cursor is an OUTPUT of this pass, and reading it as a dependency
-		// would make every write re-run the whole DOM walk a second time per keystroke.
-		untrack(() => {
-			const grown = pendingGrowth;
-			pendingGrowth = false;
-			if (isNewSearch) {
-				// Find-as-you-type: land on the first hit the moment one exists.
-				current = found.length ? 0 : -1;
-				if (found.length) reveal(found[0], grown ? 'instant' : 'smooth');
-				return;
-			}
-			if (anchored >= 0) current = anchored;
-			else if (current < 0 || current >= found.length) {
-				// The transcript changed under us; keep a valid cursor without moving the view.
-				current = found.length ? Math.min(Math.max(current, 0), found.length - 1) : -1;
-			}
-			// Park back on the hit the reader is on, instantly: the scroller's CSS glide would
-			// otherwise travel the whole stretch that just loaded above it.
-			if (grown && current >= 0) reveal(found[current], 'instant');
-		});
-	});
-
-	$effect(() => {
-		if (!canHighlight) return;
-		const all = matches;
-		const active = current >= 0 ? all[current] : undefined;
-		if (all.length) CSS.highlights.set(HL_ALL, new Highlight(...all));
-		else CSS.highlights.delete(HL_ALL);
-		if (active) {
-			const one = new Highlight(active);
-			// Explicit, not registration order: the current hit always paints over the wash.
+		if (ranges.length) CSS.highlights.set(HL_ALL, new Highlight(...ranges));
+		if (currentRange) {
+			const one = new Highlight(currentRange);
 			one.priority = 1;
 			CSS.highlights.set(HL_CURRENT, one);
-		} else {
-			CSS.highlights.delete(HL_CURRENT);
 		}
 		return () => {
 			CSS.highlights.delete(HL_ALL);
@@ -236,27 +169,32 @@
 		};
 	});
 
-	// A search hit is a temporary mark, never a focus request. Track the mark this bar owns
-	// so every way of closing it clears the ring without opening the mobile keyboard.
-	let markedMessageId: string | null = null;
 	function clearSearchMark(): void {
 		untrack(() => {
 			if (markedMessageId && chatCursor.id === markedMessageId) chatCursor.clear();
 			markedMessageId = null;
 		});
 	}
-	onDestroy(clearSearchMark);
-	$effect(() => {
-		const active = current >= 0 ? matches[current] : undefined;
-		if (!active) { clearSearchMark(); return; }
-		const start = active.startContainer;
-		const from = start.nodeType === Node.TEXT_NODE ? start.parentElement : (start as Element);
-		const host = from?.closest<HTMLElement>('[id^="msg-"]');
-		if (host) {
-			markedMessageId = host.id.slice('msg-'.length);
-			chatCursor.mark(markedMessageId);
-		} else clearSearchMark();
-	});
+	onDestroy(() => { revealNonce++; clearSearchMark(); });
+
+	async function revealHit(hit: Hit) {
+		const pattern = regex;
+		if (!pattern) return;
+		const ticket = ++revealNonce;
+		const wasMounted = !!rowOf(hit.id);
+		showTurn(hit.index);
+		await tick();
+		if (ticket !== revealNonce || !container) return;
+		const row = rowOf(hit.id);
+		if (!row) return;
+		const body = row.querySelector('[data-search-text]');
+		const range = body && findMatchRanges(body, pattern, hit.occurrence + 1)[hit.occurrence];
+		const behavior = wasMounted ? 'smooth' : 'instant';
+		markedMessageId = hit.id;
+		chatCursor.mark(hit.id);
+		if (range) reveal(range, behavior);
+		else row.scrollIntoView({ block: 'center', behavior });
+	}
 
 	/** Keep the reading position; unmount cleanup releases the temporary search mark. */
 	function close(): void {
@@ -271,11 +209,8 @@
 		inputEl?.select();
 	});
 
-	/** Scroll a hit into the reading zone. The scroller carries `scroll-behavior: smooth`, so
-	 *  the default glides exactly like the list's own jump-to-latest; `instant` is for the one
-	 *  case that must not glide, re-parking after earlier turns have loaded above, and it is
-	 *  the only value that overrides that CSS (`auto` defers to it). */
-	function reveal(range: Range, behavior: ScrollBehavior = 'smooth') {
+	/** Scroll a mounted match below the search bar. A newly loaded window lands instantly. */
+	function reveal(range: Range, behavior: ScrollBehavior) {
 		if (!container) return;
 		const hit = range.getBoundingClientRect();
 		const host = container.getBoundingClientRect();
@@ -289,12 +224,12 @@
 	}
 
 	function go(direction: 1 | -1) {
-		if (!matches.length) return;
+		if (pending || !matches.length) return;
 		current = (current + direction + matches.length) % matches.length;
-		reveal(matches[current]);
+		void revealHit(matches[current]);
 		// The buttons never take the caret: Enter has to keep cycling after a click, and a
 		// click that quietly disarmed the keyboard would be the worse surprise.
-		inputEl?.focus();
+		inputEl?.focus({ preventScroll: true });
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -328,7 +263,7 @@
 		<span
 			class="find-count"
 			class:find-count--none={!!chatSearch.query &&
-				earlierChecked &&
+				!pending &&
 				!matches.length &&
 				!versionHits.length}
 			aria-live="polite"
@@ -338,7 +273,7 @@
 		<button
 			type="button"
 			class="find-btn"
-			disabled={!matches.length}
+			disabled={pending || !matches.length}
 			aria-label="Previous match"
 			title="Previous match (Shift+Enter)"
 			onclick={() => go(-1)}
@@ -348,7 +283,7 @@
 		<button
 			type="button"
 			class="find-btn"
-			disabled={!matches.length}
+			disabled={pending || !matches.length}
 			aria-label="Next match"
 			title="Next match (Enter)"
 			onclick={() => go(1)}

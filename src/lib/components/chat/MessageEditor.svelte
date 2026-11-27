@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { EditAction } from '#lib/types/chat.ts';
 
 	interface Props {
 		initialContent: string;
+		draftContent: string;
+		focusOnMount: boolean;
 		role: 'user' | 'assistant' | 'system';
 		/** Which of the two edits this is. 'save_only' rewrites the turn in place; 'create_branch'
 		 *  copies its history into a new chat ending at this turn. Chosen by the caller BEFORE the
@@ -14,19 +16,16 @@
 		mode?: EditAction;
 		onSave: (content: string, action: EditAction) => void;
 		onCancel: () => void;
+		onChange: (content: string) => void;
 	}
 
-	let { initialContent, role, mode = 'save_only', onSave, onCancel }: Props = $props();
+	let { initialContent, draftContent, focusOnMount, role, mode = 'save_only', onSave, onCancel, onChange }: Props = $props();
 
-	let content = $state('');
+	let content = $state(untrack(() => draftContent));
 	let textareaElement: HTMLTextAreaElement;
 	let buttonsElement = $state<HTMLDivElement | undefined>(undefined);
 
 	const isBranch = $derived(mode === 'create_branch');
-
-	$effect(() => {
-		content = initialContent;
-	});
 
 	function autoResize() {
 		if (textareaElement) {
@@ -35,19 +34,11 @@
 		}
 	}
 
-	$effect(() => {
-		if (textareaElement) {
-			void content;
-			tick().then(() => {
-				autoResize();
-				textareaElement.focus();
-			});
-		}
-	});
-
-	$effect(() => {
-		if (buttonsElement) {
-			buttonsElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+	onMount(() => {
+		autoResize();
+		if (focusOnMount) {
+			textareaElement.focus();
+			buttonsElement?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 		}
 	});
 
@@ -84,7 +75,7 @@
 	<textarea
 		bind:this={textareaElement}
 		bind:value={content}
-		oninput={autoResize}
+		oninput={(event) => { autoResize(); onChange(event.currentTarget.value); }}
 		class="w-full font-body text-text-primary resize-none overflow-hidden border border-text-muted/30 outline-none placeholder:text-text-muted"
 		style="font-size: inherit; line-height: 1.55; padding: 0.5rem; background: rgb(0 0 0 / 0.3);"
 		placeholder="Enter your message…"

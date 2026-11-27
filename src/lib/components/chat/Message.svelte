@@ -1,5 +1,16 @@
+<script module lang="ts">
+	import type { EditAction } from '#lib/types/chat.ts';
+
+	export interface MessageEditDraft {
+		original: string;
+		content: string;
+		mode: EditAction;
+		source: { variantId: string; expectedRevision: number } | null;
+	}
+</script>
+
 <script lang="ts">
-	import type { Message, EditAction, DeleteAction } from '#lib/types/chat.ts';
+	import type { Message, DeleteAction } from '#lib/types/chat.ts';
 	import MessageActions from './MessageActions.svelte';
 	import MessageEditor from './MessageEditor.svelte';
 	import SwipeNavigator from './SwipeNavigator.svelte';
@@ -27,9 +38,7 @@
 	import { readAloudHighlight } from '#lib/actions/readAloudHighlight.svelte.ts';
 	import { canShareNativeText, shareNativeText } from '#lib/services/android-client.ts';
 	import { previewContinuation } from '#lib/utils/continuation.ts';
-	import { displaySelfRefs } from '#lib/macros.ts';
-	import { openChatSetup } from '#lib/stores/openChatSetup.svelte.ts';
-	import { regexRulesStore } from '#lib/stores/regex-rules.svelte.ts';
+	import { chatDisplay } from '#lib/stores/chat-display.svelte.ts';
 	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
 	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 	import { canSpliceMessage } from '#lib/utils/message-tree.ts';
@@ -63,6 +72,7 @@
 		versionIndex: number;
 		isLast: boolean;
 		allMessages: Message[];
+		editorDrafts: Map<string, MessageEditDraft>;
 		/** This message has been folded into chat memory (a "ghost": recalled, not sent verbatim). */
 		archived?: boolean;
 		memorySelected?: boolean;
@@ -82,6 +92,7 @@
 		versionIndex,
 		isLast,
 		allMessages,
+		editorDrafts,
 		archived = false,
 		memorySelected = false,
 		streamTail = null,
@@ -93,9 +104,9 @@
 	let imageAttachments = $derived(streamReplacement ? [] : (message.attachments ?? []).filter((a) => a.kind === 'image').map((a) => a.path));
 
 	// Edit rewrites the captured version; Branch copies its prefix into an independent chat.
-	let isEditing = $state(false);
-	let editorContent = $state('');
-	let editorSource = $state<{ variantId: string; expectedRevision: number } | null>(null);
+	let editorDraft = $derived(editorDrafts.get(message.id));
+	let isEditing = $derived(editorDraft !== undefined);
+	let focusEditor = $state(false);
 	let bookmarkBusy = $state(false);
 	async function toggleBookmark() {
 		if (bookmarkBusy) return;
@@ -103,7 +114,6 @@
 		try { await messageStore.setBookmarked(message.id, !message.isBookmarked); }
 		finally { bookmarkBusy = false; }
 	}
-	let editorMode = $state<EditAction>('save_only');
 	let showDeleteMenu = $state(false);
 	/** The delete the user has been asked to confirm, or null while the menu offers choices. */
 	let confirmingDelete = $state<DeleteAction | null>(null);
@@ -122,27 +132,6 @@
 	const confirmCount = $derived(confirmingDelete === 'this_only' ? 1 : deleteBlast.turns);
 	const confirmVersions = $derived(confirmingDelete === 'this_only' ? message.variants?.length || 1 : deleteBlast.versions);
 
-	// Names and persona pronouns resolve live at display against the active persona + bound character.
-	// Greetings store their macros raw, so changing persona reflows them on screen without
-	// touching the row (matches the generation path in prompt-assembly.toInjectedMessage).
-	const selfRefChar = $derived.by(() => {
-		const entry = characterLibraryStore.entries.find(
-			(e) => e.id === chatStore.activeChat?.characterId && e.type === 'character'
-		);
-		return entry ? storyRoleName(entry.identity) || 'Character' : 'Character';
-	});
-	// Both come off the open chat's ONE resolution rather than this turn's own: the claims
-	// belong to the chat, so a per-message copy parsed the same blob and walked the same
-	// library once per turn on screen. Also keeps them out of `bodyHtml`, which recomputes
-	// per streamed token.
-	const selfRefUser = $derived(
-		openChatSetup.persona ? storyRoleName(openChatSetup.persona.identity) || 'You' : 'You'
-	);
-	const selfRefPronouns = $derived(
-		openChatSetup.persona ? openChatSetup.persona.identity.pronouns ?? {} : undefined
-	);
-	const displayPreset = $derived(openChatSetup.preset);
-
 	$effect(() => {
 		if (showDeleteMenu && deleteMenuElement) {
 			deleteMenuElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -153,12 +142,15 @@
 		// Ask before closing: a busy store rejects the edit, and closing first would
 		// throw away the draft the user just wrote.
 		if (messageStore.warnIfBusy()) return;
-		if (await messageStore.editMessage(message.id, newContent, action, editorSource ?? {})) isEditing = false;
+		const draft = editorDraft;
+		const id = message.id;
+		if (await messageStore.editMessage(id, newContent, action, draft?.source ?? {}) && editorDrafts.get(id) === draft) {
+			editorDrafts.delete(id);
+		}
 	}
 
-	/** Leaving the editor discards its local draft. */
 	function closeEditor() {
-		isEditing = false;
+		editorDrafts.delete(message.id);
 	}
 
 	function handleDeleteClick() {
@@ -187,9 +179,7 @@
 	}
 
 	function handleBranchClick() {
-		captureEditorVersion();
-		editorMode = 'create_branch';
-		isEditing = true;
+		openEditor('create_branch');
 	}
 
 	// `/branch` names the newest turn and its row opens its own editor. The editor is this
@@ -210,15 +200,18 @@
 	});
 
 	function handleEditClick() {
-		captureEditorVersion();
-		editorMode = 'save_only';
-		isEditing = true;
+		openEditor('save_only');
 	}
 
-	function captureEditorVersion() {
-		editorContent = message.content;
-		editorSource = message.selectedVariantId && message.revision !== undefined
-			? { variantId: message.selectedVariantId, expectedRevision: message.revision } : null;
+	function openEditor(mode: EditAction) {
+		focusEditor = true;
+		editorDrafts.set(message.id, {
+			original: message.content,
+			content: message.content,
+			mode,
+			source: message.selectedVariantId && message.revision !== undefined
+				? { variantId: message.selectedVariantId, expectedRevision: message.revision } : null
+		});
 	}
 
 	async function handleSwipeNavigate(direction: 'prev' | 'next') {
@@ -425,7 +418,7 @@
 			? previewContinuation(
 					message.content,
 					streamTail,
-					displaySelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns)
+					chatDisplay.expand(message.content)
 				)
 			: message.content
 	);
@@ -442,15 +435,12 @@
 	// The story text as it reaches the page: display-scope regex rules (measured against this
 	// turn's depth), then live identity macros, then markdown. Derived rather than inlined
 	// so the action below re-runs on exactly these inputs and nothing else.
-	const bodyText = $derived(displaySelfRefs(
-		regexRulesStore.forDisplay(displayedContent, message.role, depth, displayPreset),
-		selfRefChar, selfRefUser, selfRefPronouns
-	));
+	const bodyText = $derived(chatDisplay.text(displayedContent, message.role, depth));
 	// A refreshed row or visibility flag can invalidate preprocessing without changing
 	// its result. Keep that string boundary so unchanged prose never reparses/sanitizes.
 	const bodyHtml = $derived(renderMarkdown(bodyText));
 	// Lazy: only the message being read needs a plain-text source. Reuse it per sentence.
-	const speechText = $derived(readAloudText(displaySelfRefs(message.content, selfRefChar, selfRefUser, selfRefPronouns)));
+	const speechText = $derived(readAloudText(chatDisplay.expand(message.content)));
 	// Portraits style renders the portrait INSIDE the card (floated top-left),
 	// so the outer avatar column has to come off the DOM, not just hide.
 	const isPortraitStyle = $derived(themeStore.appearance.chatStyle === 'portrait');
@@ -573,12 +563,16 @@
 								</div>
 							{/if}
 
-							{#if isEditing}
+							{#if editorDraft}
+								{@const draft = editorDraft}
 								<div class="message-content message-content-editing">
 									<MessageEditor
-										initialContent={editorContent}
+										initialContent={draft.original}
+										draftContent={draft.content}
+										focusOnMount={focusEditor}
 										role={message.role}
-										mode={editorMode}
+										mode={draft.mode}
+										onChange={(content) => { draft.content = content; }}
 										onSave={handleEdit}
 										onCancel={closeEditor}
 									/>

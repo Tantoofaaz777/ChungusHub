@@ -159,7 +159,7 @@
 		<div class="card-head">
 			<span class="card-title">Long Chats</span>
 			<InfoTip
-				text="A chat opens on its newest turns instead of drawing its whole branch at once, which is what makes a long story slow to open and slow to stream on an older machine. Nothing is hidden from search: find in chat covers the whole branch and loads back to whatever it lands on, and the chats panel is never limited."
+				text="A chat opens on its newest turns and keeps a limited window rendered as you scroll or jump. Find in chat searches the whole branch."
 			/>
 		</div>
 		<div class="toggle-row" use:toggleRow>
@@ -175,7 +175,7 @@
 			<div class="sub">
 				<span class="section-label">Loading</span>
 				<div class="row-block">
-					<label for="transcript-page-size" class="slider-label">Turns per load</label>
+					<label for="transcript-page-size" class="slider-label">Turns in the window</label>
 					<input
 						id="transcript-page-size"
 						class="input-base limit-input"
@@ -187,12 +187,12 @@
 					/>
 				</div>
 				<div class="row-block">
-					<span class="slider-label">Earlier turns arrive</span>
+					<span class="slider-label">Load adjacent turns</span>
 					<PillRow
 						options={LOAD_MODE_OPTIONS}
 						current={transcriptLoadMode}
 						onpick={(v) => generalSettingsStore.setTranscriptLoadMode(v as TranscriptLoadMode)}
-						label="Earlier turns arrive"
+						label="Load adjacent turns"
 					/>
 				</div>
 			</div>

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import SceneSelectionBar from '#lib/components/memory/SceneSelectionBar.svelte';
 	import type { Message } from '#lib/types/chat.ts';
-	import MessageComponent from './Message.svelte';
+	import MessageComponent, { type MessageEditDraft } from './Message.svelte';
 	import StreamingIndicator from './StreamingIndicator.svelte';
 	import OpeningScenePopover from './OpeningScenePopover.svelte';
 	import ChatSearchBar from './ChatSearchBar.svelte';
@@ -36,10 +37,7 @@
 		// centered column into this scroller (compiler-checked, so a rename can't
 		// silently break the forwarding).
 		scrollEl?: HTMLDivElement;
-		/** Earlier turns landed ABOVE the viewport and `scrollTop` was corrected by this many
-		 *  pixels to hold the reading position. Anything outside holding an absolute scroll
-		 *  position (the margin wheel's target) has to take the same correction, or its next
-		 *  step snaps the reader back to where the content used to start. */
+		/** Scroll offset change caused by shifting the window while holding the reading position. */
 		onContentShift?: (delta: number) => void;
 	}
 
@@ -84,6 +82,7 @@
 	let prevLastVariantId: string | null = null;
 	let prevChatId: string | null = null;
 	let prevIsStreaming = false;
+	const editorDrafts = new SvelteMap<string, MessageEditDraft>();
 
 	// A reply landing in its own bubble is a turn the stored rows don't have yet, so while
 	// it streams every one of them sits one turn further back than its index says. Depth is
@@ -114,7 +113,10 @@
 
 	/** Images, reasoning panels and viewport changes can move an edge without a scroll event. */
 	function observeScrollBounds(node: HTMLElement) {
-		const observer = new ResizeObserver(updateScrollBounds);
+		const observer = new ResizeObserver(() => {
+			updateScrollBounds();
+			fitWindow();
+		});
 		observer.observe(node);
 		return { destroy: () => observer.disconnect() };
 	}
@@ -128,6 +130,7 @@
 		if (!listElement) return;
 		// Clamped: a transcript shorter than the viewport has a negative overflow, and a write
 		// the browser clamps back to 0 is exactly the no-op the guard must not be armed for.
+		if (laterCount > 0) return;
 		const top = Math.max(0, listElement.scrollHeight - listElement.clientHeight);
 		// Already there, and a write that moves nothing fires no scroll event, so arming the
 		// guard for it leaves it armed. It then swallows the user's first real scroll-up, the
@@ -141,196 +144,160 @@
 	}
 
 	function updateNearBottom() {
-		if (!listElement) return;
+		const el = listElement;
+		if (!el) return;
 		updateScrollBounds();
-		const st = listElement.scrollTop;
-		// Reading back through the top edge pulls the next stretch in before the reader hits
-		// the wall, so the story keeps flowing under a fast scroll. In button mode the
-		// identical load waits for the press instead.
-		if (!manualLoad && st < LOAD_EARLIER_PX) loadEarlier();
-		const dist = listElement.scrollHeight - st - listElement.clientHeight;
+		const top = el.scrollTop;
+		const distance = el.scrollHeight - top - el.clientHeight;
+		const direction = Math.sign(top - lastScrollTop);
+		lastScrollTop = top;
+		if (loadPending) return;
 		if (programmaticScroll) {
 			programmaticScroll = false;
-		} else if (st < lastScrollTop - 1) {
-			// Any deliberate upward scroll hands control to the user at once, even inside the
-			// pin band: a fast stream must never yank them back down mid-read.
-			nearBottom = false;
 		} else {
-			nearBottom = dist <= NEAR_BOTTOM_PX;
+			nearBottom = laterCount === 0 && direction >= 0 && distance <= NEAR_BOTTOM_PX;
 		}
-		if (nearBottom) hasUnseen = false;
-		lastScrollTop = st;
+		if (nearBottom) {
+			topAnchor = null;
+			hasUnseen = false;
+		} else if (!topAnchor && paging && messages.length) {
+			setWindowStart(windowStart);
+		}
+		if (manualLoad) return;
+		if (direction < 0 && top < LOAD_EDGE_PX) void shiftWindow(-1);
+		if (direction > 0 && distance < LOAD_EDGE_PX) void shiftWindow(1);
 	}
 
-	function jumpToLatest() {
-		navigationNonce++;
+	async function jumpToLatest() {
+		const el = listElement;
+		if (!el) return;
+		const changed = laterCount > 0;
+		const navigation = ++navigationNonce;
+		const chatId = pathChatId;
 		loadPending = false;
-		snapToBottom(listElement && reducedMotion(listElement) ? 'instant' : 'smooth');
 		nearBottom = true;
 		hasUnseen = false;
+		topAnchor = null;
+		await tick();
+		if (navigation !== navigationNonce || el !== listElement || chatId !== pathChatId) return;
+		snapToBottom(changed || reducedMotion(el) ? 'instant' : 'smooth');
+		updateScrollBounds();
 	}
 
-	async function jumpToFirst(): Promise<void> {
+	async function jumpToFirst() {
 		const el = listElement;
 		if (!el || !messages.length) return;
-		const chatId = pathChatId;
+		const changed = windowStart > 0;
 		const navigation = ++navigationNonce;
+		const chatId = pathChatId;
 		loadPending = false;
 		nearBottom = false;
 		programmaticScroll = false;
-		// The first turn can be behind several unloaded pages. Reveal it before travelling.
-		showFrom(0);
+		setWindowStart(0);
 		await tick();
 		if (navigation !== navigationNonce || el !== listElement || chatId !== pathChatId) return;
-		el.scrollTo({ top: 0, behavior: reducedMotion(el) ? 'instant' : 'smooth' });
+		el.scrollTo({ top: 0, behavior: changed || reducedMotion(el) ? 'instant' : 'smooth' });
 		lastScrollTop = el.scrollTop;
+		updateScrollBounds();
 	}
 
-	// ===== Transcript window =====
-	// A long branch is not mounted all at once. Every turn on screen costs a markdown parse,
-	// a card of DOM and a row this scroller re-measures on every streaming token, so a
-	// nine-hundred-turn story is slow to open and then drags every reply that follows it.
-	// The reader gets the newest `pageSize` turns and reaches further back deliberately.
-	// NOTHING else is windowed: the tree, the prompt, the chats panel and find
-	// in chat all still see the whole path (architecture/chat-sessions.md coupling 14).
-	const LOAD_EARLIER_PX = 240;
-
+	// Paging bounds the mounted rows; the path used by prompts, Memory and search stays intact.
+	const LOAD_EDGE_PX = 240;
 	let paging = $derived(generalSettingsStore.transcriptPaging);
 	let pageSize = $derived(generalSettingsStore.transcriptPageSize);
 	let manualLoad = $derived(generalSettingsStore.transcriptLoadMode === 'button');
-
-	// The chat the RENDERED path belongs to, which is not always the active id: selecting a chat
-	// sets that id and then AWAITS the load, so for one flush the store names the new chat while
-	// `messages` is still the previous one's. The anchor keys off the state object instead,
-	// where the id and the path are written together, or arriving anywhere could pin a window
-	// onto a turn from the story just left.
 	let pathChatId = $derived(chatStore.currentChatState?.chat.id ?? null);
+	let viewportFit = $state<{ chatId: string | null; pageSize: number; size: number } | null>(null);
+	let windowSize = $derived(viewportFit?.chatId === pathChatId && viewportFit.pageSize === pageSize
+		? viewportFit.size : pageSize);
 
-	// The top edge is held by the TURN the window starts at, never by a count back from the
-	// newest one. A counted window slides forward with the story: every reply that lands pushes
-	// a turn off the top, and removing content ABOVE the viewport shifts everything a reader
-	// who scrolled back to re-read something is looking at. Pinned, the loaded stretch only
-	// ever grows, and it grows at the end the reader is already watching.
+	// A null anchor follows the newest turns. While reading back, the first row's ID
+	// keeps the window in place through appends and edits to the path above it.
 	let topAnchor = $state<{ chatId: string | null; messageId: string; index: number } | null>(null);
-	let anchorIndex = $derived.by(() => {
-		const anchor = topAnchor;
-		if (!anchor || anchor.chatId !== pathChatId) return -1;
-		const at = messages.findIndex((m) => m.id === anchor.messageId);
-		if (at >= 0) return at;
-		// The anchor turn itself can be deleted, or a branch switch can replace the stretch it
-		// was in. Its last index still states how far back the reader had reached, so the window
-		// holds roughly there instead of collapsing to the newest page and yanking them forward.
-		return Math.min(anchor.index, messages.length);
+	let latestStart = $derived(paging ? Math.max(0, messages.length - windowSize) : 0);
+	let windowStart = $derived.by(() => {
+		if (!paging || !topAnchor || topAnchor.chatId !== pathChatId) return latestStart;
+		const index = messages.findIndex(message => message.id === topAnchor?.messageId);
+		return Math.min(index < 0 ? topAnchor.index : index, latestStart);
 	});
-	/** Where the window sits with nothing loaded: the newest `pageSize` turns. */
-	let baseStart = $derived(paging ? Math.max(0, messages.length - pageSize) : 0);
-	/** Turns of the path held back, i.e. the window's offset into it. Every index handed to a
-	 *  message is measured against the WHOLE path and never against this slice: the ordinal
-	 *  badge, the depth a regex rule is scoped by and the memory boundary all count from the
-	 *  start of the branch, and a window that shifted them would renumber the story. */
-	let windowStart = $derived(anchorIndex >= 0 ? Math.min(anchorIndex, baseStart) : baseStart);
-	let showJumpToFirst = $derived(awayFromBottom && !openingSceneStream && messages.length > 0 && (windowStart > 0 || awayFromTop));
-	let shown = $derived(windowStart > 0 ? messages.slice(windowStart) : messages);
-	let nextChunk = $derived(Math.min(pageSize, windowStart));
-	// The count is the point of the marker: it is the only thing on screen saying how much
-	// story sits above, in either mode.
-	let earlierLabel = $derived(`${windowStart} earlier ${windowStart === 1 ? 'turn' : 'turns'}`);
-	let loadLabel = $derived(
-		nextChunk < windowStart ? `Load ${nextChunk} of ${earlierLabel}` : `Load ${earlierLabel}`
-	);
-	// A momentum scroll fires many events over one gesture; without this it would spend
-	// several pages before the first correction has landed.
+	let windowEnd = $derived(paging ? Math.min(messages.length, windowStart + windowSize) : messages.length);
+	let laterCount = $derived(messages.length - windowEnd);
+	let shown = $derived(messages.slice(windowStart, windowEnd));
+	let shiftSize = $derived(Math.max(1, Math.floor(windowSize / 4)));
+	let showJumpToFirst = $derived(!openingSceneStream && (awayFromBottom || laterCount > 0) && (windowStart > 0 || awayFromTop));
+	let showJumpToLatest = $derived(!openingSceneStream && (laterCount > 0 || awayFromBottom));
 	let loadPending = false;
 
-	/** Pull the window's top edge back to a path index. Never forward: within one chat the
-	 *  window only ever grows, so nothing can pull turns out from under the reader. The
-	 *  caller places the view itself, which is why this one holds no scroll position. */
-	function showFrom(index: number): void {
-		if (index < 0 || index >= windowStart) return;
-		topAnchor = { chatId: pathChatId, messageId: messages[index].id, index };
+	function setWindowStart(index: number) {
+		const message = paging ? messages[index] : undefined;
+		topAnchor = message ? { chatId: pathChatId, messageId: message.id, index } : null;
 	}
 
-	/** Pin the top edge where the chat opened, and re-pin when the setting turns the window on
-	 *  mid-story. This is the ONLY writer that may move the edge forward, which is why it runs
-	 *  once per arrival: within a chat, `showFrom` alone moves it, and only earlier. */
-	let pinnedChatId: string | null = null;
-	$effect(() => {
-		const chatId = pathChatId;
-		const arrived = chatId !== pinnedChatId;
-		pinnedChatId = chatId;
-		if (!paging || messages.length === 0) {
-			// Dropped rather than left inert: returning to a chat re-opens it at its newest
-			// turns, and a stale anchor would quietly revive the stretch loaded last time.
-			if (arrived) topAnchor = null;
-			return;
-		}
-		if (!arrived && anchorIndex >= 0) return;
-		topAnchor = { chatId, messageId: messages[baseStart].id, index: baseStart };
-	});
+	function rowAt(index: number) {
+		const message = messages[index];
+		return message ? document.getElementById(`msg-${message.id}`) : null;
+	}
 
-	/** The reader's own door into earlier turns: the button, or scrolling to the top edge.
-	 *  It holds the reading position, because the turns arrive ABOVE the viewport and the
-	 *  story would otherwise drop away from under them by everything just loaded. */
-	function loadEarlier(): void {
-		if (loadPending || windowStart <= 0) return;
+	function showTurn(index: number) {
+		if (!paging || index < 0 || index >= messages.length || (index >= windowStart && index < windowEnd)) return;
+		navigationNonce++;
+		loadPending = false;
+		nearBottom = false;
+		programmaticScroll = false;
+		setWindowStart(Math.min(latestStart, Math.max(0, index - Math.floor(windowSize / 2))));
+	}
+
+	/** Move the window with an overlap and keep a retained row at its previous screen position.
+	 *  Measuring the row also accounts for scroll anchoring and content changing during the move. */
+	async function shiftWindow(direction: -1 | 1) {
 		const el = listElement;
-		const held = shown.length ? el?.querySelector<HTMLElement>(`#msg-${CSS.escape(shown[0].id)}`) : null;
-		if (!el || !held) return;
-		// Measured against a TURN rather than against the scroller's total height. Two reasons,
-		// and both are silent when got wrong: a reply landing below while this is in flight
-		// grows that height too (the correction would push the reader down by a message they
-		// were not even looking at), and a measured correction is idempotent with the browser's
-		// own scroll anchoring, which does this same job on the engines that have it. Whatever
-		// it already fixed simply is not in this number, so the two can never double up.
+		let start = Math.min(latestStart, Math.max(0, windowStart + direction * shiftSize));
+		if (loadPending || !el || start === windowStart) return;
+		// On small windows with short turns, reduce the step if the far edge would
+		// remove visible rows. Always allow one turn so a full viewport can advance.
+		const viewport = el.getBoundingClientRect();
+		while (Math.abs(start - windowStart) > 1) {
+			const end = start + windowSize - 1;
+			const retainedEdge = rowAt(direction > 0 ? start : end)?.getBoundingClientRect();
+			if (!retainedEdge) return;
+			const clipsVisibleRows = direction > 0 ? retainedEdge.top > viewport.top : retainedEdge.bottom < viewport.bottom;
+			if (!clipsVisibleRows) break;
+			start -= direction;
+		}
+		const held = rowAt(Math.max(start, windowStart));
+		if (!held) return;
 		const heldTop = held.getBoundingClientRect().top;
 		const scrollBefore = el.scrollTop;
 		const navigation = navigationNonce;
 		loadPending = true;
-		showFrom(Math.max(0, windowStart - pageSize));
-		requestAnimationFrame(() => {
-			// An explicit jump supersedes this older reading-position correction.
-			if (navigation !== navigationNonce) return;
-			loadPending = false;
-			// The turn we measured against went away in the meantime (a delete landing, a sync).
-			// A detached node measures as zero, which would "correct" the view by a whole screen.
-			if (!held.isConnected) return;
-			const shift = held.getBoundingClientRect().top - heldTop;
-			// `instant`, the one value that overrides this scroller's CSS `scroll-behavior:
-			// smooth`. `auto` defers to that CSS and so does a plain `scrollTop +=`, so either
-			// ANIMATES the correction and the reader watches the whole stretch that just loaded
-			// fly past. The button mode is where that bites: the reader is parked at the top
-			// edge, so no gesture of theirs cuts the glide short.
-			if (shift) el.scrollTo({ top: el.scrollTop + shift, behavior: 'instant' });
-			// The whole travel, ours plus anything the browser's anchoring did: an absolute
-			// scroll position held outside is stale by all of it, not just by our half.
-			const travelled = el.scrollTop - scrollBefore;
-			if (travelled) onContentShift?.(travelled);
-		});
+		nearBottom = false;
+		setWindowStart(start);
+		await tick();
+		if (navigation !== navigationNonce) return;
+		loadPending = false;
+		if (!held.isConnected || el !== listElement) return;
+		const shift = held.getBoundingClientRect().top - heldTop;
+		if (shift) el.scrollTo({ top: el.scrollTop + shift, behavior: 'instant' });
+		lastScrollTop = el.scrollTop;
+		const travelled = el.scrollTop - scrollBefore;
+		if (travelled) onContentShift?.(travelled);
+		updateScrollBounds();
 	}
 
-	// A window too short to fill the viewport gives the auto mode no scroll to ride, and the
-	// turns above it would be unreachable (a small page size on short turns). Grow it until
-	// there is something to scroll: the overflow is the condition, so this settles itself.
-	// The load is direct rather than through loadEarlier, which holds a reading position that
-	// a scroller with no scroll does not have.
-	$effect(() => {
-		void messages;
-		void windowStart;
-		if (manualLoad || windowStart <= 0 || !listElement) return;
-		// A zero-height scroller (mid-mount, or a host with no layout yet) says nothing, and
-		// reading that as "does not fill" would load the whole chat with nobody looking.
-		if (!listElement.clientHeight || listElement.scrollHeight > listElement.clientHeight) return;
-		showFrom(Math.max(0, windowStart - pageSize));
-		// The turns arrive above, so the moment they finally overflow, the reader is left at the
-		// TOP of a story that is supposed to open at its end: nothing else re-snaps for them,
-		// since no message landed. Idempotent, so the loads before that one cost nothing.
+	// Tiny turns on a tall screen may not provide any scrollable space. Grow only enough
+	// to make the adjacent history reachable, then use that size for the moving window.
+	function fitWindow() {
+		const el = listElement;
+		if (!paging || manualLoad || openingSceneStream || !el?.clientHeight ||
+			windowSize >= messages.length || el.scrollHeight > el.clientHeight) return;
+		viewportFit = { chatId: pathChatId, pageSize, size: Math.min(messages.length, windowSize + pageSize) };
 		if (nearBottom) {
 			const navigation = navigationNonce;
-			requestAnimationFrame(() => {
+			void tick().then(() => {
 				if (navigation === navigationNonce && nearBottom) snapToBottom();
 			});
 		}
-	});
+	}
 
 	$effect(() => {
 		// The path's own chat, not the store's active id: that id names the chat being opened
@@ -359,6 +326,9 @@
 			if (chatId !== prevChatId) {
 				navigationNonce++;
 				loadPending = false;
+				topAnchor = null;
+				viewportFit = null;
+				editorDrafts.clear();
 				snapToBottom();
 				nearBottom = true;
 				hasUnseen = false;
@@ -377,7 +347,7 @@
 					// the stale nearBottom from the previous version must not let the next stream
 					// token yank the view down.
 					const dist = listElement.scrollHeight - listElement.scrollTop - listElement.clientHeight;
-					nearBottom = dist <= NEAR_BOTTOM_PX;
+					nearBottom = laterCount === 0 && dist <= NEAR_BOTTOM_PX;
 				}
 				// Written on both paths: the swap can shrink the content and let the browser clamp
 				// `scrollTop` by itself, and a clamp measured against a stale value reads as the
@@ -397,6 +367,11 @@
 		prevIsStreaming = isStreaming;
 	});
 
+	$effect(() => {
+		const id = messageStore.branchTargetId;
+		if (id && laterCount > 0 && messages.at(-1)?.id === id) void jumpToLatest();
+	});
+
 	// ===== The message cursor =====
 	// Where the keyboard is in the story (architecture/chat-sessions.md, "The message cursor").
 	// A turn behind the window is loaded back in, and only then does the keyboard
@@ -412,23 +387,26 @@
 		// The path, so a cursor named before its branch rendered still lands, and the window,
 		// so this re-runs once the turn below has been loaded back into it.
 		void messages;
-		void windowStart;
 		if (!id) {
 			takenNonce = nonce;
 			return;
 		}
+		if (nonce === takenNonce || openingSceneStream) return;
 		const index = messages.findIndex((m) => m.id === id);
 		// Not on the visible path: a stale mark from a branch that moved under it. Nothing to
 		// land on, and nothing to clean up either, since the ring reads off the same id.
 		if (index < 0) return;
-		if (index < windowStart) {
-			showFrom(index);
+		if (index < windowStart || index >= windowEnd) {
+			showTurn(index);
 			return;
 		}
-		if (nonce === takenNonce) return;
-		takenNonce = nonce;
-		const row = document.getElementById(`msg-${id}`);
+		const row = rowAt(index);
 		if (!row) return;
+		takenNonce = nonce;
+		navigationNonce++;
+		loadPending = false;
+		nearBottom = false;
+		programmaticScroll = false;
 		// `instant`, the one value that overrides this scroller's CSS glide: a step between two
 		// turns has to land, and stepping through a stretch of story would otherwise queue one
 		// animation per press. Deliberately NOT armed with `programmaticScroll`, exactly like
@@ -438,6 +416,29 @@
 	});
 
 </script>
+
+{#snippet windowEdge(count: number, direction: -1 | 1)}
+	{#if count > 0}
+		{@const side = direction < 0 ? 'earlier' : 'later'}
+		{@const label = `${count} ${side} ${count === 1 ? 'turn' : 'turns'}`}
+		{@const icon = direction < 0 ? 'chevronUp' : 'chevronDown'}
+		<div class="window-edge">
+			<span class="window-edge-line"></span>
+			{#if manualLoad}
+				<button type="button" class="window-edge-btn" title={label} onclick={() => shiftWindow(direction)}>
+					<Icon name={icon} class="w-3 h-3" />
+					Load {side} turns
+				</button>
+			{:else}
+				<span class="window-edge-label">
+					<Icon name={icon} class="w-3 h-3" />
+					{label}
+				</span>
+			{/if}
+			<span class="window-edge-line"></span>
+		</div>
+	{/if}
+{/snippet}
 
 <div class="message-list-wrap">
 <SceneSelectionBar />
@@ -496,23 +497,7 @@
 		</div>
 	{:else}
 		<div class="message-list-content" use:observeScrollBounds>
-			{#if windowStart > 0}
-				<div class="window-edge">
-					<span class="window-edge-line"></span>
-					{#if manualLoad}
-						<button type="button" class="window-edge-btn" onclick={loadEarlier}>
-							<Icon name="chevronUp" class="w-3 h-3" />
-							{loadLabel}
-						</button>
-					{:else}
-						<span class="window-edge-label">
-							<Icon name="chevronUp" class="w-3 h-3" />
-							{earlierLabel}
-						</span>
-					{/if}
-					<span class="window-edge-line"></span>
-				</div>
-			{/if}
+			{@render windowEdge(windowStart, -1)}
 			{#each shown as message, offset (message.id)}
 				{@const index = windowStart + offset}
 				{@const versions = message.variants ?? [message]}
@@ -525,6 +510,7 @@
 						{versionIndex}
 						isLast={index === messages.length - 1}
 						{allMessages}
+						{editorDrafts}
 						archived={archivedIds.has(message.id)}
 						memorySelected={selectedIds.has(message.id)}
 						streamReplacement={replacingMessageId === message.id}
@@ -532,7 +518,8 @@
 						streamTailThinking={continuingMessageId === message.id || replacingMessageId === message.id ? streamingThinking : null}
 					/>
 			{/each}
-			{#if isStreaming && !continuingMessageId && !replacingMessageId}
+			{@render windowEdge(laterCount, 1)}
+			{#if laterCount === 0 && isStreaming && !continuingMessageId && !replacingMessageId}
 				<StreamingIndicator content={streamingContent} thinking={streamingThinking} />
 			{/if}
 		</div>
@@ -543,8 +530,9 @@
 	<ChatSearchBar
 		container={listElement}
 		{messages}
-		{windowStart}
-		loadThrough={showFrom}
+		{shown}
+		{showTurn}
+		{streamingTurnOffset}
 	/>
 {/if}
 
@@ -554,7 +542,7 @@
 		<Icon name="chevronUp" class="w-3.5 h-3.5" />
 	</button>
 {/if}
-{#if awayFromBottom}
+{#if showJumpToLatest}
 	<button type="button" class="scroll-jump scroll-jump-latest surface-float shadow-md" onclick={jumpToLatest}
 		aria-label="Jump to latest message" title="Jump to latest message">
 		<Icon name="chevronDown" class="w-3.5 h-3.5" />
@@ -629,9 +617,7 @@
 		padding-bottom: calc(clamp(1rem, 0.72rem + 0.92vw, 1.68rem) + clamp(0.45rem, 0.28rem + 0.34vw, 0.82rem));
 	}
 
-	/* The top edge of the transcript window, in the same rule-and-label shape as the memory
-	   boundary below: what sits above it is unloaded, not lost, and the marker is the only
-	   thing on screen that says so. */
+	/* Page boundaries show how much history can be loaded on either side. */
 	.window-edge {
 		display: flex;
 		align-items: center;

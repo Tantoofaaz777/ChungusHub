@@ -3,8 +3,7 @@ import { readSetting, writeSetting, registerSettingsReload, reloadSettings } fro
 
 export type InputHistoryScope = 'global' | 'chat';
 
-/** How the turns behind the transcript window arrive: on their own as the reader scrolls
- *  back, or one press at a time from the button at the top of the window. */
+/** Whether scrolling or a button loads adjacent turns at each edge of the window. */
 export type TranscriptLoadMode = 'scroll' | 'button';
 
 interface GeneralSettings {
@@ -14,13 +13,10 @@ interface GeneralSettings {
 	inputHistoryScope: InputHistoryScope;
 	/** How many sent messages the history log keeps (oldest trimmed first). */
 	inputHistoryLimit: number;
-	/** Render a long chat from its newest end instead of all at once. Every turn on screen
-	 *  costs a markdown parse, a card of DOM and a row the scroller re-measures on every
-	 *  streaming token, so a long story is slow to open and drags every reply after it. */
+	/** Keep a moving window of rendered turns in long chats. */
 	transcriptPaging: boolean;
-	/** Turns rendered per load: the window a chat opens on, and every step back from there. */
+	/** Default size of the rendered window. */
 	transcriptPageSize: number;
-	/** What reaches back for earlier turns: the scroll itself, or a press. */
 	transcriptLoadMode: TranscriptLoadMode;
 	/** Open the per-message reasoning box by default (streaming and saved turns). */
 	autoExpandReasoning: boolean;
