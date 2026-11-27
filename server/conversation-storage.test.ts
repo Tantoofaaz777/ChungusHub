@@ -177,6 +177,20 @@ describe('turn and variant persistence', () => {
 		expect(threadsOnPath([round], path)).toEqual([]);
 	});
 
+	test('Threads allows an edited variant to be selected again when its old snapshot leaves continuity', () => {
+		const id = chat(); db.seedConversationGreetings(id, ['Original', 'Alternate']);
+		const turn = rows(id)[0];
+		const feed = { title: 'Reactions', post: { username: 'reader', body: 'Post', score: 1 }, comments: [] };
+		const save = (content: string) => db.saveThreadsRound({ id: crypto.randomUUID(), chatId: id, label: 'Thread', feed,
+			messages: [{ id: turn.id, variantId: turn.selectedVariantId, index: 0, role: 'assistant', content, speaker: 'Narrator' }] });
+		const original = save('Original');
+		db.updateMessageContent(turn.id, 'Edited');
+		expect(threadsOnPath([original], rows(id))).toEqual([]);
+		const edited = save('Edited');
+		expect(threadsOnPath(db.getThreadsData(id).rounds, rows(id)).map(round => round.id)).toEqual([edited.id]);
+		expect(db.getThreadsData(id).rounds.find(round => round.id === original.id)?.messages[0].content).toBe('Original');
+	});
+
 	test('variant edits propagate through the selected projection and sync deltas', () => {
 		const id = chat(); db.seedConversationGreetings(id, ['A', 'B']);
 		const turn = rows(id)[0], before = db.getMessagesDelta(id, null) as any;

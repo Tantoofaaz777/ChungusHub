@@ -9,11 +9,13 @@ const round = (id:string): ThreadsRound => ({ id, chatId:'chat', createdAt:1, re
 	versions:[{id:`v${id}`,createdAt:1,feed:{title:`Feed ${id}`,post:{username:'reader',body:`Reaction ${id}`,score:10},comments:[]}}] });
 describe('Threads selections and prompt boundaries', () => {
 	test('sparse selection stays chronological, includes hidden turns and never fills gaps', () => {
-		expect(selectThreadsMessages(path,['12','4','1','8'],new Set()).map(m=>m.id)).toEqual(['1','4','8','12']);
-		expect(selectThreadsMessages(path,['4'],new Set())[0].excludedFromPrompt).toBe(true);
+		expect(selectThreadsMessages(path,['12','4','1','8']).map(m=>m.id)).toEqual(['1','4','8','12']);
+		expect(selectThreadsMessages(path,['4'])[0].excludedFromPrompt).toBe(true);
 	});
-	test('rejects missing, repeated, empty and already-used messages', () => {
-		for (const ids of [[],['1','1'],['gone'],['2']]) expect(()=>selectThreadsMessages(path,ids,new Set(['2']))).toThrow();
+	test('ignores stale and repeated selections', () => {
+		const available = path.filter(message => message.id !== '2');
+		expect(selectThreadsMessages(available, ['1', '1', '2', 'gone']).map(message => message.id)).toEqual(['1']);
+		expect(selectThreadsMessages(available, [])).toEqual([]);
 	});
 	test('story context and audience continuity have independent windows, including zero', () => {
 		const previous = [round('1'),round('2'),round('3')];

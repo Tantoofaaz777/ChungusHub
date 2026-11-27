@@ -20,6 +20,9 @@ import { retainLocalChanges } from '#lib/utils/retain-local-changes.ts';
 
 type NotesPatch = ThreadsNotesPatch;
 type PendingResult = { input: SaveThreadsRound } | { round: ThreadsRound; versionId: string; feed: ThreadsFeed };
+const notesFields = ['notes', 'ao3', 'promptId'] as const;
+type NotesRevisions = Partial<Record<keyof NotesPatch, number>>;
+type NotesEdits = { values: NotesPatch; revisions: NotesRevisions };
 export class ThreadsStore {
 	chatId = $state<string | null>(null);
 	loaded = $state(false);
@@ -42,19 +45,20 @@ export class ThreadsStore {
 	private ticket = 0;
 	private loading: { chatId: string | null; promise: Promise<void> } | null = null;
 	private controller: AbortController | null = null;
+	private write: object | null = null;
 	private anchor: string | null = null;
 	private notesPatch: NotesPatch = {};
-	private localNotes = new Map<string, NotesPatch>();
+	private localNotes = new Map<string, NotesEdits>();
 	private notesTimer: ReturnType<typeof setTimeout> | null = null;
-	private notesQueue: Promise<void> = Promise.resolve();
-	private notesWriting = new Map<string, number>();
+	private notesWrites = new Map<string, Promise<void>>();
 	private notesRevisions = { notes: 0, ao3: 0, promptId: 0 };
 	get instructions() { return featurePromptsStore.threadsPrompts.prompts.find(p => p.id === this.promptId)?.content ?? featurePromptsStore.promptFor('threads'); }
 	get busy() { return this.phase !== 'idle'; }
 	get path() { return chatStore.currentChatState?.chat.id === this.chatId ? chatStore.currentChatState.activePath : []; }
 	get usedIds() { return new Set(this.previousRounds.flatMap(r => r.messages.map(m => m.id))); }
 	get available() { const used = this.usedIds; return this.path.map((message, index) => ({ ...message, index })).filter(m => !used.has(m.id)); }
-	get selectedCount() { const ids = new Set(this.selected); return this.available.filter(m => ids.has(m.id)).length; }
+	private get selectedSource() { return selectThreadsMessages(this.available, this.selected); }
+	get selectedCount() { return this.selectedSource.length; }
 	get previousRounds() {
 		return threadsOnPath(this.rounds, this.path);
 	}
@@ -83,6 +87,7 @@ export class ThreadsStore {
 		if (chatId !== this.chatId) {
 			void this.flushNotes().catch(() => {});
 			this.cancel(); this.chatId = chatId; this.loaded = false; this.rounds = []; this.viewedRoundId = null; this.selected = []; this.anchor = null;
+			this.write = null; this.phase = 'idle';
 			this.notes = ''; this.promptId = null; this.ao3 = emptyAo3Information(); this.label = ''; this.pending = null; this.error = ''; this.notesError = '';
 		}
 		const ticket = ++this.ticket;
@@ -90,29 +95,31 @@ export class ThreadsStore {
 		this.refreshing = this.loaded; this.loadError = '';
 		if (!chatId) return;
 		const before = [...this.rounds], notesRevisions = { ...this.notesRevisions };
-		const notesAtStart = { ...this.localNotes.get(chatId) };
+		const notesAtStart = { ...this.localNotes.get(chatId)?.values };
 		try {
 			const data = await db.getThreadsData(chatId);
 			if (this.ticket !== ticket || this.chatId !== chatId) return;
 			this.rounds = retainLocalChanges(data.rounds, before, this.rounds);
 			if (!this.rounds.some(round => round.id === this.viewedRoundId)) this.viewedRoundId = this.rounds.at(-1)?.id ?? null;
-			const local = this.localNotes.get(chatId) ?? {};
+			const local = this.localNotes.get(chatId)?.values ?? {};
 			// A pending save may finish and clear localNotes before this older read returns.
 			const retained = { ...notesAtStart, ...local };
 			if (notesRevisions.notes === this.notesRevisions.notes) this.notes = retained.notes ?? data.notes;
 			if (notesRevisions.ao3 === this.notesRevisions.ao3) this.ao3 = retained.ao3 ?? data.ao3;
 			if (notesRevisions.promptId === this.notesRevisions.promptId) this.promptId = retained.promptId !== undefined ? retained.promptId : data.promptId ?? null;
-			if (!this.notesWriting.get(chatId)) this.notesPatch = { ...local };
+			if (!this.notesWrites.has(chatId)) this.notesPatch = { ...local };
 			this.loaded = true;
 		} catch (error) { if (this.ticket === ticket) this.loadError = error instanceof Error ? error.message : String(error); }
 		finally { if (this.ticket === ticket) this.refreshing = false; }
 	}
 	async syncReload() { if (this.chatId) await this.load(this.chatId); }
 	toggle(id: string, range = false) {
-		if (this.busy || !this.available.some(m => m.id === id)) return;
+		if (this.busy) return;
+		const available = this.available, index = available.findIndex(m => m.id === id);
+		if (index < 0) return;
 		if (range && this.anchor) {
-			const a = this.available.findIndex(m => m.id === this.anchor), b = this.available.findIndex(m => m.id === id);
-			if (a >= 0 && b >= 0) this.selected = [...new Set([...this.selected, ...this.available.slice(Math.min(a,b), Math.max(a,b)+1).map(m => m.id)])];
+			const a = available.findIndex(m => m.id === this.anchor);
+			if (a >= 0) this.selected = [...new Set([...this.selected, ...available.slice(Math.min(a,index), Math.max(a,index)+1).map(m => m.id)])];
 			else this.selected = [...new Set([...this.selected, id])];
 		} else this.selected = this.selected.includes(id) ? this.selected.filter(v => v !== id) : [...this.selected, id];
 		this.anchor = id;
@@ -124,7 +131,13 @@ export class ThreadsStore {
 		if (patch.promptId !== undefined) { this.promptId = patch.promptId; this.notesRevisions.promptId++; }
 		if (patch.ao3) { this.ao3 = patch.ao3; this.notesRevisions.ao3++; }
 		this.notesPatch = { ...this.notesPatch, ...patch };
-		this.localNotes.set(this.chatId, { ...this.localNotes.get(this.chatId), ...structuredClone($state.snapshot(patch)) });
+		const local = this.localNotes.get(this.chatId);
+		const revisions = { ...local?.revisions };
+		for (const key of notesFields) if (patch[key] !== undefined) revisions[key] = this.notesRevisions[key];
+		this.localNotes.set(this.chatId, {
+			values: { ...local?.values, ...structuredClone($state.snapshot(patch)) },
+			revisions
+		});
 		if (this.notesTimer) clearTimeout(this.notesTimer);
 		this.notesTimer = setTimeout(() => void this.flushNotes().catch(() => {}), 500);
 	}
@@ -133,30 +146,57 @@ export class ThreadsStore {
 		this.notesTimer = null;
 		const chatId = this.chatId, patch = structuredClone($state.snapshot(this.notesPatch));
 		this.notesPatch = {};
-		if (!chatId || !Object.keys(patch).length) return this.notesQueue;
-		this.notesWriting.set(chatId, (this.notesWriting.get(chatId) ?? 0) + 1);
-		const write = this.notesQueue.catch(() => {}).then(() => db.updateThreadsNotes(chatId, patch));
-		this.notesQueue = write;
+		if (!chatId) return;
+		const queued = this.notesWrites.get(chatId);
+		if (!Object.keys(patch).length) return queued;
+		const revisions = { ...this.localNotes.get(chatId)?.revisions };
+		const matchingFields = (local?: NotesEdits) => notesFields.filter(key => patch[key] !== undefined &&
+			revisions[key] !== undefined && local?.revisions[key] === revisions[key]);
+		const write = (queued ?? Promise.resolve()).catch(() => {}).then(() => db.updateThreadsNotes(chatId, patch));
+		this.notesWrites.set(chatId, write);
 		try {
 			await write;
-			const local = { ...this.localNotes.get(chatId) };
-			if (patch.notes !== undefined && local.notes === patch.notes) delete local.notes;
-			if (patch.promptId !== undefined && local.promptId === patch.promptId) delete local.promptId;
-			if (patch.ao3 !== undefined && JSON.stringify(local.ao3) === JSON.stringify(patch.ao3)) delete local.ao3;
-			if (Object.keys(local).length) this.localNotes.set(chatId, local); else this.localNotes.delete(chatId);
-			if (this.chatId === chatId) this.notesError = '';
+			const local = this.localNotes.get(chatId);
+			if (local) {
+				for (const key of matchingFields(local)) {
+					delete local.values[key];
+					delete local.revisions[key];
+				}
+				if (!Object.keys(local.values).length) this.localNotes.delete(chatId);
+			}
+			if (this.chatId === chatId && !Object.keys(this.notesPatch).length) this.notesError = '';
 		}
 		catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			if (this.chatId === chatId) { this.notesPatch = { ...patch, ...this.notesPatch }; this.notesError = message; }
-			else toastStore.error(`Threads notes could not be saved: ${message}`);
+			const keys = matchingFields(this.localNotes.get(chatId));
+			if (keys.length && this.chatId === chatId) {
+				const retry = Object.fromEntries(keys.map(key => [key, patch[key]]));
+				this.notesPatch = { ...retry, ...this.notesPatch };
+				this.notesError = message;
+			} else if (keys.length) toastStore.error(`Threads notes could not be saved: ${message}`);
 			throw error;
 		} finally {
-			const remaining = (this.notesWriting.get(chatId) ?? 1) - 1;
-			if (remaining) this.notesWriting.set(chatId, remaining); else this.notesWriting.delete(chatId);
+			if (this.notesWrites.get(chatId) === write) this.notesWrites.delete(chatId);
 		}
 	}
 	cancel() { this.controller?.abort(); this.controller = null; this.summaryProgress = null; if (this.phase === 'generating') this.phase = 'idle'; }
+	private beginWrite(chatId: string, phase: 'saving' | 'saving-summary') {
+		const write = this.write = {};
+		this.phase = phase;
+		const current = () => this.write === write && this.chatId === chatId;
+		return {
+			current,
+			finish: () => {
+				if (current()) {
+					this.write = null;
+					this.phase = 'idle';
+				} else if (this.chatId === chatId) {
+					// Our own writes do not generate a sync event for this client.
+					void this.syncReload();
+				}
+			}
+		};
+	}
 	private promptCast() {
 		const chat = chatStore.activeChat;
 		const entry = characterLibraryStore.entries.find(e => e.id === chat?.characterId);
@@ -181,10 +221,11 @@ export class ThreadsStore {
 	private preparePrompt(round?: ThreadsRound, validate = true) {
 		const cast = this.promptCast();
 		const { char: charName, user: userName } = cast.fallbackNames;
-		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : (!validate && !this.selected.length ? [] : selectThreadsMessages(this.path, this.selected, this.usedIds)).map(m => ({
-			id: m.id, ...(m.selectedVariantId ? { variantId: m.selectedVariantId } : {}), index: this.path.findIndex(p => p.id === m.id), content: m.content, role: m.role,
+		const messages: ThreadsMessage[] = round ? structuredClone($state.snapshot(round.messages)) : this.selectedSource.map(m => ({
+			id: m.id, ...(m.selectedVariantId ? { variantId: m.selectedVariantId } : {}), index: m.index, content: m.content, role: m.role,
 			speaker: m.role === 'assistant' ? charName : m.role === 'user' ? userName : 'System'
 		}));
+		if (validate && !round && !messages.length) throw new Error('Select unused messages for this thread.');
 		const branchLeafId = this.path.at(-1)?.id;
 		if (validate && !round && threadsSelectionOverlaps(this.rounds, messages, this.path, chatStore.currentChatState?.allMessages ?? this.path)) throw new Error('These messages overlap a saved thread. Include this fork’s own messages or select another scene.');
 		const cutoff = round ? this.rounds.findIndex(r => r.id === round.id) : this.rounds.length;
@@ -228,9 +269,9 @@ export class ThreadsStore {
 		const current = () => !controller.signal.aborted && this.controller === controller && this.chatId === chatId;
 		try {
 			if (!featurePromptsStore.threadsEnabled) throw new Error('Enable Threads in Settings → Engines to generate a thread.');
-			await this.flushNotes();
-			if (controller.signal.aborted) return;
 			const { messages, branchLeafId, label, input, summaryPromptFor } = this.preparePrompt(round);
+			await this.flushNotes();
+			if (!current()) return;
 			const feedTarget = { engine: 'threads' }, feedModel = llmService.modelFor(feedTarget);
 			if (!feedModel) throw new Error('Choose a model for Threads on Connections before generating.');
 			const completeWithProgress = async (target: CallTarget, model: string, source: 'threads' | typeof THREADS_SUMMARY_POINT, prompt: string) => {
@@ -311,57 +352,65 @@ export class ThreadsStore {
 	async saveResult() {
 		const pending = this.pending;
 		if (!pending || this.phase === 'saving' || this.phase === 'saving-summary') return;
-		this.phase = 'saving'; this.error = '';
+		const chatId = 'input' in pending ? pending.input.chatId : pending.round.chatId;
+		if (chatId !== this.chatId) return;
+		const write = this.beginWrite(chatId, 'saving');
+		this.error = '';
 		try {
 			const round = 'input' in pending ? await db.saveThreadsRound(pending.input)
 				: await db.addThreadsVersion(pending.round.chatId, pending.round.id, pending.round.revision, pending.versionId, pending.feed);
-			if (this.chatId !== round.chatId || this.pending !== pending) return;
-			this.rounds = this.rounds.some(r => r.id === round.id) ? this.rounds.map(r => r.id === round.id ? round : r) : [...this.rounds, round];
+			if (!write.current() || this.pending !== pending) return;
+			this.rounds = this.rounds.some(r => r.id === round.id)
+				? this.rounds.map(r => r.id === round.id && r.revision < round.revision ? round : r)
+				: [...this.rounds, round].sort((a, b) => a.createdAt - b.createdAt);
 			this.viewedRoundId = round.id;
-			this.pending = null; this.clearSelection(); this.label = ''; this.tab = 'feed';
-		} catch (error) { if (this.pending === pending) this.error = error instanceof Error ? error.message : String(error); }
-		finally { if (this.pending === pending || !this.pending) this.phase = 'idle'; }
+			this.pending = null;
+			if ('input' in pending) {
+				this.clearSelection();
+				this.label = '';
+			}
+			this.tab = 'feed';
+		} catch (error) { if (write.current() && this.pending === pending) this.error = error instanceof Error ? error.message : String(error); }
+		finally { write.finish(); }
 	}
 	async updateSummary(round: ThreadsRound, expectedSummary: string, summary: string) {
 		if (this.chatId !== round.chatId || this.busy) throw new Error('Threads is busy or this chat has changed. Try again.');
-		this.phase = 'saving-summary';
+		const write = this.beginWrite(round.chatId, 'saving-summary');
 		try {
 			const saved = await db.updateThreadsSummary(round.chatId, round.id, expectedSummary, summary);
-			if (this.chatId === saved.chatId) this.rounds = this.rounds.map(r => r.id === saved.id && r.revision < saved.revision ? saved : r);
-		} finally {
-			this.phase = 'idle';
-		}
+			if (write.current()) this.rounds = this.rounds.map(r => r.id === saved.id && r.revision < saved.revision ? saved : r);
+		} finally { write.finish(); }
 	}
 	async chooseVersion(round: ThreadsRound, versionId: string) {
-		if (this.busy) return;
-		this.phase = 'saving';
+		if (this.chatId !== round.chatId || this.busy) return;
+		const write = this.beginWrite(round.chatId, 'saving');
 		try {
 			const saved = await db.setThreadsVersion(round.chatId, round.id, round.revision, versionId);
-			if (this.chatId === saved.chatId) this.rounds = this.rounds.map(r => r.id === saved.id ? saved : r);
-		} catch (error) { if (this.chatId === round.chatId) this.error = error instanceof Error ? error.message : String(error); }
-		finally { this.phase = 'idle'; }
+			if (write.current()) this.rounds = this.rounds.map(r => r.id === saved.id && r.revision < saved.revision ? saved : r);
+		} catch (error) { if (write.current()) this.error = error instanceof Error ? error.message : String(error); }
+		finally { write.finish(); }
 	}
 	async resetContinuity(chatId: string, expected: { id: string; revision: number }[]) {
 		if (this.chatId !== chatId || !this.loaded || this.busy || this.pending) return;
-		this.phase = 'saving'; this.error = '';
+		const write = this.beginWrite(chatId, 'saving'); this.error = '';
 		try {
 			await db.resetThreadsContinuity(chatId, expected);
-			if (this.chatId === chatId) { this.rounds = []; this.viewedRoundId = null; this.tab = 'make'; }
+			if (write.current()) { this.rounds = []; this.viewedRoundId = null; this.tab = 'make'; }
 		} catch (error) {
-			if (this.chatId === chatId) this.error = error instanceof Error ? error.message : String(error);
-		} finally { this.phase = 'idle'; }
+			if (write.current()) this.error = error instanceof Error ? error.message : String(error);
+		} finally { write.finish(); }
 	}
 	async remove(round: ThreadsRound) {
-		if (this.busy) return;
-		this.phase = 'saving';
+		if (this.chatId !== round.chatId || this.busy) return;
+		const write = this.beginWrite(round.chatId, 'saving');
 		try {
 			await db.deleteThreadsRound(round.chatId, round.id, round.revision);
-			if (this.chatId === round.chatId) {
+			if (write.current()) {
 				this.rounds = this.rounds.filter(r => r.id !== round.id);
 				if (this.viewedRoundId === round.id) this.viewedRoundId = this.rounds.at(-1)?.id ?? null;
 			}
-		} catch (error) { if (this.chatId === round.chatId) this.error = error instanceof Error ? error.message : String(error); }
-		finally { this.phase = 'idle'; }
+		} catch (error) { if (write.current()) this.error = error instanceof Error ? error.message : String(error); }
+		finally { write.finish(); }
 	}
 }
 export const threadsStore = new ThreadsStore();

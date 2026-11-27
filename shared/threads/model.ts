@@ -36,23 +36,34 @@ export function normalizeThreadsConfig(raw: Partial<ThreadsConfig> | null): Thre
 	};
 }
 
+type SceneTurn = { id: string; selectedVariantId?: string; content?: string; role?: string };
+
+function matchesSource(message: ThreadsMessage, turn: SceneTurn): boolean {
+	return !message.variantId || (message.variantId === turn.selectedVariantId &&
+		(turn.content === undefined || turn.content === message.content) &&
+		(turn.role === undefined || turn.role === message.role));
+}
+
 /** A branch inherits only whole scenes on its own path; partial scenes never consume turns. */
-export function threadsOnPath(rounds: ThreadsRound[], path: { id: string; selectedVariantId?: string; content?: string; role?: string }[]): ThreadsRound[] {
+export function threadsOnPath(rounds: ThreadsRound[], path: SceneTurn[]): ThreadsRound[] {
 	const ids = new Map(path.map(m => [m.id, m]));
-	return rounds.filter(r => r.messages.length > 0 && r.messages.every(m => ids.has(m.id) &&
-		(!m.variantId || m.variantId === ids.get(m.id)!.selectedVariantId &&
-			(ids.get(m.id)!.content === undefined || ids.get(m.id)!.content === m.content) &&
-			(ids.get(m.id)!.role === undefined || ids.get(m.id)!.role === m.role))));
+	return rounds.filter(r => r.messages.length > 0 && r.messages.every(m => {
+		const turn = ids.get(m.id);
+		return turn && matchesSource(m, turn);
+	}));
 }
 
 /** Overlap is safe only when the two complete scenes cannot coexist on any branch. */
-export function threadsSelectionOverlaps(rounds: ThreadsRound[], selected: { id: string }[], path: { id: string; selectedVariantId?: string }[], all: { id: string; parentId: string | null }[]): boolean {
-	const selectedIds = new Set(selected.map(m => m.id)), pathIds = new Set(path.map(m => m.id));
+export function threadsSelectionOverlaps(rounds: ThreadsRound[], selected: { id: string }[], path: SceneTurn[], all: { id: string; parentId: string | null }[]): boolean {
+	const selectedIds = new Set(selected.map(m => m.id)), pathTurns = new Map(path.map(m => [m.id, m]));
 	const byId = new Map(all.map(m => [m.id, m]));
 	return rounds.some(round => {
-		if (round.messages.some(message => message.variantId && path.some(turn => turn.id === message.id && turn.selectedVariantId !== message.variantId))) return false;
 		if (!round.messages.some(m => selectedIds.has(m.id))) return false;
-		if (round.messages.every(m => pathIds.has(m.id))) return true;
+		if (round.messages.some(message => {
+			const turn = pathTurns.get(message.id);
+			return turn && !matchesSource(message, turn);
+		})) return false;
+		if (round.messages.every(m => pathTurns.has(m.id))) return true;
 		const oldPath = new Set<string>();
 		for (let id: string | null = round.messages.at(-1)?.id ?? null; id && !oldPath.has(id); ) {
 			const message = byId.get(id);
@@ -63,12 +74,10 @@ export function threadsSelectionOverlaps(rounds: ThreadsRound[], selected: { id:
 	});
 }
 
-/** Select sparsely, but always in transcript order. Hidden messages remain eligible. */
-export function selectThreadsMessages<T extends { id: string }>(path: T[], ids: string[], used: Set<string>): T[] {
-	if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => used.has(id))) throw new Error('Select unused messages for this thread.');
-	const wanted = new Set(ids), selected = path.filter(m => wanted.has(m.id));
-	if (selected.length !== ids.length) throw new Error('Selected messages are no longer available on this branch.');
-	return selected;
+/** Keep the intersection with available messages in transcript order. */
+export function selectThreadsMessages<T extends { id: string }>(available: T[], ids: string[]): T[] {
+	const wanted = new Set(ids);
+	return available.filter(m => wanted.has(m.id));
 }
 export function activeThreadsFeed(round: ThreadsRound) {
 	return round.versions.find(v => v.id === round.activeVersionId)!.feed;

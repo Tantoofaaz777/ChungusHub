@@ -22,6 +22,8 @@ let savedSummaries: { id: string; summary: string }[] = [];
 let resetGate: Promise<void> | null = null;
 let resets: {chatId:string; expected:{id:string;revision:number}[]}[]=[];
 let notesGate: Promise<void> | null = null;
+let notesWrites: { chatId: string; notes?: string }[] = [];
+let notesGates: Promise<void>[] = [];
 let tokenCalls: { text:string; model:string }[]=[];
 let summaryModel = 'test', summaryBudget = 100_000;
 const path=Array.from({length:5},(_,i)=>({id:String(i+1),parentId:i ? String(i) : null,role:'assistant',content:`Turn ${i+1}`,excludedFromPrompt:i===1}));
@@ -31,12 +33,20 @@ const feed:ThreadsFeed={title:'Discussion',post:{username:'op',body:'A question'
 mock.module('#lib/services/database.ts',()=>({...realDb,db:{
 	resetThreadsContinuity:async(chatId:string,expected:{id:string;revision:number}[])=>{resets.push({chatId,expected});await resetGate;},
 	getThreadsData:(chatId:string)=>new Promise((resolve,reject)=>reads.push({chatId,resolve,reject})),
-	updateThreadsNotes:async()=>{ await notesGate; },
+	updateThreadsNotes:async(chatId: string, patch: { notes?: string })=>{
+		notesWrites.push({ chatId, ...patch });
+		await (notesGates.shift() ?? notesGate);
+	},
 	deleteThreadsRound:async()=>{},
 	saveThreadsSummary: async (chatId: string, id: string, summary: string) => {
 		const round = store.rounds.find(r => r.chatId === chatId && r.id === id)!;
 		savedSummaries.push({ id, summary });
 		return { ...round, summary, revision: round.revision + 1 };
+	},
+	addThreadsVersion: async (chatId: string, id: string, revision: number, versionId: string, feed: ThreadsFeed) => {
+		const round = store.rounds.find(r => r.chatId === chatId && r.id === id && r.revision === revision)!;
+		return { ...round, revision: revision + 1, activeVersionId: versionId,
+			versions: [...round.versions, { id: versionId, createdAt: 2, feed }] };
 	},
 	updateThreadsSummary: async (chatId: string, id: string, expectedSummary: string, summary: string) => {
 		const round = store.rounds.find(r => r.chatId === chatId && r.id === id)!;
@@ -60,6 +70,7 @@ const initialFeatureState=structuredClone(featurePromptsStore.state);
 let store:InstanceType<typeof ThreadsStore>;
 beforeEach(()=>{featurePromptsStore.state=structuredClone(initialFeatureState);reads=[];calls=[];saved=[];savedSummaries=[];resets=[];resetGate=null;failSave=false;notesGate=null;tokenCalls=[];threadsConfigStore.value={...DEFAULT_THREADS_CONFIG};fakeChat.activeChat={id:'a'};fakeChat.currentChatState={chat:{id:'a'},activePath:path,allMessages:path};store=new ThreadsStore();});
 beforeEach(() => { summaryModel = 'test'; summaryBudget = 100_000; });
+beforeEach(() => { notesWrites = []; notesGates = []; });
 async function open() {const p=store.load('a');reads.shift()!.resolve(empty());await p;}
 async function start() {store.selected=['5','2'];const p=store.generate();for(let i=0;i<100 && !calls.length;i++) await Promise.resolve();return {p};}
 function previous():ThreadsRound {return {id:'previous',chatId:'a',label:'Prior scene',revision:1,createdAt:1,messages:[{...path[0],role:'assistant',index:0,speaker:'Narrator'}],activeVersionId:'v1',versions:[{id:'v1',createdAt:1,feed}]};}
@@ -88,7 +99,7 @@ describe('Threads generation lifecycle',()=>{
 	test('summarizes only the story round leaving the full window and reuses it on the next generation', async () => {
 		await open();
 		threadsConfigStore.value = { ...DEFAULT_THREADS_CONFIG, summarizeOlderRounds: true, fandomThreads: 0 };
-		featurePromptsStore.state.threadsSummaryPrompts = { activeId: 'summary', prompts: [{ id: 'summary', name: 'Recap', content: 'Summarize only {{lastMessage}}' }] };
+		featurePromptsStore.state.threadsSummaryPrompts = { activeId: 'summary', prompts: [{ id: 'summary', name: 'Recap', content: 'Summarize only {{lastMessage}}{{//private summary instruction}}' }] };
 		const makeRound = (index: number) => ({ ...previous(), id: `round-${index + 1}`, label: `Episode ${index + 1}`,
 			messages: [{ ...previous().messages[0], ...path[index], role: 'assistant' as const, index }] });
 		const archived = { ...previous(), id: 'fork', summary: 'Archived recap', messages: [{ ...previous().messages[0], id: 'outside-branch' }] };
@@ -216,12 +227,12 @@ describe('Threads generation lifecycle',()=>{
 			store.label=newLabel;
 			store.selected=['2','5'];
 			const original=featurePromptsStore.activeThreadsPrompt;
-			const template=DEFAULT_THREADS_INSTRUCTIONS+'\nScene recap: {{chatHistoryLast1}}.';
+			const template=DEFAULT_THREADS_INSTRUCTIONS+'\nScene recap: {{chatHistoryLast1}}.{{//private feed instruction}}';
 			featurePromptsStore.state={...featurePromptsStore.state,threadsPrompts:{
 				...featurePromptsStore.threadsPrompts,
 				prompts:featurePromptsStore.threadsPrompts.prompts.map(p=>p.id===original.id?{...p,content:template}:p)
 			}};
-			const expected=template.replaceAll('{{user}}','Aster').replace('{{chatHistoryLast1}}','Narrator: Turn 5');
+			const expected=template.replaceAll('{{user}}','Aster').replace('{{chatHistoryLast1}}','Narrator: Turn 5').replace('{{//private feed instruction}}','');
 			expect(store.promptPreview!.instructions).toBe(expected);
 			expect(store.promptPreview!.notes).toBe(expandedNotes);
 			expect(store.promptPreview!.ao3.relationships).toBe('Narrator/Aster');
@@ -364,7 +375,14 @@ describe('Threads generation lifecycle',()=>{
 		let release!:()=>void;resetGate=new Promise<void>(resolve=>release=resolve);
 		const reset=store.resetContinuity('a',[]),next=store.load('b');
 		const round={...previous(),id:'other',chatId:'b'};reads.shift()!.resolve({...empty(),rounds:[round]});await next;
-		release();await reset;expect(store.chatId).toBe('b');expect(store.rounds).toEqual([round]);
+		expect(store.busy).toBe(false);
+		fakeChat.activeChat={id:'b'};fakeChat.currentChatState={chat:{id:'b'},activePath:path,allMessages:path};
+		const {p}=await start();
+		expect(store.phase).toBe('generating');
+		release();await reset;
+		expect(store.chatId).toBe('b');expect(store.rounds).toEqual([round]);
+		expect(store.phase).toBe('generating');
+		calls[0].resolve({content:JSON.stringify(feed)});await p;
 	});
 	test('late loads cannot replace the next chat',async()=>{
 		const a=store.load('a'),b=store.load('b');reads[1].resolve({...empty(),notes:'B'});await b;reads[0].resolve({...empty(),notes:'A'});await a;
@@ -382,6 +400,85 @@ describe('Threads generation lifecycle',()=>{
 		const b=store.load('b');reads.shift()!.resolve(empty());await b;
 		const a=store.load('a');reads.shift()!.resolve({...empty(),notes:'Older stored note'});await a;
 		expect(store.notes).toBe('Latest local note');release();await writing;
+	});
+	test('a failed notes write cannot be retried over a newer queued edit', async () => {
+		await open();
+		let rejectOld!: (error: Error) => void;
+		notesGates.push(new Promise<void>((_, reject) => { rejectOld = reject; }));
+		store.updateNotes({ notes: 'Older edit' });
+		const older = store.flushNotes().catch(() => {});
+		store.updateNotes({ notes: 'Newer edit' });
+		const newer = store.flushNotes();
+		rejectOld(new Error('Disconnected'));
+		await Promise.all([older, newer]);
+		await store.flushNotes();
+		expect(notesWrites.map(write => write.notes)).toEqual(['Older edit', 'Newer edit']);
+	});
+	test('a slow or failed notes write in the previous chat cannot block generation in the next chat', async () => {
+		await open();
+		let rejectOld!: (error: Error) => void;
+		notesGates.push(new Promise<void>((_, reject) => { rejectOld = reject; }));
+		store.updateNotes({ notes: 'Keep this edit for chat A' });
+		const older = store.flushNotes().catch(() => {});
+		try {
+			fakeChat.activeChat = { id: 'b' };
+			fakeChat.currentChatState = { chat: { id: 'b' }, activePath: path, allMessages: path };
+			const opening = store.load('b');
+			reads.shift()!.resolve(empty());
+			await opening;
+			const { p } = await start();
+			expect(calls).toHaveLength(1);
+			calls[0].resolve({ content: JSON.stringify(feed) });
+			await p;
+			expect(saved[0].chatId).toBe('b');
+		} finally {
+			rejectOld(new Error('Disconnected'));
+			await older;
+		}
+		const back = store.load('a');
+		reads.shift()!.resolve(empty());
+		await back;
+		expect(store.notes).toBe('Keep this edit for chat A');
+	});
+	test('an older write cannot clear a pending return to the same note text', async () => {
+		await open();
+		let releaseOld!: () => void;
+		let releaseLatest!: () => void;
+		notesGates.push(new Promise<void>(resolve => { releaseOld = resolve; }), Promise.resolve(),
+			new Promise<void>(resolve => { releaseLatest = resolve; }));
+		store.updateNotes({ notes: 'First text' });
+		const older = store.flushNotes();
+		store.updateNotes({ notes: 'Intermediate text' });
+		const intermediate = store.flushNotes();
+		store.updateNotes({ notes: 'First text' });
+		const latest = store.flushNotes();
+		try {
+			releaseOld();
+			await Promise.all([older, intermediate]);
+			const sync = store.syncReload();
+			reads.shift()!.resolve({ ...empty(), notes: 'Intermediate text' });
+			await sync;
+			expect(store.notes).toBe('First text');
+		} finally {
+			releaseLatest();
+			await latest;
+		}
+	});
+	test('preview and generation use the same available selection after another device saves a round', async () => {
+		await open();
+		store.selected = ['2', '5'];
+		const other = { ...previous(), messages: [{ ...previous().messages[0], ...path[1], role: 'assistant' as const }] };
+		const sync = store.syncReload();
+		reads.shift()!.resolve({ ...empty(), rounds: [other] });
+		await sync;
+		expect(store.selectedCount).toBe(1);
+		expect(store.promptPreview?.messages.map(m => m.id)).toEqual(['5']);
+		const generating = store.generate();
+		for (let i = 0; i < 100 && !calls.length; i++) await Promise.resolve();
+		expect(calls).toHaveLength(1);
+		calls[0].resolve({ content: JSON.stringify(feed) });
+		await generating;
+		expect(saved[0].messages.map(m => m.id)).toEqual(['5']);
 	});
 	test('sparse and hidden selections reach the model and save, unused gaps do not',async()=>{
 		await open();const {p}=await start();expect(calls).toHaveLength(1);
@@ -492,6 +589,22 @@ describe('Threads generation lifecycle',()=>{
 		await open();failSave=true;const {p}=await start();calls[0].resolve({content:JSON.stringify(feed)});await p;
 		expect(store.pending).not.toBeNull();expect(store.error).toBe('Disconnected');
 		failSave=false;await store.saveResult();expect(calls).toHaveLength(1);expect(saved[0].id).toBe(saved[1].id);expect(store.rounds).toHaveLength(1);expect(store.pending).toBeNull();
+	});
+	test('regenerating an existing feed keeps the next scene drafted in Make', async () => {
+		await open();
+		const round = previous();
+		store.rounds = [round];
+		store.selected = ['2', '5'];
+		store.label = 'Next scene';
+		const generating = store.generate(round);
+		for (let i = 0; i < 100 && !calls.length; i++) await Promise.resolve();
+		expect(calls).toHaveLength(1);
+		calls[0].resolve({ content: JSON.stringify(feed) });
+		await generating;
+		expect(store.rounds[0].versions).toHaveLength(2);
+		expect(store.viewedRoundId).toBe(round.id);
+		expect(store.selected).toEqual(['2', '5']);
+		expect(store.label).toBe('Next scene');
 	});
 	test('cancellation and chat changes ignore even a late successful completion',async()=>{
 		for(const switchChat of [false,true]){

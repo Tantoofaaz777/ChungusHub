@@ -40,7 +40,10 @@
 	let sharing = $state(false);
 	let copiedFeed = $state<string | null>(null);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-	$effect(() => { if (resetting && resetting.chatId !== store.chatId) resetting = null; });
+	$effect(() => {
+		if (resetting && resetting.chatId !== chatId) resetting = null;
+		if (removing && removing.chatId !== chatId) removing = null;
+	});
 	const viewedRound = $derived(store.rounds.find(round => round.id === store.viewedRoundId) ?? store.rounds.at(-1));
 	const chapterLabels = $derived(store.displayedLabels);
 	let notesOpen = $state(false);
