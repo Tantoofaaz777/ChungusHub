@@ -2,7 +2,6 @@
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import Spinner from '#lib/components/ui/Spinner.svelte';
 	import Select from '#lib/components/ui/Select.svelte';
-	import PillRow from '#lib/components/ui/PillRow.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 	import { LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
@@ -362,8 +361,16 @@
 				<div class="persona-identity">
 					<div class="space-y-2 min-w-0">
 						{#if entry.activeVersionId}
-							<PillRow label="Portrait scope" options={[{value:'version', label:'Version'}, {value:'default', label:'Default'}]}
-								current={portraitScope} onpick={(value) => portraitScope = value === 'default' ? 'default' : 'version'} />
+							<fieldset class="portrait-scope" aria-label="Portrait scope">
+								<label>
+									<input class="sr-only" type="radio" name={`portrait-scope-${entry.id}`} value="version" bind:group={portraitScope} />
+									<span>Version</span>
+								</label>
+								<label>
+									<input class="sr-only" type="radio" name={`portrait-scope-${entry.id}`} value="default" bind:group={portraitScope} />
+									<span>Default</span>
+								</label>
+							</fieldset>
 						{/if}
 						<div
 							class="portrait-frame relative w-full aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
@@ -583,6 +590,37 @@
 	.persona-form { display: flex; flex-direction: column; gap: 1.5rem; padding: 1.5rem; min-width: 0; }
 	.persona-identity { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); align-items: start; gap: 1.25rem; }
 	.persona-basics { display: grid; gap: 1rem; min-width: 0; }
+	.portrait-scope {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 2px;
+		min-inline-size: 0;
+		padding: 2px;
+		border: 1px solid var(--color-border-subtle);
+		border-radius: var(--radius-lg);
+		background: var(--color-bg-tertiary);
+	}
+	.portrait-scope span {
+		display: grid;
+		place-items: center;
+		min-height: 1.75rem;
+		border: 1px solid transparent;
+		border-radius: var(--radius-md);
+		color: var(--color-text-secondary);
+		font: 600 0.66rem/1.1 var(--font-ui);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.portrait-scope label:hover span { color: var(--color-text-primary); }
+	.portrait-scope input:checked + span {
+		background: color-mix(in srgb, var(--color-accent) 14%, var(--color-bg-tertiary));
+		border-color: color-mix(in srgb, var(--color-accent) 32%, transparent);
+		color: var(--color-accent);
+	}
+	.portrait-scope input:focus-visible + span {
+		outline: 2px solid var(--color-accent);
+		outline-offset: -2px;
+	}
 	@media (max-width: 560px) {
 		.persona-form { padding: 1rem; gap: 1.25rem; }
 		.persona-identity { grid-template-columns: clamp(6rem, 28vw, 7rem) minmax(0, 1fr); gap: 0.75rem; }
