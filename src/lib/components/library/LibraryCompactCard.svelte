@@ -14,7 +14,7 @@
 		selected?: boolean;
 		onToggleSelect?: (id: string) => void;
 		onSelect: (id: string) => void;
-		onEdit: (id: string) => void;
+		onEdit?: (id: string) => void;
 		onDuplicate: (id: string) => void;
 		onDelete: (id: string) => void;
 		/** Set while this entry cannot be deleted (the last persona): the ⋮ menu's Delete
@@ -52,11 +52,6 @@
 	function handleCardClick() {
 		if (selectionMode) onToggleSelect?.(entry.id);
 		else onSelect(entry.id);
-	}
-
-	function handleEdit(e: Event) {
-		e.stopPropagation();
-		onEdit(entry.id);
 	}
 </script>
 
@@ -104,17 +99,19 @@
 				</div>
 			{/if}
 
-			<!-- Edit + ⋮ menu (favorite / duplicate / delete): revealed on hover, always shown on touch -->
+			<!-- Actions appear on hover and stay visible on touch. -->
 			<div class="absolute top-2 right-2 flex items-center gap-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-within:opacity-100 transition-opacity">
-				<button
-					type="button"
-					onclick={handleEdit}
-					class="icon-btn !w-7 !h-7 !rounded-[var(--radius-md)] !bg-black/55 !text-white/90 hover:!bg-bg-tertiary hover:!text-text-primary"
-					aria-label="Edit"
-					title="Edit"
-				>
-					<Icon name="pencil" class="w-3.5 h-3.5" />
-				</button>
+				{#if onEdit}
+					<button
+						type="button"
+						onclick={(e) => { e.stopPropagation(); onEdit?.(entry.id); }}
+						class="icon-btn !w-7 !h-7 !rounded-[var(--radius-md)] !bg-black/55 !text-white/90 hover:!bg-bg-tertiary hover:!text-text-primary"
+						aria-label="Edit"
+						title="Edit"
+					>
+						<Icon name="pencil" class="w-3.5 h-3.5" />
+					</button>
+				{/if}
 				<LibraryEntryMenu
 					isFavorite={entry.isFavorite}
 					onToggleFavorite={() => onToggleFavorite(entry.id)}

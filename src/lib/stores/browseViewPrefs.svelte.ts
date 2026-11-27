@@ -19,10 +19,6 @@ interface BrowseViewState {
 	listTags: boolean;
 	/** Grid cards optionally show a compact tag strip over the portrait. */
 	gridTags: boolean;
-	/** List rows draw the entry's portrait. On by default: the portrait is how a shelf of
-	 *  same-named characters is told apart, and an install that hid them by surprise would
-	 *  read as art that failed to load. */
-	listPortraits: boolean;
 }
 
 export const DEFAULTS: BrowseViewState = {
@@ -31,8 +27,7 @@ export const DEFAULTS: BrowseViewState = {
 	sort: 'newest',
 	perPage: 50,
 	listTags: false,
-	gridTags: false,
-	listPortraits: true
+	gridTags: false
 };
 
 const VIEW_MODES: ViewMode[] = ['grid', 'list', 'gallery'];
@@ -46,9 +41,7 @@ function normalize(raw: Partial<BrowseViewState> | null): BrowseViewState {
 	const perPage = PER_PAGE_OPTIONS.includes(raw?.perPage as number) ? (raw!.perPage as number) : DEFAULTS.perPage;
 	const listTags = typeof raw?.listTags === 'boolean' ? raw.listTags : DEFAULTS.listTags;
 	const gridTags = typeof raw?.gridTags === 'boolean' ? raw.gridTags : DEFAULTS.gridTags;
-	const listPortraits =
-		typeof raw?.listPortraits === 'boolean' ? raw.listPortraits : DEFAULTS.listPortraits;
-	return { viewMode, gridColumns, sort, perPage, listTags, gridTags, listPortraits };
+	return { viewMode, gridColumns, sort, perPage, listTags, gridTags };
 }
 
 class BrowseViewPrefs {
@@ -60,7 +53,6 @@ class BrowseViewPrefs {
 	perPage = $state<number>(DEFAULTS.perPage);
 	listTags = $state<boolean>(DEFAULTS.listTags);
 	gridTags = $state<boolean>(DEFAULTS.gridTags);
-	listPortraits = $state<boolean>(DEFAULTS.listPortraits);
 
 	constructor(key: string) {
 		this.#key = key;
@@ -82,7 +74,6 @@ class BrowseViewPrefs {
 		this.perPage = state.perPage;
 		this.listTags = state.listTags;
 		this.gridTags = state.gridTags;
-		this.listPortraits = state.listPortraits;
 	}
 
 	setViewMode(mode: ViewMode): void {
@@ -110,11 +101,6 @@ class BrowseViewPrefs {
 		this.persist();
 	}
 
-	setListPortraits(listPortraits: boolean): void {
-		this.listPortraits = listPortraits;
-		this.persist();
-	}
-
 	setGridTags(gridTags: boolean): void {
 		this.gridTags = gridTags;
 		this.persist();
@@ -127,8 +113,7 @@ class BrowseViewPrefs {
 			sort: this.sort,
 			perPage: this.perPage,
 			listTags: this.listTags,
-			gridTags: this.gridTags,
-			listPortraits: this.listPortraits
+			gridTags: this.gridTags
 		} satisfies BrowseViewState);
 	}
 }

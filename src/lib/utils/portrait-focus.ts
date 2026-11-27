@@ -3,7 +3,7 @@
  *
  * The library stores a focal point and a zoom, never cropped bytes, because one portrait
  * is shown at several aspect ratios at the same time (2:3 and 1:1 chat avatars, 3:4
- * browse cards, a 60x80 list row), and the chat's own silhouette is a setting the reader
+ * browse cards, circular browse-list thumbnails), and the chat's own silhouette is a setting the reader
  * can change long after the framing was authored. A baked rectangle is right in one box
  * and wrong in the rest, and it would be re-cropped by every box that disagrees with it.
  * A focal point resolves correctly in any box, the original file is never touched, and a

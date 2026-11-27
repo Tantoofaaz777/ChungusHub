@@ -45,10 +45,13 @@ export const CHARACTER_SORT_OPTIONS: { id: SortOption; label: string }[] = [
 export const PER_PAGE_OPTIONS = [25, 50, 100, 200, 500, 1000];
 
 export const DEFAULT_GRID_COLUMNS = 2;
+export const MAX_GRID_COLUMNS = 4;
 
 /** The grid uses an explicit column count, independent of the available shelf width. */
 export function normalizeGridColumns(value: unknown): number {
-	return value === 1 || value === 2 || value === 3 ? value : DEFAULT_GRID_COLUMNS;
+	return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_GRID_COLUMNS
+		? value
+		: DEFAULT_GRID_COLUMNS;
 }
 
 export function entryContentSize(entry: LibraryEntry): number {

@@ -14,7 +14,7 @@
 		selected?: boolean;
 		onToggleSelect?: (id: string) => void;
 		onSelect: (id: string) => void;
-		onEdit: (id: string) => void;
+		onEdit?: (id: string) => void;
 		onDuplicate: (id: string) => void;
 		onDelete: (id: string) => void;
 		/** Set while this entry cannot be deleted (the last persona): the ⋮ menu's Delete
@@ -60,10 +60,6 @@
 			: localizedCreatorNotes(entry.data.cardMetadata?.creatorNotesMultilingual, entry.data.traits.creatorNotes || '')
 	);
 	let tags = $derived(entry.identity.tags || []);
-
-	function stop(e: Event) {
-		e.stopPropagation();
-	}
 </script>
 
 <div
@@ -109,17 +105,19 @@
 			</div>
 		{/if}
 
-		<!-- Edit + ⋮ menu (top-right): revealed on hover, always shown on touch -->
+		<!-- Actions appear on hover and stay visible on touch. -->
 		<div class="absolute top-2 right-2 flex items-center gap-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-within:opacity-100 transition-opacity">
-			<button
-				type="button"
-				onclick={(e) => { stop(e); onEdit(entry.id); }}
-				class="icon-btn !w-8 !h-8 !rounded-[var(--radius-md)] !bg-black/45 backdrop-blur-sm !text-white/90 hover:!bg-black/70 hover:!text-white"
-				aria-label="Edit"
-				title="Edit"
-			>
-				<Icon name="pencil" class="w-4 h-4" />
-			</button>
+			{#if onEdit}
+				<button
+					type="button"
+					onclick={(e) => { e.stopPropagation(); onEdit?.(entry.id); }}
+					class="icon-btn !w-8 !h-8 !rounded-[var(--radius-md)] !bg-black/45 backdrop-blur-sm !text-white/90 hover:!bg-black/70 hover:!text-white"
+					aria-label="Edit"
+					title="Edit"
+				>
+					<Icon name="pencil" class="w-4 h-4" />
+				</button>
+			{/if}
 			<LibraryEntryMenu
 				isFavorite={entry.isFavorite}
 				onToggleFavorite={() => onToggleFavorite(entry.id)}

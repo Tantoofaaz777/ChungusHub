@@ -19,7 +19,7 @@
 	import { holdMsForBlast } from '#lib/components/ui/HoldToConfirmButton.svelte';
 	import BrowsePopover from '#lib/components/library/BrowsePopover.svelte';
 	import LibraryPager from '#lib/components/library/LibraryPager.svelte';
-	import { foldForSearch, PER_PAGE_OPTIONS } from '#lib/components/library/browse.ts';
+	import { foldForSearch, MAX_GRID_COLUMNS, PER_PAGE_OPTIONS } from '#lib/components/library/browse.ts';
 	import LorebookShelfRow from './LorebookShelfRow.svelte';
 	import LorebookGalleryCard from './LorebookGalleryCard.svelte';
 	import LorebookGridCard from './LorebookGridCard.svelte';
@@ -491,7 +491,7 @@
 							<input
 								type="range"
 								min="1"
-								max="3"
+							max={MAX_GRID_COLUMNS}
 								step="1"
 								value={lorebookViewPrefs.gridColumns}
 								oninput={(e) =>

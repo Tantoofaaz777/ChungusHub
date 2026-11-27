@@ -24,6 +24,7 @@
 	import NewChatSetup from './NewChatSetup.svelte';
 	import {
 		SORT_OPTIONS,
+		MAX_GRID_COLUMNS,
 		PER_PAGE_OPTIONS,
 		sortEntries,
 		matchesSearch,
@@ -94,7 +95,6 @@
 
 	// ---- View mode & card size. Persisted via the synced settings spine. ----
 	let viewMode = $derived(personasViewPrefs.viewMode);
-	let listPortraits = $derived(personasViewPrefs.listPortraits);
 
 	function setViewMode(mode: ViewMode) {
 		personasViewPrefs.setViewMode(mode);
@@ -184,7 +184,7 @@
 		if (selectingPersona) return;
 		const characterId = uiStore.newChatStep === 'persona' ? uiStore.newChatCharacterId : null;
 		if (!characterId) {
-			handleEditEntry(id);
+			uiStore.libraryEditorId = id;
 			return;
 		}
 		const targetChatId = uiStore.newChatTargetChatId;
@@ -221,12 +221,6 @@
 		} finally {
 			selectingPersona = false;
 		}
-	}
-
-	// Open the editor, wired to the per-card edit button. The editor renders centered
-	// over the chat (LibraryEditorOverlay); we just point it at this entry.
-	function handleEditEntry(id: string) {
-		uiStore.libraryEditorId = id;
 	}
 
 	async function handleDuplicate(id: string) {
@@ -405,20 +399,6 @@
 				</div>
 			</div>
 
-			{#if viewMode === 'list'}
-				<div class="brw-sec">
-					<div class="flex items-center justify-between gap-2">
-						<span class="brw-sec-title">Show Portraits</span>
-						<Toggle
-							size="sm"
-							checked={listPortraits}
-							onchange={(v) => personasViewPrefs.setListPortraits(v)}
-							label="Show portraits on each row"
-						/>
-					</div>
-				</div>
-			{/if}
-
 			{#if viewMode === 'grid'}
 				<div class="brw-sec">
 					<div class="brw-sec-head">
@@ -429,7 +409,7 @@
 						<input
 							type="range"
 							min="1"
-							max="3"
+							max={MAX_GRID_COLUMNS}
 							step="1"
 							value={gridColumns}
 							oninput={handleGridColumnsChange}
@@ -525,7 +505,6 @@
 							{entry}
 							showTags={personasViewPrefs.gridTags}
 							onSelect={handleSelectEntry}
-							onEdit={handleEditEntry}
 							onDuplicate={handleDuplicate}
 							onDelete={(id) => (deleteTargetId = id)}
 						{deleteBlockedReason}
@@ -543,7 +522,6 @@
 						<LibraryGalleryCard
 							{entry}
 							onSelect={handleSelectEntry}
-							onEdit={handleEditEntry}
 							onDuplicate={handleDuplicate}
 							onDelete={(id) => (deleteTargetId = id)}
 						{deleteBlockedReason}
@@ -558,13 +536,11 @@
 						<LibraryListRow
 							{entry}
 							onSelect={handleSelectEntry}
-							onEdit={handleEditEntry}
 							onDuplicate={handleDuplicate}
 							onDelete={(id) => (deleteTargetId = id)}
 						{deleteBlockedReason}
 							onToggleFavorite={handleToggleFavorite}
 							onConvert={(id) => (convertId = id)}
-							showPortrait={listPortraits}
 						/>
 					{/each}
 				</div>

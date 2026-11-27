@@ -1,11 +1,7 @@
 <script lang="ts">
 	/**
-	 * One book on the Lorebooks shelf: the Library list row, to the geometry. Same 60x80
-	 * frame, so a cover is drawn in the shape it was authored and framed in, and so the two
-	 * shelves scan as one list rather than as a tall one and a short one. It holds the book
-	 * glyph where there is no cover, which is most books, and the row's height is the frame's
-	 * either way. With covers switched off it is the character row's compact shape instead,
-	 * to the same floor, so the two shelves still scan alike.
+	 * Lorebook rows use the same 60px circular thumbnail and spacing as the Library list.
+	 * Books without a cover show the book icon in that frame.
 	 *
 	 * The meta line answers the two questions a shelf is scanned for: how big the book is,
 	 * and whether anything carries it. It deliberately does NOT price the book in tokens:
@@ -27,7 +23,7 @@
 		selectionMode?: boolean;
 		selected?: boolean;
 		onToggleSelect?: (id: string) => void;
-		/** The cover is what the row's height is; without it the row is its own content. */
+		/** Show the cover beside the row's text. */
 		showCover?: boolean;
 		onOpen: (id: string) => void;
 		onExport: (id: string) => void;
@@ -49,8 +45,7 @@
 	}: Props = $props();
 
 	let cover = $derived(imageService.thumbnailUrl(book.cover));
-	// The frame's height while there is a frame, and otherwise the compact floor the character
-	// row holds to: a name line and one line under it, which is exactly this row's content.
+	// Match the text height of the corresponding Library list row.
 	let contentFloor = $derived(showCover ? 'min-h-20' : 'min-h-12');
 	let count = $derived(book.entries.length);
 	let size = $derived(count === 0 ? 'Empty' : `${count} ${count === 1 ? 'entry' : 'entries'}`);
@@ -71,12 +66,10 @@
 		? 'bg-accent/10 hover:bg-accent/15'
 		: 'hover:bg-bg-tertiary/55'}"
 >
-	<!-- The cover, in the character row's own frame: 3:4, which is the shape it was authored
-	     and framed in. Hidden, the selection checkbox has no frame to sit over, so it takes the
-	     cover's place as a box of its own rather than leaving the row with no mark. -->
+	<!-- When covers are hidden, the selection indicator occupies its own space. -->
 	{#if showCover}
 		<div
-			class="relative w-[60px] h-20 shrink-0 grid place-items-center rounded-[var(--radius-md)] bg-bg-tertiary text-text-muted overflow-hidden"
+			class="relative size-[60px] shrink-0 self-start grid place-items-center rounded-full bg-bg-tertiary text-text-muted overflow-hidden"
 		>
 			{#if cover}
 				<img
