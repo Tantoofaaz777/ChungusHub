@@ -348,15 +348,16 @@
 				? assistantSpeaker?.name?.trim() || 'Assistant'
 				: 'System'
 	);
+	const userPortrait = $derived(message.personaPortrait === undefined ? userPersona : message.personaPortrait);
 	const speakerImagePath = $derived(
 		message.role === 'user'
-			? userPersona?.imageUrl ?? null
+			? userPortrait?.imageUrl ?? null
 			: message.role === 'assistant'
 				? assistantSpeaker?.imageUrl ?? null
 				: null
 	);
 	const speakerFocus = $derived(
-		message.role === 'user' ? userPersona?.portraitFocus : assistantSpeaker?.portraitFocus
+		message.role === 'user' ? userPortrait?.portraitFocus : assistantSpeaker?.portraitFocus
 	);
 	// Only the actual last message owns swipes; hiding it never moves the bar to an older turn.
 	// Wait for chapter coverage before exposing navigation on a newly opened chat.

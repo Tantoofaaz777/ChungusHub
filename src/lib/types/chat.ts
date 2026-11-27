@@ -5,6 +5,7 @@ import type { BackgroundConfig } from '#lib/types/background.ts';
 import { normalizeBackgroundConfig } from '#lib/types/background.ts';
 import { normalizeReminderProgress } from '#lib/memory/reminders.ts';
 import { normalizeAndroidVoice, type AndroidVoiceChoice } from '#shared/android-speech.ts';
+import type { PersonaPortrait } from '#shared/persona-version.ts';
 
 export interface Chat {
 	conversationVersion?: number;
@@ -320,6 +321,8 @@ export interface Message {
 	 *  so changing the global active persona never re-labels past messages. User messages
 	 *  only; null for assistant/system and for messages created before this was tracked. */
 	personaId: string | null;
+	/** Portrait at send time. Null records an empty portrait. Missing uses legacy attribution. */
+	personaPortrait?: PersonaPortrait | null;
 	/** Legacy branch name and color, preserved in saved chats and shown in search. */
 	branchLabel: BranchLabel | null;
 	thinking: string | null;

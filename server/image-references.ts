@@ -7,7 +7,7 @@ import { PRESETS_DIR } from './config';
 const IMAGE_PATH_RE = /images\/(?:characters|personas|backgrounds|chat|presets|lorebooks)\/(?:thumbnails\/)?[^"\\/\r\n<>]*?\.(?:png|jpe?g|jfif|webp|gif|avif)(?=$|["'\s)\]}>?,;])/gi;
 const WHOLE_IMAGE_PATH_RE = new RegExp(`^(?:${IMAGE_PATH_RE.source})$`, 'i');
 const COLUMNS = [
-	['messages', 'attachments_json', true], ['messages', 'content', false],
+	['messages', 'attachments_json', true], ['messages', 'persona_portrait_json', true], ['messages', 'content', false],
 	['message_variants', 'payload_json', true], ['conversation_generation_recovery', 'payload_json', true],
 	['character_library', 'data_json', true], ['character_versions', 'data_json', true],
 	['lorebooks', 'data_json', true], ['settings', 'value', false],

@@ -23,6 +23,18 @@ const DATA_MIGRATIONS: string[] = [
 ];
 
 describe('migrations', () => {
+	test('existing messages keep their legacy portrait lookup after upgrading', () => {
+		const old = new Database(':memory:');
+		try {
+			old.exec('CREATE TABLE messages (id TEXT PRIMARY KEY, content TEXT)');
+			old.run('INSERT INTO messages VALUES (?, ?)', ['turn', 'Existing message']);
+			old.exec(MIGRATIONS_FOR_TESTS.find(m => m.version === 54)!.sql);
+			expect(old.query('SELECT * FROM messages').get()).toEqual({
+				id: 'turn', content: 'Existing message', persona_portrait_json: null
+			});
+		} finally { old.close(); }
+	});
+
 	test('draft revisions upgrade existing saved text without changing it', () => {
 		const old = new Database(':memory:');
 		try {

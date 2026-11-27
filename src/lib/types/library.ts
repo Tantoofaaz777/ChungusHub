@@ -3,6 +3,7 @@ import type { PortraitFocus } from '#lib/utils/portrait-focus.ts';
 import type { CharacterCardMetadata } from './character-card';
 import type { CharacterAuthorsNote } from '../../../shared/character-authors-note';
 import type { AndroidVoiceChoice } from '#shared/android-speech.ts';
+import type { PersonaPortrait } from '#shared/persona-version.ts';
 
 /** Type discriminator for library entries */
 export type LibraryEntryType = 'character' | 'persona';
@@ -43,7 +44,7 @@ export interface LibraryEntryIdentity {
 	/**
 	 * Where every avatar box aims inside the portrait (`#lib/utils/portrait-focus`). Absent
 	 * means the shipped centred cover. Belongs to the portrait, so it is dropped whenever the
-	 * portrait is replaced, and is NOT versioned for the same reason the portrait isn't.
+	 * default portrait is replaced. Persona versions can override both in their own data.
 	 */
 	portraitFocus?: PortraitFocus;
 }
@@ -58,6 +59,8 @@ export function storyRoleName(identity: Pick<LibraryEntryIdentity, 'name' | 'ali
 /** Data payload for a library entry */
 export interface LibraryEntryData {
 	traits: CharacterTraits;
+	/** Optional override stored on a persona's version row. */
+	personaPortrait?: PersonaPortrait;
 	/** Portable card metadata and assets, versioned with the character's content. */
 	cardMetadata?: CharacterCardMetadata;
 	/** Custom labels for default traits - overrides the default label text */
@@ -127,8 +130,8 @@ export type ChatDefaultKey =
 /**
  * One named variant in the library ("pirate", "castle guard", "calmer take", …).
  * Versions are peers, not a linear history: the user forks before changing, switches
- * freely, and chats pin the exact variant they were played with. Identity (name,
- * portrait, tags) is deliberately NOT versioned: it stays live on the entry.
+ * freely, and chats pin the exact variant they were played with. Identity stays on the
+ * entry. A persona version may override the default portrait and its framing.
  */
 export interface CharacterVersion {
 	id: string;

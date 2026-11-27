@@ -2,6 +2,7 @@
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import Spinner from '#lib/components/ui/Spinner.svelte';
 	import Select from '#lib/components/ui/Select.svelte';
+	import PillRow from '#lib/components/ui/PillRow.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
 	import { characterLibraryStore } from '#lib/stores/characterLibrary.svelte.ts';
 	import { LAST_PERSONA_REASON } from '#lib/stores/persona.svelte.ts';
@@ -12,7 +13,7 @@
 	import FieldTokenCount from './FieldTokenCount.svelte';
 	import ConvertEntryDialog from './ConvertEntryDialog.svelte';
 	import PortraitFramingDialog from './PortraitFramingDialog.svelte';
-	import { portraitFocusStyle } from '#lib/utils/portrait-focus.ts';
+	import { portraitFocusStyle, type PortraitFocus } from '#lib/utils/portrait-focus.ts';
 	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
 	import { BLOB_MACRO, type PersonaPronouns } from '#lib/types/library.ts';
 	import { presetService } from '#lib/services/presets.svelte.ts';
@@ -62,6 +63,9 @@
 	let committing = $state(false);
 	let savedFlash = $state(false);
 	let savedFlashTimer: ReturnType<typeof setTimeout> | null = null;
+	let portraitScope = $state<'version' | 'default'>('version');
+	let portraitVersionId = $derived(portraitScope === 'version' ? entry?.activeVersionId : undefined);
+	let versionPortrait = $derived(portraitVersionId ? characterLibraryStore.getVersion(portraitVersionId)?.data.personaPortrait : undefined);
 
 	let snapshot = $derived(
 		entry
@@ -69,8 +73,8 @@
 					name: entry.identity.name,
 					alias: entry.identity.alias,
 					pronouns: entry.identity.pronouns,
-					imageUrl: entry.identity.imageUrl,
-					portraitFocus: entry.identity.portraitFocus,
+					imageUrl: versionPortrait?.imageUrl ?? entry.identity.imageUrl,
+					portraitFocus: versionPortrait ? versionPortrait.portraitFocus : entry.identity.portraitFocus,
 					traits: entry.data.traits,
 					lorebookIds: entry.data.lorebookIds
 				}
@@ -153,23 +157,43 @@
 	let fileInputRef = $state<HTMLInputElement | null>(null);
 	let resolvedImageUrl = $derived(imageService.imageUrl(snapshot?.imageUrl));
 	let imageLoading = $state(false);
+	let uploadTarget: { entryId: string; version?: { id: string; imageUrl: string | null } } | null = null;
 
-	let showFraming = $state(false);
+	let framing = $state<{ entryId: string; versionId?: string; imageUrl: string; name: string; focus?: PortraitFocus } | null>(null);
 
 	function handleImageClick() {
-		fileInputRef?.click();
+		if (!entry || imageLoading || !fileInputRef) return;
+		uploadTarget = {
+			entryId: entry.id,
+			version: portraitVersionId ? { id: portraitVersionId, imageUrl: versionPortrait?.imageUrl ?? null } : undefined
+		};
+		fileInputRef.click();
+	}
+
+	function handlePortraitKeydown(event: KeyboardEvent) {
+		if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+		event.preventDefault();
+		handleImageClick();
 	}
 
 	function handleAdjustFraming(e: MouseEvent) {
 		// The frame behind this button opens the file picker.
 		e.stopPropagation();
-		showFraming = true;
+		if (entry && snapshot?.imageUrl) framing = {
+			entryId: entry.id, versionId: portraitVersionId, name: snapshot.name,
+			imageUrl: snapshot.imageUrl, focus: snapshot.portraitFocus
+		};
 	}
 
 	async function handleImageSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
-		if (!file) return;
+		const target = uploadTarget;
+		uploadTarget = null;
+		if (!file || !target || imageLoading) {
+			input.value = '';
+			return;
+		}
 		const refused = imageRejectionReason(file);
 		if (refused) {
 			toastStore.error(refused);
@@ -178,7 +202,8 @@
 		}
 		imageLoading = true;
 		try {
-			if (entry) await characterLibraryStore.updateEntryImage(entry.id, file);
+			if (target.version) await characterLibraryStore.updatePersonaVersionImage(target.entryId, target.version.id, file, target.version.imageUrl);
+			else await characterLibraryStore.updateEntryImage(target.entryId, file);
 		} catch (error) {
 			console.error('Saving the persona image failed:', error);
 			toastStore.failed(`save "${file.name}"`, error);
@@ -190,10 +215,13 @@
 
 	async function handleImageRemove(e: Event) {
 		e.stopPropagation();
-		if (!entry) return;
+		if (!entry || imageLoading) return;
 		imageLoading = true;
 		try {
-			await characterLibraryStore.updateEntryImage(entry.id, null);
+			if (portraitVersionId) await characterLibraryStore.updatePersonaVersionImage(entry.id, portraitVersionId, null, versionPortrait?.imageUrl ?? null);
+			else await characterLibraryStore.updateEntryImage(entry.id, null);
+		} catch (error) {
+			toastStore.failed('remove the portrait', error);
 		} finally {
 			imageLoading = false;
 		}
@@ -297,6 +325,7 @@
 	accept="image/*,.jfif"
 	class="hidden"
 	onchange={handleImageSelect}
+	oncancel={() => (uploadTarget = null)}
 />
 
 {#if snapshot && entry}
@@ -331,51 +360,63 @@
 			<div class="persona-form">
 				<!-- Compact identity header; pronouns and description use the full width below. -->
 				<div class="persona-identity">
-					<div
-						class="portrait-frame relative w-full aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
-						role="button"
-						tabindex="0"
-						onclick={handleImageClick}
-						onkeydown={(e) => e.key === 'Enter' && handleImageClick()}
-						aria-label="Change persona image"
-						aria-disabled={imageLoading}
-					>
-						{#if imageLoading}
-							<div class="absolute inset-0 flex items-center justify-center bg-bg-tertiary">
-								<Spinner size="md" />
-							</div>
-						{:else if resolvedImageUrl}
-							<img
-								src={resolvedImageUrl}
-								alt={snapshot.name || 'persona'}
-								class="w-full h-full object-cover"
-								style={portraitFocusStyle(snapshot.portraitFocus)}
-							/>
-							<div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-0 group-hover/portrait:opacity-100 transition-opacity flex items-end justify-center pb-2.5">
-								<span class="text-white/90 text-xs font-ui">Change photo</span>
-							</div>
-							<button
-								type="button"
-								class="portrait-overlay-action absolute top-1.5 right-1.5 p-1 rounded-full bg-black/50 text-white/80 hover:bg-error hover:text-white"
-								onclick={handleImageRemove}
-								aria-label="Remove image"
-							>
-								<Icon name="close" class="w-3.5 h-3.5" />
-							</button>
-							<button
-								type="button"
-								class="portrait-overlay-action absolute bottom-1.5 right-1.5 p-1 rounded-full bg-black/50 text-white/80 hover:bg-black/75 hover:text-white"
-								onclick={handleAdjustFraming}
-								aria-label="Adjust framing"
-								title="Adjust framing"
-							>
-								<Icon name="crop" class="w-3.5 h-3.5" />
-							</button>
-						{:else}
-							<div class="w-full h-full flex flex-col items-center justify-center text-text-muted group-hover/portrait:text-accent transition-colors gap-1.5">
-								<Icon name="image" class="w-7 h-7" />
-								<span class="text-xs font-ui">Add photo</span>
-							</div>
+					<div class="space-y-2 min-w-0">
+						{#if entry.activeVersionId}
+							<PillRow label="Portrait scope" options={[{value:'version', label:'Version'}, {value:'default', label:'Default'}]}
+								current={portraitScope} onpick={(value) => portraitScope = value === 'default' ? 'default' : 'version'} />
+						{/if}
+						<div
+							class="portrait-frame relative w-full aspect-[3/4] rounded-[var(--radius-lg)] overflow-hidden border border-border bg-bg-tertiary group/portrait cursor-pointer transition-all hover:border-accent hover:shadow-md"
+							role="button"
+							tabindex="0"
+							onclick={handleImageClick}
+							onkeydown={handlePortraitKeydown}
+							aria-label="Change persona image"
+							aria-disabled={imageLoading}
+						>
+							{#if imageLoading}
+								<div class="absolute inset-0 flex items-center justify-center bg-bg-tertiary">
+									<Spinner size="md" />
+								</div>
+							{:else if resolvedImageUrl}
+								<img
+									src={resolvedImageUrl}
+									alt={snapshot.name || 'persona'}
+									class="w-full h-full object-cover"
+									style={portraitFocusStyle(snapshot.portraitFocus)}
+								/>
+								<div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-0 group-hover/portrait:opacity-100 transition-opacity flex items-end justify-center pb-2.5">
+									<span class="text-white/90 text-xs font-ui">Change photo</span>
+								</div>
+								{#if !portraitVersionId || versionPortrait}
+									<button
+										type="button"
+										class="portrait-overlay-action absolute top-1.5 right-1.5 p-1 rounded-full bg-black/50 text-white/80 hover:bg-error hover:text-white"
+										onclick={handleImageRemove}
+										aria-label={portraitVersionId ? 'Use default portrait' : 'Remove image'}
+										title={portraitVersionId ? 'Use default portrait' : 'Remove image'}
+									>
+										<Icon name="close" class="w-3.5 h-3.5" />
+									</button>
+									<button
+										type="button"
+										class="portrait-overlay-action absolute bottom-1.5 right-1.5 p-1 rounded-full bg-black/50 text-white/80 hover:bg-black/75 hover:text-white"
+										onclick={handleAdjustFraming}
+										aria-label="Adjust framing"
+										title="Adjust framing"
+									>
+										<Icon name="crop" class="w-3.5 h-3.5" />
+									</button>
+								{/if}
+							{:else}
+								<div class="w-full h-full flex flex-col items-center justify-center text-text-muted group-hover/portrait:text-accent transition-colors gap-1.5">
+									<Icon name="image" class="w-7 h-7" />
+									<span class="text-xs font-ui">Add photo</span>
+								</div>
+							{/if}
+						</div>
+						{#if portraitVersionId && !versionPortrait && resolvedImageUrl}
+							<p class="text-xs text-text-muted font-ui">Using default portrait</p>
 						{/if}
 					</div>
 
@@ -510,14 +551,17 @@
 
 	</div>
 
-	{#if snapshot.imageUrl}
+	{#if framing}
+		{@const target = framing}
 		<PortraitFramingDialog
-			open={showFraming}
-			onSave={(next) => characterLibraryStore.setPortraitFocus(entry.id, next)}
-			imagePath={snapshot.imageUrl}
-			name={snapshot.name}
-			focus={snapshot.portraitFocus}
-			onClose={() => (showFraming = false)}
+			open={true}
+			onSave={(next) => target.versionId
+				? characterLibraryStore.setPersonaVersionPortraitFocus(target.entryId, target.versionId, target.imageUrl, next)
+				: characterLibraryStore.setPortraitFocus(target.entryId, next)}
+			imagePath={target.imageUrl}
+			name={target.name}
+			focus={target.focus}
+			onClose={() => (framing = null)}
 		/>
 	{/if}
 

@@ -42,7 +42,8 @@ test('snapshot, portable ZIP import and restore preserve the complete current da
 	}
 	insert('chats', { id: 'chat', title: 'Original', created_at: 1, updated_at: 2,
 		root_message_id: 'root', active_leaf_id: 'swipe', canon_leaf_id: 'root', feature_state: JSON.stringify({ scene: { background: { path: 'images/backgrounds/scene.png' } }, authorsNote: 'Remember' }) });
-	insert('messages', { id: 'root', chat_id: 'chat', role: 'user', content: 'Source', created_at: 1, sibling_index: 0, is_bookmarked: 1 });
+	insert('messages', { id: 'root', chat_id: 'chat', role: 'user', content: 'Source', created_at: 1, sibling_index: 0, is_bookmarked: 1,
+		persona_portrait_json: JSON.stringify({ imageUrl: 'images/personas/historical.png', portraitFocus: { x: .3, y: .6, zoom: 1.5 } }) });
 	for (const [id, sibling] of [['reply', 0], ['swipe', 1]] as const) insert('messages', { id, chat_id: 'chat', parent_id: 'root', role: 'assistant', content: id,
 		created_at: 2, sibling_index: sibling, thinking: 'Thought', reasoning_ms: 17000, excluded_from_prompt: id === 'reply' ? 1 : 0,
 		attachments_json: JSON.stringify([{ path: 'images/chat/shared.png' }]) });
@@ -64,6 +65,7 @@ test('snapshot, portable ZIP import and restore preserve the complete current da
 	const expected = dump(db); db.close();
 
 	const files = { 'images/chat/shared.png': 'SHARED', 'images/backgrounds/scene.png': 'BACKGROUND',
+		'images/personas/historical.png': 'HISTORICAL PORTRAIT',
 		'presets/custom.json': '{"name":"Custom","items":[{"content":"{{outlet::places}}"}]}',
 		'presets/drafts/custom.json': '{"name":"Unsaved","items":[]}', 'custom-fonts/family/font.woff2': 'FONT', 'custom-fonts/family/LICENSE.txt': 'LICENSE' };
 	for (const [path, body] of Object.entries(files)) { mkdirSync(join(data, path, '..'), { recursive: true }); writeFileSync(join(data, path), body); }
@@ -73,7 +75,12 @@ test('snapshot, portable ZIP import and restore preserve the complete current da
 	const imported = await importPortableBackup(new Response(archive).body);
 	const importedFile = join(root, 'backups', imported.id, 'data', 'chungushub.db');
 	const copied = new Database(importedFile, { readonly: true });
-	try { expect(dump(copied)).toEqual(expected); expect(referencedImagePaths(copied).has('images/backgrounds/scene.png')).toBe(true); }
+	try {
+		expect(dump(copied)).toEqual(expected);
+		const images = referencedImagePaths(copied);
+		expect(images.has('images/backgrounds/scene.png')).toBe(true);
+		expect(images.has('images/personas/historical.png')).toBe(true);
+	}
 	finally { copied.close(); }
 	const movedOn = new Database(liveFile); movedOn.run("UPDATE messages SET content = 'Newer content'"); movedOn.close();
 	writeFileSync(join(data, 'security.json'), '{"keep":"current password settings"}');

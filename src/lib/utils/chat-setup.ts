@@ -162,7 +162,13 @@ export function resolvePersonaId(
  *  speaks as (the manual-memory context carries the claim the way it carries the version pin). */
 export function resolvePersonaVersion(entry: LibraryEntry, claimed: string | null, versions: readonly CharacterVersion[]): LibraryEntry {
 	const version = versions.find(row => row.entryId === entry.id && (!claimed || row.id === claimed));
-	return version ? { ...entry, data: { ...entry.data, traits: { ...entry.data.traits, description: version.data.traits.description } } } : entry;
+	if (!version) return entry;
+	const portrait = version.data.personaPortrait;
+	return {
+		...entry,
+		identity: portrait ? { ...entry.identity, ...portrait, portraitFocus: portrait.portraitFocus } : entry.identity,
+		data: { ...entry.data, traits: { ...entry.data.traits, description: version.data.traits.description } }
+	};
 }
 
 export function personaEntryFor(claimed: string | null, version: string | null = null): LibraryEntry | null {

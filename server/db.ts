@@ -9,7 +9,7 @@
  * exactly once, tracked in the _migrations table. No "IF NOT EXISTS" guesswork.
  */
 import { Database } from 'bun:sqlite';
-import { personaVersionData, readPersonaVersionClaim } from '../shared/persona-version';
+import { normalizePersonaPortrait, personaVersionData, readPersonaVersionClaim, readPersonaVersionPortrait, type PersonaPortrait } from '../shared/persona-version';
 import { ConversationStorage, ConversationRecoveryError, CONVERSATION_SCHEMA, variantPayload, VARIANT_COLUMNS } from './conversation-storage';
 import { isContinuationContext, type ContinuationContext, type ConversationPlacement, type VariantSelection, type VariantBookmark, type VariantContent } from '../shared/conversation';
 import type { RecoveredGeneration } from '../shared/recovered-generation';
@@ -566,7 +566,8 @@ const MIGRATIONS: Migration[] = [
 		sql: `ALTER TABLE messages ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0;`
 	},
 	{ version: 52, name: 'conversation_turn_variants', sql: CONVERSATION_SCHEMA },
-	{ version: 53, name: 'chat_draft_revisions', sql: "ALTER TABLE chat_drafts ADD COLUMN revision TEXT NOT NULL DEFAULT 'legacy';" }
+	{ version: 53, name: 'chat_draft_revisions', sql: "ALTER TABLE chat_drafts ADD COLUMN revision TEXT NOT NULL DEFAULT 'legacy';" },
+	{ version: 54, name: 'message_persona_portrait', sql: 'ALTER TABLE messages ADD COLUMN persona_portrait_json TEXT;' }
 ];
 
 /** The newest schema this build can produce. A snapshot recording a higher one was written
@@ -770,6 +771,7 @@ class ServerDatabase {
 			excludedFromPrompt: row.excluded_from_prompt === 1,
 			isBookmarked: row.is_bookmarked === 1,
 			personaId: row.persona_id ?? null,
+			...(row.persona_portrait_json != null ? { personaPortrait: normalizePersonaPortrait(parseJsonColumn(row.persona_portrait_json)) } : {}),
 			branchLabel: row.branch_label ? JSON.parse(row.branch_label as string) : null,
 			thinking: row.thinking ?? null,
 			attachments: row.attachments_json ? JSON.parse(row.attachments_json as string) : null,
@@ -949,8 +951,8 @@ class ServerDatabase {
 				this.execute(
 					`INSERT INTO messages
 					 (id, chat_id, parent_id, role, content, persona_id, branch_label, thinking, attachments_json, created_at, edited_at, minor_edited_at, sprite_label,
-					  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, excluded_from_prompt, is_bookmarked)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, excluded_from_prompt, is_bookmarked, persona_portrait_json)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						idMap.get(row.id as string),
 						newChatId,
@@ -976,7 +978,8 @@ class ServerDatabase {
 						row.lore_json ?? null,
 						row.sibling_index,
 						row.excluded_from_prompt ?? 0,
-						row.is_bookmarked ?? 0
+						row.is_bookmarked ?? 0,
+						row.persona_portrait_json ?? null
 					]
 				);
 				if (source.conversation_version === 2) {
@@ -1397,13 +1400,19 @@ class ServerDatabase {
 		return this.getMessagesDelta(input.chatId, null);
 	}
 
-	appendConversationTurn(message: Record<string, unknown>, context: ConversationPlacement): ConversationPlacement {
+	appendConversationTurn(message: Record<string, unknown>, context: ConversationPlacement, personaVersionId?: string | null): ConversationPlacement {
 		return this.inTransaction(() => {
 			const current = this.conversations.context(message.chatId as string, 'append');
 			if (context.operation !== 'append' ||
 				current.contextFingerprint !== context.contextFingerprint || current.expectedLeafId !== context.expectedLeafId ||
 				message.parentId !== current.expectedLeafId) throw new Error('The conversation changed before this turn was sent.');
-			this.insertMessage(message);
+			if (message.role === 'user' && personaVersionId === undefined) {
+				const claim = readPersonaVersionClaim(this.select<{ feature_state: string | null }[]>(
+					'SELECT feature_state FROM chats WHERE id = ?', [message.chatId]
+				)[0]?.feature_state);
+				personaVersionId = claim?.persona === message.personaId ? claim?.version ?? null : null;
+			}
+			this.insertMessage(message, personaVersionId);
 			this.updateChat({ id: message.chatId as string, activeLeafId: message.id,
 				...(current.expectedLeafId === null ? { rootMessageId: message.id } : {}) }, { touchUpdatedAt: true });
 			return this.conversations.context(message.chatId as string, 'append');
@@ -1496,10 +1505,8 @@ class ServerDatabase {
 	//
 	//  1. Branching/forking copies attachment lists. Cleanup checks all persisted owners,
 	//     including versions and presets, AFTER the deleted rows are gone.
-	//  2. images/chat/ only. Character and persona art lives in its own folder and is
-	//     always a copy (see edit_character_images), never an alias of a chat attachment.
-	//     This sweep refuses to touch anything outside images/chat/, so deleting a chat
-	//     can never blank a portrait that came from it.
+	//  2. Chat attachments and captured persona portraits are eligible for cleanup when
+	//     the final reference to them is removed.
 
 	/** The image paths one attachments_json blob references. */
 	private imagePathsIn(json: string | null): string[] {
@@ -1511,18 +1518,29 @@ class ServerDatabase {
 			.filter((p): p is string => typeof p === 'string' && p.length > 0);
 	}
 
+	private messageImagePaths(rows: { attachments_json: string | null; persona_portrait_json: string | null }[]): string[] {
+		return rows.flatMap(row => {
+			const paths = this.imagePathsIn(row.attachments_json);
+			const portrait = normalizePersonaPortrait(parseJsonColumn(row.persona_portrait_json));
+			if (portrait) paths.push(portrait.imageUrl);
+			return paths;
+		});
+	}
+
 	private imagePathsOfChat(chatId: string): string[] {
-		const rows = this.select<{ attachments_json: string | null }[]>('SELECT attachments_json FROM messages WHERE chat_id = ?', [chatId]);
-		return [...rows.flatMap((r) => this.imagePathsIn(r.attachments_json)),
+		const rows = this.select<{ attachments_json: string | null; persona_portrait_json: string | null }[]>(
+			'SELECT attachments_json, persona_portrait_json FROM messages WHERE chat_id = ?', [chatId]);
+		return [...this.messageImagePaths(rows),
 			...this.conversations.variantRows(chatId).flatMap(row => this.conversations.images(JSON.parse(row.payload_json)))];
 	}
 
 	private imagePathsOfMessages(messageIds: string[]): string[] {
 		if (!messageIds.length) return [];
 		const holes = messageIds.map(() => '?').join(', ');
-		const rows = this.select<{ attachments_json: string | null }[]>(`SELECT attachments_json FROM messages WHERE id IN (${holes})`, messageIds);
+		const rows = this.select<{ attachments_json: string | null; persona_portrait_json: string | null }[]>(
+			`SELECT attachments_json, persona_portrait_json FROM messages WHERE id IN (${holes})`, messageIds);
 		const variants = this.select<{ payload_json: string }[]>(`SELECT payload_json FROM message_variants WHERE message_id IN (${holes})`, messageIds);
-		return [...rows.flatMap((r) => this.imagePathsIn(r.attachments_json)),
+		return [...this.messageImagePaths(rows),
 			...variants.flatMap(row => this.conversations.images(JSON.parse(row.payload_json)))];
 	}
 
@@ -1549,8 +1567,7 @@ class ServerDatabase {
 		try { referenced = this.imageReferences(); }
 		catch (error) { console.error('[db] image cleanup skipped:', error); return; }
 		for (const path of new Set(paths)) {
-			// The one folder this sweep owns. Entry art is never reachable from here.
-			if (!path.startsWith('images/chat/')) continue;
+			if (!path.startsWith('images/chat/') && !path.startsWith('images/personas/')) continue;
 			if (referenced.has(imageReferenceKey(path))) continue;
 			try { deleteImage(path); }
 			catch (error) { console.error('[db] image cleanup failed:', error); }
@@ -1971,8 +1988,27 @@ class ServerDatabase {
 		return rows[0] ? this.mapMessage(rows[0]) : null;
 	}
 
-	insertMessage(message: Record<string, unknown>): void {
+	private personaPortraitAtSend(personaId: unknown, versionId: string | null) {
+		if (typeof personaId !== 'string' || !personaId) return null;
+		const persona = this.select<{ data_json: string }[]>(
+			"SELECT data_json FROM character_library WHERE type = 'persona' AND id = ?", [personaId]
+		)[0];
+		if (!persona) return null;
+		const versions = this.select<{ data_json: string }[]>(versionId
+			? 'SELECT data_json FROM character_versions WHERE entry_id = ? AND id = ?'
+			: 'SELECT data_json FROM character_versions WHERE entry_id = ? ORDER BY created_at ASC, rowid ASC LIMIT 1',
+			versionId ? [personaId, versionId] : [personaId]);
+		const entry = parseJsonColumn(persona.data_json) as { identity?: unknown } | null;
+		return readPersonaVersionPortrait(parseJsonColumn(versions[0]?.data_json)) ?? normalizePersonaPortrait(entry?.identity);
+	}
+
+	insertMessage(message: Record<string, unknown>, personaVersionId?: string | null): void {
 		this.inTransaction(() => {
+			let portrait: PersonaPortrait | null | undefined;
+			if (message.role === 'user') {
+				if (personaVersionId !== undefined) portrait = this.personaPortraitAtSend(message.personaId, personaVersionId);
+				else if (message.personaPortrait !== undefined) portrait = normalizePersonaPortrait(message.personaPortrait);
+			}
 			const rev = this.bumpMessagesRev(message.chatId as string);
 			// A live row may never sit shadowed by a tombstone: nothing in the app reuses a
 			// message id today, but if one ever comes back, a lingering tombstone would tell
@@ -1984,8 +2020,8 @@ class ServerDatabase {
 			this.execute(
 				`INSERT INTO messages
 				 (id, chat_id, parent_id, role, content, persona_id, branch_label, thinking, attachments_json, created_at, edited_at, minor_edited_at, sprite_label,
-				  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, rev, excluded_from_prompt, is_bookmarked)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				  model, provider, tokens_prompt, tokens_completion, finish_reason, generation_ms, first_token_ms, reasoning_ms, lore_json, sibling_index, rev, excluded_from_prompt, is_bookmarked, persona_portrait_json)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					message.id,
 					message.chatId,
@@ -2014,7 +2050,8 @@ class ServerDatabase {
 					message.siblingIndex ?? 0,
 					rev,
 					message.excludedFromPrompt === true ? 1 : 0,
-					message.isBookmarked === true ? 1 : 0
+					message.isBookmarked === true ? 1 : 0,
+					portrait === undefined ? null : JSON.stringify(portrait)
 				]
 			);
 		});
@@ -2182,10 +2219,16 @@ class ServerDatabase {
 	 *  content edits, so it never bumps edited_at. The persona a message was sent with
 	 *  is normally locked at send time; this is the deliberate, after-the-fact rebind. */
 	updateMessagePersona(messageId: string, personaId: string | null): void {
-		this.inTransaction(() => {
+		const removed = this.inTransaction(() => {
+			const previous = this.select<{ persona_portrait_json: string | null }[]>(
+				'SELECT persona_portrait_json FROM messages WHERE id = ? AND persona_id IS NOT ?', [messageId, personaId ?? null]
+			)[0];
 			const rev = this.revForMessageWrite(messageId);
-			this.execute('UPDATE messages SET persona_id = ?, rev = ? WHERE id = ?', [personaId ?? null, rev, messageId]);
+			this.execute('UPDATE messages SET persona_portrait_json = CASE WHEN persona_id IS ? THEN persona_portrait_json END, persona_id = ?, rev = ? WHERE id = ?',
+				[personaId ?? null, personaId ?? null, rev, messageId]);
+			return normalizePersonaPortrait(parseJsonColumn(previous?.persona_portrait_json))?.imageUrl;
 		});
+		if (removed) this.dropOrphanedChatImages([removed]);
 	}
 
 	/** Bind every user turn in a chat to a persona at once (or clear with null). Powers the
@@ -2193,14 +2236,21 @@ class ServerDatabase {
 	 *  messages have no persona show a plain "You" until re-attributed. Only user rows are
 	 *  touched; content and edited_at are left alone. */
 	setChatUserPersona(chatId: string, personaId: string | null): void {
-		this.inTransaction(() => {
+		const removed = this.inTransaction(() => {
+			const previous = this.select<{ persona_portrait_json: string }[]>(
+				"SELECT persona_portrait_json FROM messages WHERE chat_id = ? AND role = 'user' AND persona_id IS NOT ? AND persona_portrait_json IS NOT NULL",
+				[chatId, personaId ?? null]);
 			const rev = this.bumpMessagesRev(chatId);
-			this.execute("UPDATE messages SET persona_id = ?, rev = ? WHERE chat_id = ? AND role = 'user'", [
+			this.execute(`UPDATE messages SET persona_portrait_json = CASE WHEN persona_id IS ? THEN persona_portrait_json END,
+				persona_id = ?, rev = ? WHERE chat_id = ? AND role = 'user'`, [
+				personaId ?? null,
 				personaId ?? null,
 				rev,
 				chatId
 			]);
+			return previous.flatMap(row => normalizePersonaPortrait(parseJsonColumn(row.persona_portrait_json))?.imageUrl ?? []);
 		});
+		this.dropOrphanedChatImages(removed);
 	}
 
 	/**
@@ -2624,9 +2674,15 @@ class ServerDatabase {
 			// variant's row so parked/active rows are uniformly readable (pinned chats,
 			// export, import) without a "which one is live" special case anywhere else.
 			if (entry.activeVersionId) {
+				const versionData = stored?.type === 'persona' ? this.select<{ data_json: string }[]>(
+					'SELECT data_json FROM character_versions WHERE id = ? AND entry_id = ?', [entry.activeVersionId, entry.id]
+				)[0]?.data_json : null;
+				const data = stored?.type === 'persona'
+					? personaVersionData(entry.data, readPersonaVersionPortrait(parseJsonColumn(versionData)))
+					: entry.data;
 				this.execute(
 					'UPDATE character_versions SET data_json = ?, updated_at = ? WHERE id = ? AND entry_id = ?',
-					[JSON.stringify(stored?.type === 'persona' ? personaVersionData(entry.data) : entry.data), Date.now(), entry.activeVersionId, entry.id]
+					[JSON.stringify(data), Date.now(), entry.activeVersionId, entry.id]
 				);
 			}
 			return stored ? this.refreshSeededGreetings(entry, stored) : [];
@@ -2850,7 +2906,8 @@ class ServerDatabase {
 			);
 		}
 
-		return this.inTransaction(() => {
+		const versions = this.getCharacterVersionsByEntry(id);
+		const movedActiveTo = this.inTransaction(() => {
 			let movedActiveTo: string | null = null;
 			if (this.getSetting('activePersonaId') === id) {
 				movedActiveTo = survivors[0].id;
@@ -2859,6 +2916,8 @@ class ServerDatabase {
 			this.execute('DELETE FROM character_library WHERE id = ?', [id]);
 			return movedActiveTo;
 		});
+		this.dropOrphanedChatImages(versions.flatMap(version => readPersonaVersionPortrait(version.data)?.imageUrl ?? []));
+		return movedActiveTo;
 	}
 
 	// ===== CHARACTER VERSIONS =====
@@ -2896,6 +2955,29 @@ class ServerDatabase {
 			[entryId]
 		);
 		return rows.map((r) => this.mapCharacterVersion(r));
+	}
+
+	setPersonaVersionPortrait(entryId: string, versionId: string, raw: unknown, expectedImageUrl?: string | null) {
+		const portrait = normalizePersonaPortrait(raw);
+		if (raw !== null && !portrait) throw new Error('Choose a valid persona portrait.');
+		const { version, previous } = this.inTransaction(() => {
+			const row = this.select<{ id: string; entry_id: string; name: string; data_json: string; created_at: number; updated_at: number }[]>(
+				`SELECT v.* FROM character_versions v JOIN character_library p ON p.id = v.entry_id
+				 WHERE p.type = 'persona' AND p.id = ? AND v.id = ?`, [entryId, versionId]
+			)[0];
+			if (!row) throw new Error('That persona version no longer exists.');
+			const read = parseJsonColumn(row.data_json);
+			const previous = readPersonaVersionPortrait(read);
+			if (expectedImageUrl !== undefined && (previous?.imageUrl ?? null) !== expectedImageUrl) {
+				throw new Error('The version portrait changed. Refresh the editor and try again.');
+			}
+			const data = personaVersionData(read, portrait);
+			const updatedAt = Math.max(Date.now(), row.updated_at + 1);
+			this.execute('UPDATE character_versions SET data_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(data), updatedAt, versionId]);
+			return { version: { ...this.mapCharacterVersion(row), data, updatedAt }, previous };
+		});
+		if (previous && previous.imageUrl !== portrait?.imageUrl) this.dropOrphanedChatImages([previous.imageUrl]);
+		return version;
 	}
 
 	insertCharacterVersion(version: { id: string; entryId: string; name: string; data: unknown; createdAt: number; updatedAt: number }): void {
@@ -2951,7 +3033,7 @@ class ServerDatabase {
 	}
 
 	deleteCharacterVersion(id: string): void {
-		this.inTransaction(() => {
+		const imagePath = this.inTransaction(() => {
 			const persona = this.select<{ id: string; data_json: string }[]>(`SELECT p.id, p.data_json FROM character_versions v
 				JOIN character_library p ON p.id = v.entry_id AND p.type = 'persona' WHERE v.id = ?`, [id])[0];
 			if (persona) {
@@ -2965,8 +3047,11 @@ class ServerDatabase {
 				if (used) throw new Error('Choose another persona version in the chats using this one before deleting it.');
 				if (JSON.parse(persona.data_json).activeVersionId === id) throw new Error('Switch to another version before deleting this one.');
 			}
+			const data = persona ? this.select<{ data_json: string }[]>('SELECT data_json FROM character_versions WHERE id = ?', [id])[0]?.data_json : null;
 			this.execute('DELETE FROM character_versions WHERE id = ?', [id]);
+			return readPersonaVersionPortrait(parseJsonColumn(data))?.imageUrl;
 		});
+		if (imagePath) this.dropOrphanedChatImages([imagePath]);
 	}
 
 	/** Pin every not-yet-pinned chat of a character to the given version. Runs once,
@@ -3529,6 +3614,7 @@ export const MUTATION_SCOPES: Record<string, SyncScope> = {
 	deleteLibraryEntry: 'library',
 	insertCharacterVersion: 'library',
 	forkPersonaVersion: 'library',
+	setPersonaVersionPortrait: 'library',
 	renameCharacterVersion: 'library',
 	deleteCharacterVersion: 'library',
 	pinUnpinnedChatsToVersion: 'chats',

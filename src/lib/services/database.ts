@@ -9,6 +9,7 @@
 import type { Chat, ChatListStats, ChatMemoryFootprint, Message, MessagesDelta } from '#lib/types/chat.ts';
 import type { ChatDraft } from '#shared/chat-draft.ts';
 import type { CharacterVersion, LibraryEntry } from '#lib/types/library.ts';
+import type { PersonaPortrait } from '#shared/persona-version.ts';
 import type { CharacterAuthorsNote } from '../../../shared/character-authors-note';
 import type { Lorebook } from '#lib/lorebook/types.ts';
 import type { SteeringNote } from '#lib/types/steering.ts';
@@ -100,7 +101,11 @@ class DatabaseService {
 	setMessageVariantBookmarked(input: VariantBookmark): Promise<void> { return this.call('setMessageVariantBookmarked', input); }
 	updateMessageVariantContent(input: VariantContent): Promise<void> { return this.call('updateMessageVariantContent', input); }
 	deleteMessageVariant(input: VariantSelection): Promise<MessagesDelta> { return this.call('deleteMessageVariant', input); }
-	appendConversationTurn(message: Message, context: ConversationPlacement): Promise<ConversationPlacement> { return this.call('appendConversationTurn', message, context); }
+	appendConversationTurn(message: Message, context: ConversationPlacement, personaVersionId?: string | null): Promise<ConversationPlacement> {
+		return personaVersionId === undefined
+			? this.call('appendConversationTurn', message, context)
+			: this.call('appendConversationTurn', message, context, personaVersionId);
+	}
 	seedConversationGreetings(chatId: string, greetings: string[]): Promise<string | null> { return this.call('seedConversationGreetings', chatId, greetings); }
 	getRecoveredGenerations(chatId: string): Promise<RecoveredGeneration[]> { return this.call('getRecoveredGenerations', chatId); }
 	discardRecoveredGeneration(chatId: string, id: string): Promise<void> { return this.call('discardRecoveredGeneration', chatId, id); }
@@ -116,7 +121,9 @@ class DatabaseService {
 	getLastUserMessageTimes(): Promise<Record<string, number>> { return this.call('getLastUserMessageTimes'); }
 	getLastPersonaByChat(): Promise<Record<string, string>> { return this.call('getLastPersonaByChat'); }
 	getMessage(id: string): Promise<Message | null> { return this.call('getMessage', id); }
-	insertMessage(message: Message): Promise<void> { return this.call('insertMessage', message); }
+	insertMessage(message: Message, personaVersionId?: string | null): Promise<void> {
+		return personaVersionId === undefined ? this.call('insertMessage', message) : this.call('insertMessage', message, personaVersionId);
+	}
 	/** `minor: true` records the touch without advancing `edited_at`, so the summary covering
 	 *  this turn survives it (architecture/memory.md). */
 	setMessageExcludedFromPrompt(messageId: string, excluded: boolean, sinceRev: number | null = null, expected?: import('#shared/conversation.ts').VariantSelection): Promise<MessagesDelta> {
@@ -225,6 +232,11 @@ class DatabaseService {
 	getCharacterVersionsByEntry(entryId: string): Promise<CharacterVersion[]> { return this.call('getCharacterVersionsByEntry', entryId); }
 	forkPersonaVersion(entryId: string, name: string, expectedActive: string | null): Promise<CharacterVersion[]> {
 		return this.call('forkPersonaVersion', entryId, name, expectedActive);
+	}
+	setPersonaVersionPortrait(entryId: string, versionId: string, portrait: PersonaPortrait | null, expectedImageUrl?: string | null): Promise<CharacterVersion> {
+		return expectedImageUrl === undefined
+			? this.call('setPersonaVersionPortrait', entryId, versionId, portrait)
+			: this.call('setPersonaVersionPortrait', entryId, versionId, portrait, expectedImageUrl);
 	}
 	getCharacterVersion(id: string): Promise<CharacterVersion | null> { return this.call('getCharacterVersion', id); }
 	insertCharacterVersion(version: CharacterVersion): Promise<void> { return this.call('insertCharacterVersion', version); }

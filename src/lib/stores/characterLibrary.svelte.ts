@@ -17,7 +17,7 @@ import type { BookIndex } from '#lib/lorebook/identity.ts';
 import { toastStore } from '#lib/stores/toast.svelte.ts';
 import { DebouncedWriter } from '#lib/utils/debounced-write.ts';
 import { normalizeCharacterAuthorsNote, type CharacterAuthorsNote } from '../../../shared/character-authors-note';
-import { personaVersionData, readPersonaVersionClaim } from '#shared/persona-version.ts';
+import { personaVersionData, readPersonaVersionClaim, type PersonaPortrait } from '#shared/persona-version.ts';
 import { captureEditorRows, retainEditorChanges } from '#lib/utils/retain-local-changes.ts';
 import {
 	clampPortraitFocus,
@@ -473,7 +473,7 @@ class CharacterLibraryStore {
 		if (entry.activeVersionId) {
 			const activeId = entry.activeVersionId;
 			this._versions = this._versions.map((v) =>
-				v.id === activeId ? { ...v, data: entry.type === 'persona' ? personaVersionData(entry.data) : this.clone(entry.data), updatedAt: entry.updatedAt } : v
+				v.id === activeId ? { ...v, data: entry.type === 'persona' ? personaVersionData(entry.data, v.data.personaPortrait) : this.clone(entry.data), updatedAt: entry.updatedAt } : v
 			);
 		}
 	}
@@ -569,14 +569,43 @@ class CharacterLibraryStore {
 		await this.persistEntry(entry);
 	}
 
+	private async savePersonaVersionPortrait(entryId: string, versionId: string, portrait: PersonaPortrait | null, expectedImageUrl?: string | null): Promise<void> {
+		const version = await db.setPersonaVersionPortrait(entryId, versionId, portrait, expectedImageUrl);
+		this._versions = this._versions.map(current => current.id === versionId ? {
+			...current,
+			data: personaVersionData(current.data, version.data.personaPortrait),
+			updatedAt: Math.max(current.updatedAt, version.updatedAt)
+		} : current);
+	}
+
+	async updatePersonaVersionImage(entryId: string, versionId: string, file: File | null, expectedImageUrl?: string | null): Promise<void> {
+		const imageUrl = file ? await imageService.saveImage(file, 'personas') : null;
+		try {
+			await this.savePersonaVersionPortrait(entryId, versionId, imageUrl ? { imageUrl } : null, expectedImageUrl);
+		} catch (error) {
+			if (imageUrl) await imageService.deleteImage(imageUrl).catch(() => {});
+			throw error;
+		}
+	}
+
+	async setPersonaVersionPortraitFocus(entryId: string, versionId: string, imageUrl: string, focus: PortraitFocus | null): Promise<void> {
+		const next = focus ? clampPortraitFocus(focus) : null;
+		await this.savePersonaVersionPortrait(entryId, versionId, {
+			imageUrl, portraitFocus: next && !isDefaultPortraitFocus(next) ? next : undefined
+		}, imageUrl);
+	}
+
+	private editedPortrait(entry: LibraryEntry) {
+		const version = entry.type === 'persona' && entry.activeVersionId ? this.getVersion(entry.activeVersionId) : null;
+		return version?.data.personaPortrait ?? entry.identity;
+	}
+
 	async duplicateEntry(id: string): Promise<LibraryEntry | null> {
 		const original = this.getEntryById(id);
 		if (!original) return null;
 
-		let copiedImageUrl: string | undefined;
-		if (original.identity.imageUrl) {
-			copiedImageUrl = (await imageService.copyImage(original.identity.imageUrl)) ?? undefined;
-		}
+		const portrait = this.editedPortrait(original);
+		const copiedImageUrl = portrait.imageUrl ? (await imageService.copyImage(portrait.imageUrl)) ?? undefined : undefined;
 
 		// Legacy image references are retained for existing backups; copies own their files.
 		let copiedGallery: string[] | undefined;
@@ -605,6 +634,7 @@ class CharacterLibraryStore {
 				...this.clone(original.identity),
 				name: `${original.identity.name || 'Unnamed'} (Copy)`,
 				imageUrl: copiedImageUrl,
+				portraitFocus: copiedImageUrl ? this.clone(portrait.portraitFocus) : undefined,
 				gallery: copiedGallery,
 				sprites: copiedSprites.length ? copiedSprites : undefined,
 				defaultSprite: original.identity.defaultSprite
@@ -639,12 +669,13 @@ class CharacterLibraryStore {
 		const source = this.getEntryById(id);
 		if (!source) throw new Error('That entry no longer exists.');
 		const type: LibraryEntryType = source.type === 'character' ? 'persona' : 'character';
+		const portrait = this.editedPortrait(source);
 
 		// The new entry owns its art outright, like every other entry: a shared path would
 		// die with whichever of the two is deleted first.
-		const imageUrl = source.identity.imageUrl
+		const imageUrl = portrait.imageUrl
 			? ((await imageService.copyImage(
-					source.identity.imageUrl,
+					portrait.imageUrl,
 					type === 'persona' ? 'personas' : 'characters'
 				)) ?? undefined)
 			: undefined;
@@ -658,7 +689,7 @@ class CharacterLibraryStore {
 				imageUrl,
 				tags: [],
 				// The framing belongs to the picture, and this is the same picture.
-				portraitFocus: imageUrl ? this.clone(source.identity.portraitFocus) : undefined
+				portraitFocus: imageUrl ? this.clone(portrait.portraitFocus) : undefined
 			},
 			data: {
 				traits: { ...this.getDefaultTraits(), description },

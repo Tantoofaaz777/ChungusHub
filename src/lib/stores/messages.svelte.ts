@@ -11,7 +11,7 @@ import { promptHoldStore } from './promptHold.svelte';
 import type { HoldGate } from '#lib/config/prompt-hold.ts';
 import { joinContinuation } from '#lib/utils/continuation.ts';
 import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
-import { chatPersonaEntry } from '#lib/utils/chat-setup.ts';
+import { chatPersonaEntry, chatPersonaVersionClaim } from '#lib/utils/chat-setup.ts';
 import { chatCastStore } from './chatCast.svelte';
 import { resolveMacroValues, substitute } from '#lib/macros.ts';
 import { buildLiveMacroContext } from '#lib/utils/live-macro-context.ts';
@@ -136,6 +136,7 @@ class MessageStore {
 				content,
 				attachments: attachments?.length ? attachments : null
 			});
+			const personaVersionId = chatPersonaVersionClaim(state.chat);
 
 			const appendContext = state.chat.conversationVersion === 2 ? await db.getConversationPlacement(state.chat.id, 'append') : null;
 			const path = state.chat.activeLeafId
@@ -157,8 +158,8 @@ class MessageStore {
 				...draftTurn,
 				siblingIndex: await db.getNextSiblingIndex(state.chat.id, state.chat.activeLeafId)
 			};
-			const responseContext = appendContext ? await db.appendConversationTurn(userMessage, appendContext) : undefined;
-			if (!appendContext) await this.persistMessageRow(userMessage);
+			const responseContext = appendContext ? await db.appendConversationTurn(userMessage, appendContext, personaVersionId) : undefined;
+			if (!appendContext) await this.persistMessageRow(userMessage, personaVersionId);
 			onCommit?.();
 
 			// Modern append updates pointers atomically. Only legacy fixtures need this repair.
@@ -1017,8 +1018,9 @@ class MessageStore {
 	): Promise<Message> {
 		const message = this.buildMessageRow(data);
 		const context = chatStore.currentChatState?.chat.conversationVersion === 2 ? await db.getConversationPlacement(data.chatId, 'append') : null;
-		if (context) await db.appendConversationTurn(message, context);
-		else await this.persistMessageRow(message);
+		const personaVersionId = message.role === 'user' ? chatPersonaVersionClaim(chatStore.activeChat) : undefined;
+		if (context) await db.appendConversationTurn(message, context, personaVersionId);
+		else await this.persistMessageRow(message, personaVersionId);
 		return message;
 	}
 
@@ -1073,8 +1075,8 @@ class MessageStore {
 		};
 	}
 
-	private async persistMessageRow(message: Message): Promise<void> {
-		await db.insertMessage(message);
+	private async persistMessageRow(message: Message, personaVersionId?: string | null): Promise<void> {
+		await db.insertMessage(message, personaVersionId);
 		// Keep the chat→persona index in step with the persona this message just locked
 		// in, so the welcome/chat lists show whose persona the chat belongs to.
 		if (message.role === 'user') chatCastStore.setPersonaForChat(message.chatId, message.personaId);
