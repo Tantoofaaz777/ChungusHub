@@ -6,9 +6,10 @@
 	import { panelActivity } from '#lib/components/ui/panelActivity.ts';
 	import { chapterTitle, sceneLevel, type MemoryScene, type ResolvedScene } from '../../../../shared/memory-scenes';
 
-	let { item, model, onGoTo, onEdit, onRemove }: {
+	let { item, model, busy, onGoTo, onEdit, onRemove }: {
 		item: ResolvedScene;
 		model: string;
+		busy: boolean;
 		onGoTo?: () => void;
 		onEdit: (chapter: MemoryScene) => void;
 		onRemove: (chapter: MemoryScene) => void;
@@ -52,9 +53,9 @@
 	{#if item.reason}<p class="chapter-reason">{item.reason}</p>{/if}
 	<div class="chapter-actions">
 		<Button variant="ghost" size="sm" class="chapter-go-to" onclick={onGoTo} disabled={!onGoTo}
-			aria-label={`Go to the last message for ${title}`} title={onGoTo ? undefined : 'The last source message is unavailable in this conversation.'}>Go to</Button>
-		<Button variant="ghost" size="sm" onclick={() => onEdit(item.scene)}>Review / edit</Button>
-		<Button variant="ghost" size="sm" onclick={() => onRemove(item.scene)} aria-label={`Remove ${level}: ${title}`}><Icon name="trash" class="w-4 h-4" /></Button>
+			aria-label={`Go to the last message for ${title}`} title={onGoTo ? undefined : 'The saved version of the last source message is unavailable in this conversation.'}>Go to</Button>
+		<Button variant="ghost" size="sm" disabled={busy} onclick={() => onEdit(item.scene)}>Review / edit</Button>
+		<Button variant="ghost" size="sm" disabled={busy} onclick={() => onRemove(item.scene)} aria-label={`Remove ${level}: ${title}`}><Icon name="trash" class="w-4 h-4" /></Button>
 	</div>
 </article>
 

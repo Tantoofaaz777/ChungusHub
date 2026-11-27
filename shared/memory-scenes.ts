@@ -64,6 +64,10 @@ export const captureScene = (messages: SceneMessage[]): SceneSource[] =>
 	messages.map((message) => ({ id: message.id, signature: sceneSignature(message),
 		...(message.selectedVariantId ? { variantId: message.selectedVariantId } : {}) }));
 
+export function matchesSceneSourceTurn(source: SceneSource, turn: Pick<SceneMessage, 'id' | 'selectedVariantId'>): boolean {
+	return source.id === turn.id && (!source.variantId || source.variantId === turn.selectedVariantId);
+}
+
 export function scenePath<T extends SceneMessage>(messages: T[], leafId: string | null): T[] {
 	const byId = new Map(messages.map((message) => [message.id, message]));
 	const path: T[] = [], seen = new Set<string>();
@@ -92,7 +96,7 @@ export function resolveScenes(scenes: MemoryScene[], path: SceneMessage[], all: 
 		for (const source of scene.source) {
 			const message = byId.get(source.id);
 			if (!message) return { ...result, status: 'review', reason: 'A source message was deleted.' };
-			if (source.variantId && source.variantId !== message.selectedVariantId) return { ...result, status: 'other-version', reason: 'This chapter belongs to another version of a response.' };
+			if (!matchesSceneSourceTurn(source, message)) return { ...result, status: 'other-version', reason: 'This chapter belongs to another version of a response.' };
 			if (!signatures.has(message.id)) signatures.set(message.id, sceneSignature(message));
 			if (signatures.get(message.id) !== source.signature) return { ...result, status: 'review', reason: 'Source text, images or visibility changed.' };
 		}

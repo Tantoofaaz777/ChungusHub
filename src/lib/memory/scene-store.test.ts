@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { captureScene, type MemoryScene } from '#shared/memory-scenes.ts';
+import { captureScene, resolveScenes, type MemoryScene } from '#shared/memory-scenes.ts';
 import type { Message } from '#lib/types/chat.ts';
 
 // Test read ordering and retained data; Svelte compiles runes in the app build.
@@ -17,6 +17,7 @@ afterAll(() => {
 });
 
 let reads: { chatId: string; resolve: (scenes: MemoryScene[]) => void; reject: (error: Error) => void }[] = [];
+let saveGates: Promise<void>[] = [];
 let calls: { signal: AbortSignal; messages: { role: string; content: string }[]; onToken: (text: string) => void; onThinkingToken: (text: string) => void;
 	resolve: (result: { content: string; thinking?: string }) => void; reject: (error: Error) => void }[] = [];
 mock.module('#lib/services/llm/provider.ts', () => ({ ...realLlm, llmService: {
@@ -27,11 +28,14 @@ mock.module('#lib/services/database.ts', () => ({ ...realDatabase, db: {
 	...realDatabase.db,
 	getMemoryScenes: (chatId: string) => new Promise<MemoryScene[]>((resolve, reject) => reads.push({ chatId, resolve, reject })),
 	deleteMemoryScene: async () => {},
-	saveMemoryScene: async (input: Partial<MemoryScene> & { expectedRevision?: number }) => ({ ...chapter(), ...input, id: input.id ?? 'new-chapter', revision: (input.expectedRevision ?? 0) + 1 })
+	saveMemoryScene: async (input: Partial<MemoryScene> & { expectedRevision?: number }) => {
+		await saveGates.shift();
+		return { ...chapter(), ...input, id: input.id ?? 'new-chapter', revision: (input.expectedRevision ?? 0) + 1 };
+	}
 } }));
 const { SceneMemoryStore } = await import('./scene-store.svelte');
 let store: InstanceType<typeof SceneMemoryStore>;
-beforeEach(() => { reads = []; calls = []; featurePromptsStore.state = { ...initialFeatures, memoryEnabled: true }; store = new SceneMemoryStore(); });
+beforeEach(() => { reads = []; calls = []; saveGates = []; featurePromptsStore.state = { ...initialFeatures, memoryEnabled: true }; store = new SceneMemoryStore(); });
 const chapter = (chatId = 'a'): MemoryScene => ({
 	id: `chapter-${chatId}`, chatId, title: 'A chapter', content: 'Saved summary', source: [],
 	createdAt: 1, updatedAt: 1, revision: 1, reviewReason: null
@@ -48,6 +52,7 @@ describe('chapter source counts and generation progress', () => {
 			characterVersionId: null, personaId: null });
 		// Bun's rune shim does not recompute derived fields; supply the already tested path.
 		Object.defineProperty(store, 'path', { configurable: true, get: () => messages });
+		Object.defineProperty(store, 'resolved', { configurable: true, get: () => resolveScenes(store.scenes, store.path) });
 		store.draft = { chatId: 'a', level: 'chapter', children: [], source: captureScene(messages),
 			title: 'A chapter', content: 'Previous draft', phase: 'ready', error: '' };
 	}
@@ -100,6 +105,67 @@ describe('chapter source counts and generation progress', () => {
 		call.onToken('Late content'); call.resolve({ content: 'Late chapter' }); await work;
 		expect(call.signal.aborted).toBe(true); expect(store.draft).toBeNull(); expect(store.generation).toBeNull();
 	});
+	test('reviewing another response version retains its original source even if the response text matches', async () => {
+		await draft();
+		const original = { ...messages[0], selectedVariantId: 'original' };
+		const alternate = { ...original, selectedVariantId: 'alternate' };
+		Object.defineProperty(store, 'path', { configurable: true, get: () => [alternate, messages[1]] });
+		await store.syncForPath({ chatId: 'a', allMessages: [alternate, messages[1]], leafId: 'second',
+			characterId: null, characterVersionId: null, personaId: null });
+		const saved = { ...chapter(), source: captureScene([original]) };
+		store.editScene(saved);
+		const generation = store.generateDraft();
+		calls[0]?.resolve({ content: 'This call should not start.' });
+		await generation;
+		expect(store.draft?.source).toEqual(saved.source);
+		expect(store.draftSourceMessages).toBeNull();
+		expect(calls).toHaveLength(0);
+		expect(store.draft?.error).toContain('Select the chapter range again');
+	});
+	test.each(['hidden', 'gap', 'overlap'])('skips model calls for a chapter whose source is %s', async reason => {
+		await draft();
+		if (reason === 'hidden') store.draft!.source = captureScene([messages[1]]);
+		if (reason === 'gap') {
+			const third = { ...messages[0], id: 'third', parentId: messages[1].id };
+			Object.defineProperty(store, 'path', { configurable: true, get: () => [...messages, third] });
+			store.draft!.source = captureScene([messages[0], third]);
+		}
+		if (reason === 'overlap') {
+			const refresh = store.syncReload();
+			reads.shift()!.resolve([{ ...chapter(), source: captureScene([messages[0]]) }]);
+			await refresh;
+		}
+		const generation = store.generateDraft();
+		calls[0]?.resolve({ content: 'This call should not start.' });
+		await generation;
+		expect(calls).toHaveLength(0);
+		expect(store.draft).toMatchObject({ content: 'Previous draft', phase: 'error' });
+	});
+	test('a branch change preserves only selection boundaries still on the active path', async () => {
+		await draft();
+		store.cancelDraft();
+		store.selection = { chatId: 'a', startId: 'first', endId: 'second' };
+		const fork = { ...messages[1], id: 'fork' };
+		await store.syncForPath({ chatId: 'a', allMessages: [...messages, fork], leafId: 'fork',
+			characterId: null, characterVersionId: null, personaId: null });
+		expect(store.selection).toMatchObject({ startId: 'first', endId: null });
+	});
+	test('reselecting a compacted chapter allows its own range and still rejects a neighboring chapter', async () => {
+		await draft();
+		const path = messages.map(message => ({ ...message, excludedFromPrompt: false }));
+		Object.defineProperty(store, 'path', { configurable: true, get: () => path });
+		const first = { ...chapter(), id: 'first-chapter', source: captureScene([path[0]]) };
+		const second = { ...chapter(), id: 'second-chapter', source: captureScene([path[1]]) };
+		store.scenes = [first, second, { ...chapter(), id: 'arc', level: 'arc', source: captureScene(path),
+			children: [first, second].map(scene => ({ id: scene.id, revision: scene.revision })) }];
+		store.editScene(first);
+		store.reselectDraft();
+		store.setBoundary('start', 'first');
+		store.setBoundary('end', 'first');
+		expect(store.selectionError).toBe('');
+		store.setBoundary('end', 'second');
+		expect(store.selectionError).toContain('overlaps');
+	});
 });
 async function open() {
 	const opening = store.loadForChat('a');
@@ -129,7 +195,7 @@ describe('generation request context', () => {
 			title: 'New memory', content: '', phase: 'ready', error: '' };
 		const key = level === 'chapter' ? 'memoryScene' : level === 'arc' ? 'memoryArc' : 'memoryVolume';
 		featurePromptsStore.state = { ...featurePromptsStore.state, memoryPreviousSummaries: 2,
-			overrides: { [key]: 'Summarize {{char}} for {{user}}. Last: {{lastMessage}}.' } };
+			overrides: { [key]: 'Summarize {{char}} for {{user}}. Last: {{lastMessage}}.{{//private instruction}}' } };
 		const work = store.generateDraft(), call = calls[0];
 		expect(call.messages.map(message => message.role)).toEqual(['system', 'user']);
 		const last = level === 'chapter' ? 12 : level === 'arc' ? 13 : 15;
@@ -194,6 +260,65 @@ describe('memory refresh lifecycle', () => {
 			expect(store.scenes[0].revision).toBe(Math.max(2, revision));
 			expect(store.scenes[0].content).toBe(revision > 2 ? 'Remote edit' : 'Local edit');
 		}
+	});
+	test('a delayed save response cannot roll back a more recent scene already received by sync', async () => {
+		await open();
+		const latest = { ...chapter(), revision: 3, content: 'More recent edit' };
+		let release!: () => void;
+		saveGates.push(new Promise<void>(resolve => { release = resolve; }));
+		store.draft = { ...chapter(), sceneId: 'chapter-a', expectedRevision: 1, level: 'chapter', children: [], phase: 'ready', error: '' };
+		const saving = store.saveDraft(), refresh = store.syncReload();
+		try {
+			reads.shift()!.resolve([latest]);
+			await refresh;
+		} finally {
+			release();
+			await saving;
+		}
+		expect(store.scenes).toEqual([latest]);
+	});
+	test('a delayed edit cannot reappear after a synced deletion', async () => {
+		await open();
+		let release!: () => void;
+		saveGates.push(new Promise<void>(resolve => { release = resolve; }));
+		store.draft = { ...chapter(), sceneId: 'chapter-a', expectedRevision: 1, level: 'chapter', children: [], phase: 'ready', error: '' };
+		const saving = store.saveDraft(), refresh = store.syncReload();
+		try {
+			reads.shift()!.resolve([]);
+			await refresh;
+		} finally {
+			release();
+			await saving;
+		}
+		expect(store.scenes).toEqual([]);
+	});
+	test('pending saves are scoped to their own chat', async () => {
+		await open();
+		let releaseOld!: () => void;
+		let releaseNew!: () => void;
+		saveGates.push(new Promise<void>(resolve => { releaseOld = resolve; }), new Promise<void>(resolve => { releaseNew = resolve; }));
+		store.draft = { ...chapter(), sceneId: 'chapter-a', expectedRevision: 1, level: 'chapter', children: [], phase: 'ready', error: '' };
+		const savingOld = store.saveDraft();
+		let savingNew: Promise<void> | undefined;
+		try {
+			const next = store.loadForChat('b');
+			reads.shift()!.resolve([chapter('b')]);
+			await next;
+			expect(store.saving).toBe(false);
+			store.draft = { ...chapter('b'), sceneId: 'chapter-b', expectedRevision: 1, level: 'chapter', children: [], phase: 'ready', error: '' };
+			savingNew = store.saveDraft();
+			expect(store.saving).toBe(true);
+			releaseOld();
+			await savingOld;
+			expect(store.saving).toBe(true);
+			expect(store.draft?.chatId).toBe('b');
+		} finally {
+			releaseOld();
+			releaseNew();
+			await Promise.all([savingOld, savingNew]);
+		}
+		expect(store.saving).toBe(false);
+		expect(store.scenes[0]).toMatchObject({ chatId: 'b', revision: 2 });
 	});
 	test('switching chats clears old data and ignores a late refresh', async () => {
 		await open(); store.selection = { chatId: 'a', startId: 'message', endId: null };

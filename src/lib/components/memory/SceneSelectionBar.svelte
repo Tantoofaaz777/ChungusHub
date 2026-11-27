@@ -7,7 +7,7 @@
  <div class="scene-selection-bar" role="region" aria-label="Select chapter">
   <span>{count ? `${count} messages selected` : memoryStore.selection.startId ? 'Choose the last message with ↑ in its actions.' : memoryStore.selection.endId ? 'Choose the first message with ↓ in its actions.' : 'Mark the first message with ↓ and the last with ↑ in their actions.'}</span>
   {#if memoryStore.selectionError}<p role="alert">{memoryStore.selectionError}</p>{/if}
-  <div><Button variant="ghost" size="sm" onclick={() => memoryStore.selection = null}>Cancel</Button><Button size="sm" disabled={!!memoryStore.selectionError || !memoryStore.selectedMessages.some((m) => !m.excludedFromPrompt)} onclick={() => memoryStore.summarizeSelection()}>Generate chapter</Button></div>
+  <div><Button variant="ghost" size="sm" onclick={() => memoryStore.selection = null}>Cancel</Button><Button size="sm" disabled={memoryStore.saving || !!memoryStore.selectionError || !memoryStore.selectedMessages.some((m) => !m.excludedFromPrompt)} onclick={() => memoryStore.summarizeSelection()}>Generate chapter</Button></div>
  </div>
 {/if}
 <style>

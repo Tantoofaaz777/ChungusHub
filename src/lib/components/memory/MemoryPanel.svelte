@@ -15,13 +15,13 @@
 	import { viewport } from '#lib/stores/viewport.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { resolvePromptTarget } from '#lib/utils/chat-setup.ts';
-	import { MEMORY_LEVELS, sceneLevel, memoryLabel, type MemoryScene, type MemoryLevel } from '../../../../shared/memory-scenes';
+	import { MEMORY_LEVELS, matchesSceneSourceTurn, sceneLevel, memoryLabel, type MemoryScene, type MemoryLevel, type SceneSource } from '../../../../shared/memory-scenes';
 	const panelActive = panelActivity();
 	const BATCH_SIZE = 50;
 	let body = $state<HTMLDivElement | null>(null);
 	let limits = $state<Record<MemoryLevel, number>>({ chapter: BATCH_SIZE, arc: BATCH_SIZE, volume: BATCH_SIZE });
 	const sections = $derived(MEMORY_LEVELS.map(level => ({ level, items: memoryStore.resolved.filter(r => sceneLevel(r.scene) === level) })));
-	const activeMessageIds = $derived(new Set(chatStore.currentChatState?.activePath.map(message => message.id)));
+	const activeMessages = $derived(new Map(chatStore.currentChatState?.activePath.map(message => [message.id, message])));
 	function loadMore(level: MemoryLevel) {
 		if (!panelActive() || !memoryStore.loaded || memoryStore.saving || memoryStore.activeChatId !== chatStore.activeChatId) return;
 		const total = sections.find(section => section.level === level)?.items.length ?? 0;
@@ -39,21 +39,26 @@
 		});
 	}
 	let removing = $state<MemoryScene | null>(null);
+	$effect(() => { if (removing && removing.chatId !== chatStore.activeChatId) removing = null; });
 	let model = $derived(resolvePromptTarget(chatStore.activeChat).model);
 	function settings() {
 		uiStore.gotoSettingsPage('engines');
 		uiStore.settingsEngineId = 'memory';
 		uiStore.openSettings();
 	}
-	async function goToSource(chatId: string, messageId: string) {
-		if (chatStore.activeChatId !== chatId || !activeMessageIds.has(messageId)) return;
+	function canGoToSource(source: SceneSource) {
+		const turn = activeMessages.get(source.id);
+		return !!turn && matchesSceneSourceTurn(source, turn);
+	}
+	async function goToSource(chatId: string, source: SceneSource) {
+		if (chatStore.activeChatId !== chatId || !canGoToSource(source)) return;
 		if (!viewport.desktopLayout) {
 			uiStore.closeOverlay();
 			if (uiStore.activeOverlay) return;
 		}
 		chatSearch.close();
 		await tick();
-		if (chatStore.activeChatId === chatId && activeMessageIds.has(messageId)) chatCursor.goTo(messageId, 'start');
+		if (chatStore.activeChatId === chatId && canGoToSource(source)) chatCursor.goTo(source.id, 'start');
 	}
 	async function retryLoad() {
 		const id = chatStore.activeChatId;
@@ -67,7 +72,7 @@
 	}
 	async function remove() {
 		const chapter = removing; removing = null;
-		if (!chapter) return;
+		if (!chapter || chatStore.activeChatId !== chapter.chatId) return;
 		try { await memoryStore.removeScene(chapter); } catch (error) { toastStore.failed('remove the memory', error); }
 	}
 </script>
@@ -96,9 +101,9 @@
 							<EmptyState icon="brain" size="sm" title={`No ${level}s yet`}>{level === 'chapter' ? 'Use ↓ and ↑ in message actions to select a chapter.' : `Combine consecutive ${level === 'arc' ? 'chapters' : 'arcs'} here.`}</EmptyState>
 						{:else}
 							{#each items.slice(0, limits[level]) as item (item.scene.id)}
-								{@const lastSourceId = item.scene.source.at(-1)?.id}
-								<MemoryChapter {item} {model}
-									onGoTo={lastSourceId && activeMessageIds.has(lastSourceId) ? () => goToSource(item.scene.chatId, lastSourceId) : undefined}
+								{@const lastSource = item.scene.source.at(-1)}
+								<MemoryChapter {item} {model} busy={memoryStore.saving}
+									onGoTo={lastSource && canGoToSource(lastSource) ? () => goToSource(item.scene.chatId, lastSource) : undefined}
 									onEdit={(chapter) => memoryStore.editScene(chapter)} onRemove={(chapter) => removing = chapter} />
 							{/each}
 							{#if items.length > limits[level]}
