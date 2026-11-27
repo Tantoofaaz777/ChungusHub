@@ -93,7 +93,7 @@ Chat duplication remaps scene source ids, preserves text needing review, and can
 Deletion of a chat cascades to its scenes and migration marker. Backups include the new SQL tables.
 
 
-The Memory panel groups saved items under **Chapters**, leaving room for future compaction levels.
+The Memory panel opens on the **Chapters** tab and shows one memory level at a time.
 Each chapter preview starts collapsed and expands through its native disclosure header (tap/click or
 keyboard). Its token count measures saved text with the chat model's encoding, recalculating only
 when that text or model changes. The roleplay prompt wraps active summaries as `[1st summary]`,
@@ -114,8 +114,8 @@ Swipe visibility and arrow navigation depend on the first loaded memory snapshot
 
 
 Memory has three manual levels: Chapters summarize message ranges, Arcs summarize selected
-consecutive Chapters, and Volumes summarize selected consecutive Arcs. The chat's Memory panel
-has a section for each level; Create arc / Create volume open a centered source picker. Select at
+consecutive Chapters, and Volumes summarize selected consecutive Arcs. **Create arc** and **Create
+volume** live in their respective tabs and open a centered source picker. Select at
 least two valid unconsumed sources, then generate with the Memory connection or write manually.
 All levels use the same title/content JSON reader, review dialog, collapsed preview and token count.
 Each has its own editable prompt in Settings → Engines → Chat Memory. Nothing runs automatically.
@@ -135,6 +135,6 @@ Chat duplication remaps both message references and the complete child graph. Br
 remain stale even though copied summary revisions restart at one. Database snapshots include the
 new columns through the existing schema and migration path.
 
-The retained Memory panel renders a prefix of 50 cards independently for chapters, arcs and volumes. A per-section IntersectionObserver rooted in the panel scroller appends another 50 within 200px of the viewport; each section also has a manual Load more button. Observers disconnect while hidden, saving, loading or unmounted, and queued callbacks cannot expand a detached list. Loaded prefixes and expanded cards survive panel toggles for the same chat; the workspace chat key resets them on chat changes. This limits presentation only: resolution, compaction candidates, source coverage and prompt assembly retain every saved scene. Collapsed card previews do not mount their summary text; expanding mounts it on demand. Token counts still appear in card headings and reuse their content/model cache.
+The retained Memory panel renders a prefix of 50 cards independently for each visited tab. An IntersectionObserver rooted in the active tab's scroller appends another 50 within 200px of the viewport. Each tab also has a manual Load more button. Observers disconnect while hidden, saving, loading or unmounted, and queued callbacks cannot expand a detached list. The active tab and each tab's loaded prefix, scroll position and expanded cards survive panel toggles for the same chat. The workspace chat key resets them on chat changes. Resolution, compaction candidates, source coverage and prompt assembly retain every saved scene. Collapsed card previews do not mount their summary text; expanding mounts it on demand. Token counts still appear in card headings and reuse their content/model cache.
 
 Same-chat refreshes, including reconnect resync, retain `loaded` and the existing scenes while reading in the background (`refreshing`). The panel keeps its keyed cards mounted, preserving expanded previews, loaded prefixes and scrolling; response swipes in the transcript also remain available. Read failures expose `loadError` with retry without removing saved scenes or local draft/selection state. Initial loads and chat changes still wait for the correct chat's data; retrying a failed first load restores the chat's path context before publishing loaded coverage. Request tickets guard data, errors and refresh completion; `clear()` invalidates pending reads and resets both loading and error state. Snapshot reconciliation retains saves and deletions completed during the read, while accepting a higher server revision for an edited scene.

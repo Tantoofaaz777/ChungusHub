@@ -5,6 +5,8 @@
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
+	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import RetainedView from '#lib/components/ui/RetainedView.svelte';
 	import MemoryCompactionDialog from './MemoryCompactionDialog.svelte';
 	import MemoryChapter from './MemoryChapter.svelte';
 	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
@@ -18,22 +20,25 @@
 	import { MEMORY_LEVELS, matchesSceneSourceTurn, sceneLevel, memoryLabel, type MemoryScene, type MemoryLevel, type SceneSource } from '../../../../shared/memory-scenes';
 	const panelActive = panelActivity();
 	const BATCH_SIZE = 50;
-	let body = $state<HTMLDivElement | null>(null);
+	const levelOptions = MEMORY_LEVELS.map(value => ({ value, label: `${memoryLabel(value)}s` }));
+	let activeLevel = $state<MemoryLevel>('chapter');
 	let limits = $state<Record<MemoryLevel, number>>({ chapter: BATCH_SIZE, arc: BATCH_SIZE, volume: BATCH_SIZE });
 	const sections = $derived(MEMORY_LEVELS.map(level => ({ level, items: memoryStore.resolved.filter(r => sceneLevel(r.scene) === level) })));
 	const activeMessages = $derived(new Map(chatStore.currentChatState?.activePath.map(message => [message.id, message])));
 	function loadMore(level: MemoryLevel) {
-		if (!panelActive() || !memoryStore.loaded || memoryStore.saving || memoryStore.activeChatId !== chatStore.activeChatId) return;
+		if (activeLevel !== level || !panelActive() || !memoryStore.loaded || memoryStore.saving || memoryStore.activeChatId !== chatStore.activeChatId) return;
 		const total = sections.find(section => section.level === level)?.items.length ?? 0;
 		limits[level] = Math.min(total, limits[level] + BATCH_SIZE);
 	}
 	function observeMore(node: HTMLDivElement, level: MemoryLevel) {
 		$effect(() => {
-			if (!panelActive() || !memoryStore.loaded || memoryStore.saving || !body || typeof IntersectionObserver === 'undefined') return;
+			if (activeLevel !== level || !panelActive() || !memoryStore.loaded || memoryStore.saving || typeof IntersectionObserver === 'undefined') return;
+			const root = node.closest('.memory-body');
+			if (!root) return;
 			let current = true;
 			const observer = new IntersectionObserver(entries => {
 				if (current && entries.some(entry => entry.isIntersecting)) untrack(() => loadMore(level));
-			}, { root: body, rootMargin: '200px 0px' });
+			}, { root, rootMargin: '200px 0px' });
 			observer.observe(node);
 			return () => { current = false; observer.disconnect(); };
 		});
@@ -81,10 +86,13 @@
 		<div class="heading"><h2 class="overlay-title">Memory</h2><button type="button" class="icon-btn" title="Chat memory settings" aria-label="Chat memory settings" onclick={settings}><Icon name="settings" class="w-4 h-4" /></button></div>
 		<div class="overlay-crumb"><span class="overlay-subject">{chatStore.activeChat?.title ?? 'No chat open'}</span></div>
 	</header>
-	<div class="memory-body panel-scroll" bind:this={body}>
-		{#if !chatStore.activeChat}
-			<EmptyState icon="brain" size="sm">Open a chat to manage its memory.</EmptyState>
-		{:else}
+	{#if chatStore.activeChat}
+		<div class="memory-tabs">
+			<SegmentedControl label="Memory view" bind:current={activeLevel} options={levelOptions} />
+		</div>
+	{/if}
+	<div class="memory-content">
+		{#if chatStore.activeChat}
 			{#if memoryStore.activeChatId === chatStore.activeChatId && memoryStore.loadError}
 				<div class="memory-error" role="alert">Could not {memoryStore.loaded ? 'refresh' : 'load'} memory. {memoryStore.loadError}<Button variant="secondary" size="sm" onclick={retryLoad}>{memoryStore.loaded ? 'Retry updating' : 'Retry loading'}</Button></div>
 			{/if}
@@ -92,30 +100,35 @@
 			{/if}
 			{#if memoryStore.loaded && memoryStore.activeChatId === chatStore.activeChatId}
 				{#each sections as { level, items } (level)}
-					<section aria-labelledby={`memory-${level}-heading`}>
-						<div class="memory-section-header">
-							<h3 id={`memory-${level}-heading`} class="memory-section-heading">{memoryLabel(level)}s</h3>
-							{#if level !== 'chapter'}<Button variant="secondary" size="sm" onclick={() => memoryStore.openCompaction(level)} disabled={memoryStore.saving}>Create {level}</Button>{/if}
-						</div>
-						{#if !items.length}
-							<EmptyState icon="brain" size="sm" title={`No ${level}s yet`}>{level === 'chapter' ? 'Use ↓ and ↑ in message actions to select a chapter.' : `Combine consecutive ${level === 'arc' ? 'chapters' : 'arcs'} here.`}</EmptyState>
-						{:else}
-							{#each items.slice(0, limits[level]) as item (item.scene.id)}
-								{@const lastSource = item.scene.source.at(-1)}
-								<MemoryChapter {item} {model} busy={memoryStore.saving}
-									onGoTo={lastSource && canGoToSource(lastSource) ? () => goToSource(item.scene.chatId, lastSource) : undefined}
-									onEdit={(chapter) => memoryStore.editScene(chapter)} onRemove={(chapter) => removing = chapter} />
-							{/each}
-							{#if items.length > limits[level]}
-								<div class="memory-more" use:observeMore={level}>
-									<Button variant="ghost" size="sm" disabled={memoryStore.saving} onclick={() => loadMore(level)}>Load more {memoryLabel(level).toLowerCase()}s</Button>
-									<span>{limits[level].toLocaleString()} / {items.length.toLocaleString()}</span>
+					<RetainedView active={activeLevel === level}>
+						<section class="memory-body panel-scroll" aria-label={`${memoryLabel(level)}s`}>
+							{#if level !== 'chapter'}
+								<div class="memory-actions">
+									<Button variant="secondary" size="sm" onclick={() => memoryStore.openCompaction(level)} disabled={memoryStore.saving}>Create {level}</Button>
 								</div>
 							{/if}
-						{/if}
-					</section>
+							{#if !items.length}
+								<EmptyState icon="brain" size="sm" title={`No ${level}s yet`}>{level === 'chapter' ? 'Use ↓ and ↑ in message actions to select a chapter.' : `Combine consecutive ${level === 'arc' ? 'chapters' : 'arcs'} here.`}</EmptyState>
+							{:else}
+								{#each items.slice(0, limits[level]) as item (item.scene.id)}
+									{@const lastSource = item.scene.source.at(-1)}
+									<MemoryChapter {item} {model} busy={memoryStore.saving}
+										onGoTo={lastSource && canGoToSource(lastSource) ? () => goToSource(item.scene.chatId, lastSource) : undefined}
+										onEdit={(chapter) => memoryStore.editScene(chapter)} onRemove={(chapter) => removing = chapter} />
+								{/each}
+								{#if items.length > limits[level]}
+									<div class="memory-more" use:observeMore={level}>
+										<Button variant="ghost" size="sm" disabled={memoryStore.saving} onclick={() => loadMore(level)}>Load more {level}s</Button>
+										<span>{limits[level].toLocaleString()} / {items.length.toLocaleString()}</span>
+									</div>
+								{/if}
+							{/if}
+						</section>
+					</RetainedView>
 				{/each}
 			{/if}
+		{:else}
+			<EmptyState icon="brain" size="sm">Open a chat to manage its memory.</EmptyState>
 		{/if}
 	</div>
 </div>
@@ -128,11 +141,12 @@
 	.heading > button { grid-column:3; justify-self:end; }
 	.icon-btn { display:inline-flex; align-items:center; justify-content:center; width:2rem; height:2rem; border-radius:var(--radius-md); color:var(--color-text-secondary); flex-shrink:0; }
 	.icon-btn:hover { background:var(--color-bg-tertiary); color:var(--color-text-primary); }
-	.memory-body { flex:1; min-height:0; padding:1rem; }
-	section + section { margin-top:1.5rem; }
-	.memory-section-header { display:flex; align-items:center; justify-content:space-between; gap:.7rem; margin-bottom:.8rem; }
-	.memory-section-heading { font-size:.8rem; font-weight:600; color:var(--color-text-secondary); }
-	.memory-loading { color:var(--color-text-muted); font-size:.8rem; }
-	.memory-error { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin-bottom:.8rem; color:var(--color-error); font-size:.8rem; }
+	.memory-tabs { display:flex; justify-content:center; padding:1rem 1rem 0; }
+	.memory-content { flex:1; min-height:0; display:flex; flex-direction:column; }
+	.memory-content > :global(.retained-view) { flex:1; }
+	.memory-body { height:100%; padding:1rem; }
+	.memory-actions { display:flex; justify-content:flex-end; margin-bottom:.8rem; }
+	.memory-loading { padding:1rem; color:var(--color-text-muted); font-size:.8rem; }
+	.memory-error { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; padding:1rem 1rem 0; color:var(--color-error); font-size:.8rem; }
 	.memory-more { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.3rem 0 .8rem; color:var(--color-text-muted); font-size:.75rem; overflow-anchor:none; }
 </style>
