@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { chapterTitle, memoryLabel, sceneLevel } from '../../../../shared/memory-scenes';
 	import SceneSelectionBar from '#lib/components/memory/SceneSelectionBar.svelte';
 	import type { Message } from '#lib/types/chat.ts';
 	import MessageComponent from './Message.svelte';
@@ -59,7 +58,6 @@
 
 	// Scene summaries can cover any range; their original messages keep the dim treatment.
 	let archivedIds = $derived(memoryStore.archivedMessageIds);
-	let sceneStarts = $derived(new Map(memoryStore.resolved.filter((r) => r.status === 'active').map((r) => [r.scene.source[0].id, r.scene])));
 	let selectedIds = $derived(new Set(memoryStore.selectedMessages.map((m) => m.id)));
 
 	let openingDialogOpen = $state(false);
@@ -519,9 +517,6 @@
 				{@const index = windowStart + offset}
 				{@const versions = message.variants ?? [message]}
 				{@const versionIndex = versions.findIndex(m => m.id === (message.selectedVariantId ?? message.id))}
-				{#if sceneStarts.has(message.id)}
-					<button type="button" class="scene-marker" onclick={() => memoryStore.editScene(sceneStarts.get(message.id)!)}><Icon name="brain" class="w-3 h-3" />{memoryLabel(sceneLevel(sceneStarts.get(message.id)!))} · {chapterTitle(sceneStarts.get(message.id)!.title)}</button>
-				{/if}
 					<MessageComponent
 						{message}
 						ordinal={index + 1}
@@ -569,9 +564,6 @@
 </div>
 
 <style>
-	.scene-marker { display:flex; align-items:center; gap:.4rem; margin:.65rem 1rem; padding:.4rem .65rem; border:1px solid var(--color-border); border-radius:var(--radius-md); font-family:var(--font-ui); font-size:.75rem; color:var(--color-text-secondary); cursor:pointer; }
-	.scene-marker { color:var(--color-accent); border-color:var(--color-accent); }
-
 	.message-list-wrap {
 		position: relative;
 		flex: 1;

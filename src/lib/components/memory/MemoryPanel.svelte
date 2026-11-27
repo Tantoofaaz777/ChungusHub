@@ -12,6 +12,7 @@
 	import { chatCursor } from '#lib/stores/chatCursor.svelte.ts';
 	import { chatSearch } from '#lib/stores/chatSearch.svelte.ts';
 	import { uiStore } from '#lib/stores/ui.svelte.ts';
+	import { viewport } from '#lib/stores/viewport.svelte.ts';
 	import { toastStore } from '#lib/stores/toast.svelte.ts';
 	import { resolvePromptTarget } from '#lib/utils/chat-setup.ts';
 	import { MEMORY_LEVELS, sceneLevel, memoryLabel, type MemoryScene, type MemoryLevel } from '../../../../shared/memory-scenes';
@@ -46,8 +47,10 @@
 	}
 	async function goToSource(chatId: string, messageId: string) {
 		if (chatStore.activeChatId !== chatId || !activeMessageIds.has(messageId)) return;
-		uiStore.closeOverlay();
-		if (uiStore.activeOverlay) return;
+		if (!viewport.desktopLayout) {
+			uiStore.closeOverlay();
+			if (uiStore.activeOverlay) return;
+		}
 		chatSearch.close();
 		await tick();
 		if (chatStore.activeChatId === chatId && activeMessageIds.has(messageId)) chatCursor.goTo(messageId, 'start');
