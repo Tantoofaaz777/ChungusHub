@@ -228,11 +228,27 @@
 							<label class="field-label" for="threads-rating">Rating</label><select id="threads-rating" class="input-base field" value={store.ao3.rating ?? ''} onchange={(e) => ao3({rating: e.currentTarget.value as Ao3Information['rating'] || null})}><option value="">None</option>{#each AO3_RATINGS as rating}<option value={rating}>{rating}</option>{/each}</select>
 							<fieldset>
 								<legend>Archive warnings</legend>
-								{#each AO3_WARNINGS as warning}
-									<label class="check-row"><input type="checkbox" checked={store.ao3.archiveWarnings.includes(warning)} onchange={(e) => ao3({archiveWarnings: e.currentTarget.checked ? [...store.ao3.archiveWarnings, warning] : store.ao3.archiveWarnings.filter(value => value !== warning)})} />{warning}</label>
-								{/each}
+								<div class="ao3-options">
+									{#each AO3_WARNINGS as warning}
+										{@const abbreviated = warning === 'Creator Chose Not To Use Archive Warnings'}
+										<label class="check-row" title={abbreviated ? warning : undefined}>
+											<input type="checkbox" checked={store.ao3.archiveWarnings.includes(warning)} onchange={(e) => ao3({archiveWarnings: e.currentTarget.checked ? [...store.ao3.archiveWarnings, warning] : store.ao3.archiveWarnings.filter(value => value !== warning)})} />
+											{abbreviated ? 'CCNTW' : warning}
+										</label>
+									{/each}
+								</div>
 							</fieldset>
-							<fieldset><legend>Categories</legend><div class="categories">{#each AO3_CATEGORIES as category}<label class="check-row"><input type="checkbox" checked={store.ao3.categories.includes(category)} onchange={(e) => ao3({categories:e.currentTarget.checked ? [...store.ao3.categories,category] : store.ao3.categories.filter(v => v !== category)})} />{category}</label>{/each}</div></fieldset>
+							<fieldset>
+								<legend>Categories</legend>
+								<div class="ao3-options">
+									{#each AO3_CATEGORIES as category}
+										<label class="check-row">
+											<input type="checkbox" checked={store.ao3.categories.includes(category)} onchange={(e) => ao3({categories: e.currentTarget.checked ? [...store.ao3.categories, category] : store.ao3.categories.filter(value => value !== category)})} />
+											{category}
+										</label>
+									{/each}
+								</div>
+							</fieldset>
 							{#each AO3_TEXT_FIELDS as [key,label]}
 								<label class="field-label" for={`threads-ao3-${key}`}>{label}</label>
 								{#if key === 'additionalTags'}
@@ -327,9 +343,9 @@
 	.ao3-fields .field-label { margin-top:.5rem; margin-bottom:0; }
 	fieldset { border:0; min-width:0; margin-top:.5rem; }
 	legend { font-size:.74rem; color:var(--color-text-secondary); margin-bottom:.4rem; }
-	.check-row { display:flex; align-items:center; gap:.4rem; font-size:.73rem; color:var(--color-text-secondary); padding:.25rem 0; }
-	.check-row input { accent-color:var(--color-accent); }
-	.categories { display:flex; flex-wrap:wrap; gap:.8rem; }
+	.check-row { display:flex; align-items:center; gap:.4rem; min-width:0; font-size:.73rem; color:var(--color-text-secondary); padding:.25rem 0; }
+	.check-row input { flex-shrink:0; accent-color:var(--color-accent); }
+	.ao3-options { display:flex; flex-wrap:wrap; gap:.25rem .8rem; }
 	.message-list { display:flex; flex-direction:column; gap:.4rem; margin-top:1rem; max-height:52vh; overflow-y:auto; overscroll-behavior:contain; }
 	.message-row { display:flex; align-items:center; gap:.65rem; width:100%; text-align:left; padding:.7rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); touch-action:pan-y; min-width:0; }
 	.message-row:hover { background:var(--color-bg-tertiary); }
