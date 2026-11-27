@@ -5,7 +5,7 @@
 	import GenerationProgress from '#lib/components/ui/GenerationProgress.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
-	import PillRow from '#lib/components/ui/PillRow.svelte';
+	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import ExpandableTextarea from '#lib/components/ui/ExpandableTextarea.svelte';
 	import Toggle from '#lib/components/ui/Toggle.svelte';
 	import ConfirmDialog from '#lib/components/ui/ConfirmDialog.svelte';
@@ -150,7 +150,10 @@
 		{:else if store.chatId !== chatId}
 			<p class="muted">Loading threads…</p>
 		{:else}
-			<div class="tabs"><PillRow options={[{value:'feed',label:'Feed'}, {value:'make',label:'Make'}, {value:'summaries',label:'Summaries'}]} current={store.tab} onpick={(value) => store.tab = value as typeof store.tab} label="Threads view" /></div>
+			<div class="tabs">
+				<SegmentedControl label="Threads view" bind:current={store.tab}
+					options={[{ value: 'feed', label: 'Feed' }, { value: 'make', label: 'Make' }, { value: 'summaries', label: 'Summaries' }]} />
+			</div>
 			{#if store.loaded && store.tab === 'feed' && viewedRound}<ThreadsChapterPicker rounds={store.rounds} labels={chapterLabels} value={viewedRound.id} onchange={(id) => store.viewedRoundId = id} />{/if}
 			{#if store.loadError}<div class="error" role="alert">Could not {store.loaded ? 'refresh' : 'load'} threads. {store.loadError}<Button variant="secondary" size="sm" onclick={() => store.load(chatId)}>{store.loaded ? 'Retry updating' : 'Retry loading'}</Button></div>{/if}
 			{#if store.error}<div class="error" role="alert">{store.error}</div>{/if}
