@@ -266,7 +266,6 @@
 					<div class="message-list" aria-label="Unused messages" onscroll={scrollMessages}>
 						{#each visibleMessages as message (message.id)}
 							<button class="message-row" class:is-selected={selected.has(message.id)} aria-pressed={selected.has(message.id)} disabled={store.busy} onclick={(event) => select(event,message.id)} onpointerdown={(event) => startTouch(event,message.id)} onpointermove={moveTouch} onpointerup={clearTouch} onpointercancel={clearTouch} oncontextmenu={(event) => event.preventDefault()}>
-								<span class="check" aria-hidden="true">{#if selected.has(message.id)}<Icon name="check" class="w-3 h-3" />{/if}</span>
 								<span class="message-text">
 									<span class="message-meta">
 										<span>#{message.index + 1}</span>
@@ -347,12 +346,11 @@
 	.check-row input { flex-shrink:0; accent-color:var(--color-accent); }
 	.ao3-options { display:flex; flex-wrap:wrap; gap:.25rem .8rem; }
 	.message-list { display:flex; flex-direction:column; gap:.4rem; margin-top:1rem; max-height:52vh; overflow-y:auto; overscroll-behavior:contain; }
-	.message-row { display:flex; align-items:center; gap:.65rem; width:100%; text-align:left; padding:.7rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); touch-action:pan-y; min-width:0; }
+	.message-row { display:flex; align-items:center; width:100%; text-align:left; padding:.7rem; border:1px solid var(--color-border-subtle); border-radius:var(--radius-md); touch-action:pan-y; min-width:0; }
 	.message-row:hover { background:var(--color-bg-tertiary); }
 	.message-row.is-selected { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 8%,var(--color-bg-secondary)); }
 	.message-list-more { display:flex; align-items:center; justify-content:center; gap:.5rem; padding:.35rem 0; overflow-anchor:none; }
 	.message-row:disabled { opacity:.6; }
-	.check { width:1rem; height:1rem; display:flex; align-items:center; justify-content:center; border:1px solid var(--color-border); border-radius:3px; flex-shrink:0; color:var(--color-accent); }
 	.message-text { display:flex; flex:1; flex-direction:column; gap:.25rem; min-width:0; }
 	.message-meta { display:flex; align-items:center; gap:.35rem; font-size:.72rem; color:var(--color-text-muted); font-variant-numeric:tabular-nums; }
 	.message-preview { font-size:.77rem; line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; line-clamp:4; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
@@ -363,5 +361,5 @@
 	.error { color:var(--color-error); border:1px solid color-mix(in srgb,var(--color-error) 40%,transparent); display:flex; flex-direction:column; gap:.6rem; }
 	.status { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.7rem; background:var(--color-bg-tertiary); color:var(--color-text-secondary); }
 	.text-link { color:var(--color-accent); text-decoration:underline; }
-	@media(max-width:480px) { .threads-body { padding:.75rem; } .make-card { padding:.85rem; } .feed-post { padding:.85rem .75rem; } .round-info { padding:.55rem .75rem; } .message-row { gap:.45rem; padding:.65rem .5rem; } }
+	@media(max-width:480px) { .threads-body { padding:.75rem; } .make-card { padding:.85rem; } .feed-post { padding:.85rem .75rem; } .round-info { padding:.55rem .75rem; } .message-row { padding:.65rem .5rem; } }
 </style>
