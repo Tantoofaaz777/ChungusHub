@@ -45,7 +45,7 @@
 					{#if level !== 'chapter'}{item.scene.children?.length ?? 0} {level === 'arc' ? 'chapters' : 'arcs'}{' · '}{/if}
 					{item.scene.source.length} {item.scene.source.length === 1 ? 'message' : 'messages'}{#if sourceRange}{' · '}<span class="chapter-range">{sourceRange}</span>{/if}
 				</span>
-				<span class="chapter-tokens" title={`Estimated ${level} text tokens${model ? ` · ${model}` : ''}`}># {tokens?.toLocaleString() ?? '…'} tokens</span>
+				<span class="chapter-tokens" title={`Estimated ${level} text tokens${model ? ` · ${model}` : ''}`}>{tokens?.toLocaleString() ?? '…'} tokens</span>
 			</div>
 		</summary>
 		{#if expanded}<div class="chapter-content"><p>{item.scene.content}</p></div>{/if}
