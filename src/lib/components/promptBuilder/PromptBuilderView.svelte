@@ -43,14 +43,12 @@
 		assemblePrompt,
 		buildMacroContext,
 		resolveItem,
-		DEFAULT_CONTINUE_PROMPT,
 		type AssembleInput
 	} from '#lib/utils/prompt-assembly.ts';
 	import { memoryStore } from '#lib/memory/scene-store.svelte.ts';
 	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
 	import { fade } from 'svelte/transition';
 	import { untrack } from 'svelte';
-	import { autoResize } from '#lib/actions/autoResize.ts';
 	import { promptItemDepth, supportsPromptDepth, validPromptDepth } from '#lib/utils/prompt-placement.ts';
 	import ControlEditor from './ControlEditor.svelte';
 	import SectionEditor from './SectionEditor.svelte';
@@ -398,27 +396,6 @@
 	async function toggleItem(itemId: string): Promise<void> {
 		if (!currentPreset) return;
 		currentPreset.items = currentPreset.items.map((item) => (item.id === itemId ? { ...item, enabled: !item.enabled } : item));
-		await persistDraft();
-	}
-
-	// ===== Preset options =====
-
-	// The continue instruction is an override: absent means "the shipped default", so typing
-	// the default back in drops the field rather than freezing a copy of it into the preset.
-	// An EMPTY string is a real value meaning "send no instruction", which is why Reset
-	// (back to absent) exists at all.
-	let continuePromptText = $derived(currentPreset?.continuePrompt ?? DEFAULT_CONTINUE_PROMPT);
-	let continuePromptModified = $derived(currentPreset?.continuePrompt !== undefined);
-
-	async function setContinuePrompt(value: string): Promise<void> {
-		if (!currentPreset) return;
-		currentPreset.continuePrompt = value === DEFAULT_CONTINUE_PROMPT ? undefined : value;
-		await persistDraft();
-	}
-
-	async function resetContinuePrompt(): Promise<void> {
-		if (!currentPreset) return;
-		currentPreset.continuePrompt = undefined;
 		await persistDraft();
 	}
 
@@ -1137,29 +1114,6 @@
 			</div>
 			<p class="pb-sep-hint">Replaces &lt;START&gt; between example-dialogue blocks.</p>
 
-			<!-- The instruction Continue appends after the reply it extends. Per-preset because
-			     it is prompt text like everything else here: it ships and saves with the preset,
-			     and rides the same connection as an ordinary send. -->
-			<div class="pb-opt">
-				<div class="pb-opt-head">
-					<label for="continue-prompt" class="pb-prune-title">Continue prompt</label>
-					{#if continuePromptModified}
-						<button type="button" class="pb-opt-reset" onclick={resetContinuePrompt}>Reset</button>
-					{/if}
-				</div>
-				<textarea
-					id="continue-prompt"
-					value={continuePromptText}
-					oninput={(e) => setContinuePrompt((e.target as HTMLTextAreaElement).value)}
-					use:autoResize={{ maxHeight: 260, value: continuePromptText }}
-					placeholder="No instruction, the reply closes the prompt bare."
-					class="input-base w-full px-3 py-2 text-text-primary font-ui text-sm resize-none"
-				></textarea>
-				<p class="pb-sep-hint pb-opt-hint">
-					Sent as the final turn, right after the reply being extended. Clear it to send nothing,
-					and providers that support assistant prefill continue the reply natively.
-				</p>
-			</div>
 		</section>
 	{/if}
 </div>
@@ -1333,44 +1287,6 @@
 		font-family: var(--font-ui);
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
-	}
-
-	/* The one option whose value is prose, so it gets a stacked block instead of a row. */
-	.pb-opt {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-		min-width: 0;
-	}
-
-	.pb-opt-head {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0 0.05rem;
-	}
-
-	/* Reset appears only once the field carries an override, the same contract as the
-	   engine prompt editor it replaces: back to absent, i.e. the shipped default. */
-	.pb-opt-reset {
-		margin-left: auto;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		font-family: var(--font-ui);
-		font-size: 0.7rem;
-		color: var(--color-text-muted);
-		cursor: pointer;
-	}
-
-	.pb-opt-reset:hover {
-		color: var(--color-text-primary);
-	}
-
-	.pb-opt-hint {
-		margin: 0;
-		padding: 0 0.05rem;
-		line-height: 1.45;
 	}
 
 	.pb-mode {

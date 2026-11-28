@@ -88,7 +88,6 @@ export async function openAndroidSettings(): Promise<void> {
 	await window.ChungusAndroidClient?.settings();
 }
 
-export function canShareNativeText(): boolean { return isAndroidClient() && !!window.ChungusAndroidClient?.shareText; }
 export function canReadAloud(): boolean {
 	const client = typeof window !== 'undefined' ? window.ChungusAndroidClient : undefined;
 	return isAndroidClient() && !!client?.readAloud && !!client.readingState && !!client.readingCommand;
@@ -102,7 +101,3 @@ export async function pinChatShortcut(chatId: string, title: string): Promise<vo
 	await window.ChungusAndroidClient!.pinChatShortcut!(chatId, title);
 }
 export function canShareNativeFiles(): boolean { return isAndroidClient() && !!window.ChungusAndroidClient?.shareFile; }
-export async function shareNativeText(text: string): Promise<void> {
-	if (!canShareNativeText()) throw new Error('Update the Android app to share text.');
-	await window.ChungusAndroidClient!.shareText!(text);
-}

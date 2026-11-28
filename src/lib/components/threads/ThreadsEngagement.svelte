@@ -15,7 +15,6 @@
 	{:else}
 		<span class="visual-action" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5v-3h4c3.5 0 5.5 1.2 7 4-.4-5-2.7-8-7-8H9V7Z" /></svg><span class="action-label">Reply</span></span>
 	{/if}
-	<span class="visual-action" aria-hidden="true"><Icon name="externalLink" class="w-3.5 h-3.5" /><span class="action-label">Share</span></span>
 </div>
 
 <style>

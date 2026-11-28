@@ -16,7 +16,6 @@
 	import { readAloudStore as reader } from '#lib/stores/read-aloud.svelte.ts';
 	import { readAloudHighlight } from '#lib/actions/readAloudHighlight.svelte.ts';
 	import { copyText } from '#lib/utils/clipboard.ts';
-	import { canShareNativeText, shareNativeText } from '#lib/services/android-client.ts';
 	import { threadsStore as store } from '#lib/threads/store.svelte.ts';
 	import { activeThreadsFeed } from '#shared/threads/model.ts';
 	import { serializeFeedAsPlainText } from '#shared/threads/feed.ts';
@@ -37,7 +36,6 @@
 	let removing = $state<ThreadsRound | null>(null);
 	let resetting = $state<{ chatId: string; rounds: { id: string; revision: number }[] } | null>(null);
 	let copying = $state(false);
-	let sharing = $state(false);
 	let copiedFeed = $state<string | null>(null);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
@@ -130,13 +128,6 @@
 			await reader.start(serializeFeedAsPlainText(feed), `Threads · ${feed.title}`, `threads:${store.chatId}:${round.id}:${round.activeVersionId}`);
 		} catch (error) { toastStore.failed('read the thread aloud', error); }
 	}
-	async function share(round: ThreadsRound) {
-		if (sharing) return;
-		sharing = true;
-		try { await shareNativeText(serializeFeedAsPlainText(activeThreadsFeed(round))); }
-		catch (error) { toastStore.failed('share the thread', error); }
-		finally { sharing = false; }
-	}
 </script>
 
 <div class="threads-panel">
@@ -188,7 +179,6 @@
 							<div class="feed-actions">
 								<div class="actions">
 									<button type="button" class="icon-btn" disabled={copying} aria-busy={copying} aria-label="Copy thread" title={copied ? 'Copied!' : 'Copy thread'} onclick={() => copy(round)}><Icon name={copied ? 'check' : 'copy'} class="w-4 h-4" /></button>
-									{#if canShareNativeText()}<button type="button" class="icon-btn" disabled={sharing} aria-busy={sharing} aria-label="Share thread" title="Share thread" onclick={() => share(round)}><Icon name="share" class="w-4 h-4" /></button>{/if}
 									{#if reader.available}<button type="button" class="icon-btn" disabled={reader.busy} aria-busy={reader.busy} aria-label="Read thread aloud" title="Read aloud" onclick={() => read(round)}><Icon name="volume" class="w-4 h-4" /></button>{/if}
 									<button class="icon-btn" disabled={store.busy || !!store.pending || !featurePromptsStore.threadsEnabled || !currentRoundIds.has(round.id)} aria-label="Generate another version" title="Generate another version" onclick={() => store.generate(round)}><Icon name="refresh" class="w-4 h-4" /></button>
 									<button class="icon-btn" disabled={store.busy} aria-label="Delete thread" title="Delete thread" onclick={() => removing = round}><Icon name="trash" class="w-4 h-4" /></button>

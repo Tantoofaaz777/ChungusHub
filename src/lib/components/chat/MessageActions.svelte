@@ -7,7 +7,6 @@
 		onEdit: () => void;
 		onDelete: () => void;
 		onCopy: () => Promise<void>;
-		onShare?: () => Promise<void>;
 		onReadAloud?: () => Promise<void>;
 		readingBusy?: boolean;
 		onTogglePrompt?: () => void;
@@ -27,10 +26,6 @@
 		regenerateLabel?: string;
 		onOpeningScene?: () => void;
 		openingSceneOpen?: boolean;
-		/** Extend this reply from where it stopped. Sits beside Retry because the two are the
-		 *  pair the hand reaches for after reading a reply: again, or more. */
-		onContinue?: () => void;
-		showContinue?: boolean;
 		/** Copy the history through this turn into a separate chat. */
 		onBranch?: () => void;
 		showBranch?: boolean;
@@ -42,7 +37,6 @@
 		onEdit,
 		onDelete,
 		onCopy,
-		onShare,
 		onReadAloud,
 		readingBusy = false,
 		onTogglePrompt,
@@ -60,8 +54,6 @@
 		regenerateLabel = 'Retry',
 		onOpeningScene,
 		openingSceneOpen = false,
-		onContinue,
-		showContinue = false,
 		onBranch,
 		showBranch = false,
 		onVersions,
@@ -70,7 +62,6 @@
 
 	let justCopied = $state(false);
 	let copying = $state(false);
-	let sharing = $state(false);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	onDestroy(() => clearTimeout(copiedTimer));
 
@@ -92,13 +83,6 @@
 		}
 	}
 
-	async function handleShare() {
-		if (sharing || !onShare) return;
-		sharing = true;
-		try { await onShare(); }
-		catch (error) { toastStore.failed('share the message', error); }
-		finally { sharing = false; }
-	}
 	async function handleReadAloud() {
 		try { await onReadAloud?.(); }
 		catch (error) { toastStore.failed('read the message aloud', error); }
@@ -131,13 +115,6 @@
 		<span class="action-label">{justCopied ? 'Copied' : 'Copy'}</span>
 	</button>
 
-	{#if onShare}
-			<button type="button" class="action-btn" onclick={handleShare} disabled={sharing}
-				aria-busy={sharing} aria-label="Share message" title="Share message">
-				<Icon name="share" class="w-3.5 h-3.5" strokeWidth={1.75} />
-				<span class="action-label">Share</span>
-			</button>
-	{/if}
 	{#if onReadAloud}
 		<button type="button" class="action-btn" onclick={handleReadAloud} disabled={readingBusy}
 			aria-busy={readingBusy} aria-label="Read message aloud" title="Read aloud">
@@ -195,20 +172,6 @@
 			onclick={onMemoryEnd} disabled={disabled || memoryDisabled}
 			aria-label="End chapter range" aria-pressed={memoryEnd} title="End chapter here ↑">
 			<Icon name="chevronUp" class="w-3.5 h-3.5" strokeWidth={1.75} />
-		</button>
-	{/if}
-
-	{#if showContinue && onContinue}
-		<button
-			type="button"
-			class="action-btn"
-			onclick={onContinue}
-			{disabled}
-			aria-label="Continue this reply"
-			title="Continue: extend this reply from where it stopped"
-		>
-			<Icon name="feather" class="w-3.5 h-3.5" strokeWidth={1.75} />
-			<span class="action-label">Continue</span>
 		</button>
 	{/if}
 

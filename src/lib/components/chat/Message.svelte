@@ -36,7 +36,6 @@
 	import { readAloudText } from '#lib/utils/read-aloud-text.ts';
 	import { readAloudStore } from '#lib/stores/read-aloud.svelte.ts';
 	import { readAloudHighlight } from '#lib/actions/readAloudHighlight.svelte.ts';
-	import { canShareNativeText, shareNativeText } from '#lib/services/android-client.ts';
 	import { previewContinuation } from '#lib/utils/continuation.ts';
 	import { chatDisplay } from '#lib/stores/chat-display.svelte.ts';
 	import { featurePromptsStore } from '#lib/stores/featurePrompts.svelte.ts';
@@ -385,17 +384,6 @@
 		isLast && (message.role === 'user' || (message.role === 'assistant' && (message.parentId !== null || canWriteOpening)))
 	);
 	const canGenerateSwipe = $derived(showSwipes && (message.parentId !== null || canWriteOpening));
-	// Continue extends a reply in place, so it belongs to the newest turn and nowhere else.
-	// A seeded greeting qualifies where Retry refuses one: a continuation works from the reply
-	// itself, while a re-roll needs the prompt that wrote it, and a greeting has none.
-	const showContinue = $derived(isLast && message.role === 'assistant' && !message.excludedFromPrompt);
-
-	function handleContinue() {
-		// The store toasts its own generation failures; only its throw-guards reach here.
-		void messageStore.continueMessage().catch((error) => {
-			toastStore.failed('continue the reply', error);
-		});
-	}
 	const messageTokens = $derived(tokenEstimate(() => countTokens(message.content, message.model ?? undefined)));
 	// Assistant turns carry the provider's real completion token count, so show that rather
 	// than a local estimate. User turns have no per-message actual (the API only reports
@@ -623,7 +611,6 @@
 									onEdit={handleEditClick}
 									onDelete={handleDeleteClick}
 									onCopy={handleCopy}
-									onShare={canShareNativeText() ? () => shareNativeText(streamReplacement ? displayedContent : message.content) : undefined}
 									onReadAloud={readAloudStore.available && !streamReplacement && streamTail == null ? handleReadAloud : undefined}
 									readingBusy={readAloudStore.busy}
 									onToggleBookmark={toggleBookmark}
@@ -642,8 +629,6 @@
 									onOpeningScene={showSwipes && canWriteOpening ? () => (openingDialogOpen = true) : undefined}
 									openingSceneOpen={openingDialogOpen}
 									disabled={messageStore.busy}
-									onContinue={showContinue ? handleContinue : undefined}
-									{showContinue}
 									onBranch={handleBranchClick}
 									showBranch
 									onVersions={(message.variants?.length ?? 0) > 1 ? () => responseVersionsStore.show(message.chatId, message.id, message.selectedVariantId) : undefined}

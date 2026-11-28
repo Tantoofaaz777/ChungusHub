@@ -1,8 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { isAndroidClient, installAndroidBack, shareNativeText, canPinChatShortcut, pinChatShortcut } from './android-client';
-import { serializeFeedAsPlainText } from '#shared/threads/feed.ts';
+import { isAndroidClient, installAndroidBack, canPinChatShortcut, pinChatShortcut } from './android-client';
 import { exportEntryAsSillyTavern, buildSillyTavernCard } from './sillyTavernExport';
 import { importSillyTavernCard } from './sillyTavernImport';
 import type { LibraryEntry } from '#lib/types/library.ts';
@@ -257,25 +256,17 @@ test('a missing Android clipboard acknowledgement rejects instead of leaving the
 	await expect(h.window.ChungusAndroidClient.copyText('test')).rejects.toThrow('Android did not confirm');
 }, 7000);
 
-test('native sharing uses the feed plain-text serializer and waits for the Sharesheet', async () => {
-	const h = harness({ holdShare: true }), previousWindow = globalThis.window;
-	globalThis.window = h.window;
-	try {
-		const text = serializeFeedAsPlainText({ title: 'A fictional thread', post: { username: 'reader', body: 'A post about the chapter.', score: 10 },
-			comments: [{ username: 'another_reader', body: 'A reply with ação 🦝.', score: 3, replies: [] }] });
-		let done = false;
-		const sharing = shareNativeText(text).then(() => { done = true; });
-		await until(() => h.messages.at(-1)?.type === 'share.text.end');
-		expect(done).toBe(false);
-		await expect(shareNativeText('Second click')).rejects.toThrow('Another share is in progress');
-		h.confirmShare(); await sharing;
-		expect(h.sharedText).toBe(text);
-		expect(h.sharedText).toContain('A reply with ação 🦝.');
-		expect(h.sharedText).not.toContain('"username":');
-		expect(h.messages.every(message => !message.type.startsWith('clipboard.'))).toBe(true);
-	} finally {
-		if (previousWindow === undefined) delete (globalThis as any).window; else globalThis.window = previousWindow;
-	}
+test('the native text-sharing bridge preserves text and waits for the Sharesheet', async () => {
+	const h = harness({ holdShare: true });
+	const text = 'A post about the chapter.\n\nA reply with ação 🦝.';
+	let done = false;
+	const sharing = h.window.ChungusAndroidClient.shareText(text).then(() => { done = true; });
+	await until(() => h.messages.at(-1)?.type === 'share.text.end');
+	expect(done).toBe(false);
+	await expect(h.window.ChungusAndroidClient.shareText('Second click')).rejects.toThrow('Another share is in progress');
+	h.confirmShare(); await sharing;
+	expect(h.sharedText).toBe(text);
+	expect(h.messages.every(message => !message.type.startsWith('clipboard.'))).toBe(true);
 });
 
 test('file sharing preserves binary bytes in bounded chunks and aborts preparation and write failures', async () => {

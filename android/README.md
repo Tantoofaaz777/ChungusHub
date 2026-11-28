@@ -100,12 +100,9 @@ da confirmação da API do WebView. Textos longos são enviados em blocos com co
 falhas e falta de resposta aparecem como erro. É necessário instalar o APK novo e
 atualizar a interface na VPS. APKs anteriores continuam usando a cópia do navegador.
 
-Na versão 0.1.5, mensagens e feeds ganham **Share** ao lado de Copy. O feed continua
-sendo convertido para texto simples antes do envio. No diálogo de exportação de
-personagens, **Share** envia o PNG/JSON/CHARX ou ZIP preparado para o menu de
-compartilhamento do Android; **Export** continua salvando pelo seletor de arquivos.
-Textos muito grandes são compartilhados como arquivo `.txt` para respeitar o limite
-de transações do Android. Abrir o menu não confirma que outro aplicativo recebeu o conteúdo.
+Desde a versão 0.1.5, **Share** no diálogo de exportação de personagens envia o
+PNG/JSON/CHARX ou ZIP preparado para o menu de compartilhamento do Android.
+**Export** salva pelo seletor de arquivos.
 
 O app também recebe PNG/APNG, JSON e CHARX via **Compartilhar → Chungus**. O Android
 guarda uma cópia privada até a interface estar aberta e autenticada. Um diálogo
